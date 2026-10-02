@@ -6,11 +6,11 @@ from pathlib import Path
 
 import httpx
 
+from . import MODEL
+
 ROOT = Path(__file__).resolve().parents[2]
 PORT = int(os.environ.get("WISE_SCHOLAR_OPENCODE_PORT", "8322"))
 BASE = f"http://127.0.0.1:{PORT}"
-# "provider/model"; unset uses the default model of the user's opencode config.
-MODEL = os.environ.get("WISE_SCHOLAR_OPENCODE_MODEL")
 MCP_PREFIX = "scholar_"
 
 _server: asyncio.subprocess.Process | None = None
