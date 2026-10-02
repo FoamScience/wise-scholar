@@ -1,0 +1,366 @@
+import json
+import os
+import re
+import shutil
+import sqlite3
+import uuid
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = Path(os.environ.get("WISE_SCHOLAR_DB", ROOT / "data" / "wise-scholar.db"))
+
+MIGRATIONS = [
+    """
+    CREATE TABLE IF NOT EXISTS courses (
+        id INTEGER PRIMARY KEY,
+        topic TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS lessons (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id),
+        title TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        session_started INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY,
+        lesson_id INTEGER NOT NULL REFERENCES lessons(id),
+        role TEXT NOT NULL CHECK (role IN ('learner', 'tutor')),
+        text TEXT NOT NULL,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS blocks (
+        id INTEGER PRIMARY KEY,
+        lesson_id INTEGER NOT NULL REFERENCES lessons(id),
+        kind TEXT NOT NULL,
+        markdown TEXT NOT NULL,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    """,
+    """
+    ALTER TABLE lessons ADD COLUMN phase TEXT NOT NULL DEFAULT 'lesson';
+    UPDATE lessons SET phase = 'interview' WHERE title = 'Interview';
+    ALTER TABLE blocks ADD COLUMN data TEXT;
+    ALTER TABLE courses ADD COLUMN ranking TEXT;
+    ALTER TABLE courses ADD COLUMN mechanism TEXT;
+    CREATE TABLE facts (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER REFERENCES courses(id),
+        text TEXT NOT NULL,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    """,
+    """
+    CREATE TABLE concepts (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id),
+        module TEXT NOT NULL,
+        title TEXT NOT NULL
+    );
+    ALTER TABLE lessons ADD COLUMN concept_id INTEGER REFERENCES concepts(id);
+    """,
+    """
+    CREATE TABLE cards (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id),
+        concept_id INTEGER REFERENCES concepts(id),
+        question TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('choice', 'open')),
+        options TEXT NOT NULL,
+        answer_key TEXT NOT NULL,
+        explanation TEXT NOT NULL,
+        fsrs TEXT,
+        due TEXT,
+        confident_miss INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE answers (
+        id INTEGER PRIMARY KEY,
+        card_id INTEGER NOT NULL REFERENCES cards(id),
+        answer TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        correct INTEGER,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    """,
+    """
+    ALTER TABLE courses ADD COLUMN level TEXT;
+    ALTER TABLE courses ADD COLUMN placement TEXT;
+    ALTER TABLE concepts ADD COLUMN known INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE cards ADD COLUMN scheduled INTEGER NOT NULL DEFAULT 1;
+    """,
+    """
+    ALTER TABLE cards ADD COLUMN vocab INTEGER NOT NULL DEFAULT 0;
+    """,
+    """
+    ALTER TABLE lessons ADD COLUMN backend TEXT;
+    UPDATE lessons SET backend = 'claude' WHERE session_started = 1;
+    """,
+    """
+    CREATE TABLE profiles (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO profiles (name) SELECT 'Me' WHERE EXISTS (SELECT 1 FROM courses) OR EXISTS (SELECT 1 FROM facts);
+    ALTER TABLE courses ADD COLUMN profile_id INTEGER REFERENCES profiles(id);
+    UPDATE courses SET profile_id = (SELECT MIN(id) FROM profiles);
+    ALTER TABLE facts ADD COLUMN profile_id INTEGER REFERENCES profiles(id);
+    UPDATE facts SET profile_id = (SELECT MIN(id) FROM profiles) WHERE course_id IS NULL;
+    """,
+    """
+    ALTER TABLE courses ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+    """,
+]
+
+DB_PATH.parent.mkdir(exist_ok=True)
+conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
+conn.row_factory = sqlite3.Row
+conn.execute("PRAGMA foreign_keys = ON")
+_version = conn.execute("PRAGMA user_version").fetchone()[0]
+if 0 < _version < len(MIGRATIONS):
+    # Keep the database as it was before this upgrade, in case a migration goes wrong.
+    shutil.copy(DB_PATH, DB_PATH.with_name(f"{DB_PATH.name}.v{_version}.bak"))
+for _n, _script in enumerate(MIGRATIONS[_version:], start=_version + 1):
+    conn.executescript(_script)
+    conn.execute(f"PRAGMA user_version = {_n}")
+
+
+def workspace(slug: str) -> Path:
+    """The course's folder for exercise files; also the working directory of its agent sessions."""
+    path = ROOT / "workspace" / slug
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def rows(sql: str, *args) -> list[dict]:
+    return [dict(r) for r in conn.execute(sql, args)]
+
+
+def row(sql: str, *args) -> dict | None:
+    r = conn.execute(sql, args).fetchone()
+    return dict(r) if r else None
+
+
+def profiles() -> list[dict]:
+    return rows(
+        "SELECT p.*, (SELECT COUNT(*) FROM courses c WHERE c.profile_id = p.id) AS courses FROM profiles p ORDER BY p.id"
+    )
+
+
+def profile(profile_id: int) -> dict | None:
+    return row("SELECT * FROM profiles WHERE id = ?", profile_id)
+
+
+def create_course(topic: str, profile_id: int) -> dict:
+    base = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-") or "course"
+    slug, n = base, 2
+    while row("SELECT 1 FROM courses WHERE slug = ?", slug):
+        slug, n = f"{base}-{n}", n + 1
+    course_id = conn.execute(
+        "INSERT INTO courses (topic, slug, profile_id) VALUES (?, ?, ?)", (topic, slug, profile_id)
+    ).lastrowid
+    create_lesson(course_id, "Interview", "interview")
+    return course(course_id)
+
+
+def delete_course(course_id: int) -> None:
+    """Remove a course and everything stored under it, all or nothing."""
+    lessons = "SELECT id FROM lessons WHERE course_id = ?"
+    conn.execute("BEGIN")
+    try:
+        for sql in (
+            "DELETE FROM answers WHERE card_id IN (SELECT id FROM cards WHERE course_id = ?)",
+            "DELETE FROM cards WHERE course_id = ?",
+            f"DELETE FROM blocks WHERE lesson_id IN ({lessons})",
+            f"DELETE FROM messages WHERE lesson_id IN ({lessons})",
+            "DELETE FROM lessons WHERE course_id = ?",
+            "DELETE FROM concepts WHERE course_id = ?",
+            "DELETE FROM facts WHERE course_id = ?",
+            "DELETE FROM courses WHERE id = ?",
+        ):
+            conn.execute(sql, (course_id,))
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+
+def course(course_id: int) -> dict | None:
+    c = row("SELECT * FROM courses WHERE id = ?", course_id)
+    if c:
+        c["ranking"] = json.loads(c["ranking"]) if c["ranking"] else []
+    return c
+
+
+def set_ranking(course_id: int, ranking: list[dict]) -> None:
+    conn.execute(
+        "UPDATE courses SET ranking = ?, mechanism = ? WHERE id = ?",
+        (json.dumps(ranking), ranking[0]["mechanism"], course_id),
+    )
+
+
+def create_lesson(course_id: int, title: str, phase: str, concept_id: int | None = None) -> int:
+    return conn.execute(
+        "INSERT INTO lessons (course_id, title, phase, concept_id, session_id) VALUES (?, ?, ?, ?, ?)",
+        (course_id, title, phase, concept_id, str(uuid.uuid4())),
+    ).lastrowid
+
+
+def concepts(course_id: int) -> list[dict]:
+    return rows("SELECT * FROM concepts WHERE course_id = ? ORDER BY id", course_id)
+
+
+def set_concepts(course_id: int, modules: list[dict]) -> None:
+    conn.executemany(
+        "INSERT INTO concepts (course_id, module, title, known) VALUES (?, ?, ?, ?)",
+        [(course_id, m["title"], title, int(title in m["known"])) for m in modules for title in m["concepts"]],
+    )
+
+
+def lesson(lesson_id: int) -> dict | None:
+    return row(
+        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, p.name AS profile, k.title AS concept, k.module "
+        "FROM lessons l JOIN courses c ON c.id = l.course_id JOIN profiles p ON p.id = c.profile_id "
+        "LEFT JOIN concepts k ON k.id = l.concept_id "
+        "WHERE l.id = ?",
+        lesson_id,
+    )
+
+
+def add_message(lesson_id: int, role: str, text: str) -> dict:
+    message_id = conn.execute(
+        "INSERT INTO messages (lesson_id, role, text) VALUES (?, ?, ?)", (lesson_id, role, text)
+    ).lastrowid
+    return row("SELECT * FROM messages WHERE id = ?", message_id)
+
+
+def _block(b: dict | None) -> dict | None:
+    if b:
+        b["data"] = json.loads(b["data"]) if b["data"] else None
+    return b
+
+
+def block(block_id: int) -> dict | None:
+    return _block(row("SELECT * FROM blocks WHERE id = ?", block_id))
+
+
+def blocks(lesson_id: int) -> list[dict]:
+    return [_block(b) for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY id", lesson_id)]
+
+
+def add_block(lesson_id: int, kind: str, markdown: str, data: dict | None = None) -> dict:
+    block_id = conn.execute(
+        "INSERT INTO blocks (lesson_id, kind, markdown, data) VALUES (?, ?, ?, ?)",
+        (lesson_id, kind, markdown, json.dumps(data) if data else None),
+    ).lastrowid
+    return block(block_id)
+
+
+def set_block_data(block_id: int, data: dict) -> dict:
+    conn.execute("UPDATE blocks SET data = ? WHERE id = ?", (json.dumps(data), block_id))
+    return block(block_id)
+
+
+def add_card(course_id: int, concept_id: int | None, question: str, kind: str, options: list[str],
+             answer_key: str, explanation: str, scheduled: bool, vocab_due: str | None = None) -> int:
+    """vocab_due marks a vocabulary card and makes it due from that moment, without a first answer."""
+    return conn.execute(
+        "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, "
+        "vocab, due) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (course_id, concept_id, question, kind, json.dumps(options), answer_key, explanation, int(scheduled),
+         int(vocab_due is not None), vocab_due),
+    ).lastrowid
+
+
+def vocabulary(course_id: int, now: str) -> dict:
+    return row(
+        "SELECT COUNT(*) AS total, COALESCE(SUM(due <= ?), 0) AS due FROM cards WHERE course_id = ? AND vocab = 1",
+        now, course_id,
+    )
+
+
+def strand_counts(course_id: int) -> dict[str, int]:
+    """How many lesson-area activities of each language-learning strand the course had in the last 7 days."""
+    counts = {"input": 0, "output": 0, "language": 0, "fluency": 0}
+    recent = rows(
+        "SELECT b.kind, b.data FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+        "WHERE l.course_id = ? AND l.phase = 'lesson' AND b.created >= datetime('now', '-7 days')",
+        course_id,
+    )
+    for b in recent:
+        data = json.loads(b["data"]) if b["data"] else {}
+        if b["kind"] == "reading":
+            counts["input"] += 1
+        elif data.get("writing"):
+            counts["fluency" if data.get("fluency") else "output"] += 1
+        else:
+            counts["language"] += 1
+    return counts
+
+
+def _card(c: dict | None) -> dict | None:
+    if c:
+        c["options"] = json.loads(c["options"])
+    return c
+
+
+def card(card_id: int) -> dict | None:
+    return _card(row("SELECT * FROM cards WHERE id = ?", card_id))
+
+
+def due_cards(profile_id: int, now: str) -> list[dict]:
+    """A profile's cards whose review is due, confident misses first."""
+    return [
+        _card(c)
+        for c in rows(
+            "SELECT k.*, c.topic FROM cards k JOIN courses c ON c.id = k.course_id "
+            "WHERE c.profile_id = ? AND c.archived = 0 AND k.due IS NOT NULL AND k.due <= ? "
+            "ORDER BY k.confident_miss DESC, k.due",
+            profile_id, now,
+        )
+    ]
+
+
+def graded_answers(profile_id: int) -> list[dict]:
+    return rows(
+        "SELECT a.confidence, a.correct FROM answers a JOIN cards k ON k.id = a.card_id "
+        "JOIN courses c ON c.id = k.course_id WHERE c.profile_id = ? AND a.correct IS NOT NULL",
+        profile_id,
+    )
+
+
+def concept_mastery(course_id: int) -> dict[int, float]:
+    """Per concept, the share of its cards whose latest graded answer was right."""
+    return {
+        r["concept_id"]: r["mastery"]
+        for r in rows(
+            "SELECT k.concept_id, AVG(a.correct) AS mastery FROM cards k JOIN answers a ON a.id = "
+            "(SELECT MAX(id) FROM answers WHERE card_id = k.id AND correct IS NOT NULL) "
+            "WHERE k.course_id = ? AND k.concept_id IS NOT NULL GROUP BY k.concept_id",
+            course_id,
+        )
+    }
+
+
+def add_fact(course_id: int, text: str, about_learner: bool) -> None:
+    """A fact about the learner belongs to the course's profile; any other fact belongs to the course."""
+    if about_learner:
+        profile_id = row("SELECT profile_id FROM courses WHERE id = ?", course_id)["profile_id"]
+        conn.execute("INSERT INTO facts (profile_id, text) VALUES (?, ?)", (profile_id, text))
+    else:
+        conn.execute("INSERT INTO facts (course_id, text) VALUES (?, ?)", (course_id, text))
+
+
+def facts(course_id: int) -> list[dict]:
+    """Facts about the course's learner (course_id NULL) plus facts for this course."""
+    return rows(
+        "SELECT * FROM facts WHERE course_id = ? "
+        "OR (course_id IS NULL AND profile_id = (SELECT profile_id FROM courses WHERE id = ?)) ORDER BY id",
+        course_id, course_id,
+    )
+
+
+def learner_facts(profile_id: int) -> list[dict]:
+    return rows("SELECT id, text FROM facts WHERE course_id IS NULL AND profile_id = ? ORDER BY id", profile_id)
