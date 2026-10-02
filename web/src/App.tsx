@@ -904,10 +904,10 @@ function Workspace({ courseId }: { courseId: number }) {
 
 export default function App() {
   const hash = useHash()
-  const [backend, setBackend] = useState('')
+  const [agent, setAgent] = useState('')
   const { profiles, current, select, reload } = useProfiles()
   useEffect(() => {
-    api<{ backend: string }>('/api/meta').then((m) => setBackend(m.backend), () => {})
+    api<{ agent: string }>('/api/meta').then((m) => setAgent(m.agent), () => {})
   }, [])
   const match = hash.match(/^#\/course\/(\d+)$/)
 
@@ -936,7 +936,7 @@ export default function App() {
           wise-scholar
         </a>
         <span className="grow" />
-        <span className="status">backend: {backend}</span>
+        <span className="status">agent: {agent}</span>
         {current && (
           <a className="btn as-link" href="#/profile">
             {current.name}

@@ -3,6 +3,8 @@ import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+from . import MODEL
+
 ROOT = Path(__file__).resolve().parents[2]
 PROMPTS = ROOT / "wise_scholar" / "prompts"
 MCP_PREFIX = "mcp__scholar__"
@@ -53,6 +55,7 @@ async def run_turn(
         "--system-prompt", system_prompt,
         "--tools", ",".join(tools),
         "--allowedTools", "mcp__scholar", *tools,
+        *(["--model", MODEL] if MODEL else []),
         *session,
         cwd=cwd,
         stdin=asyncio.subprocess.PIPE,

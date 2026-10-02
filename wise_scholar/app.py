@@ -14,13 +14,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import challenge, db, history, hub, quiz, review, tutor
-from .backends import claude, opencode
+from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
 WEB_DIST = db.ROOT / "web" / "dist"
 RUN_TIMEOUT = 30
 OUTPUT_LIMIT = 20_000
-BACKEND = os.environ.get("WISE_SCHOLAR_BACKEND", "claude")
 backend = {"claude": claude, "opencode": opencode}[BACKEND]
 
 _turns: dict[int, asyncio.Task] = {}
@@ -229,7 +228,7 @@ def _require_unplaced(course: dict) -> None:
 
 @app.get("/api/meta")
 def meta() -> dict:
-    return {"backend": BACKEND}
+    return {"agent": AGENT}
 
 
 def _profile(profile_id: int) -> dict:
