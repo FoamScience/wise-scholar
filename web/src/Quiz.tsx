@@ -55,7 +55,7 @@ function QuizForm(props: {
           {props.options.map((o) => (
             <label key={o} className={o === answer ? 'quiz-option picked' : 'quiz-option'}>
               <input type="radio" name={props.id} checked={o === answer} onChange={() => setAnswer(o)} />
-              {o}
+              <Markdown>{o}</Markdown>
             </label>
           ))}
         </div>

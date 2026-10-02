@@ -1118,3 +1118,14 @@ mark {
 .home h1 {
   margin: 0;
 }
+
+/* math */
+
+.quiz-option p {
+  margin: 0;
+}
+
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
