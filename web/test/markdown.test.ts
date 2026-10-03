@@ -4,6 +4,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ReactMarkdown from 'react-markdown'
 import { rehypePlugins, remarkPlugins } from '../src/markdown.ts'
+import { splitSentences } from '../src/text.ts'
 
 const render = (text: string) =>
   renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins, rehypePlugins }, text))
@@ -30,4 +31,15 @@ test('dollars in code spans and escaped dollars stay text', () => {
 test('math inside a table cell and malformed math do not break rendering', () => {
   assert.ok(render('| a | b |\n|---|---|\n| $x^2$ | 1 |').includes('class="katex"'))
   assert.ok(render('$\\frac{1}{$').length > 0)
+})
+
+test('sentences split at terminal punctuation and keep it', () => {
+  assert.deepEqual(splitSentences('Am Montag war er beim Arzt. Danach? Nein! Er blieb zu Hause…  Fertig.'), [
+    'Am Montag war er beim Arzt.',
+    'Danach?',
+    'Nein!',
+    'Er blieb zu Hause…',
+    'Fertig.',
+  ])
+  assert.deepEqual(splitSentences('Um 3.5 Uhr'), ['Um 3.5 Uhr'])
 })

@@ -870,6 +870,7 @@ dependencies = [
     { name = "fsrs" },
     { name = "httpx" },
     { name = "mcp" },
+    { name = "python-multipart" },
     { name = "uvicorn" },
 ]
 
@@ -884,6 +885,7 @@ requires-dist = [
     { name = "fsrs", specifier = ">=6.3.2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mcp", specifier = ">=2.2.0" },
+    { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 

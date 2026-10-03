@@ -1,0 +1,12 @@
+[project]
+name = "wise-scholar-speech"
+version = "0.1.0"
+description = "Speech worker for wise-scholar: local text-to-speech and speech-to-text, kept in its own environment because of Chatterbox's pinned torch"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "av<16",
+    "chatterbox-tts",
+    "faster-whisper",
+    "piper-tts",
+    "setuptools<81",
+]

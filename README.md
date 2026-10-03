@@ -52,6 +52,16 @@ A second instance for testing, beside the real one:
 WISE_SCHOLAR_PORT=8331 WISE_SCHOLAR_OPENCODE_PORT=8332 WISE_SCHOLAR_DB=/tmp/test.db WISE_SCHOLAR_WORKSPACE=/tmp/ws make serve
 ```
 
+## Speech (optional)
+
+Off by default. Listen buttons use the browser's own voice and there is no microphone input until you install the speech extras:
+
+```bash
+make speech
+```
+
+This creates a separate environment under `speech/` (torch, Chatterbox Multilingual, faster-whisper, Piper) and downloads the models once, about 7 GB in total. Afterwards reading texts play with a local neural voice sentence by sentence, and the chat gets a push-to-talk button. Chatterbox runs on the GPU; without one, Piper speaks on the CPU (German and English voices are installed). Nothing is downloaded while you learn; the worker starts on first use and stops after ten idle minutes.
+
 ## Develop
 
 ```bash

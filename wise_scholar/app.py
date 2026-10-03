@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import shutil
 import signal
@@ -8,20 +9,23 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import challenge, db, history, hub, quiz, review, tutor
+from . import challenge, db, history, hub, quiz, review, speech, tutor
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
 WEB_DIST = db.ROOT / "web" / "dist"
 RUN_TIMEOUT = 30
 OUTPUT_LIMIT = 20_000
+CLIP_LIMIT = 25 * 1024 * 1024
 backend = {"claude": claude, "opencode": opencode}[BACKEND]
 
+log = logging.getLogger("wise_scholar")
 _turns: dict[int, asyncio.Task] = {}
 
 mcp_app = tutor.mcp.streamable_http_app(stateless_http=True, json_response=True)
@@ -35,6 +39,7 @@ async def lifespan(app: FastAPI):
             yield
         finally:
             await backend.stop()
+            speech.worker.stop()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -230,7 +235,35 @@ def _require_unplaced(course: dict) -> None:
 
 @app.get("/api/meta")
 def meta() -> dict:
-    return {"agent": AGENT}
+    return {"agent": AGENT, "speech": speech.available()}
+
+
+@app.get("/api/tts")
+async def text_to_speech(text: str, lang: str) -> FileResponse:
+    if not 0 < len(text) <= 600:
+        raise HTTPException(422, "one sentence or paragraph at a time, up to 600 characters")
+    try:
+        return FileResponse(await speech.tts(text.strip(), lang), media_type="audio/wav")
+    except RuntimeError as e:
+        log.warning("tts failed: %s", e)
+        raise HTTPException(503, str(e)) from None
+
+
+@app.post("/api/stt")
+async def speech_to_text(audio: UploadFile, lang: str | None = None) -> dict:
+    data = await audio.read(CLIP_LIMIT + 1)
+    if len(data) > CLIP_LIMIT:
+        raise HTTPException(413, "recordings are limited to 25 MB")
+    clip = speech.AUDIO / "stt" / f"{uuid.uuid4()}.webm"
+    clip.parent.mkdir(parents=True, exist_ok=True)
+    clip.write_bytes(data)
+    try:
+        return await speech.stt(clip, lang)
+    except RuntimeError as e:
+        log.warning("stt failed: %s", e)
+        raise HTTPException(503, str(e)) from None
+    finally:
+        clip.unlink(missing_ok=True)
 
 
 def _profile(profile_id: int) -> dict:

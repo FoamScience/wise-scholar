@@ -594,7 +594,7 @@ function Plan(props: {
   )
 }
 
-function Workspace({ courseId }: { courseId: number }) {
+function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) {
   const [course, setCourse] = useState<CourseDetail | null>(null)
   const [lessonId, setLessonId] = useState<number | null>(null)
   const [streaming, setStreaming] = useState('')
@@ -794,6 +794,7 @@ function Workspace({ courseId }: { courseId: number }) {
               id={b.id}
               text={b.markdown}
               data={b.data}
+              speech={speech}
               onAdd={(word) => post(`/api/blocks/${b.id}/vocabulary`, { word })}
             />
           ) : b.kind === 'exercise' ? (
@@ -887,6 +888,7 @@ function Workspace({ courseId }: { courseId: number }) {
             onKeyDown={onKey}
           />
           <div className="row">
+            {speech && <Mic onText={(text) => setDraft((d) => (d ? `${d} ${text}` : text))} onError={setError} />}
             {lesson.running && (
               <button className="btn" onClick={() => post(`/api/lessons/${lesson.id}/stop`, {})}>
                 Stop
@@ -902,12 +904,73 @@ function Workspace({ courseId }: { courseId: number }) {
   )
 }
 
+/** Push-to-talk: records while pressed, sends the clip to the recogniser, hands back the transcript. */
+function Mic(props: { onText: (text: string) => void; onError: (message: string) => void }) {
+  const [recording, setRecording] = useState(false)
+  const recorder = useRef<MediaRecorder | null>(null)
+
+  async function start() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const chunks: Blob[] = []
+      const rec = new MediaRecorder(stream)
+      rec.ondataavailable = (e) => chunks.push(e.data)
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const form = new FormData()
+        form.append('audio', new Blob(chunks, { type: rec.mimeType }), 'clip.webm')
+        try {
+          const res = await fetch('/api/stt', { method: 'POST', body: form })
+          if (!res.ok) return props.onError((await res.json().catch(() => null))?.detail ?? res.statusText)
+          props.onText((await res.json()).text)
+        } catch (err) {
+          props.onError((err as Error).message)
+        }
+      }
+      rec.start()
+      recorder.current = rec
+      setRecording(true)
+    } catch (err) {
+      props.onError((err as Error).message)
+    }
+  }
+
+  function stop() {
+    recorder.current?.stop()
+    recorder.current = null
+    setRecording(false)
+  }
+
+  return (
+    <button
+      type="button"
+      className={recording ? 'btn recording' : 'btn'}
+      aria-label={recording ? 'Stop recording' : 'Speak your message'}
+      title={recording ? 'Stop and transcribe' : 'Speak your message'}
+      onClick={recording ? stop : start}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <rect x="9" y="3" width="6" height="11" rx="3" />
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+      </svg>
+      {recording ? ' Stop' : ''}
+    </button>
+  )
+}
+
 export default function App() {
   const hash = useHash()
   const [agent, setAgent] = useState('')
+  const [speech, setSpeech] = useState(false)
   const { profiles, current, select, reload } = useProfiles()
   useEffect(() => {
-    api<{ agent: string }>('/api/meta').then((m) => setAgent(m.agent), () => {})
+    api<{ agent: string; speech: boolean }>('/api/meta').then(
+      (m) => {
+        setAgent(m.agent)
+        setSpeech(m.speech)
+      },
+      () => {},
+    )
   }, [])
   const match = hash.match(/^#\/course\/(\d+)$/)
 
@@ -922,7 +985,7 @@ export default function App() {
           }}
         />
       )
-    if (match) return <Workspace key={match[1]} courseId={Number(match[1])} />
+    if (match) return <Workspace key={match[1]} courseId={Number(match[1])} speech={speech} />
     if (hash === '#/review') return <Review profile={current.id} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} onSelect={select} onChanged={reload} />
