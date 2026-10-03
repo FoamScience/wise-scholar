@@ -501,6 +501,33 @@ async def _render_cast(block_id: int) -> None:
 
 
 @mcp.tool()
+async def pose_teachback(lesson_id: int, prompt: str, key_points: str) -> str:
+    """Ask the learner to explain the concept in their own words in about 60 seconds: spoken when speech
+    is on (the recording is transcribed into the attempt), typed otherwise.
+
+    key_points: what a sound explanation must contain; the learner never sees it. Grade the attempt like
+    writing: give_hint with marks on the weak or wrong pieces and a prompt on what is missing, mark_solved
+    once the key points are there, reveal a model explanation after a failed repair or a give-up. The
+    grade counts toward the concept's mastery. End your turn after posing it.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    card_id = db.add_card(lesson["course_id"], lesson["concept_id"], prompt, "open", [], key_points, "", scheduled=False)
+    data = {**challenge.new(reveal_after=2), "writing": True, "spoken": True, "teachback": True, "card_id": card_id, "fluency": False, "marks": []}
+    block = db.add_block(lesson_id, "challenge", prompt, data)
+    _show(lesson, block)
+    return f"shown as challenge {block['id']}; end the turn and wait for the learner"
+
+
+def _grade_teachback(data: dict, correct: bool) -> None:
+    """A teach-back's outcome becomes a graded answer on its hidden card, so it counts toward mastery."""
+    if card_id := data.get("card_id"):
+        answer_id = quiz.submit(db.card(card_id), data["attempts"][-1] if data["attempts"] else "", 0.5)
+        quiz.grade(answer_id, correct)
+
+
+@mcp.tool()
 async def reveal(challenge_id: int, solution: str) -> str:
     """Show the full solution of a challenge. The server refuses while the solution is locked."""
     data = _open_challenge(challenge_id)
@@ -509,6 +536,7 @@ async def reveal(challenge_id: int, solution: str) -> str:
     if problem := challenge.reveal_blocker(data):
         return f"refused: {problem}"
     _patch_block(challenge_id, {"solution": solution})
+    _grade_teachback(data, False)
     return "shown"
 
 
@@ -594,4 +622,5 @@ async def mark_solved(challenge_id: int) -> str:
     if not data["attempts"]:
         return "refused: the learner has not submitted an attempt on the card"
     _patch_block(challenge_id, {"solved": True})
+    _grade_teachback(data, True)
     return "marked"

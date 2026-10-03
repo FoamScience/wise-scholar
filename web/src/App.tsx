@@ -34,6 +34,7 @@ type ChallengeData = {
   fluency?: boolean
   marks?: string[]
   spoken?: boolean
+  teachback?: boolean
   lang?: string
 }
 type Scored = { word: string; score: number }
@@ -100,6 +101,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   set_placement: 'working out your level…',
   pose_vocab_check: 'picking words to check…',
   pose_speaking: 'preparing a speaking task…',
+  pose_teachback: 'preparing a teach-back…',
   make_podcast: 'writing a cast…',
   pose_quiz: 'preparing a quick check…',
   grade_quiz: 'grading your answer…',
@@ -115,6 +117,7 @@ const LESSON_AREA_TOOLS = [
   'pose_writing',
   'pose_vocab_check',
   'pose_speaking',
+  'pose_teachback',
   'make_podcast',
 ]
 
@@ -399,15 +402,23 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
-        {d.spoken ? 'Listen and answer by speaking' : d.writing ? (d.fluency ? 'Write fast' : 'Write') : 'Work it out'}
+        {d.teachback
+          ? `Explain it in 60 seconds${props.speech ? ', out loud' : ''}`
+          : d.spoken
+            ? 'Listen and answer by speaking'
+            : d.writing
+              ? d.fluency
+                ? 'Write fast'
+                : 'Write'
+              : 'Work it out'}
         {d.solved && <span className="chip">{d.writing ? 'Done' : 'Solved'}</span>}
-        {d.spoken && (
+        {d.spoken && d.lang && (
           <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([props.block.markdown]))}>
             {player.current ? 'Stop' : 'Listen'}
           </button>
         )}
       </div>
-      {!d.spoken && <Markdown>{props.block.markdown}</Markdown>}
+      {!(d.spoken && d.lang) && <Markdown>{props.block.markdown}</Markdown>}
       {player.error && <div className="error">{player.error}</div>}
 
       <Ladder data={d} />
@@ -425,11 +436,12 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
             />
             <div className="row">
               <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
-              {d.spoken && (
+              {d.spoken && props.speech && (
                 <Mic
                   onClip={(clip) => transcribe(clip, d.lang).then((t) => setText((v) => (v ? `${v} ${t}` : t)))}
                   onError={props.onError}
                   disabled={props.disabled}
+                  limit={d.teachback ? 60 : undefined}
                 />
               )}
               <button className="btn primary" disabled={props.disabled || !text.trim()}>
@@ -666,7 +678,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
 const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking', 'podcast'])
 
 function cardLabel(b: Block): string {
-  const d = (b.data ?? {}) as { writing?: boolean; files?: string[]; title?: string }
+  const d = (b.data ?? {}) as { writing?: boolean; teachback?: boolean; files?: string[]; title?: string }
   const head = b.markdown.replace(/[*_`#>]/g, '').split('\n')[0].trim()
   const short = head.length > 48 ? `${head.slice(0, 47)}…` : head
   if (b.kind === 'question') return `Question · ${short}`
@@ -676,7 +688,7 @@ function cardLabel(b: Block): string {
   if (b.kind === 'speaking') return `Speaking · ${short}`
   if (b.kind === 'podcast') return `Cast · ${short}`
   if (b.kind === 'exercise') return `Exercise · ${d.files?.[0] ?? short}`
-  return `${d.writing ? 'Writing' : 'Challenge'} · ${short}`
+  return `${d.teachback ? 'Teach-back' : d.writing ? 'Writing' : 'Challenge'} · ${short}`
 }
 
 /** Which cards were posed before each message: the chat gets a labelled divider there. Key -1 = after the last message. */
@@ -1150,9 +1162,10 @@ async function transcribe(clip: Blob, lang?: string): Promise<string> {
   return (await res.json()).text
 }
 
-function Mic(props: { onClip: (clip: Blob) => Promise<void>; onError: (message: string) => void; label?: string; disabled?: boolean }) {
+function Mic(props: { onClip: (clip: Blob) => Promise<void>; onError: (message: string) => void; label?: string; disabled?: boolean; limit?: number }) {
   const [recording, setRecording] = useState(false)
   const recorder = useRef<MediaRecorder | null>(null)
+  const timer = useRef<number | undefined>(undefined)
 
   async function start() {
     try {
@@ -1167,12 +1180,14 @@ function Mic(props: { onClip: (clip: Blob) => Promise<void>; onError: (message: 
       rec.start()
       recorder.current = rec
       setRecording(true)
+      if (props.limit) timer.current = window.setTimeout(stop, props.limit * 1000)
     } catch (err) {
       props.onError((err as Error).message)
     }
   }
 
   function stop() {
+    window.clearTimeout(timer.current)
     recorder.current?.stop()
     recorder.current = null
     setRecording(false)

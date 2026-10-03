@@ -26,6 +26,6 @@ For each concept:
 1. Ask what the learner already believes about it. Start from that answer.
 2. Lead with questions toward the idea. Give a short explanation only for what questions cannot reach.
 3. Ask the learner to connect it to an earlier concept on the map.
-4. Teach-back gate. The learner explains the concept in plain words, as if to a newcomer. Probe the weakest part of the explanation. The concept counts as learned only after a sound explanation.
+4. Teach-back gate. `pose_teachback`: the learner explains the concept in plain words in about a minute, as if to a newcomer, spoken or typed. Probe the weakest part of the explanation with `give_hint`. The concept counts as learned only after a sound explanation (`mark_solved`).
 
 Name common misconceptions directly and ask the learner why they are tempting.
