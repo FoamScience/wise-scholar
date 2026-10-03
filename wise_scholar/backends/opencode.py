@@ -6,11 +6,11 @@ from pathlib import Path
 
 import httpx
 
-from . import MODEL
+from . import MCP_URL, MODEL
 
 ROOT = Path(__file__).resolve().parents[2]
-PORT = int(os.environ.get("WISE_SCHOLAR_OPENCODE_PORT", "8322"))
-BASE = f"http://127.0.0.1:{PORT}"
+OPENCODE_PORT = int(os.environ.get("WISE_SCHOLAR_OPENCODE_PORT", "8322"))
+BASE = f"http://127.0.0.1:{OPENCODE_PORT}"
 MCP_PREFIX = "scholar_"
 
 _server: asyncio.subprocess.Process | None = None
@@ -21,9 +21,14 @@ async def start() -> None:
     global _server
     log = open(ROOT / "data" / "opencode.log", "ab")
     _server = await asyncio.create_subprocess_exec(
-        "opencode", "serve", "--pure", "--port", str(PORT),
+        "opencode", "serve", "--pure", "--port", str(OPENCODE_PORT),
         cwd=ROOT,
-        env={**os.environ, "OPENCODE_CONFIG": str(ROOT / "opencode.json"), "OPENCODE_DISABLE_CLAUDE_CODE": "1"},
+        env={
+            **os.environ,
+            "OPENCODE_CONFIG": str(ROOT / "opencode.json"),
+            "OPENCODE_CONFIG_CONTENT": json.dumps({"mcp": {"scholar": {"type": "remote", "url": MCP_URL, "enabled": True}}}),
+            "OPENCODE_DISABLE_CLAUDE_CODE": "1",
+        },
         stdout=log,
         stderr=log,
     )
