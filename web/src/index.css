@@ -1151,6 +1151,16 @@ mark {
   margin-right: 10px;
 }
 
+.word.weak {
+  text-decoration: underline wavy var(--amber);
+  text-underline-offset: 3px;
+}
+
+.spoken-text {
+  margin: 0;
+  font-size: 18px;
+}
+
 .btn.recording {
   background: #8f2d0f;
   border-color: #8f2d0f;

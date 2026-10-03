@@ -5,7 +5,7 @@ import simplemma
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel
 
-from . import challenge, db, hub, quiz, vocab
+from . import challenge, db, hub, quiz, speech, vocab
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
 mcp = MCPServer("scholar")
@@ -360,6 +360,32 @@ async def pose_writing(lesson_id: int, prompt: str, fluency: bool = False) -> st
     block = db.add_block(lesson_id, "challenge", prompt, data)
     _show(lesson, block)
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
+
+
+@mcp.tool()
+async def pose_speaking(lesson_id: int, kind: Literal["read", "shadow", "answer"], text: str, lang: str) -> str:
+    """Ask the learner to speak in the language being learned. Needs the optional speech setup.
+
+    read: the learner reads text aloud. shadow: the learner hears text spoken and repeats it.
+    Both are scored word by word by forced alignment of the recording; you get the weak words and
+    comment on them with give_hint (marks on those words, a prompt about the sound, never a spelling
+    of it). answer: text is a question the learner hears and answers by speaking; the transcript
+    becomes a written attempt and goes through the writing-correction flow. lang: BCP 47 code such as
+    de-DE. One or two sentences at a time. End your turn after posing it.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if not speech.available():
+        return "error: speech is off on this install, so there are no speaking tasks; use pose_writing instead"
+    if kind == "answer":
+        data = {**challenge.new(reveal_after=2), "writing": True, "spoken": True, "lang": lang, "fluency": False, "marks": []}
+        block = db.add_block(lesson_id, "challenge", text, data)
+    else:
+        data = {**challenge.new(reveal_after=2), "speaking": kind, "lang": lang, "scores": [], "marks": []}
+        block = db.add_block(lesson_id, "speaking", text, data)
+    _show(lesson, block)
+    return f"shown as {block['kind']} {block['id']}; end the turn and wait for the learner"
 
 
 @mcp.tool()

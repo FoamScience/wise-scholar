@@ -25,6 +25,9 @@ WEB_DIST = db.ROOT / "web" / "dist"
 RUN_TIMEOUT = 30
 OUTPUT_LIMIT = 20_000
 CLIP_LIMIT = 25 * 1024 * 1024
+# ponytail: on synthesized references right words score 0.97+ and wrong ones under 0.45; real accents are untested.
+WEAK_WORD = 0.5
+MISMATCH_SHARE = 0.5
 backend = {"claude": claude, "opencode": opencode}[BACKEND]
 
 log = logging.getLogger("wise_scholar")
@@ -458,6 +461,7 @@ async def open_concept(concept_id: int) -> dict:
     if lesson["mechanism"] == "leveled-course":
         counts = db.strand_counts(concept["course_id"])
         strands = "\nActivities per strand in the last 7 days: " + ", ".join(f"{k} {v}" for k, v in counts.items())
+        strands += "\nSpeaking tasks: " + ("available" if speech.available() else "off on this install, use writing instead")
         if lesson["lang"]:
             strands += "\n" + tutor.vocab_brief(lesson, lesson["lang"])
     earlier = history.digest([
@@ -517,6 +521,41 @@ async def know_word(block_id: int, body: Word) -> dict:
     tutor.advance_tier(lesson["profile_id"], lang, db.vocab_tier(lesson["profile_id"], lang, vocab.starting_tier(lesson["level"], lang)))
     known = block["data"].get("known", [])
     _, block = _update_block(block, {"known": known if body.word in known else [*known, body.word]})
+    return block
+
+
+@app.post("/api/blocks/{block_id}/speak")
+async def speak(block_id: int, audio: UploadFile) -> dict:
+    block = _challenge_block(block_id)
+    if block["kind"] != "speaking":
+        raise HTTPException(404, "no such speaking task")
+    data = await audio.read(CLIP_LIMIT + 1)
+    if len(data) > CLIP_LIMIT:
+        raise HTTPException(413, "recordings are limited to 25 MB")
+    clip = speech.AUDIO / "speaking" / f"{block_id}-{len(block['data']['attempts']) + 1}.webm"
+    clip.parent.mkdir(parents=True, exist_ok=True)
+    clip.write_bytes(data)
+    text = block["markdown"]
+    try:
+        words = await speech.align(clip, text)
+        heard = None
+        if sum(w["score"] < WEAK_WORD for w in words) >= MISMATCH_SHARE * len(words):
+            heard = (await speech.stt(clip, block["data"]["lang"]))["text"]
+            words = speech.word_match(text, heard)
+    except RuntimeError as e:
+        log.warning("alignment failed: %s", e)
+        raise HTTPException(503, str(e)) from None
+    attempt = {"words": words, "heard": heard, "score": round(sum(w["score"] for w in words) / len(words), 2)}
+    lesson, block = _update_block(
+        block, {"attempts": [*block["data"]["attempts"], text], "scores": [*block["data"]["scores"], attempt], "marks": []}
+    )
+    weak = [f"{w['word']} ({w['score']:.2f})" for w in words if w["score"] < WEAK_WORD]
+    _start_turn(
+        lesson,
+        f"[learner attempt] {_challenge_state(block)}; spoken, overall {attempt['score']:.2f}; "
+        f"weak words: {', '.join(weak) or 'none'}" + (f"; the recogniser heard: {heard!r}" if heard else "")
+        + f"\n{text}",
+    )
     return block
 
 
