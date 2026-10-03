@@ -72,3 +72,9 @@ test('a figure embedded in prose renders as an image with its alt text', () => {
   const html = render('See ![a labelled cell](/api/figures/12.svg) above.')
   assert.ok(html.includes('<img') && html.includes('src="/api/figures/12.svg"') && html.includes('alt="a labelled cell"'))
 })
+
+test('a plot card renders its accessible container before the library loads', async () => {
+  const { PlotCard } = await import('../src/PlotCard.tsx')
+  const html = renderToStaticMarkup(createElement(PlotCard, { id: 3, title: 'Decay', data: { spec: { marks: [] }, alt: 'exp(-x) falling' } }))
+  assert.ok(html.includes('aria-label="exp(-x) falling"') && html.includes('Decay'))
+})
