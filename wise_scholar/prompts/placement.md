@@ -12,3 +12,5 @@ How:
    - call `set_placement` with the level and a short summary; for a language, name the vocabulary tier in the summary;
    - read the course's mechanism with `get_playbook` and call `set_course_map`. Build the map from the placed level upward. Keep concepts below the level only where the check showed a gap. List in `known` the concepts the check showed the learner already has;
    - tell the learner the result in two chat sentences and point them to the first concept that is not placed out.
+
+Retake: when the event says the learner retakes the check, run it the same way from the start, ignoring the earlier result except as a hint for the first question. The course map already exists, so at the end call `set_placement` and then `set_known`: the concepts the check shows the learner now has, and the ones it shows they lack. Do not call `set_course_map`.

@@ -125,3 +125,17 @@ def test_teachback_grade_counts_toward_concept_mastery():
     db.set_block_data(block["id"], {**block["data"], "attempts": ["Each value has one owner and is dropped at the end of scope."]})
     assert asyncio.run(tutor.mark_solved(block["id"])) == "marked"
     assert db.concept_mastery(course) == {concept: 1.0}
+
+
+def test_set_known_recalibrates_the_map_without_rebuilding_it():
+    import asyncio
+
+    from wise_scholar import tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Re')").lastrowid
+    course = db.create_course("German", who)["id"]
+    db.set_concepts(course, [{"title": "A1", "concepts": ["Greetings", "Numbers"], "known": ["Greetings"]}, {"title": "A2", "concepts": ["Perfekt"], "known": []}])
+    assert [c["mastery"] for c in db.concept_view(course)] == [1.0, None, None]
+    assert "not concepts" in asyncio.run(tutor.set_known(course, ["Numbers"], ["Nope"]))
+    assert asyncio.run(tutor.set_known(course, ["Numbers", "Perfekt"], ["Greetings"])) == "updated"
+    assert [(c["title"], c["known"]) for c in db.concepts(course)] == [("Greetings", 0), ("Numbers", 1), ("Perfekt", 1)]

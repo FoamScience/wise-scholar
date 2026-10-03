@@ -163,8 +163,22 @@ async def set_course_map(course_id: int, modules: list[Module]) -> str:
     if stray := [k for m in modules for k in m.known if k not in m.concepts]:
         return f"error: known titles {stray} are not concepts of their module"
     db.set_concepts(course_id, [m.model_dump() for m in modules])
-    hub.publish(course_id, {"type": "map.set", "concepts": db.concepts(course_id)})
+    hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id)})
     return "shown"
+
+
+@mcp.tool()
+async def set_known(course_id: int, known: list[str], unknown: list[str]) -> str:
+    """After a retaken placement check, mark which concepts of the existing map the learner now has (placed out)
+    and which they lack (open again). Titles must match the map exactly; other concepts keep their state."""
+    titles = {c["title"] for c in db.concepts(course_id)}
+    if not titles:
+        return "error: this course has no map yet; use set_course_map"
+    if stray := [t for t in [*known, *unknown] if t not in titles]:
+        return f"error: {stray} are not concepts of the map"
+    db.set_known(course_id, known, unknown)
+    hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id)})
+    return "updated"
 
 
 @mcp.tool()
@@ -610,6 +624,10 @@ async def set_placement(course_id: int, level: str, summary: str) -> str:
         return f"error: no course with id {course_id}"
     db.conn.execute("UPDATE courses SET level = ?, placement = ? WHERE id = ?", (level, summary, course_id))
     hub.publish(course_id, {"type": "placement.set", "level": level, "placement": summary})
+    # Each check keeps its own result card, so a retake leaves the earlier ones readable.
+    lesson = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'placement' ORDER BY id DESC LIMIT 1", course_id)
+    if lesson:
+        _show(db.lesson(lesson["id"]), db.add_block(lesson["id"], "placement", summary, {"level": level}))
     return "recorded"
 
 

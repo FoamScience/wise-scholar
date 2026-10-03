@@ -949,9 +949,31 @@ function Workspace({ courseId, speech, concept }: { courseId: number; speech: bo
     <div className="workspace">
       <nav className="map" aria-label="Course map">
         <div className="label">Course map</div>
-        {course.level && (
-          <div>
-            Level <span className="chip">{course.level}</span>
+        {(course.level || course.concepts.length > 0) && (
+          <div className="level-row">
+            {course.level && (
+              <span>
+                Level <span className="chip">{course.level}</span>
+              </span>
+            )}
+            {course.concepts.length > 0 && (
+              <button
+                type="button"
+                className="link"
+                disabled={lesson.running}
+                onClick={() =>
+                  api<Lesson>(`/api/courses/${course.id}/placement/retake`, {}).then(
+                    (created) => {
+                      addLesson(created)
+                      setLessonId(created.id)
+                    },
+                    (err: Error) => setError(err.message),
+                  )
+                }
+              >
+                {course.level ? 'Retake placement' : 'Take the placement check'}
+              </button>
+            )}
           </div>
         )}
         {course.strands && course.concepts.length > 0 && (
@@ -1043,6 +1065,13 @@ function Workspace({ courseId, speech, concept }: { courseId: number; speech: bo
               onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
               onError={setError}
             />
+          ) : b.kind === 'placement' ? (
+            <section key={b.id} className="block">
+              <div className="label">
+                Placement result <span className="chip">{(b.data as { level: string }).level}</span>
+              </div>
+              <Markdown>{b.markdown}</Markdown>
+            </section>
           ) : b.kind === 'podcast' ? (
             <PodcastCard
               key={b.id}
@@ -1086,7 +1115,7 @@ function Workspace({ courseId, speech, concept }: { courseId: number; speech: bo
             }
           />
         )}
-        {lesson.phase === 'placement' && course.placement && (
+        {lesson.phase === 'placement' && course.placement && course.lessons.find((l) => l.phase === 'placement')?.id === lesson.id && !lesson.blocks.some((b) => b.kind === 'placement') && (
           <section className="block">
             <div className="label">
               Placement result <span className="chip">{course.level}</span>
