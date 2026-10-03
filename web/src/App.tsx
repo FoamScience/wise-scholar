@@ -39,6 +39,8 @@ type ChallengeData = {
   teachback?: boolean
   pretest?: boolean
   lang?: string
+  words?: [number, number] | null
+  structure?: string
 }
 type Scored = { word: string; score: number }
 type SpeakingData = ChallengeData & { speaking: 'read' | 'shadow'; lang: string; scores: { words: Scored[]; heard: string | null; score: number }[] }
@@ -62,6 +64,7 @@ type Ranked = {
 }
 type CourseDetail = Course & {
   placement: string | null
+  lang: string | null
   ranking: Ranked[]
   concepts: Concept[]
   lessons: Lesson[]
@@ -140,6 +143,7 @@ type TodayPlan = {
   units: { course_id: number; topic: string; concept_id: number | null; title: string }[]
   cast: { id: number; lesson_id: number; title: string; course_id: number } | null
   errors: number
+  extras: { course_id: number; topic: string; kind: 'episode' | 'writing' }[]
 }
 
 function unitHash(u: TodayPlan['units'][number]): string {
@@ -179,6 +183,14 @@ function Today({ profile }: { profile: number }) {
             A cast is ready to listen to: <a href={`#/course/${plan.cast.course_id}`}>{plan.cast.title}</a>
           </li>
         )}
+        {plan.extras.map((x) => (
+          <li key={`${x.course_id}-${x.kind}`} className="muted">
+            <a href={`#/course/${x.course_id}?start=${x.kind}`}>
+              {x.kind === 'episode' ? `Next episode of your ${x.topic} story` : `A writing session in ${x.topic}`}
+            </a>{' '}
+            · that strand is behind
+          </li>
+        ))}
         {plan.errors > 0 && (
           <li className="muted">
             <a href="#/errors">{plan.errors} open {plan.errors === 1 ? 'entry' : 'entries'} in your error notebook</a>
@@ -437,7 +449,15 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
       {open && (
         <>
           <form onSubmit={submit}>
-            <label htmlFor={`attempt-${props.block.id}`}>Your answer</label>
+            <label htmlFor={`attempt-${props.block.id}`}>
+              Your answer
+              {d.words && (
+                <span className="muted">
+                  {' '}
+                  · {d.words[0]} to {d.words[1]} words{d.structure ? `, using ${d.structure}` : ''} · {text.trim() ? text.trim().split(/\s+/).length : 0} so far
+                </span>
+              )}
+            </label>
             <textarea
               id={`attempt-${props.block.id}`}
               className="field"
@@ -820,7 +840,7 @@ function Plan(props: {
   )
 }
 
-function Workspace({ courseId, speech, concept }: { courseId: number; speech: boolean; concept: number | null }) {
+function Workspace({ courseId, speech, concept, start }: { courseId: number; speech: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
   const [course, setCourse] = useState<CourseDetail | null>(null)
   const [lessonId, setLessonId] = useState<number | null>(null)
   const [streaming, setStreaming] = useState('')
@@ -908,6 +928,15 @@ function Workspace({ courseId, speech, concept }: { courseId: number; speech: bo
         setCourse(c)
         const wanted = concept === null ? undefined : c.lessons.find((l) => l.concept_id === concept)
         setLessonId(wanted ? wanted.id : c.lessons[c.lessons.length - 1].id)
+        if (start)
+          api<Lesson>(`/api/courses/${courseId}/${start}`, {}).then(
+            (created) => {
+              setCourse((cur) => cur && { ...cur, lessons: [...cur.lessons, created] })
+              setLessonId(created.id)
+              location.hash = `#/course/${courseId}`
+            },
+            (err: Error) => setError(err.message),
+          )
         if (!wanted && concept !== null)
           api<Lesson>(`/api/concepts/${concept}/lesson`, {}).then(
             (created) => {
@@ -921,7 +950,7 @@ function Workspace({ courseId, speech, concept }: { courseId: number; speech: bo
       (e) => setError(e.message),
     )
     return () => source.close()
-  }, [courseId, concept])
+  }, [courseId, concept, start])
 
   useEffect(() => {
     chatBottom.current?.scrollIntoView({ block: 'end' })
@@ -997,6 +1026,17 @@ function Workspace({ courseId, speech, concept }: { courseId: number; speech: bo
             strands={course.strands}
             vocabulary={course.vocabulary}
             units={course.concepts}
+            disabled={lesson.running}
+            onStart={(kind) =>
+              api<Lesson>(`/api/courses/${course.id}/${kind}`, {}).then(
+                (created) => {
+                  addLesson(created)
+                  setLessonId(created.id)
+                },
+                (err: Error) => setError(err.message),
+              )
+            }
+            story={course.lang !== null}
           />
         )}
         {course.lessons
@@ -1318,7 +1358,7 @@ export default function App() {
       () => {},
     )
   }, [])
-  const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+))?$/)
+  const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing))?$/)
   const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
 
   function page() {
@@ -1332,7 +1372,16 @@ export default function App() {
           }}
         />
       )
-    if (match) return <Workspace key={match[1]} courseId={Number(match[1])} speech={speech} concept={match[2] ? Number(match[2]) : null} />
+    if (match)
+      return (
+        <Workspace
+          key={match[1]}
+          courseId={Number(match[1])}
+          speech={speech}
+          concept={match[2] ? Number(match[2]) : null}
+          start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
+        />
+      )
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
     if (hash === '#/errors') return <ErrorsPage profile={current.id} />
     if (hash === '#/profile')

@@ -407,21 +407,86 @@ def vocab_round(lesson: dict, data: dict, known: list[str]) -> tuple[dict, str |
 
 
 @mcp.tool()
-async def pose_writing(lesson_id: int, prompt: str, fluency: bool = False) -> str:
+async def pose_writing(
+    lesson_id: int, prompt: str, fluency: bool = False, min_words: int = 0, max_words: int = 0, structure: str = ""
+) -> str:
     """Ask the learner to write in the language being learned.
 
     The card works like a challenge: each submission is an attempt, your correction prompts go
     through give_hint (with marks on the faulty pieces), and the corrected text goes through
     reveal, which opens after the second attempt or a give-up. fluency: an easy, fast task on
-    known language where speed matters and you do not correct details. End your turn after posing it.
+    known language where speed matters and you do not correct details. min_words/max_words: the
+    length band for the level, shown with a live word count. structure: the one form the text should
+    use, named to the learner (e.g. "a Nebensatz mit weil"). End your turn after posing it.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    data = {**challenge.new(reveal_after=2), "writing": True, "fluency": fluency, "marks": []}
+    data = {**challenge.new(reveal_after=2), "writing": True, "fluency": fluency, "marks": [],
+            "words": [min_words, max_words] if max_words else None, "structure": structure}
     block = db.add_block(lesson_id, "challenge", prompt, data)
     _show(lesson, block)
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
+
+
+@mcp.tool()
+async def start_series(course_id: int, title: str, characters: list[str], synopsis: str) -> str:
+    """Open the course's extensive-reading series: a serial story in the language being learned.
+
+    characters: the recurring people and places, each as 'Name: one line'. synopsis: the setting and
+    the thread of the plot in a few sentences; later episodes build on it. One series per course.
+    """
+    if not db.course(course_id):
+        return f"error: no course with id {course_id}"
+    if db.series(course_id):
+        return "error: this course already has a series; call add_episode"
+    db.start_series(course_id, title, "\n".join(characters), synopsis)
+    return "started; now write episode 1 with add_episode"
+
+
+@mcp.tool()
+async def add_episode(
+    lesson_id: int, title: str, text: str, lang: str, recap: str, glossary: list[Gloss] = [], names: list[str] = []
+) -> str:
+    """Show the next episode of the course's series: 400 to 800 words the learner reads for pleasure.
+
+    The gate is stricter than a lesson reading: 98% of the words inside the learner's vocabulary, at
+    most 5 glossary words, no comprehension questions. recap: two sentences on what happened, kept as
+    the series memory for the next episode. names: the people and places in it. End your turn after it.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    show = db.series(lesson["course_id"])
+    if not show:
+        return "error: no series yet; call start_series first"
+    if any(b["kind"] == "reading" and (b["data"] or {}).get("story") for b in db.blocks(lesson_id)):
+        return "error: this lesson already has its episode"
+    words = len(text.split())
+    if not 400 <= words <= 800:
+        return f"error: {words} words; an episode has 400 to 800"
+    if len(glossary) > vocab.STORY_GLOSSARY:
+        return f"error: at most {vocab.STORY_GLOSSARY} glossary words in an episode; keep the language easy instead"
+    if stray := [g.word for g in glossary if g.word not in text]:
+        return f"error: glossary words {stray} do not appear in the text exactly as written"
+    v = _vocab(lesson, lang)
+    known_names = [*names, *show["characters"].split("\n"), *(g.word for g in glossary)]
+    known_names = [n.split(":")[0].strip() for n in known_names]
+    check = vocab.check_reading(text, v["lang"], v["tier"], v["known"], [], known_names, coverage=vocab.STORY_COVERAGE)
+    if not check["ok"]:
+        return (
+            f"rewrite: only {check['coverage']:.1%} of the words are inside the learner's vocabulary (an episode needs "
+            f"{vocab.STORY_COVERAGE:.0%}); outside it: {', '.join(check['unknown'][:20])}. Replace them with easier words."
+        )
+    db.course_lang(lesson["course_id"], v["lang"])
+    counts = Counter(l.lower() for l in check["lemmas"] if (vocab.rank(l, v["lang"]) or 0) >= vocab.FUNCTION_WORDS)
+    db.add_exposures(lesson["profile_id"], v["lang"], counts, vocab.EXPOSURES_TO_KNOW)
+    advance_tier(lesson["profile_id"], v["lang"], v["tier"])
+    episode = db.add_episode(lesson["course_id"], recap)
+    data = {"title": title, "lang": lang, "glossary": [g.model_dump() for g in glossary], "added": [], "targets": [],
+            "known": [], "story": show["title"], "episode": episode}
+    _show(lesson, db.add_block(lesson_id, "reading", text, data))
+    return f"shown as episode {episode}; coverage {check['coverage']:.1%}"
 
 
 @mcp.tool()

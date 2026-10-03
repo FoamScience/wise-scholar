@@ -481,6 +481,39 @@ async def retake_placement(course_id: int) -> dict:
     return view
 
 
+@app.post("/api/courses/{course_id}/episode")
+async def next_episode(course_id: int) -> dict:
+    course = _course(course_id)
+    if not course["lang"]:
+        raise HTTPException(409, "episodes are for language courses; the first reading sets the language")
+    show = db.series(course_id)
+    n = (show["episodes"] if show else 0) + 1
+    lesson_id = db.create_lesson(course_id, f"Episode {n}", "story")
+    view = _lesson_view(lesson_id)
+    hub.publish(course_id, {"type": "lesson.created", "lesson": view})
+    if show:
+        line = (
+            f"[event] Episode {n} of the series {show['title']!r}. Characters:\n{show['characters']}\nSynopsis so far:{show['synopsis']}"
+        )
+    else:
+        line = "[event] The learner wants to start reading a series. There is no series yet."
+    _start_turn(_lesson(lesson_id), line)
+    return view
+
+
+@app.post("/api/courses/{course_id}/writing")
+async def writing_session(course_id: int) -> dict:
+    course = _course(course_id)
+    if not course["mechanism"]:
+        raise HTTPException(409, "there is no plan yet")
+    n = sum(1 for lesson in course["lessons"] if lesson["phase"] == "writing") + 1
+    lesson_id = db.create_lesson(course_id, f"Writing session {n}", "writing")
+    view = _lesson_view(lesson_id)
+    hub.publish(course_id, {"type": "lesson.created", "lesson": view})
+    _start_turn(_lesson(lesson_id), "[event] The learner opens a writing session. Pose one writing task for their level.")
+    return view
+
+
 @app.post("/api/concepts/{concept_id}/lesson")
 async def open_concept(concept_id: int) -> dict:
     concept = db.row("SELECT * FROM concepts WHERE id = ?", concept_id)
@@ -751,6 +784,14 @@ def today(profile: int) -> dict:
             units.append({"course_id": course["id"], "topic": course["topic"], "concept_id": pending["id"], "title": pending["title"]})
         elif not concepts:
             units.append({"course_id": course["id"], "topic": course["topic"], "concept_id": None, "title": "Finish the interview"})
+    extras = []
+    for course in db.rows("SELECT id, topic, lang FROM courses WHERE profile_id = ? AND archived = 0 AND mechanism = 'leveled-course'", profile):
+        counts = db.strand_counts(course["id"])
+        lowest = min(counts, key=counts.get)
+        if lowest == "input" and course["lang"]:
+            extras.append({"course_id": course["id"], "topic": course["topic"], "kind": "episode"})
+        elif lowest == "output":
+            extras.append({"course_id": course["id"], "topic": course["topic"], "kind": "writing"})
     cast = db.row(
         "SELECT b.id, b.lesson_id, b.markdown AS title, l.course_id FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
         "JOIN courses c ON c.id = l.course_id WHERE c.profile_id = ? AND c.archived = 0 AND b.kind = 'podcast' "
@@ -758,7 +799,7 @@ def today(profile: int) -> dict:
         profile,
     )
     open_errors = len(db.errors(profile, open_only=True))
-    return {"due": due, "review_minutes": min(SITTING_MINUTES, round(due * REVIEW_MINUTES)), "units": units, "cast": cast, "errors": open_errors}
+    return {"due": due, "review_minutes": min(SITTING_MINUTES, round(due * REVIEW_MINUTES)), "units": units, "cast": cast, "errors": open_errors, "extras": extras}
 
 
 @app.post("/api/cards/{card_id}/review")

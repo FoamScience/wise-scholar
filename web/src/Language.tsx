@@ -9,6 +9,8 @@ type ReadingData = {
   added: string[]
   targets?: string[]
   known?: string[]
+  story?: string
+  episode?: number
 }
 type Strands = { input: number; output: number; language: number; fluency: number }
 
@@ -37,7 +39,7 @@ export function ReadingCard(props: {
   return (
     <section id={`block-${props.id}`} className="block reading">
       <div className="reading-head">
-        <div className="label">Read · tap a marked word for its meaning</div>
+        <div className="label">{d.story ? `${d.story} · episode ${d.episode} · read for pleasure` : 'Read · tap a marked word for its meaning'}</div>
         <label className="small">
           <input type="checkbox" checked={player.slow} onChange={(e) => player.setSlow(e.target.checked)} /> slow
         </label>
@@ -188,6 +190,9 @@ export function LevelPanel(props: {
   strands: Strands
   vocabulary: { total: number; due: number; tier?: number; tier_size?: number; tier_known?: number; tier_words?: number }
   units: { mastery: number | null }[]
+  disabled: boolean
+  story: boolean
+  onStart: (kind: 'episode' | 'writing') => void
 }) {
   const current = CEFR.find((l) => props.level?.toUpperCase().startsWith(l))
   const done = props.units.filter((u) => (u.mastery ?? 0) >= 2 / 3).length
@@ -238,6 +243,16 @@ export function LevelPanel(props: {
       <a className="btn as-link" href="#/review">
         Vocabulary · {props.vocabulary.due} due of {props.vocabulary.total}
       </a>
+      <div className="row">
+        {props.story && (
+          <button type="button" className="btn" disabled={props.disabled} onClick={() => props.onStart('episode')}>
+            Next episode
+          </button>
+        )}
+        <button type="button" className="btn" disabled={props.disabled} onClick={() => props.onStart('writing')}>
+          Writing session
+        </button>
+      </div>
     </div>
   )
 }
