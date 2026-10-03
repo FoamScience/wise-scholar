@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
+import { Correction } from './Diff'
 import Markdown from './Md'
 
 type Entry = {
@@ -60,7 +61,7 @@ export function ErrorsPage({ profile }: { profile: number }) {
           </div>
           <div className="solution">
             <div className="label">{e.kind === 'writing' ? 'Corrected' : 'Right answer'}</div>
-            <Markdown>{e.correct}</Markdown>
+            {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
             {e.explanation && <Markdown>{e.explanation}</Markdown>}
           </div>
           <label className="small" htmlFor={`note-${e.id}`}>

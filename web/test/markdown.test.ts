@@ -59,3 +59,11 @@ test('a mermaid block becomes a diagram placeholder, not highlighted code', () =
   assert.ok(html.includes('class="mermaid"'))
   assert.ok(!html.includes('hljs'))
 })
+
+test('a correction shows removed and added words, and nothing for an identical text', async () => {
+  const { Correction } = await import('../src/Diff.tsx')
+  const html = renderToStaticMarkup(createElement(Correction, { attempt: 'Ich helfe den Mann.', corrected: 'Ich helfe dem Mann.' }))
+  assert.ok(html.includes('<del>den</del>') && html.includes('<ins>dem</ins>'))
+  const same = renderToStaticMarkup(createElement(Correction, { attempt: 'Gut.', corrected: 'Gut.' }))
+  assert.ok(!same.includes('<del>') && same.includes('already matched'))
+})

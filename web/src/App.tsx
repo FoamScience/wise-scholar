@@ -8,6 +8,7 @@ import type { QuizData } from './Quiz'
 import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
+import { Correction } from './Diff'
 import { usePlayer } from './player'
 import { splitBy } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
@@ -560,7 +561,11 @@ function HintList({ data: d }: { data: ChallengeData }) {
       {d.solution !== null && (
         <div className="solution">
           <div className="label">{d.writing ? 'Corrected text' : 'Solution'}</div>
-          <Markdown>{d.solution}</Markdown>
+          {d.writing && d.attempts.length > 0 ? (
+            <Correction attempt={d.attempts[d.attempts.length - 1]} corrected={d.solution} />
+          ) : (
+            <Markdown>{d.solution}</Markdown>
+          )}
         </div>
       )}
     </>
