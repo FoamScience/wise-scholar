@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ReactMarkdown from 'react-markdown'
+import Markdown from '../src/Md.tsx'
 import { rehypePlugins, remarkPlugins } from '../src/markdown.ts'
 import { splitSentences } from '../src/text.ts'
 
@@ -51,4 +52,10 @@ test('fenced code in Haskell and Python gets syntax classes', () => {
   const python = render('```python\ndef f(x):\n    return x * 2\n```')
   assert.ok(python.includes('hljs-keyword') && python.includes('hljs-number'))
   assert.ok(!render('```\nplain\n```').includes('hljs-'))
+})
+
+test('a mermaid block becomes a diagram placeholder, not highlighted code', () => {
+  const html = renderToStaticMarkup(createElement(Markdown, null, '```mermaid\nflowchart LR\n  A --> B\n```'))
+  assert.ok(html.includes('class="mermaid"'))
+  assert.ok(!html.includes('hljs'))
 })

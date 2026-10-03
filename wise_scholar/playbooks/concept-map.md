@@ -19,7 +19,7 @@ finding = "A meta-analysis of 55 studies (5,818 participants) found that using c
 url = "https://doi.org/10.3102/00346543076003413"
 +++
 
-Start by laying out the field as concepts with prerequisite links, and agree on a path with the learner.
+Start by laying out the field as concepts with prerequisite links: draw it as a `mermaid` `flowchart LR` (or a `mindmap`) in a prose block, concepts as nodes and prerequisites as arrows, and agree on a path with the learner. Redraw the map at the start of each concept with the learned ones marked (`:::done` with a `classDef done`), and ask the learner to add the link they see.
 
 For each concept:
 
