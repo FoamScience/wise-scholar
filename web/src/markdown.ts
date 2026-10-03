@@ -21,4 +21,4 @@ import remarkMath from 'remark-math'
 const languages = { ...common, clojure, dart, elixir, elm, erlang, fortran, haskell, julia, latex, ocaml, scala, scheme }
 
 export const remarkPlugins: PluggableList = [remarkGfm, remarkMath]
-export const rehypePlugins: PluggableList = [rehypeKatex, [rehypeHighlight, { languages }]]
+export const rehypePlugins: PluggableList = [rehypeKatex, [rehypeHighlight, { languages, plainText: ['mermaid'] }]]
