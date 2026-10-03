@@ -100,7 +100,7 @@ export function ReadingCard(props: {
   const player = usePlayer(d.lang, props.speech)
 
   return (
-    <section className="block reading">
+    <section id={`block-${props.id}`} className="block reading">
       <div className="reading-head">
         <div className="label">Read · tap a marked word for its meaning</div>
         <label className="small">

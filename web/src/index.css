@@ -1151,3 +1151,42 @@ mark {
   border-color: #8f2d0f;
   color: #ffffff;
 }
+
+/* chat dividers per lesson card */
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 32px;
+  margin: 6px 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex-grow: 1;
+  border-top: 1px solid var(--line-strong);
+}
+
+.divider span {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.divider:hover {
+  color: var(--teal);
+}
