@@ -107,3 +107,21 @@ def test_vocabulary_check_seeds_the_ledger_and_sets_the_tier():
     assert words[0].lower() in db.vocab_lemmas(eve, "de", ("known",))
     db.set_vocab(eve, "de", words[0], "learning", "review", force=True)
     assert words[0].lower() not in db.vocab_lemmas(eve, "de", ("known",))
+
+
+def test_teachback_grade_counts_toward_concept_mastery():
+    import asyncio
+
+    from wise_scholar import tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Tee')").lastrowid
+    course = db.create_course("Rust", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Ownership"], "known": []}])
+    concept = db.concepts(course)[0]["id"]
+    lesson = db.create_lesson(course, "Ownership", "lesson", concept)
+    asyncio.run(tutor.pose_teachback(lesson, "Explain ownership", "one owner; moves; drop at scope end"))
+    block = db.blocks(lesson)[-1]
+    assert db.concept_mastery(course) == {}
+    db.set_block_data(block["id"], {**block["data"], "attempts": ["Each value has one owner and is dropped at the end of scope."]})
+    assert asyncio.run(tutor.mark_solved(block["id"])) == "marked"
+    assert db.concept_mastery(course) == {concept: 1.0}
