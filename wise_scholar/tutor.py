@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from collections import Counter
 from typing import Literal
 
@@ -21,6 +23,27 @@ class Gloss(BaseModel):
     meaning: str
 
 
+class Line(BaseModel):
+    speaker: str
+    text: str
+
+
+class CastQuestion(BaseModel):
+    after_line: int
+    question: str
+    kind: Literal["choice", "open"]
+    options: list[str] = []
+    answer_key: str
+    explanation: str
+
+
+log = logging.getLogger(__name__)
+# A cast of 5 to 8 minutes at the voices' pace of about 155 words a minute; one Chatterbox line stays short.
+CAST_WORDS = (750, 1250)
+LINE_CHARS = 300
+_renders: set[asyncio.Task] = set()
+
+
 class ExerciseFile(BaseModel):
     path: str
     content: str
@@ -36,7 +59,7 @@ def _show(lesson: dict, block: dict, event: str = "block.added") -> None:
     hub.publish(lesson["course_id"], {"type": event, "lesson_id": lesson["id"], "block": block})
 
 
-def _update_challenge(challenge_id: int, change: dict) -> None:
+def _patch_block(challenge_id: int, change: dict) -> None:
     block = db.block(challenge_id)
     block = db.set_block_data(challenge_id, {**block["data"], **change})
     _show(db.lesson(block["lesson_id"]), block, "block.updated")
@@ -208,7 +231,7 @@ async def give_hint(challenge_id: int, hint: str, marks: list[str] = []) -> str:
     last = data["attempts"][-1] if data["attempts"] else ""
     if stray := [m for m in marks if m not in last]:
         return f"error: marks {stray} are not exact pieces of the learner's last attempt"
-    _update_challenge(challenge_id, {"hints": [*data["hints"], hint], "marks": marks})
+    _patch_block(challenge_id, {"hints": [*data["hints"], hint], "marks": marks})
     return f"shown as hint {len(data['hints']) + 1} of {data['max_hints']}"
 
 
@@ -388,6 +411,95 @@ async def pose_speaking(lesson_id: int, kind: Literal["read", "shadow", "answer"
     return f"shown as {block['kind']} {block['id']}; end the turn and wait for the learner"
 
 
+async def make_podcast(
+    lesson_id: int, title: str, lang: str, lines: list[Line], questions: list[CastQuestion] = [],
+    glossary: list[Gloss] = [], names: list[str] = [],
+) -> str:
+    """Turn a two-voice dialogue you wrote into a 5 to 8 minute audio cast in the lesson area. Experimental.
+
+    lines: the dialogue in order, exactly two speakers, each line under 300 characters, 750 to 1250 words
+    in all. Write a recap cast (the two hosts talk through what the lesson taught, with examples) or a
+    quiz-cast: pass questions, each placed after a line, roughly every two minutes; the cast pauses there
+    and the learner answers with a confidence rating before it goes on. lang: BCP 47 code of the dialogue.
+    In a language course the dialogue passes the reading gate like add_reading (glossary and names count
+    as in scope). The audio renders in the background; end your turn after calling this.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    speakers = list(dict.fromkeys(l.speaker for l in lines))
+    if len(speakers) != 2:
+        return f"error: a cast has exactly two speakers, got {speakers}"
+    if long := [i for i, l in enumerate(lines) if len(l.text) > LINE_CHARS]:
+        return f"error: lines {long} are over {LINE_CHARS} characters; split them"
+    words = sum(len(l.text.split()) for l in lines)
+    if not CAST_WORDS[0] <= words <= CAST_WORDS[1]:
+        return f"error: {words} words; a 5 to 8 minute cast needs {CAST_WORDS[0]} to {CAST_WORDS[1]}"
+    for q in questions:
+        if not 0 <= q.after_line < len(lines):
+            return f"error: after_line {q.after_line} is outside the dialogue"
+        if q.kind == "choice" and not (2 <= len(q.options) <= 5 and q.answer_key in q.options):
+            return "error: a choice question needs 2 to 5 options, one of them exactly equal to answer_key"
+    text = "\n".join(l.text for l in lines)
+    if stray := [g.word for g in glossary if g.word not in text]:
+        return f"error: glossary words {stray} do not appear in the dialogue exactly as written"
+    if not speech.available():
+        return "error: speech is off on this install, so there are no casts"
+    if lesson["lang"]:
+        v = _vocab(lesson, lang)
+        check = vocab.check_reading(text, v["lang"], v["tier"], v["known"], [], [*names, *speakers, *(g.word for g in glossary)])
+        if check["coverage"] < vocab.COVERAGE:
+            return (
+                f"rewrite: only {check['coverage']:.0%} of the words are inside the learner's vocabulary (need {vocab.COVERAGE:.0%}); "
+                f"outside it: {', '.join(check['unknown'][:15])}"
+            )
+    data = {
+        "lang": lang, "speakers": speakers, "lines": [l.model_dump() for l in lines], "glossary": [g.model_dump() for g in glossary],
+        "status": "rendering", "done": 0, "audio": None, "starts": [], "duration": None, "cues": [],
+    }
+    block = db.add_block(lesson_id, "podcast", title, data)
+    for q in sorted(questions, key=lambda q: q.after_line):
+        options = q.options if q.kind == "choice" else []
+        card_id = db.add_card(
+            lesson["course_id"], lesson["concept_id"], q.question, q.kind, options, q.answer_key, q.explanation,
+            scheduled=lesson["phase"] != "placement",
+        )
+        quiz_block = db.add_block(lesson_id, "quiz", q.question, {"card_id": card_id, "kind": q.kind, "options": options, "answer": None})
+        data["cues"].append({"line": q.after_line, "block_id": quiz_block["id"]})
+    block = db.set_block_data(block["id"], data)
+    _show(lesson, block)
+    for cue in data["cues"]:
+        _show(lesson, db.block(cue["block_id"]))
+    task = asyncio.create_task(_render_cast(block["id"]))
+    _renders.add(task)
+    task.add_done_callback(_renders.discard)
+    return f"shown as podcast {block['id']}, rendering {len(lines)} lines in the background; end the turn"
+
+
+if speech.PODCASTS:
+    mcp.tool()(make_podcast)
+
+
+async def _render_cast(block_id: int) -> None:
+    data = db.block(block_id)["data"]
+    voices = dict(zip(data["speakers"], "ab"))
+    try:
+        parts = []
+        for i, line in enumerate(data["lines"]):
+            parts.append(await speech.tts(line["text"], data["lang"], voices[line["speaker"]]))
+            if (i + 1) % 5 == 0:
+                _patch_block(block_id, {"done": i + 1})
+        out = speech.AUDIO / "podcasts" / f"{block_id}.opus"
+        res = await speech.concat(parts, out)
+        _patch_block(block_id, {
+            "status": "ready", "done": len(parts), "audio": f"/api/audio/podcasts/{block_id}.opus",
+            "starts": res["starts"], "duration": res["duration"],
+        })
+    except Exception as e:
+        log.warning("cast %s failed: %s", block_id, e)
+        _patch_block(block_id, {"status": "failed", "error": str(e)})
+
+
 @mcp.tool()
 async def reveal(challenge_id: int, solution: str) -> str:
     """Show the full solution of a challenge. The server refuses while the solution is locked."""
@@ -396,7 +508,7 @@ async def reveal(challenge_id: int, solution: str) -> str:
         return data
     if problem := challenge.reveal_blocker(data):
         return f"refused: {problem}"
-    _update_challenge(challenge_id, {"solution": solution})
+    _patch_block(challenge_id, {"solution": solution})
     return "shown"
 
 
@@ -481,5 +593,5 @@ async def mark_solved(challenge_id: int) -> str:
         return data
     if not data["attempts"]:
         return "refused: the learner has not submitted an attempt on the card"
-    _update_challenge(challenge_id, {"solved": True})
+    _patch_block(challenge_id, {"solved": True})
     return "marked"

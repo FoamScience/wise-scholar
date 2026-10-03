@@ -6,6 +6,7 @@ import Logo from './Logo'
 import { QuizCard, Review, ReviewPanels } from './Quiz'
 import type { QuizData } from './Quiz'
 import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
+import { PodcastCard } from './Podcast'
 import { usePlayer } from './player'
 import { splitBy } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
@@ -99,6 +100,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   set_placement: 'working out your level…',
   pose_vocab_check: 'picking words to check…',
   pose_speaking: 'preparing a speaking task…',
+  make_podcast: 'writing a cast…',
   pose_quiz: 'preparing a quick check…',
   grade_quiz: 'grading your answer…',
 }
@@ -113,6 +115,7 @@ const LESSON_AREA_TOOLS = [
   'pose_writing',
   'pose_vocab_check',
   'pose_speaking',
+  'make_podcast',
 ]
 
 function useHash(): string {
@@ -605,7 +608,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
   )
 }
 
-const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking'])
+const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking', 'podcast'])
 
 function cardLabel(b: Block): string {
   const d = (b.data ?? {}) as { writing?: boolean; files?: string[]; title?: string }
@@ -616,6 +619,7 @@ function cardLabel(b: Block): string {
   if (b.kind === 'reading') return `Reading · ${d.title ?? short}`
   if (b.kind === 'vocab') return 'Vocabulary check'
   if (b.kind === 'speaking') return `Speaking · ${short}`
+  if (b.kind === 'podcast') return `Cast · ${short}`
   if (b.kind === 'exercise') return `Exercise · ${d.files?.[0] ?? short}`
   return `${d.writing ? 'Writing' : 'Challenge'} · ${short}`
 }
@@ -956,6 +960,14 @@ function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) 
               speech={speech}
               onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
               onError={setError}
+            />
+          ) : b.kind === 'podcast' ? (
+            <PodcastCard
+              key={b.id}
+              id={b.id}
+              title={b.markdown}
+              data={b.data}
+              answered={(id) => (lesson.blocks.find((q) => q.id === id)?.data as QuizData | undefined)?.answer != null}
             />
           ) : b.kind === 'speaking' ? (
             <SpeakingCard

@@ -3,13 +3,15 @@
 Runs in its own environment (see pyproject.toml). The app talks to it over JSON lines:
 one request object per line on stdin, one response object per line on stdout.
 
-    {"op": "tts", "text": "...", "lang": "de", "out": "/path/file.wav"} -> {"ok": true, "engine": "chatterbox"}
+    {"op": "tts", "text": "...", "lang": "de", "out": "/path/file.wav", "voice": "a"|"b"} -> {"ok": true, "engine": "chatterbox"}
+    {"op": "concat", "parts": ["/a.wav", ...], "gap": 0.5, "out": "/path/cast.opus"} -> {"ok": true, "starts": [0.0, ...], "duration": s}
     {"op": "stt", "path": "/path/clip.webm", "lang": "de"|null}      -> {"ok": true, "text": "...", "language": "de", "words": [...]}
     {"op": "align", "path": "/path/clip.webm", "text": "..."}        -> {"ok": true, "words": [{"word": "...", "score": 0.0-1.0, "start": s, "end": s}]}
     {"op": "status"}                                                -> {"ok": true, "tts": "chatterbox"|"piper"|null, "stt": true}
 
 `python worker.py --download` fetches every model once, so nothing is downloaded while learning.
-Text-to-speech uses Chatterbox Multilingual on the GPU and Piper on the CPU when the GPU model cannot load.
+Text-to-speech uses Chatterbox Multilingual on the GPU and Piper on the CPU when the GPU model cannot load;
+voice "b" is always Piper, so a two-voice dialogue gets two different voices.
 Alignment uses torchaudio's MMS_FA bundle (CC-BY-NC 4.0): the recording is force-aligned to the romanized
 target text, and each word's score is the mean emission probability of its characters.
 """
@@ -64,9 +66,9 @@ class Speech:
                 self.tts_engine = "piper"
         return self.tts_engine
 
-    def tts(self, text: str, lang: str, out: str) -> dict:
+    def tts(self, text: str, lang: str, out: str, voice: str = "a") -> dict:
         lang = base_language(lang)
-        engine = self.load_tts()
+        engine = self.load_tts() if voice == "a" else "piper"
         if engine == "chatterbox" and lang in CHATTERBOX_LANGS:
             import torchaudio
 
@@ -104,6 +106,28 @@ class Speech:
             text.append(segment.text.strip())
             words += [{"word": w.word.strip(), "start": w.start, "end": w.end, "prob": w.probability} for w in segment.words or []]
         return {"ok": True, "text": " ".join(text), "language": info.language, "words": words}
+
+    def concat(self, parts: list[str], gap: float, out: str) -> dict:
+        """Join clips with a pause between them, normalize, and encode with ffmpeg; returns each clip's start."""
+        import torch
+        import torchaudio
+
+        rate = 24000
+        silence = torch.zeros(1, int(gap * rate))
+        pieces, starts, at = [], [], 0.0
+        for path in parts:
+            wav, sr = torchaudio.load(path)
+            wav = torchaudio.functional.resample(wav.mean(0, keepdim=True), sr, rate)
+            starts.append(round(at, 2))
+            pieces += [wav, silence]
+            at += (wav.size(1) + silence.size(1)) / rate
+        mix = torch.cat(pieces, dim=1)
+        mix = mix / max(mix.abs().max().item(), 1e-3) * 0.9
+        raw = out + ".wav"
+        torchaudio.save(raw, mix, rate, encoding="PCM_S", bits_per_sample=16)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", raw, "-c:a", "libopus", "-b:a", "48k", out], check=True)
+        os.remove(raw)
+        return {"ok": True, "starts": starts, "duration": round(at, 2)}
 
     def align(self, path: str, text: str) -> dict:
         import torch
@@ -160,7 +184,9 @@ def serve() -> None:
         req = json.loads(line)
         try:
             if req["op"] == "tts":
-                res = speech.tts(req["text"], req["lang"], req["out"])
+                res = speech.tts(req["text"], req["lang"], req["out"], req.get("voice", "a"))
+            elif req["op"] == "concat":
+                res = speech.concat(req["parts"], req["gap"], req["out"])
             elif req["op"] == "stt":
                 res = speech.stt(req["path"], req.get("lang"))
             elif req["op"] == "align":

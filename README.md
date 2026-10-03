@@ -62,6 +62,10 @@ make speech
 
 This creates a separate environment under `speech/` (torch, Chatterbox Multilingual, faster-whisper, Piper, the MMS forced aligner) and downloads the models once, about 8 GB in total. Afterwards reading texts play with a local neural voice sentence by sentence, the chat gets a push-to-talk button, and language lessons get speaking tasks: read aloud, shadow a line, answer a spoken question. Recordings are scored word by word by forced alignment (the MMS aligner is licensed CC-BY-NC 4.0, fine for your own use) and kept under `data/audio/speaking/`. Chatterbox runs on the GPU; without one, Piper speaks on the CPU (German and English voices are installed). Nothing is downloaded while you learn; the worker starts on first use and stops after ten idle minutes.
 
+### Casts (experimental)
+
+With speech installed, `WISE_SCHOLAR_PODCASTS=1 make serve` lets the tutor turn a two-voice dialogue it writes into a 5 to 8 minute audio cast (`ffmpeg` must be on the path): a recap of the lesson, or a quiz-cast that pauses for a confidence-rated question every couple of minutes. The two voices are Chatterbox and Piper. Rendering runs in the background and takes about a minute per five minutes of audio on a GPU.
+
 ## Develop
 
 ```bash

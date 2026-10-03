@@ -14,6 +14,7 @@ AUDIO = db.DB_PATH.parent / "audio"
 IDLE_SECONDS = 600
 REQUEST_TIMEOUT = 300
 WORD = re.compile(r"[^\W_]+(?:['’-][^\W_]+)*")
+PODCASTS = os.environ.get("WISE_SCHOLAR_PODCASTS") == "1"
 HINT = "Speech is off. Run `make speech` once to install the local voices and the recogniser (about 7 GB)."
 
 
@@ -78,16 +79,23 @@ class Worker:
 worker = Worker()
 
 
-def tts_path(text: str, lang: str) -> Path:
-    return AUDIO / "tts" / f"{hashlib.sha1(f'{lang}\n{text}'.encode()).hexdigest()}.wav"
+def tts_path(text: str, lang: str, voice: str = "a") -> Path:
+    key = f"{lang}\n{text}" if voice == "a" else f"{lang}\n{voice}\n{text}"
+    return AUDIO / "tts" / f"{hashlib.sha1(key.encode()).hexdigest()}.wav"
 
 
-async def tts(text: str, lang: str) -> Path:
-    path = tts_path(text, lang)
+async def tts(text: str, lang: str, voice: str = "a") -> Path:
+    path = tts_path(text, lang, voice)
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        await worker.request({"op": "tts", "text": text, "lang": lang, "out": str(path)})
+        await worker.request({"op": "tts", "text": text, "lang": lang, "out": str(path), "voice": voice})
     return path
+
+
+async def concat(parts: list[Path], out: Path, gap: float = 0.5) -> dict:
+    """One opus file from clips with a pause between them: {starts: [seconds per clip], duration}."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return await worker.request({"op": "concat", "parts": [str(p) for p in parts], "gap": gap, "out": str(out)})
 
 
 async def stt(path: Path, lang: str | None) -> dict:
