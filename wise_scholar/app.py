@@ -98,6 +98,12 @@ class Known(BaseModel):
     known: list[str]
 
 
+class ErrorPatch(BaseModel):
+    note: str | None = None
+    pinned: bool | None = None
+    resolved: bool | None = None
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -497,6 +503,11 @@ async def open_concept(concept_id: int) -> dict:
             strands += "\n" + tutor.vocab_brief(lesson, lesson["lang"])
     if speech.PODCASTS and speech.available():
         strands += "\nCasts (experimental): make_podcast is available when a recap or quiz-cast would serve this lesson"
+    if open_errors := db.errors(lesson["profile_id"], concept["course_id"], open_only=True, limit=5):
+        strands += "\nOpen entries in the learner's error notebook (revisit in new material, do not repeat the item): " + "; ".join(
+            f"said {e['said'][:80]!r} for {e['prompt'][:80]!r}, right: {e['correct'][:80]!r}" + (f" (learner's note: {e['note'][:80]})" if e["note"] else "")
+            for e in open_errors
+        )
     earlier = history.digest([
         _lesson_view(row["id"])
         for row in db.rows(
@@ -535,7 +546,7 @@ async def add_vocabulary(block_id: int, body: Word) -> dict:
     lemma = simplemma.lemmatize(gloss["word"], lang=lang).lower()
     card = db.add_card(
         lesson["course_id"], lesson["concept_id"], f"What does **{gloss['word']}** mean?", "open", [],
-        gloss["meaning"], f"From the text “{block['data']['title']}”.", scheduled=True, vocab_due=_now(),
+        gloss["meaning"], f"From the text “{block['data']['title']}”.", scheduled=True, due=_now(), vocab=True,
     )
     db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lang, card))
     db.set_vocab(lesson["profile_id"], lang, lemma, "learning", "glossary")
@@ -704,6 +715,19 @@ async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
     _start_turn(lesson, f"[event] Quiz {block_id} result: {verdict}\n{said}")
 
 
+@app.get("/api/errors")
+def list_errors(profile: int) -> list[dict]:
+    return db.errors(profile)
+
+
+@app.post("/api/errors/{error_id}")
+def patch_error(error_id: int, body: ErrorPatch) -> dict:
+    entry = db.update_error(error_id, body.note, body.pinned, body.resolved)
+    if not entry:
+        raise HTTPException(404, "no such entry")
+    return entry
+
+
 @app.get("/api/reviews")
 def reviews(profile: int) -> list[dict]:
     return [quiz.public(c) for c in review.interleave(db.due_cards(profile, _now()))]
@@ -733,7 +757,8 @@ def today(profile: int) -> dict:
         "AND json_extract(b.data, '$.status') = 'ready' ORDER BY b.id DESC LIMIT 1",
         profile,
     )
-    return {"due": due, "review_minutes": min(SITTING_MINUTES, round(due * REVIEW_MINUTES)), "units": units, "cast": cast}
+    open_errors = len(db.errors(profile, open_only=True))
+    return {"due": due, "review_minutes": min(SITTING_MINUTES, round(due * REVIEW_MINUTES)), "units": units, "cast": cast, "errors": open_errors}
 
 
 @app.post("/api/cards/{card_id}/review")

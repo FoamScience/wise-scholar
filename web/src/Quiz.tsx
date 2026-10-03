@@ -265,6 +265,9 @@ export function ReviewPanels({ profile }: { profile: number }) {
             Start review
           </a>
         )}
+        <a className="btn as-link" href="#/errors">
+          Error notebook
+        </a>
       </section>
 
       {calibration && calibration.n > 0 && (

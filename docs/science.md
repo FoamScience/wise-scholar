@@ -24,6 +24,14 @@ The app does not promise the "two sigma" effect. Bloom (1984) reported that one-
 
 The app opens every concept lesson with a pretest the learner attempts before any explanation; the attempt is recorded but creates no review card and does not count toward mastery.
 
+### The error notebook
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Metcalfe 2017, *Annual Review of Psychology* 68, 465–489. [doi:10.1146/annurev-psych-010416-044022](https://doi.org/10.1146/annurev-psych-010416-044022). Abstract read. | A review: errorful learning followed by corrective feedback helps learning, and errors made with high confidence are corrected more readily than low-confidence ones; feedback that analyses the reasoning behind the mistake matters. | A review of laboratory studies, mostly with typical adult learners; it argues from the literature rather than testing a notebook. |
+
+Confident misses and corrected texts go into a notebook with the learner's own note; open entries lead the review queue and are named to the tutor at the start of later lessons.
+
 ### Hints before answers
 
 | Source | What it reports | Limits |
