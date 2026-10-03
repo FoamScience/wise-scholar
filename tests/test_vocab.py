@@ -35,4 +35,28 @@ def test_targets_and_tier_progress_follow_what_is_known():
     progress = vocab.tier_progress("de", 2, known)
     assert progress == {"tier": 2, "size": 200, "known": 160, "complete": True}
     assert not vocab.tier_progress("de", 2, set(tier2[:100]))["complete"]
-    assert vocab.starting_tier("A2") == 3 and vocab.starting_tier("b1 (solid)") == 10 and vocab.starting_tier(None) == 1
+    assert vocab.starting_tier("A2", "de") == 3 and vocab.starting_tier("b1 (solid)", "de") == 10
+    assert vocab.starting_tier(None, "de") == 1 and vocab.starting_tier("C2", "de") == vocab.max_tier("de")
+
+
+def test_tier_probe_doubles_then_bisects():
+    results: dict[int, bool] = {}
+    probes = []
+    while (probe := vocab.next_probe(results, 30)) is not None:
+        probes.append(probe)
+        results[probe] = probe <= 11
+    assert probes == [1, 2, 4, 8, 16, 12, 10, 11] and vocab.estimated_tier(results, 30) == 12
+    assert vocab.next_probe({1: False}, 30) is None and vocab.estimated_tier({1: False}, 30) == 1
+    assert vocab.next_probe({16: True}, 30) == 30 and vocab.estimated_tier({30: True}, 30) == 30
+    assert vocab.max_tier("de") >= 25
+    sample = vocab.sample_tier("de", 3)
+    assert len(sample) == vocab.SAMPLE and set(sample) <= set(vocab.tier_words("de", 3))
+
+
+def test_names_places_and_loanwords_are_not_teachable_but_stay_allowed():
+    words = vocab.lemma_list("de")
+    assert not {"Hamburg", "Freiburg", "Peter", "CDU", "Hotel", "Berlin", "Will", "on"} & set(words)
+    assert {"Haus", "Kind", "Hand", "Name", "wollen", "Polizei"} <= set(words[:400])
+    assert vocab.rank("Hamburg", "de") == 0 and vocab.rank("will", "de") == vocab.rank("wollen", "de")
+    text = "Peter wohnt in Hamburg. Peter wohnt in Hamburg. Peter wohnt in Hamburg."
+    assert vocab.check_reading(text, "de", tier=1, known=set(), targets=["wohnen"])["ok"]

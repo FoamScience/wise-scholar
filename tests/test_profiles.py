@@ -83,3 +83,27 @@ def test_vocabulary_ledger_promotes_and_scopes_per_profile_and_language():
     assert db.vocab_lemmas(dee, "de", ("known",)) == {"arzt"}
     db.add_exposures(dee, "de", {"haus": 2}, promote_at=5)
     assert db.vocab_lemmas(dee, "de", ("known",)) == {"arzt", "haus"}
+
+
+def test_vocabulary_check_seeds_the_ledger_and_sets_the_tier():
+    from wise_scholar import tutor, vocab
+
+    eve = db.conn.execute("INSERT INTO profiles (name) VALUES ('Eve')").lastrowid
+    course = db.create_course("German", eve)["id"]
+    lesson = {**db.lesson(db.create_lesson(course, "Placement", "placement")), "profile_id": eve}
+    data = {"lang": "de", "rounds": [], "current": {"tier": 1, "words": vocab.sample_tier("de", 1)}, "tier": None}
+
+    data, event = tutor.vocab_round(lesson, data, data["current"]["words"])
+    assert event is None and data["current"]["tier"] == 2 and data["rounds"][0]["passed"]
+    words = data["current"]["words"]
+    data, event = tutor.vocab_round(lesson, data, words[:3] + ["notasampledword"])
+    assert data["current"] is None and data["tier"] == 2 and not data["rounds"][1]["passed"]
+    assert "tier 2" in event and data["rounds"][0]["known"][0] in event and "notasampledword" not in event
+    assert db.vocab_tier(eve, "de", 1) == 2
+    assert {w.lower() for w in words[:3]} <= db.vocab_lemmas(eve, "de", ("known",))
+    assert {w.lower() for w in words[3:]} <= db.vocab_lemmas(eve, "de", ("learning",))
+
+    db.set_vocab(eve, "de", words[0], "learning", "review")
+    assert words[0].lower() in db.vocab_lemmas(eve, "de", ("known",))
+    db.set_vocab(eve, "de", words[0], "learning", "review", force=True)
+    assert words[0].lower() not in db.vocab_lemmas(eve, "de", ("known",))

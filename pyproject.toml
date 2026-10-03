@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.142.2",
     "fsrs>=6.3.2",
+    "geonamescache>=3.0.2",
     "httpx>=0.28.1",
     "mcp>=2.2.0",
     "python-multipart>=0.0.32",

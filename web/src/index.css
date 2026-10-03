@@ -474,7 +474,8 @@ pre {
   font-weight: 400;
 }
 
-.btn.option:hover:enabled {
+.btn.option:hover:enabled,
+.btn.option.on {
   background: var(--teal-tint);
   border-color: var(--teal);
 }
