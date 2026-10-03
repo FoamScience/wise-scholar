@@ -37,12 +37,27 @@ WISE_SCHOLAR_AGENT='opencode/openrouter/openrouter/free' make serve   # opencode
 
 The model must be able to call tools reliably.
 
+Other settings, all optional:
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `WISE_SCHOLAR_PORT` | port of the app; the tutor's MCP connection follows it, so it must match the port the server is started on (`make serve` does that) | `8321` |
+| `WISE_SCHOLAR_DB` | path of the database file | `data/wise-scholar.db` |
+| `WISE_SCHOLAR_WORKSPACE` | root folder of the course workspaces | `workspace/` |
+| `WISE_SCHOLAR_OPENCODE_PORT` | port of the opencode server the app starts | `8322` |
+
+A second instance for testing, beside the real one:
+
+```bash
+WISE_SCHOLAR_PORT=8331 WISE_SCHOLAR_OPENCODE_PORT=8332 WISE_SCHOLAR_DB=/tmp/test.db WISE_SCHOLAR_WORKSPACE=/tmp/ws make serve
+```
+
 ## Develop
 
 ```bash
 make build   # once, to install the web dependencies
 make dev     # API with reload on :8321, web dev server on :5173
-make test    # Python tests
+make test    # Python and web tests
 ```
 
 ## Where things live

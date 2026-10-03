@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("WISE_SCHOLAR_DB", ROOT / "data" / "wise-scholar.db"))
+WORKSPACE = Path(os.environ.get("WISE_SCHOLAR_WORKSPACE", ROOT / "workspace"))
 
 MIGRATIONS = [
     """
@@ -129,7 +130,7 @@ for _n, _script in enumerate(MIGRATIONS[_version:], start=_version + 1):
 
 def workspace(slug: str) -> Path:
     """The course's folder for exercise files; also the working directory of its agent sessions."""
-    path = ROOT / "workspace" / slug
+    path = WORKSPACE / slug
     path.mkdir(parents=True, exist_ok=True)
     return path
 

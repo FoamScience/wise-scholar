@@ -3,7 +3,7 @@ import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from . import MODEL
+from . import MCP_URL, MODEL, PORT
 
 ROOT = Path(__file__).resolve().parents[2]
 PROMPTS = ROOT / "wise_scholar" / "prompts"
@@ -12,8 +12,12 @@ MCP_PREFIX = "mcp__scholar__"
 WORKSPACE_TOOLS = ["Read", "Write", "Edit", "Bash"]
 
 
+MCP_CONFIG = ROOT / "data" / f"mcp-{PORT}.json"
+
+
 async def start() -> None:
-    pass
+    MCP_CONFIG.parent.mkdir(exist_ok=True)
+    MCP_CONFIG.write_text(json.dumps({"mcpServers": {"scholar": {"type": "http", "url": MCP_URL}}}))
 
 
 async def stop() -> None:
@@ -51,7 +55,7 @@ async def run_turn(
         "claude", "-p",
         "--output-format", "stream-json", "--include-partial-messages", "--verbose",
         "--setting-sources", "", "--disable-slash-commands",
-        "--strict-mcp-config", "--mcp-config", str(ROOT / ".mcp.json"),
+        "--strict-mcp-config", "--mcp-config", str(MCP_CONFIG),
         "--system-prompt", system_prompt,
         "--tools", ",".join(tools),
         "--allowedTools", "mcp__scholar", *tools,
