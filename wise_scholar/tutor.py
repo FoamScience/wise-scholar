@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from collections import Counter
 from typing import Literal
 
@@ -38,6 +39,10 @@ class CastQuestion(BaseModel):
 
 
 log = logging.getLogger(__name__)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 # A cast of 5 to 8 minutes at the voices' pace of about 155 words a minute; one Chatterbox line stays short.
 CAST_WORDS = (750, 1250)
 LINE_CHARS = 300
@@ -571,7 +576,22 @@ async def reveal(challenge_id: int, solution: str) -> str:
         return f"refused: {problem}"
     _patch_block(challenge_id, {"solution": solution})
     _grade_teachback(data, False)
+    if data.get("writing") and data["attempts"] and not data.get("fluency"):
+        _note_writing_error(challenge_id, data, solution)
     return "shown"
+
+
+def _note_writing_error(challenge_id: int, data: dict, solution: str) -> None:
+    """A corrected text goes into the error notebook with a review card that asks for the correction again."""
+    block = db.block(challenge_id)
+    lesson = db.lesson(block["lesson_id"])
+    said = data["attempts"][-1]
+    card_id = db.add_card(
+        lesson["course_id"], lesson["concept_id"], f"Correct this text:\n\n> {said}", "open", [], solution,
+        data["hints"][-1] if data["hints"] else "", scheduled=True, due=_now(),
+    )
+    db.add_error(lesson["profile_id"], lesson["course_id"], "writing", block["markdown"], said, solution,
+                 data["hints"][-1] if data["hints"] else "", card_id=card_id)
 
 
 @mcp.tool()

@@ -1381,3 +1381,18 @@ pre:has(> .mermaid) {
 .mermaid-error pre {
   margin-bottom: 6px;
 }
+
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.entry.resolved {
+  opacity: 0.6;
+}
+
+.entry .said {
+  text-decoration: line-through var(--amber);
+  text-decoration-thickness: 2px;
+}

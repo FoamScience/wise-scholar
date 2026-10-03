@@ -134,6 +134,23 @@ MIGRATIONS = [
     ALTER TABLE cards ADD COLUMN lemma TEXT;
     ALTER TABLE cards ADD COLUMN lang TEXT;
     """,
+    """
+    CREATE TABLE errors (
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id),
+        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        card_id INTEGER REFERENCES cards(id) ON DELETE SET NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('quiz', 'writing')),
+        prompt TEXT NOT NULL,
+        said TEXT NOT NULL,
+        correct TEXT NOT NULL,
+        explanation TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        pinned INTEGER NOT NULL DEFAULT 0,
+        resolved INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -297,13 +314,13 @@ def set_block_data(block_id: int, data: dict) -> dict:
 
 
 def add_card(course_id: int, concept_id: int | None, question: str, kind: str, options: list[str],
-             answer_key: str, explanation: str, scheduled: bool, vocab_due: str | None = None) -> int:
-    """vocab_due marks a vocabulary card and makes it due from that moment, without a first answer."""
+             answer_key: str, explanation: str, scheduled: bool, due: str | None = None, vocab: bool = False) -> int:
+    """due makes the card reviewable from that moment without a first answer; vocab marks a vocabulary card."""
     return conn.execute(
         "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, "
         "vocab, due) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (course_id, concept_id, question, kind, json.dumps(options), answer_key, explanation, int(scheduled),
-         int(vocab_due is not None), vocab_due),
+         int(vocab), due),
     ).lastrowid
 
 
@@ -346,16 +363,56 @@ def card(card_id: int) -> dict | None:
 
 
 def due_cards(profile_id: int, now: str) -> list[dict]:
-    """A profile's cards whose review is due, confident misses first."""
-    return [
-        _card(c)
-        for c in rows(
-            "SELECT k.*, c.topic FROM cards k JOIN courses c ON c.id = k.course_id "
-            "WHERE c.profile_id = ? AND c.archived = 0 AND k.due IS NOT NULL AND k.due <= ? "
-            "ORDER BY k.confident_miss DESC, k.due",
-            profile_id, now,
-        )
-    ]
+    """A profile's cards whose review is due; confident misses and open notebook errors count as confident_miss, so they lead."""
+    cards = rows(
+        "SELECT k.*, c.topic, (k.confident_miss OR k.id IN "
+        "(SELECT card_id FROM errors WHERE resolved = 0 AND card_id IS NOT NULL)) AS leads "
+        "FROM cards k JOIN courses c ON c.id = k.course_id "
+        "WHERE c.profile_id = ? AND c.archived = 0 AND k.due IS NOT NULL AND k.due <= ? "
+        "ORDER BY leads DESC, k.due",
+        profile_id, now,
+    )
+    return [_card({**c, "confident_miss": c.pop("leads")}) for c in cards]
+
+
+def add_error(profile_id: int, course_id: int, kind: str, prompt: str, said: str, correct: str, explanation: str = "",
+              card_id: int | None = None) -> int:
+    """One open entry per card: a repeated miss updates what was said instead of adding a row."""
+    if card_id is not None:
+        existing = row("SELECT id FROM errors WHERE card_id = ? AND resolved = 0", card_id)
+        if existing:
+            conn.execute("UPDATE errors SET said = ?, created = CURRENT_TIMESTAMP WHERE id = ?", (said, existing["id"]))
+            return existing["id"]
+    return conn.execute(
+        "INSERT INTO errors (profile_id, course_id, card_id, kind, prompt, said, correct, explanation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (profile_id, course_id, card_id, kind, prompt, said, correct, explanation),
+    ).lastrowid
+
+
+def errors(profile_id: int, course_id: int | None = None, open_only: bool = False, limit: int | None = None) -> list[dict]:
+    where = ["e.profile_id = ?", "c.archived = 0"]
+    args: list = [profile_id]
+    if course_id is not None:
+        where.append("e.course_id = ?")
+        args.append(course_id)
+    if open_only:
+        where.append("e.resolved = 0")
+    return rows(
+        f"SELECT e.*, c.topic FROM errors e JOIN courses c ON c.id = e.course_id WHERE {' AND '.join(where)} "
+        f"ORDER BY e.resolved, e.pinned DESC, e.id DESC{f' LIMIT {int(limit)}' if limit else ''}",
+        *args,
+    )
+
+
+def update_error(error_id: int, note: str | None, pinned: bool | None, resolved: bool | None) -> dict | None:
+    sets, args = [], []
+    for col, val in (("note", note), ("pinned", pinned), ("resolved", resolved)):
+        if val is not None:
+            sets.append(f"{col} = ?")
+            args.append(int(val) if isinstance(val, bool) else val)
+    if sets:
+        conn.execute(f"UPDATE errors SET {', '.join(sets)} WHERE id = ?", (*args, error_id))
+    return row("SELECT e.*, c.topic FROM errors e JOIN courses c ON c.id = e.course_id WHERE e.id = ?", error_id)
 
 
 def graded_answers(profile_id: int) -> list[dict]:

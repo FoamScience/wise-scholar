@@ -22,7 +22,7 @@ def test_facts_reviews_and_answers_stay_inside_their_profile():
     second = db.create_course("Rust", ada)["id"]
     assert [f["text"] for f in db.facts(second)] == ["Ada writes C++ daily."]
 
-    card = db.add_card(haskell, None, "q", "open", [], "a", "e", scheduled=True, vocab_due="2026-01-01T00:00:00+00:00")
+    card = db.add_card(haskell, None, "q", "open", [], "a", "e", scheduled=True, due="2026-01-01T00:00:00+00:00", vocab=True)
     db.conn.execute("INSERT INTO answers (card_id, answer, confidence, correct) VALUES (?, 'x', 0.8, 1)", (card,))
     now = "2026-10-02T00:00:00+00:00"
     assert [c["id"] for c in db.due_cards(ada, now)] == [card]
@@ -45,7 +45,7 @@ def test_archived_courses_leave_the_review_queue_and_deleted_courses_leave_nothi
         db.add_block(lesson, "prose", "text")
         db.add_message(lesson, "tutor", "hi")
         db.add_fact(course_id, "Sittings are short.", about_learner=False)
-        card = db.add_card(course_id, concept, "q", "open", [], "a", "e", scheduled=True, vocab_due="2026-01-01T00:00:00+00:00")
+        card = db.add_card(course_id, concept, "q", "open", [], "a", "e", scheduled=True, due="2026-01-01T00:00:00+00:00", vocab=True)
         db.conn.execute("INSERT INTO answers (card_id, answer, confidence, correct) VALUES (?, 'x', 0.5, 1)", (card,))
     assert len(db.due_cards(cy, now)) == 2
 

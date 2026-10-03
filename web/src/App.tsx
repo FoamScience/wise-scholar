@@ -7,6 +7,7 @@ import { QuizCard, Review, ReviewPanels } from './Quiz'
 import type { QuizData } from './Quiz'
 import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
+import { ErrorsPage } from './Errors'
 import { usePlayer } from './player'
 import { splitBy } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
@@ -137,6 +138,7 @@ type TodayPlan = {
   review_minutes: number
   units: { course_id: number; topic: string; concept_id: number | null; title: string }[]
   cast: { id: number; lesson_id: number; title: string; course_id: number } | null
+  errors: number
 }
 
 function unitHash(u: TodayPlan['units'][number]): string {
@@ -174,6 +176,11 @@ function Today({ profile }: { profile: number }) {
         {plan.cast && (
           <li className="muted">
             A cast is ready to listen to: <a href={`#/course/${plan.cast.course_id}`}>{plan.cast.title}</a>
+          </li>
+        )}
+        {plan.errors > 0 && (
+          <li className="muted">
+            <a href="#/errors">{plan.errors} open {plan.errors === 1 ? 'entry' : 'entries'} in your error notebook</a>
           </li>
         )}
       </ol>
@@ -1322,6 +1329,7 @@ export default function App() {
       )
     if (match) return <Workspace key={match[1]} courseId={Number(match[1])} speech={speech} concept={match[2] ? Number(match[2]) : null} />
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
+    if (hash === '#/errors') return <ErrorsPage profile={current.id} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} onSelect={select} onChanged={reload} />
     return <Home key={current.id} profile={current.id} />

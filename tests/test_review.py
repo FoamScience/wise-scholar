@@ -48,3 +48,34 @@ def test_due_cards_alternate_across_courses_with_confident_misses_first():
     ]
     assert [c["id"] for c in review.interleave(cards)] == [3, 1, 4, 6, 2, 5]
     assert review.interleave([]) == []
+
+
+def test_confident_misses_and_corrected_texts_fill_the_error_notebook():
+    import asyncio
+    import os
+    import tempfile
+
+    os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
+    from wise_scholar import challenge, db, quiz, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Err')").lastrowid
+    course = db.create_course("German", who)["id"]
+    lesson = db.create_lesson(course, "Dativ", "lesson")
+    card = db.add_card(course, None, "Dativ von 'der Mann'?", "open", [], "dem Mann", "Dativ masculine: dem", scheduled=True)
+    quiz.grade(quiz.submit(db.card(card), "den Mann", 0.9), False)
+    quiz.grade(quiz.submit(db.card(card), "dem Mann", 0.3), False)
+    entries = db.errors(who)
+    assert len(entries) == 1 and entries[0]["kind"] == "quiz" and entries[0]["said"] == "den Mann" and entries[0]["card_id"] == card
+
+    block = db.add_block(lesson, "challenge", "Schreib einen Satz mit Dativ.", {**challenge.new(reveal_after=1), "writing": True, "marks": []})
+    db.set_block_data(block["id"], {**block["data"], "attempts": ["Ich helfe den Mann."], "hints": ["Dativ nach helfen"]})
+    assert asyncio.run(tutor.reveal(block["id"], "Ich helfe dem Mann.")) == "shown"
+    writing = [e for e in db.errors(who) if e["kind"] == "writing"][0]
+    assert writing["said"] == "Ich helfe den Mann." and writing["correct"] == "Ich helfe dem Mann." and writing["explanation"] == "Dativ nach helfen"
+    assert db.card(writing["card_id"])["due"] is not None
+
+    due = db.due_cards(who, "2999-01-01T00:00:00+00:00")
+    assert {c["id"] for c in due[:2]} == {card, writing["card_id"]} and all(c["confident_miss"] for c in due[:2])
+    db.update_error(entries[0]["id"], None, None, True)
+    assert db.errors(who, open_only=True) == [writing | {"topic": "German"}] or len(db.errors(who, open_only=True)) == 1
+    assert db.update_error(writing["id"], "helfen takes the dative", True, None)["pinned"] == 1

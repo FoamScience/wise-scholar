@@ -31,9 +31,13 @@ def grade(answer_id: int, correct: bool) -> dict:
     card = db.card(answer["card_id"])
     miss = review.is_confident_miss(correct, answer["confidence"])
     db.conn.execute("UPDATE answers SET correct = ? WHERE id = ?", (int(correct), answer_id))
+    profile = db.row("SELECT profile_id FROM courses WHERE id = ?", card["course_id"])["profile_id"]
     if card.get("lemma"):
-        profile = db.row("SELECT profile_id FROM courses WHERE id = ?", card["course_id"])["profile_id"]
         db.set_vocab(profile, card["lang"], card["lemma"], "known" if correct else "learning", "review", force=True)
+    # Pretests and placement cards are unscheduled: their misses measure, they are not errors to fix.
+    if miss and card["scheduled"]:
+        db.add_error(profile, card["course_id"], "quiz", card["question"], answer["answer"], card["answer_key"],
+                     card["explanation"], card_id=card["id"])
     due = None
     if card["scheduled"]:
         fsrs, due = review.schedule(card["fsrs"], correct, answer["confidence"])
