@@ -86,6 +86,10 @@ class Word(BaseModel):
     word: str
 
 
+class Known(BaseModel):
+    known: list[str]
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -118,7 +122,7 @@ def _course(course_id: int) -> dict:
 def _tier_view(course: dict) -> dict:
     if not course["lang"]:
         return {}
-    tier = db.vocab_tier(course["profile_id"], course["lang"], vocab.starting_tier(course["level"]))
+    tier = db.vocab_tier(course["profile_id"], course["lang"], vocab.starting_tier(course["level"], course["lang"]))
     progress = vocab.tier_progress(course["lang"], tier, db.vocab_lemmas(course["profile_id"], course["lang"], ("known",)))
     return {"tier": tier, "tier_size": progress["size"], "tier_known": progress["known"], "tier_words": tier * vocab.TIER}
 
@@ -510,9 +514,25 @@ async def know_word(block_id: int, body: Word) -> dict:
     lesson = _lesson(block["lesson_id"])
     lang = block["data"]["lang"].split("-")[0].lower()
     db.set_vocab(lesson["profile_id"], lang, simplemma.lemmatize(body.word, lang=lang), "known", "learner")
-    tutor.advance_tier(lesson["profile_id"], lang, db.vocab_tier(lesson["profile_id"], lang, vocab.starting_tier(lesson["level"])))
+    tutor.advance_tier(lesson["profile_id"], lang, db.vocab_tier(lesson["profile_id"], lang, vocab.starting_tier(lesson["level"], lang)))
     known = block["data"].get("known", [])
     _, block = _update_block(block, {"known": known if body.word in known else [*known, body.word]})
+    return block
+
+
+@app.post("/api/blocks/{block_id}/vocab")
+async def vocab_check(block_id: int, body: Known) -> dict:
+    block = db.block(block_id)
+    if not block or block["kind"] != "vocab":
+        raise HTTPException(404, "no such vocabulary check")
+    if not block["data"]["current"]:
+        raise HTTPException(409, "this check is finished")
+    lesson = _lesson(block["lesson_id"])
+    _require_idle(lesson["id"])
+    data, event = tutor.vocab_round(lesson, block["data"], body.known)
+    _, block = _update_block(block, data)
+    if event:
+        _start_turn(lesson, event)
     return block
 
 

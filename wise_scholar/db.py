@@ -414,13 +414,16 @@ def vocab_lemmas(profile_id: int, lang: str, states: tuple[str, ...] = ("known",
     }
 
 
-def set_vocab(profile_id: int, lang: str, lemma: str, state: str, source: str) -> None:
-    """Record a lemma's state; 'known' is never downgraded to 'learning' by a weaker signal."""
+def set_vocab(profile_id: int, lang: str, lemma: str, state: str, source: str, force: bool = False) -> None:
+    """Record a lemma's state; 'known' is only downgraded to 'learning' when forced (a graded miss)."""
+    state_sql = (
+        "excluded.state" if force
+        else "CASE WHEN vocab_knowledge.state = 'known' AND excluded.state = 'learning' THEN 'known' ELSE excluded.state END"
+    )
     conn.execute(
         "INSERT INTO vocab_knowledge (profile_id, lang, lemma, state, source) VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT(profile_id, lang, lemma) DO UPDATE SET "
-        "state = CASE WHEN vocab_knowledge.state = 'known' AND excluded.state = 'learning' THEN 'known' ELSE excluded.state END, "
-        "source = excluded.source, updated = CURRENT_TIMESTAMP",
+        f"state = {state_sql}, source = excluded.source, updated = CURRENT_TIMESTAMP",
         (profile_id, lang, lemma.lower(), state, source),
     )
 

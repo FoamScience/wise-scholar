@@ -191,6 +191,66 @@ export function ReadingCard(props: {
   )
 }
 
+type VocabRound = { tier: number; words: string[]; known: string[]; passed: boolean }
+type VocabData = { lang: string; rounds: VocabRound[]; current: { tier: number; words: string[] } | null; tier: number | null }
+const TIER_WORDS = 200
+
+export function VocabCheckCard(props: { id: number; data: unknown; disabled: boolean; onSubmit: (known: string[]) => void }) {
+  const d = props.data as VocabData
+  return (
+    <section id={`block-${props.id}`} className="block vocab-check">
+      <div className="label">Vocabulary check · tick the words whose meaning you could give</div>
+      {d.rounds.map((r) => (
+        <div key={r.tier} className="small">
+          The {r.tier * TIER_WORDS} most common words: {r.known.length} of {r.words.length} known
+        </div>
+      ))}
+      {d.current && (
+        <VocabRoundForm key={d.current.tier} lang={d.lang} round={d.current} disabled={props.disabled} onSubmit={props.onSubmit} />
+      )}
+      {d.tier && (
+        <div>
+          Your vocabulary: <span className="chip">tier {d.tier}</span> working on the {d.tier * TIER_WORDS} most common words
+        </div>
+      )}
+    </section>
+  )
+}
+
+function VocabRoundForm(props: {
+  lang: string
+  round: { tier: number; words: string[] }
+  disabled: boolean
+  onSubmit: (known: string[]) => void
+}) {
+  const [ticked, setTicked] = useState<string[]>([])
+  const toggle = (w: string) => setTicked((t) => (t.includes(w) ? t.filter((x) => x !== w) : [...t, w]))
+  return (
+    <>
+      <h2>From the {props.round.tier * TIER_WORDS} most common words</h2>
+      <div className="options">
+        {props.round.words.map((w) => (
+          <button
+            key={w}
+            type="button"
+            lang={props.lang}
+            className={`btn option${ticked.includes(w) ? ' on' : ''}`}
+            aria-pressed={ticked.includes(w)}
+            onClick={() => toggle(w)}
+          >
+            {w}
+          </button>
+        ))}
+      </div>
+      <div className="row">
+        <button type="button" className="btn primary" disabled={props.disabled} onClick={() => props.onSubmit(ticked)}>
+          I know {ticked.length} of {props.round.words.length}
+        </button>
+      </div>
+    </>
+  )
+}
+
 export function LevelPanel(props: {
   level: string | null
   strands: Strands

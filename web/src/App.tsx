@@ -5,7 +5,7 @@ import { api } from './api'
 import Logo from './Logo'
 import { QuizCard, Review, ReviewPanels } from './Quiz'
 import type { QuizData } from './Quiz'
-import { LevelPanel, ReadingCard } from './Language'
+import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { splitBy } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
 import { useProfiles } from './profiles'
@@ -92,6 +92,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   reveal: 'opening the solution…',
   mark_solved: 'checking your answer…',
   set_placement: 'working out your level…',
+  pose_vocab_check: 'picking words to check…',
   pose_quiz: 'preparing a quick check…',
   grade_quiz: 'grading your answer…',
 }
@@ -104,6 +105,7 @@ const LESSON_AREA_TOOLS = [
   'pose_quiz',
   'add_reading',
   'pose_writing',
+  'pose_vocab_check',
 ]
 
 function useHash(): string {
@@ -515,7 +517,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
   )
 }
 
-const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading'])
+const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab'])
 
 function cardLabel(b: Block): string {
   const d = (b.data ?? {}) as { writing?: boolean; files?: string[]; title?: string }
@@ -524,6 +526,7 @@ function cardLabel(b: Block): string {
   if (b.kind === 'question') return `Question · ${short}`
   if (b.kind === 'quiz') return `Quick check · ${short}`
   if (b.kind === 'reading') return `Reading · ${d.title ?? short}`
+  if (b.kind === 'vocab') return 'Vocabulary check'
   if (b.kind === 'exercise') return `Exercise · ${d.files?.[0] ?? short}`
   return `${d.writing ? 'Writing' : 'Challenge'} · ${short}`
 }
@@ -840,6 +843,14 @@ function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) 
               speech={speech}
               onAdd={(word) => post(`/api/blocks/${b.id}/vocabulary`, { word })}
               onKnown={(word) => post(`/api/blocks/${b.id}/known`, { word })}
+            />
+          ) : b.kind === 'vocab' ? (
+            <VocabCheckCard
+              key={b.id}
+              id={b.id}
+              data={b.data}
+              disabled={lesson.running}
+              onSubmit={(known) => post(`/api/blocks/${b.id}/vocab`, { known })}
             />
           ) : b.kind === 'exercise' ? (
             <ExerciseCard

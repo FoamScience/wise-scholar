@@ -215,7 +215,7 @@ async def give_hint(challenge_id: int, hint: str, marks: list[str] = []) -> str:
 def _vocab(lesson: dict, lang: str) -> dict:
     """The learner's vocabulary scope in a language: tier, known lemmas, and the lemmas still to meet."""
     base = lang.split("-")[0].lower()
-    tier = db.vocab_tier(lesson["profile_id"], base, vocab.starting_tier(lesson["level"]))
+    tier = db.vocab_tier(lesson["profile_id"], base, vocab.starting_tier(lesson["level"], base))
     known = db.vocab_lemmas(lesson["profile_id"], base)
     return {"lang": base, "tier": tier, "known": known}
 
@@ -293,8 +293,55 @@ async def add_reading(
 
 
 def advance_tier(profile_id: int, lang: str, tier: int) -> None:
-    if vocab.tier_progress(lang, tier, db.vocab_lemmas(profile_id, lang, ("known",)))["complete"]:
+    if tier < vocab.max_tier(lang) and vocab.tier_progress(lang, tier, db.vocab_lemmas(profile_id, lang, ("known",)))["complete"]:
         db.set_vocab_tier(profile_id, lang, tier + 1)
+
+
+@mcp.tool()
+async def pose_vocab_check(lesson_id: int, lang: str) -> str:
+    """Measure the learner's vocabulary tier with a yes/no word check the server runs on its own.
+
+    lang: the language being learned (de, en, ...). The card samples words tier by tier until the
+    learner's tier is bracketed; you get an [event] with the result and a few claimed words to verify
+    in context. End your turn after posing it.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    base = lang.split("-")[0].lower()
+    db.course_lang(lesson["course_id"], base)
+    data = {"lang": base, "rounds": [], "current": {"tier": 1, "words": vocab.sample_tier(base, 1)}, "tier": None}
+    block = db.add_block(lesson_id, "vocab", "Which of these words do you know?", data)
+    _show(lesson, block)
+    return f"shown as vocabulary check {block['id']}; end the turn and wait for the event"
+
+
+def vocab_round(lesson: dict, data: dict, known: list[str]) -> tuple[dict, str | None]:
+    """Record one round of the vocabulary check; returns the new card data and, once the tier is bracketed,
+    the event line for the tutor."""
+    lang, current = data["lang"], data["current"]
+    known = [w for w in current["words"] if w in known]
+    for word in current["words"]:
+        db.set_vocab(lesson["profile_id"], lang, word, "known" if word in known else "learning", "placement")
+    passed = len(known) / len(current["words"]) >= vocab.TIER_DONE_SHARE
+    rounds = [*data["rounds"], {**current, "known": known, "passed": passed}]
+    results = {r["tier"]: r["passed"] for r in rounds}
+    top = vocab.max_tier(lang)
+    if (probe := vocab.next_probe(results, top)) is not None:
+        return {**data, "rounds": rounds, "current": {"tier": probe, "words": vocab.sample_tier(lang, probe)}}, None
+    tier = vocab.estimated_tier(results, top)
+    db.set_vocab_tier(lesson["profile_id"], lang, tier)
+    claimed = next((r["known"] for r in reversed(rounds) if r["passed"]), [])
+    verify = ", ".join(claimed[:3]) or "none"
+    held = f"holds the {(tier - 1) * vocab.TIER} most common words of {lang}" if tier > 1 else f"holds none of the {lang} tiers yet"
+    event = (
+        f"[event] The vocabulary check ended: the learner {held} "
+        f"and works on tier {tier} (the {tier * vocab.TIER} most common). Rounds: "
+        + "; ".join(f"tier {r['tier']} {len(r['known'])}/{len(r['words'])}" for r in rounds)
+        + f". Claimed words to verify in context: {verify}. Pose two open questions in {lang} that each need one of "
+        "them, with lemma set on pose_quiz, then continue the placement."
+    )
+    return {**data, "rounds": rounds, "current": None, "tier": tier}, event
 
 
 @mcp.tool()
@@ -335,6 +382,7 @@ async def pose_quiz(
     options: list[str],
     answer_key: str,
     explanation: str,
+    lemma: str = "",
 ) -> str:
     """Show a quick check that the learner answers together with how sure they are.
 
@@ -342,18 +390,24 @@ async def pose_quiz(
     open: options is empty and answer_key is the model answer; you grade it with grade_quiz
     when the answer arrives. The learner sees answer_key and explanation only after grading.
     The question comes back later in spaced reviews, so it must make sense on its own.
+    lemma: in a language course, the vocabulary word the question tests; the grade sets its ledger state.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     if kind == "choice" and not (2 <= len(options) <= 5 and answer_key in options):
         return "error: a choice quiz needs 2 to 5 options, one of them exactly equal to answer_key"
+    if lemma and not lesson["lang"]:
+        return "error: lemma needs a language course; pose_vocab_check or add_reading sets the language"
     if kind == "open":
         options = []
     card_id = db.add_card(
         lesson["course_id"], lesson["concept_id"], question, kind, options, answer_key, explanation,
         scheduled=lesson["phase"] != "placement",
     )
+    if lemma:
+        lemma = simplemma.lemmatize(lemma, lang=lesson["lang"]).lower()
+        db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lesson["lang"], card_id))
     block = db.add_block(lesson_id, "quiz", question, {"card_id": card_id, "kind": kind, "options": options, "answer": None})
     _show(lesson, block)
     return f"shown as quiz {block['id']}; end the turn and wait for the answer"
