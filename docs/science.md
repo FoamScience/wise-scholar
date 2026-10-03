@@ -15,6 +15,15 @@ The app does not promise the "two sigma" effect. Bloom (1984) reported that one-
 
 ## Always-on behaviours
 
+### A pretest before each concept
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Richland, Kornell & Kao 2009, *Journal of Experimental Psychology: Applied* 15(3), 243–257. [doi:10.1037/a0016496](https://doi.org/10.1037/a0016496). Record only. | Described as finding that answering questions about a text before reading it, even wrongly, improved later recall of those points compared with reading alone. | The record was confirmed on 2026-10-03; the abstract was not retrieved, so the description comes from secondary sources. Laboratory reading studies. |
+| Kapur 2008, *Cognition and Instruction* 26(3), 379–424. [doi:10.1080/07370000802212669](https://doi.org/10.1080/07370000802212669). Record only. | Described as finding that students who first struggled with ill-structured problems, then received instruction, outperformed students taught first, on later problems. | Record confirmed on 2026-10-03; abstract not retrieved. School mathematics classes. |
+
+The app opens every concept lesson with a pretest the learner attempts before any explanation; the attempt is recorded but creates no review card and does not count toward mastery.
+
 ### Hints before answers
 
 | Source | What it reports | Limits |

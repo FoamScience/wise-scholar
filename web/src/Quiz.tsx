@@ -8,6 +8,7 @@ export type QuizData = {
   kind: 'choice' | 'open'
   options: string[]
   answer: string | null
+  pretest?: boolean
   confidence?: number
   correct?: boolean
   confident_miss?: boolean
@@ -125,7 +126,7 @@ export function QuizCard(props: {
   const d = props.data
   return (
     <section id={`block-${props.id}`} className="block quiz">
-      <div className="label">Quick check</div>
+      <div className="label">{props.data.pretest ? 'Before we start: what do you think?' : 'Quick check'}</div>
       <Markdown>{props.question}</Markdown>
       {d.answer === null ? (
         <QuizForm id={`quiz-${props.id}`} kind={d.kind} options={d.options} disabled={props.disabled} onSubmit={props.onSubmit} />

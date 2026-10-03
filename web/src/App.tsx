@@ -35,6 +35,7 @@ type ChallengeData = {
   marks?: string[]
   spoken?: boolean
   teachback?: boolean
+  pretest?: boolean
   lang?: string
 }
 type Scored = { word: string; score: number }
@@ -402,7 +403,9 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
-        {d.teachback
+        {d.pretest
+          ? 'Before we start: try it'
+          : d.teachback
           ? `Explain it in 60 seconds${props.speech ? ', out loud' : ''}`
           : d.spoken
             ? 'Listen and answer by speaking'
@@ -684,17 +687,17 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
 const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking', 'podcast'])
 
 function cardLabel(b: Block): string {
-  const d = (b.data ?? {}) as { writing?: boolean; teachback?: boolean; files?: string[]; title?: string }
+  const d = (b.data ?? {}) as { writing?: boolean; teachback?: boolean; pretest?: boolean; files?: string[]; title?: string }
   const head = b.markdown.replace(/[*_`#>]/g, '').split('\n')[0].trim()
   const short = head.length > 48 ? `${head.slice(0, 47)}…` : head
   if (b.kind === 'question') return `Question · ${short}`
-  if (b.kind === 'quiz') return `Quick check · ${short}`
+  if (b.kind === 'quiz') return `${d.pretest ? 'Pretest' : 'Quick check'} · ${short}`
   if (b.kind === 'reading') return `Reading · ${d.title ?? short}`
   if (b.kind === 'vocab') return 'Vocabulary check'
   if (b.kind === 'speaking') return `Speaking · ${short}`
   if (b.kind === 'podcast') return `Cast · ${short}`
   if (b.kind === 'exercise') return `Exercise · ${d.files?.[0] ?? short}`
-  return `${d.teachback ? 'Teach-back' : d.writing ? 'Writing' : 'Challenge'} · ${short}`
+  return `${d.pretest ? 'Pretest' : d.teachback ? 'Teach-back' : d.writing ? 'Writing' : 'Challenge'} · ${short}`
 }
 
 /** Which cards were posed before each message: the chat gets a labelled divider there. Key -1 = after the last message. */

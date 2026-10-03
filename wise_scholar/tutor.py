@@ -83,8 +83,27 @@ async def add_block(lesson_id: int, kind: Literal["prose", "example"], markdown:
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
+    if problem := pretest_blocker(lesson):
+        return f"refused: {problem}"
     _show(lesson, db.add_block(lesson_id, kind, markdown))
     return "shown"
+
+
+def pretest_blocker(lesson: dict) -> str | None:
+    """A concept lesson explains nothing until the learner has tried a pretest; placed-out concepts are exempt."""
+    if lesson["phase"] != "lesson" or not lesson["concept_id"]:
+        return None
+    concept = db.row("SELECT known FROM concepts WHERE id = ?", lesson["concept_id"])
+    if not concept or concept["known"]:
+        return None
+    for block in db.blocks(lesson["id"]):
+        data = block["data"] or {}
+        if data.get("pretest") and (data.get("attempts") or data.get("answer") is not None):
+            return None
+    return (
+        "no pretest has been tried yet. Open the lesson with pose_challenge or pose_quiz with pretest set, "
+        "end the turn, and explain only after the learner has attempted it"
+    )
 
 
 @mcp.tool()
@@ -182,17 +201,18 @@ async def set_known(course_id: int, known: list[str], unknown: list[str]) -> str
 
 
 @mcp.tool()
-async def pose_challenge(lesson_id: int, markdown: str) -> str:
+async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False) -> str:
     """Show something the learner must work out themselves: a prediction, a question, a problem.
 
     The card has an answer box, a hint ladder and a locked solution. Attempts, hint
     requests and give-ups arrive as later turns that name the challenge id. End your
-    turn after posing it.
+    turn after posing it. pretest: the opening attempt of a concept lesson, before anything
+    is taught; a wrong answer is expected and teaching starts from it.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    block = db.add_block(lesson_id, "challenge", markdown, challenge.new())
+    block = db.add_block(lesson_id, "challenge", markdown, {**challenge.new(), "pretest": pretest})
     _show(lesson, block)
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
 
@@ -563,6 +583,7 @@ async def pose_quiz(
     answer_key: str,
     explanation: str,
     lemma: str = "",
+    pretest: bool = False,
 ) -> str:
     """Show a quick check that the learner answers together with how sure they are.
 
@@ -571,6 +592,8 @@ async def pose_quiz(
     when the answer arrives. The learner sees answer_key and explanation only after grading.
     The question comes back later in spaced reviews, so it must make sense on its own.
     lemma: in a language course, the vocabulary word the question tests; the grade sets its ledger state.
+    pretest: the opening attempt of a concept lesson; it measures prior knowledge, so it never comes back
+    as a review and does not count toward mastery.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
@@ -582,13 +605,13 @@ async def pose_quiz(
     if kind == "open":
         options = []
     card_id = db.add_card(
-        lesson["course_id"], lesson["concept_id"], question, kind, options, answer_key, explanation,
-        scheduled=lesson["phase"] != "placement",
+        lesson["course_id"], None if pretest else lesson["concept_id"], question, kind, options, answer_key, explanation,
+        scheduled=lesson["phase"] != "placement" and not pretest,
     )
     if lemma:
         lemma = simplemma.lemmatize(lemma, lang=lesson["lang"]).lower()
         db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lesson["lang"], card_id))
-    block = db.add_block(lesson_id, "quiz", question, {"card_id": card_id, "kind": kind, "options": options, "answer": None})
+    block = db.add_block(lesson_id, "quiz", question, {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest})
     _show(lesson, block)
     return f"shown as quiz {block['id']}; end the turn and wait for the answer"
 
