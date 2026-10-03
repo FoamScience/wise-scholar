@@ -73,10 +73,14 @@ pre {
 }
 
 .wordmark {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--ink);
+  display: flex;
+  align-items: center;
+  height: 44px;
   text-decoration: none;
+}
+
+.wordmark svg {
+  display: block;
 }
 
 .muted {
