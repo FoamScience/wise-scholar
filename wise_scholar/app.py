@@ -166,7 +166,9 @@ def _turn_prompt(lesson: dict, line: str) -> str:
     known = [
         f"[known] ({'this course' if f['course_id'] else 'learner'}) {f['text']}" for f in db.facts(lesson["course_id"])
     ]
-    return "\n".join([state, *known, line])
+    # Resumed sessions keep the style of their earlier replies, so the math rule rides along with every turn.
+    fmt = "[format] All math in LaTeX: $...$ inline, $$...$$ displayed. No Unicode math symbols such as x², √, ∫; ordinary letters, accents, currency and units stay as they are."
+    return "\n".join([state, *known, fmt, line])
 
 
 async def _run_turn(lesson: dict, line: str) -> None:

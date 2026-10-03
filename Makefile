@@ -9,11 +9,15 @@ dev-server:
 dev-web:
 	cd web && npm run dev
 
-build:
-	cd web && npm install && npm run build
+web/node_modules: web/package-lock.json
+	cd web && npm install
+
+build: web/node_modules
+	cd web && npm run build
 
 serve: build
 	uv run uvicorn wise_scholar.app:app --port 8321
 
-test:
+test: web/node_modules
 	uv run pytest -q
+	cd web && npm test

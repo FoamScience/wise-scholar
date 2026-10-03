@@ -51,7 +51,7 @@ def _open_challenge(challenge_id: int) -> dict | str:
 async def add_block(lesson_id: int, kind: Literal["prose", "example"], markdown: str) -> str:
     """Append a block to the lesson area of the learner's screen.
 
-    prose: explanation the learner reads. example: a worked example.
+    markdown may hold LaTeX math in $...$ and $$...$$. prose: explanation the learner reads. example: a worked example.
     Anything the learner should work out themselves goes through pose_challenge instead.
     Take lesson_id from the [state] line of the turn.
     """
