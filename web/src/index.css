@@ -10,10 +10,100 @@
   --teal-tint: #e1f0ee;
   --amber: #6b3a00;
   --amber-tint: #fbebd3;
+  --amber-line: #d9a75c;
+  --amber-ink: #3d2100;
+  --danger: #8f2d0f;
+  --on-teal: #ffffff;
+  --mastery-off: #c9d1d9;
   --code-bg: #101a23;
   --code-ink: #e6edf3;
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-number: #79c0ff;
+  --code-comment: #8b949e;
+  --code-name: #d2a8ff;
+  --code-type: #ffa657;
+  --code-failed: #ffc9a3;
   --sans: 'Instrument Sans', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
+  color-scheme: light;
+}
+
+/* Dark follows the system unless the toggle in the top bar picked a theme. */
+:root[data-theme='dark'] {
+  --ground: #0f1417;
+  --panel: #171d21;
+  --line: #2a333a;
+  --line-strong: #56636e;
+  --ink: #e4e9ee;
+  --muted: #9aa7b2;
+  --teal: #3fb3a9;
+  --teal-dark: #7fd6cd;
+  --teal-tint: #15302e;
+  --amber: #f0b76a;
+  --amber-tint: #2e2213;
+  --amber-line: #7a5a25;
+  --amber-ink: #f6dcb3;
+  --danger: #e06a45;
+  --on-teal: #06211f;
+  --mastery-off: #2f3a42;
+  --code-bg: #0b1014;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ground: #0f1417;
+    --panel: #171d21;
+    --line: #2a333a;
+    --line-strong: #56636e;
+    --ink: #e4e9ee;
+    --muted: #9aa7b2;
+    --teal: #3fb3a9;
+    --teal-dark: #7fd6cd;
+    --teal-tint: #15302e;
+    --amber: #f0b76a;
+    --amber-tint: #2e2213;
+    --amber-line: #7a5a25;
+    --amber-ink: #f6dcb3;
+    --danger: #e06a45;
+    --on-teal: #06211f;
+    --mastery-off: #2f3a42;
+    --code-bg: #0b1014;
+    color-scheme: dark;
+  }
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-meta {
+  color: var(--code-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-attr {
+  color: var(--code-string);
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol {
+  color: var(--code-number);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--code-comment);
+  font-style: italic;
+}
+.hljs-title,
+.hljs-function,
+.hljs-name,
+.hljs-variable {
+  color: var(--code-name);
+}
+.hljs-type,
+.hljs-built_in,
+.hljs-class {
+  color: var(--code-type);
 }
 
 * {
@@ -118,7 +208,7 @@ pre {
 .btn.primary {
   background: var(--teal);
   border-color: var(--teal);
-  color: #ffffff;
+  color: var(--on-teal);
 }
 
 .btn:disabled {
@@ -139,9 +229,9 @@ pre {
 .error {
   padding: 10px 14px;
   background: var(--amber-tint);
-  border: 1px solid #d9a75c;
+  border: 1px solid var(--amber-line);
   border-radius: 6px;
-  color: #3d2100;
+  color: var(--amber-ink);
 }
 
 /* home */
@@ -248,9 +338,9 @@ pre {
 }
 
 .btn.danger {
-  background: #8f2d0f;
-  border-color: #8f2d0f;
-  color: #ffffff;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-teal);
 }
 
 .archived summary {
@@ -377,7 +467,7 @@ pre {
 .bubble.learner {
   align-self: flex-end;
   background: var(--teal);
-  color: #ffffff;
+  color: var(--on-teal);
   white-space: pre-wrap;
 }
 
@@ -558,7 +648,7 @@ pre {
 
 .plan-card.chosen .muted,
 .plan-card.chosen .evidence {
-  color: #33424f;
+  color: var(--muted);
 }
 
 /* course map concepts */
@@ -626,9 +716,9 @@ pre {
 .locked {
   padding: 12px 16px;
   background: var(--amber-tint);
-  border: 1px solid #d9a75c;
+  border: 1px solid var(--amber-line);
   border-radius: 6px;
-  color: #3d2100;
+  color: var(--amber-ink);
 }
 
 .hint .label {
@@ -837,7 +927,7 @@ pre {
 }
 
 .bar.stated {
-  background: #8a4b00;
+  background: var(--amber);
 }
 
 .bar.actual {
@@ -876,7 +966,7 @@ pre {
 .mastery i {
   width: 10px;
   height: 10px;
-  background: #c9d1d9;
+  background: var(--mastery-off);
 }
 
 .mastery i.on {
@@ -947,8 +1037,17 @@ td {
   border-radius: 0;
 }
 
+.file .file-body pre {
+  margin: 0;
+  border-radius: 0;
+}
+
+.btn.theme {
+  padding: 6px 8px;
+}
+
 .file pre.failed {
-  color: #ffc9a3;
+  color: var(--code-failed);
 }
 
 .file-head .link {
@@ -996,7 +1095,7 @@ td {
 
 .gloss.open {
   background: var(--amber-tint);
-  border-bottom: 2px solid #8a4b00;
+  border-bottom: 2px solid var(--amber);
 }
 
 .gloss-panel {
@@ -1014,7 +1113,7 @@ td {
 
 mark {
   background: var(--amber-tint);
-  border-bottom: 2px solid #8a4b00;
+  border-bottom: 2px solid var(--amber);
   color: inherit;
 }
 
@@ -1162,9 +1261,9 @@ mark {
 }
 
 .btn.recording {
-  background: #8f2d0f;
-  border-color: #8f2d0f;
-  color: #ffffff;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-teal);
 }
 
 /* chat dividers per lesson card */
