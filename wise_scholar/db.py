@@ -160,6 +160,31 @@ MIGRATIONS = [
         episodes INTEGER NOT NULL DEFAULT 0
     );
     """,
+    """
+    CREATE TABLE sources (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'ready', 'failed')),
+        error TEXT,
+        sections INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE source_sections (
+        id INTEGER PRIMARY KEY,
+        source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        text TEXT NOT NULL
+    );
+    CREATE VIRTUAL TABLE source_fts USING fts5(title, text, content='source_sections', content_rowid='id');
+    CREATE TRIGGER source_sections_ai AFTER INSERT ON source_sections BEGIN
+        INSERT INTO source_fts(rowid, title, text) VALUES (new.id, new.title, new.text);
+    END;
+    CREATE TRIGGER source_sections_ad AFTER DELETE ON source_sections BEGIN
+        INSERT INTO source_fts(source_fts, rowid, title, text) VALUES ('delete', old.id, old.title, old.text);
+    END;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -537,3 +562,54 @@ def add_episode(course_id: int, recap: str) -> int:
         (f"\n{recap}", course_id),
     )
     return series(course_id)["episodes"]
+
+
+def add_source(course_id: int, name: str, size: int) -> dict:
+    source_id = conn.execute("INSERT INTO sources (course_id, name, size) VALUES (?, ?, ?)", (course_id, name, size)).lastrowid
+    return row("SELECT * FROM sources WHERE id = ?", source_id)
+
+
+def sources(course_id: int) -> list[dict]:
+    return rows("SELECT * FROM sources WHERE course_id = ? ORDER BY id", course_id)
+
+
+def finish_source(source_id: int, sections: list[tuple[str, str]], error: str | None = None) -> dict | None:
+    """Store a processed file's sections in one transaction; None when the file was removed meanwhile."""
+    if not row("SELECT id FROM sources WHERE id = ?", source_id):
+        return None
+    conn.execute("BEGIN")
+    try:
+        conn.execute("DELETE FROM source_sections WHERE source_id = ?", (source_id,))
+        conn.executemany("INSERT INTO source_sections (source_id, title, text) VALUES (?, ?, ?)", [(source_id, t, x) for t, x in sections])
+        conn.execute(
+            "UPDATE sources SET status = ?, error = ?, sections = ? WHERE id = ?",
+            ("failed" if error else "ready", error, len(sections), source_id),
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return row("SELECT * FROM sources WHERE id = ?", source_id)
+
+
+def delete_source(source_id: int) -> None:
+    conn.execute("DELETE FROM source_sections WHERE source_id = ?", (source_id,))
+    conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+
+
+def search_sources(course_id: int, query: str, n: int) -> list[dict]:
+    """Sections of the course's ready sources that match an FTS5 query, best first, with a short snippet.
+    Raises sqlite3.OperationalError on FTS5 syntax the query cannot parse."""
+    return rows(
+        "SELECT s.id, s.title, src.name, snippet(source_fts, 1, '[', ']', '…', 24) AS snippet "
+        "FROM source_fts JOIN source_sections s ON s.id = source_fts.rowid JOIN sources src ON src.id = s.source_id "
+        "WHERE source_fts MATCH ? AND src.course_id = ? AND src.status = 'ready' ORDER BY rank LIMIT ?",
+        query, course_id, n,
+    )
+
+
+def source_section(section_id: int) -> dict | None:
+    return row(
+        "SELECT s.*, src.name, src.course_id FROM source_sections s JOIN sources src ON src.id = s.source_id WHERE s.id = ?",
+        section_id,
+    )

@@ -1414,3 +1414,19 @@ pre:has(> .mermaid) {
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.source-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  word-break: break-word;
+}
