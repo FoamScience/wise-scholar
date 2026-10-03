@@ -139,3 +139,27 @@ def test_set_known_recalibrates_the_map_without_rebuilding_it():
     assert "not concepts" in asyncio.run(tutor.set_known(course, ["Numbers"], ["Nope"]))
     assert asyncio.run(tutor.set_known(course, ["Numbers", "Perfekt"], ["Greetings"])) == "updated"
     assert [(c["title"], c["known"]) for c in db.concepts(course)] == [("Greetings", 0), ("Numbers", 1), ("Perfekt", 1)]
+
+
+def test_pretest_gates_explanations_and_stays_out_of_reviews_and_mastery():
+    import asyncio
+
+    from wise_scholar import tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Pre')").lastrowid
+    course = db.create_course("Rust", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Ownership", "Traits"], "known": ["Traits"]}])
+    own, traits = db.concepts(course)
+    lesson = db.create_lesson(course, "Ownership", "lesson", own["id"])
+    assert asyncio.run(tutor.add_block(lesson, "prose", "Ownership means…")).startswith("refused: no pretest")
+    asyncio.run(tutor.pose_quiz(lesson, "What happens to s after let t = s;?", "open", [], "s is moved", "", pretest=True))
+    block = db.blocks(lesson)[-1]
+    card = db.card(block["data"]["card_id"])
+    assert card["concept_id"] is None and card["scheduled"] == 0 and block["data"]["pretest"]
+    assert asyncio.run(tutor.add_block(lesson, "prose", "Ownership means…")).startswith("refused")
+    db.set_block_data(block["id"], {**block["data"], "answer": "it is copied", "answer_id": 1})
+    assert asyncio.run(tutor.add_block(lesson, "prose", "Ownership means…")) == "shown"
+    assert db.concept_mastery(course) == {}
+
+    known_lesson = db.create_lesson(course, "Traits", "lesson", traits["id"])
+    assert asyncio.run(tutor.add_block(known_lesson, "prose", "Traits are…")) == "shown"
