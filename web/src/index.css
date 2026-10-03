@@ -1396,3 +1396,21 @@ pre:has(> .mermaid) {
   text-decoration: line-through var(--amber);
   text-decoration-thickness: 2px;
 }
+
+.word-diff {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+}
+
+.word-diff del {
+  color: var(--amber);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+.word-diff ins {
+  color: var(--teal-dark);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
