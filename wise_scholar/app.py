@@ -114,13 +114,10 @@ def _course(course_id: int) -> dict:
     if not course:
         raise HTTPException(404, "no such course")
     lessons = db.rows("SELECT id FROM lessons WHERE course_id = ? ORDER BY id", course_id)
-    mastery = db.concept_mastery(course_id)
     return {
         **course,
         "ranking": describe(course["ranking"]),
-        "concepts": [
-            {**c, "mastery": mastery.get(c["id"], 1.0 if c["known"] else None)} for c in db.concepts(course_id)
-        ],
+        "concepts": db.concept_view(course_id),
         "strands": db.strand_counts(course_id) if course["mechanism"] == "leveled-course" else None,
         "vocabulary": {**db.vocabulary(course_id, _now()), **_tier_view(course)},
         "lessons": [_lesson_view(lesson["id"]) for lesson in lessons],
@@ -453,6 +450,27 @@ async def start_placement(course_id: int) -> dict:
     _start_turn(
         _lesson(lesson_id),
         f"[event] The learner accepted the plan with mechanism {course['mechanism']}. The placement check begins.",
+    )
+    return view
+
+
+@app.post("/api/courses/{course_id}/placement/retake")
+async def retake_placement(course_id: int) -> dict:
+    """A fresh placement check at any time; its result recalibrates the level, the vocabulary tier and the map."""
+    course = _course(course_id)
+    if not course["concepts"]:
+        raise HTTPException(409, "there is no course map yet; the first placement comes with the plan")
+    earlier = [lesson for lesson in course["lessons"] if lesson["phase"] == "placement"]
+    for lesson in earlier:
+        _require_idle(lesson["id"])
+    lesson_id = db.create_lesson(course_id, f"Placement · retake {len(earlier)}" if earlier else "Placement", "placement")
+    view = _lesson_view(lesson_id)
+    hub.publish(course_id, {"type": "lesson.created", "lesson": view})
+    before = f"level {course['level']!r}: {course['placement']}" if course["level"] else "none; the check was skipped"
+    _start_turn(
+        _lesson(lesson_id),
+        f"[event] The learner retakes the placement check. Earlier result: {before}. Run the check again from the start. "
+        "At the end call set_placement, then set_known for the existing course map instead of set_course_map.",
     )
     return view
 

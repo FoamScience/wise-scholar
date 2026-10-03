@@ -234,6 +234,17 @@ def concepts(course_id: int) -> list[dict]:
     return rows("SELECT * FROM concepts WHERE course_id = ? ORDER BY id", course_id)
 
 
+def concept_view(course_id: int) -> list[dict]:
+    """Concepts with their mastery: the share of right latest answers, or full for a concept placed out."""
+    mastery = concept_mastery(course_id)
+    return [{**c, "mastery": mastery.get(c["id"], 1.0 if c["known"] else None)} for c in concepts(course_id)]
+
+
+def set_known(course_id: int, known: list[str], unknown: list[str]) -> None:
+    for flag, titles in ((1, known), (0, unknown)):
+        conn.executemany("UPDATE concepts SET known = ? WHERE course_id = ? AND title = ?", [(flag, course_id, t) for t in titles])
+
+
 def set_concepts(course_id: int, modules: list[dict]) -> None:
     conn.executemany(
         "INSERT INTO concepts (course_id, module, title, known) VALUES (?, ?, ?, ?)",
