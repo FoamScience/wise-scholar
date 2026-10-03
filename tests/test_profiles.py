@@ -190,3 +190,34 @@ def test_series_episodes_keep_memory_and_pass_a_stricter_gate():
     assert show["episodes"] == 1 and "Lena kauft Brot" in show["synopsis"]
     block = db.blocks(lesson)[-1]
     assert block["kind"] == "reading" and block["data"]["story"] == "Lena in Köln" and block["data"]["episode"] == 1
+
+
+def test_capstone_milestones_follow_the_module_and_complete_on_mark_solved():
+    import asyncio
+
+    from wise_scholar import challenge, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Cap')").lastrowid
+    course = db.create_course("Rust", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Ownership", "Traits"], "known": []}, {"title": "Async", "concepts": ["Futures"], "known": []}])
+    own, traits, _ = db.concepts(course)
+    ms = tutor.Milestone
+    assert "no module" in asyncio.run(tutor.set_capstone(course, "Nope", "t", "b", []))
+    assert "every concept" in asyncio.run(tutor.set_capstone(course, "Basics", "t", "b", [ms(concept="Traits", deliverable="x")]))
+    res = asyncio.run(tutor.set_capstone(course, "Basics", "A CLI todo", "Build a todo tool.", [ms(concept="Ownership", deliverable="store items"), ms(concept="Traits", deliverable="print them")]))
+    assert res.startswith("set; project folder projects/basics/")
+    assert (db.workspace(db.course(course)["slug"]) / "projects/basics").is_dir()
+    assert "already has" in asyncio.run(tutor.set_capstone(course, "Basics", "t", "b", []))
+
+    lesson = db.create_lesson(course, "Ownership", "lesson", own["id"])
+    brief = tutor.capstone_brief(db.lesson(lesson))
+    assert "milestone 1 of 2" in brief and "store items" in brief and "projects/basics/" in brief
+    last = tutor.capstone_brief(db.lesson(db.create_lesson(course, "Traits", "lesson", traits["id"])))
+    assert "integration milestone" in last and "far-transfer" in last
+
+    block = db.add_block(lesson, "challenge", "Store items", {**challenge.new(), "milestone": True, "attempts": ["done"]})
+    assert asyncio.run(tutor.mark_solved(block["id"])) == "marked; milestone done"
+    cap = db.capstones(course)[0]
+    assert cap["done"] == 1 and [m["done"] for m in cap["milestones"]] == [1, 0]
+    transfer = db.add_block(lesson, "challenge", "Transfer", {**challenge.new(), "transfer": True, "max_hints": 0})
+    assert "used up" in challenge.hint_blocker(transfer["data"])

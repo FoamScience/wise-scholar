@@ -129,6 +129,7 @@ def _course(course_id: int) -> dict:
         **course,
         "ranking": describe(course["ranking"]),
         "concepts": db.concept_view(course_id),
+        "capstones": db.capstones(course_id),
         "strands": db.strand_counts(course_id) if course["mechanism"] == "leveled-course" else None,
         "vocabulary": {**db.vocabulary(course_id, _now()), **_tier_view(course)},
         "lessons": [_lesson_view(lesson["id"]) for lesson in lessons],
@@ -589,6 +590,7 @@ async def open_concept(concept_id: int) -> dict:
             strands += "\n" + tutor.vocab_brief(lesson, lesson["lang"])
     if speech.PODCASTS and speech.available():
         strands += "\nCasts (experimental): make_podcast is available when a recap or quiz-cast would serve this lesson"
+    strands += tutor.capstone_brief(lesson)
     if ready := [f for f in db.sources(concept["course_id"]) if f["status"] == "ready"]:
         strands += "\nThe learner's own sources (search_sources, then read_source one section at a time): " + ", ".join(
             f"{f['name']} ({f['sections']} sections)" for f in ready

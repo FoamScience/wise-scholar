@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 from collections import Counter
 from typing import Literal
@@ -58,6 +59,11 @@ class Module(BaseModel):
     title: str
     concepts: list[str]
     known: list[str] = []
+
+
+class Milestone(BaseModel):
+    concept: str
+    deliverable: str
 
 
 def _show(lesson: dict, block: dict, event: str = "block.added") -> None:
@@ -192,6 +198,57 @@ async def set_course_map(course_id: int, modules: list[Module]) -> str:
 
 
 @mcp.tool()
+async def set_capstone(course_id: int, module: str, title: str, brief: str, milestones: list[Milestone]) -> str:
+    """Propose the project that runs through one module of the course map: one milestone per unit.
+
+    module: a module title from the map. brief: what the finished project is, in a few sentences the
+    learner reads. milestones: for every concept of the module, in order, the deliverable that unit adds
+    (a file and what it must do; for a language course, a piece of the text or recording being built).
+    The last one is the integration milestone. Files live in the project's folder under the workspace,
+    shared by every lesson of the module.
+    """
+    concepts = [c for c in db.concepts(course_id) if c["module"] == module]
+    if not concepts:
+        return f"error: no module {module!r} in the map; modules are {sorted({c['module'] for c in db.concepts(course_id)})}"
+    if any(c["module"] == module for c in db.capstones(course_id)):
+        return "error: this module already has a capstone"
+    by_title = {c["title"]: c["id"] for c in concepts}
+    if [m.concept for m in milestones] != list(by_title):
+        return f"error: milestones must name every concept of the module in map order: {list(by_title)}"
+    ascii_title = unicodedata.normalize("NFKD", module).encode("ascii", "ignore").decode().lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_title).strip("-") or f"module-{len(db.capstones(course_id)) + 1}"
+    folder = f"projects/{slug}"
+    course = db.course(course_id)
+    (db.workspace(course["slug"]) / folder).mkdir(parents=True, exist_ok=True)
+    capstone = db.add_capstone(course_id, module, title, brief, folder, [(by_title[m.concept], m.deliverable) for m in milestones])
+    hub.publish(course_id, {"type": "capstone.set", "capstone": capstone})
+    return f"set; project folder {folder}/ (relative to the workspace)"
+
+
+def capstone_brief(lesson: dict) -> str:
+    """What the lesson-begins event says about the unit's milestone, if its module has a capstone."""
+    m = db.milestone_for(lesson["concept_id"]) if lesson["concept_id"] else None
+    if not m:
+        concepts = db.concepts(lesson["course_id"])
+        mine = next((c for c in concepts if c["id"] == lesson["concept_id"]), None)
+        if mine and [c for c in concepts if c["module"] == mine["module"]][0]["id"] == mine["id"] and lesson["mechanism"] in ("hands-on", "leveled-course"):
+            units = [c["title"] for c in concepts if c["module"] == mine["module"]]
+            return (
+                f"\nThis is the first unit of module {mine['module']!r}, which has no capstone yet. Propose one with set_capstone "
+                f"in your first turn: one project the whole module builds (code for a programming course, a text or recorded piece for a language), "
+                f"one deliverable per unit in this order: {units}. Then say what it is to the learner in two sentences."
+            )
+        return ""
+    stage = "the integration milestone: it joins the earlier parts into the finished project" if m["position"] == m["total"] else f"milestone {m['position']} of {m['total']}"
+    return (
+        f"\nCapstone {m['capstone']!r} for module {m['module']!r}: {m['brief']}\nThis unit's milestone, {stage}: {m['deliverable']}"
+        f"{' (already done)' if m['done'] else ''}. Project folder: {m['folder']}/ in the workspace, shared by the module's lessons; "
+        "pose the milestone with pose_exercise, pose_challenge or pose_writing with milestone set, after the unit's own practice."
+        + ("\nAfter the integration milestone, pose one far-transfer challenge with transfer set: the same ideas on different data or in a different domain, no hints." if m["position"] == m["total"] else "")
+    )
+
+
+@mcp.tool()
 async def set_known(course_id: int, known: list[str], unknown: list[str]) -> str:
     """After a retaken placement check, mark which concepts of the existing map the learner now has (placed out)
     and which they lack (open again). Titles must match the map exactly; other concepts keep their state."""
@@ -206,24 +263,28 @@ async def set_known(course_id: int, known: list[str], unknown: list[str]) -> str
 
 
 @mcp.tool()
-async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False) -> str:
+async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, milestone: bool = False, transfer: bool = False) -> str:
     """Show something the learner must work out themselves: a prediction, a question, a problem.
 
     The card has an answer box, a hint ladder and a locked solution. Attempts, hint
     requests and give-ups arrive as later turns that name the challenge id. End your
     turn after posing it. pretest: the opening attempt of a concept lesson, before anything
-    is taught; a wrong answer is expected and teaching starts from it.
+    is taught; a wrong answer is expected and teaching starts from it. milestone: this is the
+    unit's capstone deliverable. transfer: a far-transfer task after the capstone, with no hints.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    block = db.add_block(lesson_id, "challenge", markdown, {**challenge.new(), "pretest": pretest})
+    data = {**challenge.new(), "pretest": pretest, "milestone": milestone, "transfer": transfer}
+    if transfer:
+        data["max_hints"] = 0
+    block = db.add_block(lesson_id, "challenge", markdown, data)
     _show(lesson, block)
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
 
 
 @mcp.tool()
-async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile], run: str) -> str:
+async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile], run: str, milestone: bool = False) -> str:
     """Show a hands-on exercise: starter files the learner edits in their own editor, and a command that runs them.
 
     files: paths relative to the course workspace (your working directory), with the starter
@@ -246,7 +307,7 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
     for f, target in zip(files, targets):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f.content)
-    data = {**challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None}
+    data = {**challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone}
     block = db.add_block(lesson_id, "exercise", markdown, data)
     _show(lesson, block)
     return f"shown as exercise {block['id']}; end the turn and wait for the learner"
@@ -408,7 +469,8 @@ def vocab_round(lesson: dict, data: dict, known: list[str]) -> tuple[dict, str |
 
 @mcp.tool()
 async def pose_writing(
-    lesson_id: int, prompt: str, fluency: bool = False, min_words: int = 0, max_words: int = 0, structure: str = ""
+    lesson_id: int, prompt: str, fluency: bool = False, min_words: int = 0, max_words: int = 0, structure: str = "",
+    milestone: bool = False,
 ) -> str:
     """Ask the learner to write in the language being learned.
 
@@ -423,7 +485,7 @@ async def pose_writing(
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     data = {**challenge.new(reveal_after=2), "writing": True, "fluency": fluency, "marks": [],
-            "words": [min_words, max_words] if max_words else None, "structure": structure}
+            "words": [min_words, max_words] if max_words else None, "structure": structure, "milestone": milestone}
     block = db.add_block(lesson_id, "challenge", prompt, data)
     _show(lesson, block)
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
@@ -778,4 +840,10 @@ async def mark_solved(challenge_id: int) -> str:
         return "refused: the learner has not submitted an attempt on the card"
     _patch_block(challenge_id, {"solved": True})
     _grade_teachback(data, True)
+    if data.get("milestone"):
+        lesson = db.lesson(db.block(challenge_id)["lesson_id"])
+        if m := db.milestone_for(lesson["concept_id"]) if lesson["concept_id"] else None:
+            db.finish_milestone(m["id"])
+            hub.publish(lesson["course_id"], {"type": "capstone.set", "capstone": db.capstones(lesson["course_id"], m["capstone_id"])[0]})
+            return "marked; milestone done"
     return "marked"

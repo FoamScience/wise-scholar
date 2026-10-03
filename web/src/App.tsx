@@ -40,6 +40,8 @@ type ChallengeData = {
   spoken?: boolean
   teachback?: boolean
   pretest?: boolean
+  milestone?: boolean
+  transfer?: boolean
   lang?: string
   words?: [number, number] | null
   structure?: string
@@ -64,9 +66,19 @@ type Ranked = {
   summary: string
   evidence: { source: string; finding: string; url: string }[]
 }
+type Capstone = {
+  id: number
+  module: string
+  title: string
+  brief: string
+  folder: string
+  done: number
+  milestones: { id: number; concept_id: number; concept: string; deliverable: string; done: number }[]
+}
 type CourseDetail = Course & {
   placement: string | null
   lang: string | null
+  capstones: Capstone[]
   ranking: Ranked[]
   concepts: Concept[]
   lessons: Lesson[]
@@ -83,6 +95,7 @@ type TutorEvent =
   | { type: 'plan.chosen'; mechanism: string }
   | { type: 'placement.set'; level: string; placement: string }
   | { type: 'map.set'; concepts: Concept[] }
+  | { type: 'capstone.set'; capstone: Capstone }
   | { type: 'source.updated'; source: Source }
   | { type: 'source.removed'; id: number }
   | { type: 'lesson.created'; lesson: Lesson }
@@ -427,7 +440,11 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
-        {d.pretest
+        {d.transfer
+          ? 'Transfer: same idea, new ground, no hints'
+          : d.milestone
+          ? 'Capstone milestone'
+          : d.pretest
           ? 'Before we start: try it'
           : d.teachback
           ? `Explain it in 60 seconds${props.speech ? ', out loud' : ''}`
@@ -665,7 +682,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
-        Exercise
+        {d.milestone ? 'Capstone milestone' : 'Exercise'}
         {d.solved && <span className="chip">Solved</span>}
       </div>
       <Markdown>{props.block.markdown}</Markdown>
@@ -723,7 +740,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
 const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking', 'podcast'])
 
 function cardLabel(b: Block): string {
-  const d = (b.data ?? {}) as { writing?: boolean; teachback?: boolean; pretest?: boolean; files?: string[]; title?: string }
+  const d = (b.data ?? {}) as { writing?: boolean; teachback?: boolean; pretest?: boolean; milestone?: boolean; transfer?: boolean; files?: string[]; title?: string }
   const head = b.markdown.replace(/[*_`#>]/g, '').split('\n')[0].trim()
   const short = head.length > 48 ? `${head.slice(0, 47)}…` : head
   if (b.kind === 'question') return `Question · ${short}`
@@ -732,8 +749,8 @@ function cardLabel(b: Block): string {
   if (b.kind === 'vocab') return 'Vocabulary check'
   if (b.kind === 'speaking') return `Speaking · ${short}`
   if (b.kind === 'podcast') return `Cast · ${short}`
-  if (b.kind === 'exercise') return `Exercise · ${d.files?.[0] ?? short}`
-  return `${d.pretest ? 'Pretest' : d.teachback ? 'Teach-back' : d.writing ? 'Writing' : 'Challenge'} · ${short}`
+  if (b.kind === 'exercise') return `${d.milestone ? 'Milestone' : 'Exercise'} · ${d.files?.[0] ?? short}`
+  return `${d.transfer ? 'Transfer' : d.milestone ? 'Milestone' : d.pretest ? 'Pretest' : d.teachback ? 'Teach-back' : d.writing ? 'Writing' : 'Challenge'} · ${short}`
 }
 
 /** Which cards were posed before each message: the chat gets a labelled divider there. Key -1 = after the last message. */
@@ -911,6 +928,16 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
         setCourse((c) => c && { ...c, mechanism: ev.mechanism })
       } else if (ev.type === 'placement.set') {
         setCourse((c) => c && { ...c, level: ev.level, placement: ev.placement })
+      } else if (ev.type === 'capstone.set') {
+        setCourse(
+          (c) =>
+            c && {
+              ...c,
+              capstones: c.capstones.some((k) => k.id === ev.capstone.id)
+                ? c.capstones.map((k) => (k.id === ev.capstone.id ? ev.capstone : k))
+                : [...c.capstones, ev.capstone],
+            },
+        )
       } else if (ev.type === 'source.updated') {
         setSources((all) => (all.some((s) => s.id === ev.source.id) ? all.map((s) => (s.id === ev.source.id ? ev.source : s)) : [...all, ev.source]))
       } else if (ev.type === 'source.removed') {
@@ -1061,7 +1088,22 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
           const conceptLesson = course.lessons.find((l) => l.concept_id === c.id)
           return (
             <div key={c.id} className="concept">
-              {c.module !== course.concepts[i - 1]?.module && <strong>{c.module}</strong>}
+              {c.module !== course.concepts[i - 1]?.module && (
+                <>
+                  <strong>{c.module}</strong>
+                  {course.capstones
+                    .filter((k) => k.module === c.module)
+                    .map((k) => (
+                      <div key={k.id} className="capstone" title={k.brief}>
+                        <span className="small">Project · {k.title}</span>
+                        <progress value={k.done} max={k.milestones.length} />
+                        <span className="small">
+                          {k.done} of {k.milestones.length} milestones
+                        </span>
+                      </div>
+                    ))}
+                </>
+              )}
               <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
                 <span className="concept-title">
                   {c.title}
