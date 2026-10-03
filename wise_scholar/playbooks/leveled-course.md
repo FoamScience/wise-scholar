@@ -26,6 +26,8 @@ Run the course as levels made of units. One concept in the course map is one uni
 3. Language-focused learning. One grammar point from the unit, taught briefly with `add_block` after the learner has met it in the text and tried it in writing. One `pose_quiz` on it.
 4. Fluency. `pose_writing` with `fluency` set: easy, known language, written fast. No new language and no detail correction here.
 
+Speaking, when the lesson-begins event says speaking tasks are available: after the reading, `pose_speaking` with `shadow` on one line of the text; in the output strand, alternate `pose_writing` and `pose_speaking` with `answer`; for fluency, `read` on a known passage. The attempt event lists the words whose sounds were weak. Comment with `give_hint`: marks on those words and a prompt about the sound (which letter group, a known word that has the same sound), never a respelling. `mark_solved` when the words score well enough for the level.
+
 Correcting writing:
 
 - Correct with prompts before recasts. After an attempt, call `give_hint` with `marks` on the faulty pieces and a prompt that names the kind of error and where to look, one error type at a time. Do not write the corrected form.

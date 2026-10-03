@@ -60,7 +60,7 @@ Off by default. Listen buttons use the browser's own voice and there is no micro
 make speech
 ```
 
-This creates a separate environment under `speech/` (torch, Chatterbox Multilingual, faster-whisper, Piper) and downloads the models once, about 7 GB in total. Afterwards reading texts play with a local neural voice sentence by sentence, and the chat gets a push-to-talk button. Chatterbox runs on the GPU; without one, Piper speaks on the CPU (German and English voices are installed). Nothing is downloaded while you learn; the worker starts on first use and stops after ten idle minutes.
+This creates a separate environment under `speech/` (torch, Chatterbox Multilingual, faster-whisper, Piper, the MMS forced aligner) and downloads the models once, about 8 GB in total. Afterwards reading texts play with a local neural voice sentence by sentence, the chat gets a push-to-talk button, and language lessons get speaking tasks: read aloud, shadow a line, answer a spoken question. Recordings are scored word by word by forced alignment (the MMS aligner is licensed CC-BY-NC 4.0, fine for your own use) and kept under `data/audio/speaking/`. Chatterbox runs on the GPU; without one, Piper speaks on the CPU (German and English voices are installed). Nothing is downloaded while you learn; the worker starts on first use and stops after ten idle minutes.
 
 ## Develop
 

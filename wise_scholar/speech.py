@@ -1,8 +1,10 @@
 """Bridge to the speech worker in speech/, which runs in its own environment and is installed by `make speech`."""
 import asyncio
+import difflib
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 from . import db
@@ -11,6 +13,7 @@ PROJECT = db.ROOT / "speech"
 AUDIO = db.DB_PATH.parent / "audio"
 IDLE_SECONDS = 600
 REQUEST_TIMEOUT = 300
+WORD = re.compile(r"[^\W_]+(?:['’-][^\W_]+)*")
 HINT = "Speech is off. Run `make speech` once to install the local voices and the recogniser (about 7 GB)."
 
 
@@ -90,3 +93,19 @@ async def tts(text: str, lang: str) -> Path:
 async def stt(path: Path, lang: str | None) -> dict:
     res = await worker.request({"op": "stt", "path": str(path), "lang": lang})
     return {k: res[k] for k in ("text", "language", "words")}
+
+
+async def align(path: Path, text: str) -> list[dict]:
+    """Per-word confidence of a recording read against text: [{word, score, start, end}]."""
+    return (await worker.request({"op": "align", "path": str(path), "text": text}))["words"]
+
+
+def word_match(text: str, heard: str) -> list[dict]:
+    """When a recording does not match its text at all: which target words the recogniser heard (1.0) and which not (0.0)."""
+    target = WORD.findall(text)
+    said = [w.lower() for w in WORD.findall(heard)]
+    matched: set[int] = set()
+    for tag, i1, i2, _, _ in difflib.SequenceMatcher(None, [w.lower() for w in target], said).get_opcodes():
+        if tag == "equal":
+            matched.update(range(i1, i2))
+    return [{"word": w, "score": 1.0 if i in matched else 0.0} for i, w in enumerate(target)]

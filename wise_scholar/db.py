@@ -315,6 +315,8 @@ def strand_counts(course_id: int) -> dict[str, int]:
         data = json.loads(b["data"]) if b["data"] else {}
         if b["kind"] == "reading":
             counts["input"] += 1
+        elif b["kind"] == "speaking":
+            counts["fluency" if data.get("speaking") == "read" else "output"] += 1
         elif data.get("writing"):
             counts["fluency" if data.get("fluency") else "output"] += 1
         else:

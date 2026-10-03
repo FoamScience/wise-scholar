@@ -6,6 +6,7 @@ import Logo from './Logo'
 import { QuizCard, Review, ReviewPanels } from './Quiz'
 import type { QuizData } from './Quiz'
 import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
+import { usePlayer } from './player'
 import { splitBy } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
 import { useProfiles } from './profiles'
@@ -31,7 +32,11 @@ type ChallengeData = {
   writing?: boolean
   fluency?: boolean
   marks?: string[]
+  spoken?: boolean
+  lang?: string
 }
+type Scored = { word: string; score: number }
+type SpeakingData = ChallengeData & { speaking: 'read' | 'shadow'; lang: string; scores: { words: Scored[]; heard: string | null; score: number }[] }
 type Block = { id: number; lesson_id: number; kind: string; markdown: string; data: unknown; created: string }
 type Concept = { id: number; module: string; title: string; known: number; mastery: number | null }
 type Lesson = {
@@ -93,6 +98,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   mark_solved: 'checking your answer…',
   set_placement: 'working out your level…',
   pose_vocab_check: 'picking words to check…',
+  pose_speaking: 'preparing a speaking task…',
   pose_quiz: 'preparing a quick check…',
   grade_quiz: 'grading your answer…',
 }
@@ -106,6 +112,7 @@ const LESSON_AREA_TOOLS = [
   'add_reading',
   'pose_writing',
   'pose_vocab_check',
+  'pose_speaking',
 ]
 
 function useHash(): string {
@@ -318,10 +325,11 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   )
 }
 
-function ChallengeCard(props: { block: Block; disabled: boolean; onAct: Act }) {
+function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean; onAct: Act; onError: (m: string) => void }) {
   const [text, setText] = useState('')
   const d = props.block.data as ChallengeData
   const open = !d.solved && d.solution === null
+  const player = usePlayer(d.lang ?? '', props.speech)
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -333,10 +341,16 @@ function ChallengeCard(props: { block: Block; disabled: boolean; onAct: Act }) {
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
-        {d.writing ? (d.fluency ? 'Write fast' : 'Write') : 'Work it out'}
+        {d.spoken ? 'Listen and answer by speaking' : d.writing ? (d.fluency ? 'Write fast' : 'Write') : 'Work it out'}
         {d.solved && <span className="chip">{d.writing ? 'Done' : 'Solved'}</span>}
+        {d.spoken && (
+          <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([props.block.markdown]))}>
+            {player.current ? 'Stop' : 'Listen'}
+          </button>
+        )}
       </div>
-      <Markdown>{props.block.markdown}</Markdown>
+      {!d.spoken && <Markdown>{props.block.markdown}</Markdown>}
+      {player.error && <div className="error">{player.error}</div>}
 
       <Ladder data={d} />
 
@@ -353,6 +367,13 @@ function ChallengeCard(props: { block: Block; disabled: boolean; onAct: Act }) {
             />
             <div className="row">
               <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
+              {d.spoken && (
+                <Mic
+                  onClip={(clip) => transcribe(clip, d.lang).then((t) => setText((v) => (v ? `${v} ${t}` : t)))}
+                  onError={props.onError}
+                  disabled={props.disabled}
+                />
+              )}
               <button className="btn primary" disabled={props.disabled || !text.trim()}>
                 Submit attempt
               </button>
@@ -367,6 +388,65 @@ function ChallengeCard(props: { block: Block; disabled: boolean; onAct: Act }) {
 
 type Act = (action: string, body?: unknown) => void
 
+const WEAK_WORD = 0.5
+
+function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean; onAct: Act; onError: (m: string) => void }) {
+  const d = props.block.data as SpeakingData
+  const open = !d.solved && d.solution === null
+  const player = usePlayer(d.lang, props.speech)
+  const marks = d.marks ?? []
+
+  async function upload(clip: Blob) {
+    const form = new FormData()
+    form.append('audio', clip, 'clip.webm')
+    const res = await fetch(`/api/blocks/${props.block.id}/speak`, { method: 'POST', body: form })
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? res.statusText)
+  }
+
+  return (
+    <section id={`block-${props.block.id}`} className="block challenge speaking">
+      <div className="label">
+        {d.speaking === 'shadow' ? 'Listen, then say it the same way' : 'Read aloud'}
+        {d.solved && <span className="chip">Done</span>}
+        <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([props.block.markdown]))}>
+          {player.current ? 'Stop' : 'Listen'}
+        </button>
+      </div>
+      {(d.speaking === 'read' || d.scores.length > 0) && (
+        <p className="spoken-text" lang={d.lang}>
+          {splitBy(props.block.markdown, marks).map((piece, j) => (piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text))}
+        </p>
+      )}
+      {player.error && <div className="error">{player.error}</div>}
+      {d.scores.map((a, i) => (
+        <div key={i} className="attempt">
+          <span className="label">
+            Attempt {i + 1} · {Math.round(a.score * 100)}%
+          </span>
+          <span lang={d.lang}>
+            {a.words.map((w, j) => (
+              <span key={j} className={w.score < WEAK_WORD ? 'word weak' : 'word'} title={`${Math.round(w.score * 100)}%`}>
+                {w.word}{' '}
+              </span>
+            ))}
+            {a.heard !== null && <span className="small"> · heard: “{a.heard}”</span>}
+          </span>
+        </div>
+      ))}
+      <HintList data={d} />
+      {open && (
+        <>
+          <div className="row">
+            <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
+            <Mic onClip={upload} onError={props.onError} label="Record" disabled={props.disabled} />
+          </div>
+          <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />
+        </>
+      )}
+    </section>
+  )
+}
+
 function Ladder({ data: d }: { data: ChallengeData }) {
   return (
     <>
@@ -380,6 +460,14 @@ function Ladder({ data: d }: { data: ChallengeData }) {
           </span>
         </div>
       ))}
+      <HintList data={d} />
+    </>
+  )
+}
+
+function HintList({ data: d }: { data: ChallengeData }) {
+  return (
+    <>
       {d.hints.map((h, i) => (
         <div key={i} className="hint">
           <div className="label">
@@ -517,7 +605,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
   )
 }
 
-const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab'])
+const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking'])
 
 function cardLabel(b: Block): string {
   const d = (b.data ?? {}) as { writing?: boolean; files?: string[]; title?: string }
@@ -527,6 +615,7 @@ function cardLabel(b: Block): string {
   if (b.kind === 'quiz') return `Quick check · ${short}`
   if (b.kind === 'reading') return `Reading · ${d.title ?? short}`
   if (b.kind === 'vocab') return 'Vocabulary check'
+  if (b.kind === 'speaking') return `Speaking · ${short}`
   if (b.kind === 'exercise') return `Exercise · ${d.files?.[0] ?? short}`
   return `${d.writing ? 'Writing' : 'Challenge'} · ${short}`
 }
@@ -562,7 +651,7 @@ function CardDivider({ block }: { block: Block }) {
 function conceptStats(concept: Concept, lesson: Lesson | undefined): string {
   if (!lesson) return concept.known ? 'placed out' : 'not started'
   const cs = lesson.blocks
-    .filter((b) => b.kind === 'challenge' || b.kind === 'exercise')
+    .filter((b) => b.kind === 'challenge' || b.kind === 'exercise' || b.kind === 'speaking')
     .map((b) => b.data as ChallengeData)
   if (cs.length === 0) return 'started'
   const hints = cs.reduce((n, c) => n + c.hints.length, 0)
@@ -864,7 +953,18 @@ function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) 
               key={b.id}
               block={b}
               disabled={lesson.running}
+              speech={speech}
               onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
+              onError={setError}
+            />
+          ) : b.kind === 'speaking' ? (
+            <SpeakingCard
+              key={b.id}
+              block={b}
+              disabled={lesson.running}
+              speech={speech}
+              onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
+              onError={setError}
             />
           ) : (
             <section key={b.id} className="block">
@@ -949,7 +1049,7 @@ function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) 
             onKeyDown={onKey}
           />
           <div className="row">
-            {speech && <Mic onText={(text) => setDraft((d) => (d ? `${d} ${text}` : text))} onError={setError} />}
+            {speech && <Mic onClip={(clip) => transcribe(clip).then((t) => setDraft((d) => (d ? `${d} ${t}` : t)))} onError={setError} />}
             {lesson.running && (
               <button className="btn" onClick={() => post(`/api/lessons/${lesson.id}/stop`, {})}>
                 Stop
@@ -966,7 +1066,15 @@ function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) 
 }
 
 /** Push-to-talk: records while pressed, sends the clip to the recogniser, hands back the transcript. */
-function Mic(props: { onText: (text: string) => void; onError: (message: string) => void }) {
+async function transcribe(clip: Blob, lang?: string): Promise<string> {
+  const form = new FormData()
+  form.append('audio', clip, 'clip.webm')
+  const res = await fetch(`/api/stt${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? res.statusText)
+  return (await res.json()).text
+}
+
+function Mic(props: { onClip: (clip: Blob) => Promise<void>; onError: (message: string) => void; label?: string; disabled?: boolean }) {
   const [recording, setRecording] = useState(false)
   const recorder = useRef<MediaRecorder | null>(null)
 
@@ -976,17 +1084,9 @@ function Mic(props: { onText: (text: string) => void; onError: (message: string)
       const chunks: Blob[] = []
       const rec = new MediaRecorder(stream)
       rec.ondataavailable = (e) => chunks.push(e.data)
-      rec.onstop = async () => {
+      rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop())
-        const form = new FormData()
-        form.append('audio', new Blob(chunks, { type: rec.mimeType }), 'clip.webm')
-        try {
-          const res = await fetch('/api/stt', { method: 'POST', body: form })
-          if (!res.ok) return props.onError((await res.json().catch(() => null))?.detail ?? res.statusText)
-          props.onText((await res.json()).text)
-        } catch (err) {
-          props.onError((err as Error).message)
-        }
+        props.onClip(new Blob(chunks, { type: rec.mimeType })).catch((err: Error) => props.onError(err.message))
       }
       rec.start()
       recorder.current = rec
@@ -1006,15 +1106,16 @@ function Mic(props: { onText: (text: string) => void; onError: (message: string)
     <button
       type="button"
       className={recording ? 'btn recording' : 'btn'}
-      aria-label={recording ? 'Stop recording' : 'Speak your message'}
-      title={recording ? 'Stop and transcribe' : 'Speak your message'}
+      disabled={props.disabled && !recording}
+      aria-label={recording ? 'Stop recording' : (props.label ?? 'Speak your message')}
+      title={recording ? 'Stop recording' : (props.label ?? 'Speak your message')}
       onClick={recording ? stop : start}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
         <rect x="9" y="3" width="6" height="11" rx="3" />
         <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
       </svg>
-      {recording ? ' Stop' : ''}
+      {recording ? ' Stop' : props.label ? ` ${props.label}` : ''}
     </button>
   )
 }

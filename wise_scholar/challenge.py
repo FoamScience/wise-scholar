@@ -1,4 +1,4 @@
-KINDS = ("challenge", "exercise")
+KINDS = ("challenge", "exercise", "speaking")
 REVEAL_AFTER = 3
 MAX_HINTS = 3
 
