@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { splitBy } from './text'
+import { useEffect, useRef, useState } from 'react'
+import { splitBy, splitSentences } from './text'
 
 type ReadingData = {
   title: string
@@ -16,57 +16,135 @@ const STRAND_LABELS: [keyof Strands, string][] = [
   ['language', 'Grammar, words'],
   ['fluency', 'Fluency'],
 ]
+const SLOW_RATE = 0.8
 
-export function ReadingCard(props: { id: number; text: string; data: unknown; onAdd: (word: string) => void }) {
+/** Plays sentences one after another through the local voice, or the browser voice when speech is off. */
+function usePlayer(lang: string, local: boolean) {
+  const [current, setCurrent] = useState<string | null>(null)
+  const [slow, setSlow] = useState(false)
+  const [error, setError] = useState('')
+  const audio = useRef<HTMLAudioElement | null>(null)
+  const slowRef = useRef(false)
+  const run = useRef(0)
+
+  function stop() {
+    run.current += 1
+    audio.current?.pause()
+    audio.current = null
+    speechSynthesis.cancel()
+    setCurrent(null)
+  }
+
+  useEffect(() => stop, [])
+
+  function setSlowRate(on: boolean) {
+    slowRef.current = on
+    setSlow(on)
+    if (audio.current) audio.current.playbackRate = on ? SLOW_RATE : 1
+  }
+
+  async function play(sentences: string[]) {
+    stop()
+    const mine = run.current
+    setError('')
+    const url = (s: string) => `/api/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(s)}`
+    for (let i = 0; i < sentences.length && run.current === mine; i++) {
+      setCurrent(sentences[i])
+      if (local) {
+        if (i + 1 < sentences.length) fetch(url(sentences[i + 1])).catch(() => {})
+        const res = await fetch(url(sentences[i])).catch(() => null)
+        if (run.current !== mine) return
+        if (!res?.ok) {
+          setError((await res?.json().catch(() => null))?.detail ?? 'The voice service did not answer.')
+          break
+        }
+        const src = URL.createObjectURL(await res.blob())
+        const clip = new Audio(src)
+        clip.playbackRate = slowRef.current ? SLOW_RATE : 1
+        audio.current = clip
+        await new Promise<void>((done) => {
+          clip.onended = () => done()
+          clip.onerror = () => done()
+          clip.play().catch(() => done())
+        })
+        URL.revokeObjectURL(src)
+      } else {
+        await new Promise<void>((done) => {
+          const u = new SpeechSynthesisUtterance(sentences[i])
+          u.lang = lang
+          u.rate = slowRef.current ? SLOW_RATE : 1
+          u.onend = () => done()
+          u.onerror = () => done()
+          speechSynthesis.speak(u)
+        })
+      }
+    }
+    if (run.current === mine) setCurrent(null)
+  }
+
+  return { current, slow, setSlow: setSlowRate, error, play, stop }
+}
+
+export function ReadingCard(props: {
+  id: number
+  text: string
+  data: unknown
+  speech: boolean
+  onAdd: (word: string) => void
+}) {
   const d = props.data as ReadingData
   const [word, setWord] = useState<string | null>(null)
   const [shown, setShown] = useState(false)
-  const [speaking, setSpeaking] = useState(false)
   const gloss = d.glossary.find((g) => g.word === word)
-
-  function listen() {
-    speechSynthesis.cancel()
-    if (speaking) return setSpeaking(false)
-    const utterance = new SpeechSynthesisUtterance(props.text)
-    utterance.lang = d.lang
-    utterance.onend = () => setSpeaking(false)
-    speechSynthesis.speak(utterance)
-    setSpeaking(true)
-  }
+  const paragraphs = props.text.split(/\n\s*\n/).map(splitSentences)
+  const player = usePlayer(d.lang, props.speech)
 
   return (
     <section className="block reading">
       <div className="reading-head">
         <div className="label">Read · tap a marked word for its meaning</div>
-        <button type="button" className="btn" onClick={listen}>
-          {speaking ? 'Stop' : 'Listen'}
+        <label className="small">
+          <input type="checkbox" checked={player.slow} onChange={(e) => player.setSlow(e.target.checked)} /> slow
+        </label>
+        <button
+          type="button"
+          className="btn"
+          title={props.speech ? 'Local voice' : 'Browser voice; run make speech for a natural one'}
+          onClick={() => (player.current ? player.stop() : player.play(paragraphs.flat()))}
+        >
+          {player.current ? 'Stop' : 'Listen'}
         </button>
       </div>
       <h2 lang={d.lang}>{d.title}</h2>
-      {props.text.split(/\n\s*\n/).map((paragraph, i) => (
+      {paragraphs.map((sentences, i) => (
         <p key={i} lang={d.lang}>
-          {splitBy(
-            paragraph,
-            d.glossary.map((g) => g.word),
-          ).map((piece, j) =>
-            piece.hit ? (
-              <button
-                key={j}
-                type="button"
-                className={piece.text === word ? 'gloss open' : 'gloss'}
-                onClick={() => {
-                  setWord(piece.text)
-                  setShown(false)
-                }}
-              >
-                {piece.text}
-              </button>
-            ) : (
-              piece.text
-            ),
-          )}
+          {sentences.map((sentence, k) => (
+            <span key={k} className={sentence === player.current ? 'sentence playing' : 'sentence'}>
+              {splitBy(
+                sentence,
+                d.glossary.map((g) => g.word),
+              ).map((piece, j) =>
+                piece.hit ? (
+                  <button
+                    key={j}
+                    type="button"
+                    className={piece.text === word ? 'gloss open' : 'gloss'}
+                    onClick={() => {
+                      setWord(piece.text)
+                      setShown(false)
+                    }}
+                  >
+                    {piece.text}
+                  </button>
+                ) : (
+                  piece.text
+                ),
+              )}{' '}
+            </span>
+          ))}
         </p>
       ))}
+      {player.error && <div className="error">{player.error}</div>}
       {gloss && (
         <div className="hint gloss-panel">
           <span className="grow">

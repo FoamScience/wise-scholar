@@ -1,4 +1,4 @@
-.PHONY: dev dev-server dev-web build serve test
+.PHONY: dev dev-server dev-web build serve test speech
 
 WISE_SCHOLAR_PORT ?= 8321
 export WISE_SCHOLAR_PORT
@@ -24,3 +24,7 @@ serve: build
 test: web/node_modules
 	uv run pytest -q
 	cd web && npm test
+
+# Opt-in: installs the speech environment (torch, Chatterbox, whisper, Piper) and downloads the models, about 7 GB.
+speech:
+	cd speech && uv sync && uv run --no-sync python worker.py --download

@@ -8,6 +8,7 @@ dependencies = [
     "fsrs>=6.3.2",
     "httpx>=0.28.1",
     "mcp>=2.2.0",
+    "python-multipart>=0.0.32",
     "uvicorn>=0.54.0",
 ]
 

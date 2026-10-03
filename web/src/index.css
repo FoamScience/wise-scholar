@@ -1129,3 +1129,25 @@ mark {
   overflow-x: auto;
   overflow-y: hidden;
 }
+
+/* speech */
+
+.sentence.playing {
+  background: var(--teal-tint);
+  box-shadow: 0 0 0 2px var(--teal-tint);
+  border-radius: 3px;
+}
+
+.reading-head .small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 10px;
+}
+
+.btn.recording {
+  background: #8f2d0f;
+  border-color: #8f2d0f;
+  color: #ffffff;
+}

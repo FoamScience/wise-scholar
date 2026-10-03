@@ -8,3 +8,11 @@ export function splitBy(text: string, needles: string[]): { text: string; hit: b
     .filter(Boolean)
     .map((piece) => ({ text: piece, hit: found.includes(piece) }))
 }
+
+/** Split a paragraph into sentences at ., !, ? followed by whitespace; abbreviations are not handled. */
+export function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?…])\s+(?=\S)/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
