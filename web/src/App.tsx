@@ -9,6 +9,7 @@ import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { Correction } from './Diff'
+import { FigureCard } from './Figure'
 import { SourcesPanel } from './Sources'
 import type { Source } from './Sources'
 import { usePlayer } from './player'
@@ -113,6 +114,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   pose_challenge: 'preparing a challenge…',
   pose_exercise: 'preparing an exercise…',
   add_reading: 'writing a text for you…',
+  add_figure: 'drawing a figure…',
   pose_writing: 'preparing a writing task…',
   bash: 'testing in the workspace…',
   read: 'reading your files…',
@@ -137,6 +139,7 @@ const LESSON_AREA_TOOLS = [
   'pose_exercise',
   'pose_quiz',
   'add_reading',
+  'add_figure',
   'pose_writing',
   'pose_vocab_check',
   'pose_speaking',
@@ -1173,6 +1176,8 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
               onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
               onError={setError}
             />
+          ) : b.kind === 'figure' ? (
+            <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} />
           ) : b.kind === 'placement' ? (
             <section key={b.id} className="block">
               <div className="label">

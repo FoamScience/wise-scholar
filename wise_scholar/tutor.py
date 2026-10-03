@@ -9,7 +9,7 @@ import simplemma
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel
 
-from . import challenge, db, hub, quiz, speech, vocab
+from . import challenge, db, figures, hub, quiz, speech, vocab
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
 mcp = MCPServer("scholar")
@@ -260,6 +260,34 @@ async def set_known(course_id: int, known: list[str], unknown: list[str]) -> str
     db.set_known(course_id, known, unknown)
     hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id)})
     return "updated"
+
+
+@mcp.tool()
+async def add_figure(lesson_id: int, svg: str, caption: str, alt: str) -> str:
+    """Show a figure you draw yourself as SVG: a schematic, a labelled structure, an apparatus sketch, a force
+    diagram, a small infographic.
+
+    svg: a complete <svg> with a viewBox (no wider than 3:2), transparent background, shapes and paths, labels
+    as <text> elements readable at 600 px wide. Fills and strokes from the palette only: teal #0b5f5a, teal tint
+    #e1f0ee, amber #6b3a00, amber tint #fbebd3, line #8794a1; text and outlines in currentColor so both themes
+    read it. No script, style element, image, foreignObject or external links; they are stripped or refused.
+    caption: one sentence under the figure. alt: what the figure shows, for a reader who cannot see it.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if not alt.strip():
+        return "error: alt text is required"
+    if problem := pretest_blocker(lesson):
+        return f"refused: {problem}"
+    try:
+        drawing = figures.clean(svg)
+    except ValueError as e:
+        return f"error: {e}"
+    block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": alt.strip()})
+    block = db.set_block_data(block["id"], {"svg": figures.prefix_ids(drawing, f"f{block['id']}-"), "alt": alt.strip()})
+    _show(lesson, block)
+    return f"shown as figure {block['id']}"
 
 
 @mcp.tool()

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Self-hosted AI tutor: research-grounded learning mechanisms driven by agent backends"
 requires-python = ">=3.11"
 dependencies = [
+    "defusedxml>=0.7.1",
     "ebooklib>=0.20",
     "fastapi>=0.142.2",
     "fsrs>=6.3.2",

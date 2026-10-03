@@ -67,3 +67,8 @@ test('a correction shows removed and added words, and nothing for an identical t
   const same = renderToStaticMarkup(createElement(Correction, { attempt: 'Gut.', corrected: 'Gut.' }))
   assert.ok(!same.includes('<del>') && same.includes('already matched'))
 })
+
+test('a figure embedded in prose renders as an image with its alt text', () => {
+  const html = render('See ![a labelled cell](/api/figures/12.svg) above.')
+  assert.ok(html.includes('<img') && html.includes('src="/api/figures/12.svg"') && html.includes('alt="a labelled cell"'))
+})
