@@ -1471,3 +1471,23 @@ pre:has(> .mermaid) {
   font-size: 13px;
   color: var(--muted);
 }
+
+.plot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plot h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.plot-box {
+  overflow-x: auto;
+}
+
+.plot-box svg {
+  max-width: 100%;
+  height: auto;
+}

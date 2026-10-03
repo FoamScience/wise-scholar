@@ -379,6 +379,7 @@ def delete_course(course_id: int) -> None:
         raise HTTPException(409, "the tutor is still answering in this course")
     db.delete_course(course_id)
     shutil.rmtree(db.workspace(course["slug"]), ignore_errors=True)
+    shutil.rmtree(SOURCES / str(course_id), ignore_errors=True)
 
 
 @app.post("/api/courses")

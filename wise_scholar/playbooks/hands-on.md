@@ -19,6 +19,8 @@ Teach each concept through one small exercise in the learner's workspace, themed
 
 When writing from a blank file is too much, give the starter file as the right lines in the wrong order and ask the learner to put them in order.
 
+When an exercise computes or measures numbers, have it write them to a CSV in the workspace and show the result with `add_plot` from that file, so the learner sees what their own code produced.
+
 Keep exercises short enough to finish in one sitting. When a check fails, give the smallest hint that unblocks the next step, never the finished code.
 
 If the `[known]` facts name a language or tool the learner already uses, bridge from it in every step: show the known form next to the new one, and warn where the two look alike but behave differently. Ask the learner to predict those cases before running them.

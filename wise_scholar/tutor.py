@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import re
+import sqlite3
+import unicodedata
 from datetime import datetime, timezone
 from collections import Counter
 from typing import Literal
@@ -9,7 +11,7 @@ import simplemma
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel
 
-from . import challenge, db, figures, hub, quiz, speech, vocab
+from . import challenge, db, figures, hub, plots, quiz, speech, vocab
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
 mcp = MCPServer("scholar")
@@ -288,6 +290,38 @@ async def add_figure(lesson_id: int, svg: str, caption: str, alt: str) -> str:
     block = db.set_block_data(block["id"], {"svg": figures.prefix_ids(drawing, f"f{block['id']}-"), "alt": alt.strip()})
     _show(lesson, block)
     return f"shown as figure {block['id']}"
+
+
+@mcp.tool()
+async def add_plot(lesson_id: int, title: str, spec: dict, alt: str) -> str:
+    """Show a plot: a function, a comparison of numbers, or data from a file in the workspace.
+
+    spec: {"x": {"label": "t (s)", "domain"?: [a, b], "grid"?: true, "type"?: "log"}, "y": {...},
+    "marks": [...]} where each mark is one of
+      {"type": "line", "fn": "sin(x)/x", "domain": [-10, 10], "samples"?: 200, "label"?: "sinc"} — sampled here,
+          never compute points yourself; x, numbers, + - * / ** and sin cos tan exp log sqrt abs pi e ...
+      {"type": "line"|"dot"|"bar"|"area", "data": [{"t": 0, "v": 1.2, "case": "A"}, ...], "x": "t", "y": "v",
+          "stroke"?: "case" (or "fill" for bar/area), "label"?: "..."} — up to 2,000 rows inline
+      {"type": "line"|"dot"|..., "file": "results.csv", "x": "t", "y": "residual", "stroke"?: "case"} — a CSV or
+          TSV in the course workspace, read here
+      {"type": "rule", "y": 0} or {"type": "rule", "x": 0}; {"type": "text", "data": [{"x", "y", "text"}]};
+      {"type": "rect", "data": [...], "x1", "x2", "y1", "y2"}.
+    Name the quantity and unit on each axis label. One finding per plot. alt: what the plot shows, in words.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if not alt.strip():
+        return "error: alt text is required"
+    if problem := pretest_blocker(lesson):
+        return f"refused: {problem}"
+    try:
+        resolved = plots.resolve(spec, db.workspace(lesson["slug"]))
+    except ValueError as e:
+        return f"error: {e}"
+    block = db.add_block(lesson_id, "plot", title, {"spec": resolved, "alt": alt.strip()})
+    _show(lesson, block)
+    return f"shown as plot {block['id']}"
 
 
 @mcp.tool()

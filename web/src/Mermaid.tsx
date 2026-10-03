@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTheme } from './theme'
 
 let seq = 0
 
@@ -29,24 +30,6 @@ function themeVariables() {
     noteBorderColor: v('--amber-line'),
     fontFamily: v('--sans'),
   }
-}
-
-/** A key that changes whenever the shown theme does: the toggle or the system setting. */
-function useTheme(): string {
-  const current = () => `${document.documentElement.dataset.theme ?? ''}|${matchMedia('(prefers-color-scheme: dark)').matches}`
-  const [theme, setTheme] = useState(() => (typeof document === 'undefined' ? '' : current()))
-  useEffect(() => {
-    const update = () => setTheme(current())
-    const observer = new MutationObserver(update)
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-    const media = matchMedia('(prefers-color-scheme: dark)')
-    media.addEventListener('change', update)
-    return () => {
-      observer.disconnect()
-      media.removeEventListener('change', update)
-    }
-  }, [])
-  return theme
 }
 
 export default function Mermaid({ code }: { code: string }) {
