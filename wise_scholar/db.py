@@ -185,6 +185,24 @@ MIGRATIONS = [
         INSERT INTO source_fts(source_fts, rowid, title, text) VALUES ('delete', old.id, old.title, old.text);
     END;
     """,
+    """
+    CREATE TABLE capstones (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        module TEXT NOT NULL,
+        title TEXT NOT NULL,
+        brief TEXT NOT NULL,
+        folder TEXT NOT NULL,
+        UNIQUE (course_id, module)
+    );
+    CREATE TABLE milestones (
+        id INTEGER PRIMARY KEY,
+        capstone_id INTEGER NOT NULL REFERENCES capstones(id) ON DELETE CASCADE,
+        concept_id INTEGER NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+        deliverable TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0
+    );
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -613,3 +631,44 @@ def source_section(section_id: int) -> dict | None:
         "SELECT s.*, src.name, src.course_id FROM source_sections s JOIN sources src ON src.id = s.source_id WHERE s.id = ?",
         section_id,
     )
+
+
+def add_capstone(course_id: int, module: str, title: str, brief: str, folder: str, milestones: list[tuple[int, str]]) -> dict:
+    capstone_id = conn.execute(
+        "INSERT INTO capstones (course_id, module, title, brief, folder) VALUES (?, ?, ?, ?, ?)", (course_id, module, title, brief, folder)
+    ).lastrowid
+    conn.executemany(
+        "INSERT INTO milestones (capstone_id, concept_id, deliverable) VALUES (?, ?, ?)",
+        [(capstone_id, concept_id, deliverable) for concept_id, deliverable in milestones],
+    )
+    return capstones(course_id, capstone_id)[0]
+
+
+def capstones(course_id: int, capstone_id: int | None = None) -> list[dict]:
+    """A course's capstone projects with their milestones in map order."""
+    out = []
+    for c in rows("SELECT * FROM capstones WHERE course_id = ?" + (" AND id = ?" if capstone_id else ""), *(course_id, capstone_id) if capstone_id else (course_id,)):
+        c["milestones"] = rows(
+            "SELECT m.*, k.title AS concept FROM milestones m JOIN concepts k ON k.id = m.concept_id WHERE m.capstone_id = ? ORDER BY k.id",
+            c["id"],
+        )
+        c["done"] = sum(m["done"] for m in c["milestones"])
+        out.append(c)
+    return out
+
+
+def milestone_for(concept_id: int) -> dict | None:
+    """The capstone and milestone a concept carries, with its position in the module."""
+    m = row(
+        "SELECT m.*, c.title AS capstone, c.brief, c.folder, c.module, c.id AS capstone_id FROM milestones m "
+        "JOIN capstones c ON c.id = m.capstone_id WHERE m.concept_id = ?",
+        concept_id,
+    )
+    if m:
+        order = [x["concept_id"] for x in rows("SELECT m.concept_id FROM milestones m JOIN concepts k ON k.id = m.concept_id WHERE m.capstone_id = ? ORDER BY k.id", m["capstone_id"])]
+        m["position"], m["total"] = order.index(concept_id) + 1, len(order)
+    return m
+
+
+def finish_milestone(milestone_id: int) -> None:
+    conn.execute("UPDATE milestones SET done = 1 WHERE id = ?", (milestone_id,))
