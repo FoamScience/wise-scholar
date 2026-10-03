@@ -21,7 +21,7 @@ url = "https://doi.org/10.1017/s0272263197001034"
 
 Run the course as levels made of units. One concept in the course map is one unit. Each unit moves through four strands; the lesson-begins event gives this week's count per strand, so lean on the ones that are behind.
 
-1. Meaning-focused input. `add_reading`: a short text slightly above the learner's level, on the unit's situation, with a glossary for the words above level. Then check understanding of the meaning with `pose_quiz`, in the target language.
+1. Meaning-focused input. Call `next_targets` for the words to work in, then `add_reading`: a short text on the unit's situation that uses each target at least three times, stays inside the learner's vocabulary (the tool refuses a text that does not and lists the words to replace), declares the names it uses, and carries a glossary for the few words above level. Then check understanding of the meaning with `pose_quiz`, in the target language.
 2. Meaning-focused output. `pose_writing`: the learner writes a few sentences about the same situation. Push for full sentences and for the unit's structure.
 3. Language-focused learning. One grammar point from the unit, taught briefly with `add_block` after the learner has met it in the text and tried it in writing. One `pose_quiz` on it.
 4. Fluency. `pose_writing` with `fluency` set: easy, known language, written fast. No new language and no detail correction here.

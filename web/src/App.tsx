@@ -56,7 +56,7 @@ type CourseDetail = Course & {
   concepts: Concept[]
   lessons: Lesson[]
   strands: { input: number; output: number; language: number; fluency: number } | null
-  vocabulary: { total: number; due: number }
+  vocabulary: { total: number; due: number; tier?: number; tier_size?: number; tier_known?: number; tier_words?: number }
 }
 
 type TutorEvent =
@@ -839,6 +839,7 @@ function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) 
               data={b.data}
               speech={speech}
               onAdd={(word) => post(`/api/blocks/${b.id}/vocabulary`, { word })}
+              onKnown={(word) => post(`/api/blocks/${b.id}/known`, { word })}
             />
           ) : b.kind === 'exercise' ? (
             <ExerciseCard
