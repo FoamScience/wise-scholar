@@ -38,6 +38,11 @@ mcp_app = tutor.mcp.streamable_http_app(stateless_http=True, json_response=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # A cast still rendering when the last process stopped will never finish.
+    db.conn.execute(
+        "UPDATE blocks SET data = json_set(data, '$.status', 'failed', '$.error', 'the server restarted') "
+        "WHERE kind = 'podcast' AND json_extract(data, '$.status') = 'rendering'"
+    )
     async with tutor.mcp.session_manager.run():
         await backend.start()
         try:
@@ -266,6 +271,14 @@ async def text_to_speech(text: str, lang: str) -> FileResponse:
         raise HTTPException(503, str(e)) from None
 
 
+@app.get("/api/audio/podcasts/{name}")
+async def podcast_audio(name: str) -> FileResponse:
+    path = speech.AUDIO / "podcasts" / name
+    if not (name.endswith(".opus") and name[:-5].isdigit() and path.exists()):
+        raise HTTPException(404, "no such cast")
+    return FileResponse(path, media_type="audio/ogg")
+
+
 @app.post("/api/stt")
 async def speech_to_text(audio: UploadFile, lang: str | None = None) -> dict:
     data = await audio.read(CLIP_LIMIT + 1)
@@ -464,6 +477,8 @@ async def open_concept(concept_id: int) -> dict:
         strands += "\nSpeaking tasks: " + ("available" if speech.available() else "off on this install, use writing instead")
         if lesson["lang"]:
             strands += "\n" + tutor.vocab_brief(lesson, lesson["lang"])
+    if speech.PODCASTS and speech.available():
+        strands += "\nCasts (experimental): make_podcast is available when a recap or quiz-cast would serve this lesson"
     earlier = history.digest([
         _lesson_view(row["id"])
         for row in db.rows(

@@ -1212,3 +1212,17 @@ mark {
   align-items: center;
   gap: 6px;
 }
+
+.podcast details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.transcript p {
+  margin: 6px 0;
+}
+
+.transcript p.current {
+  background: var(--teal-tint);
+}
