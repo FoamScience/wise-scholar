@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import Markdown from './Md'
 import { api } from './api'
@@ -17,7 +17,7 @@ type Course = {
   level: string | null
   archived: number
 }
-type Message = { id: number; lesson_id: number; role: 'learner' | 'tutor'; text: string }
+type Message = { id: number; lesson_id: number; role: 'learner' | 'tutor'; text: string; created: string }
 type QuestionData = { options: string[]; answer: string | null }
 type ChallengeData = {
   attempts: string[]
@@ -31,7 +31,7 @@ type ChallengeData = {
   fluency?: boolean
   marks?: string[]
 }
-type Block = { id: number; lesson_id: number; kind: string; markdown: string; data: unknown }
+type Block = { id: number; lesson_id: number; kind: string; markdown: string; data: unknown; created: string }
 type Concept = { id: number; module: string; title: string; known: number; mastery: number | null }
 type Lesson = {
   id: number
@@ -276,7 +276,7 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
 
   if (answer !== null)
     return (
-      <section className="block answered">
+      <section id={`block-${props.block.id}`} className="block answered">
         <div className="muted">{props.block.markdown}</div>
         <span className="chip">{answer}</span>
       </section>
@@ -288,7 +288,7 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   }
 
   return (
-    <section className="block question">
+    <section id={`block-${props.block.id}`} className="block question">
       <h2>{props.block.markdown}</h2>
       <div className="options">
         {options.map((o) => (
@@ -328,7 +328,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; onAct: Act }) {
   }
 
   return (
-    <section className="block challenge">
+    <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
         {d.writing ? (d.fluency ? 'Write fast' : 'Write') : 'Work it out'}
         {d.solved && <span className="chip">{d.writing ? 'Done' : 'Solved'}</span>}
@@ -463,7 +463,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
   }
 
   return (
-    <section className="block challenge">
+    <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
         Exercise
         {d.solved && <span className="chip">Solved</span>}
@@ -511,6 +511,47 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
       <Ladder data={d} />
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}
     </section>
+  )
+}
+
+const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading'])
+
+function cardLabel(b: Block): string {
+  const d = (b.data ?? {}) as { writing?: boolean; files?: string[]; title?: string }
+  const head = b.markdown.replace(/[*_`#>]/g, '').split('\n')[0].trim()
+  const short = head.length > 48 ? `${head.slice(0, 47)}…` : head
+  if (b.kind === 'question') return `Question · ${short}`
+  if (b.kind === 'quiz') return `Quick check · ${short}`
+  if (b.kind === 'reading') return `Reading · ${d.title ?? short}`
+  if (b.kind === 'exercise') return `Exercise · ${d.files?.[0] ?? short}`
+  return `${d.writing ? 'Writing' : 'Challenge'} · ${short}`
+}
+
+/** Which cards were posed before each message: the chat gets a labelled divider there. Key -1 = after the last message. */
+function cardDividers(lesson: Lesson): Map<number, Block[]> {
+  const cards = lesson.blocks.filter((b) => CARD_KINDS.has(b.kind))
+  const out = new Map<number, Block[]>()
+  let next = 0
+  for (const m of lesson.messages) {
+    // A learner message from the same second came first: the card it triggered belongs after it.
+    while (next < cards.length && (cards[next].created < m.created || (cards[next].created === m.created && m.role === 'tutor'))) {
+      out.set(m.id, [...(out.get(m.id) ?? []), cards[next]])
+      next++
+    }
+  }
+  if (next < cards.length) out.set(-1, cards.slice(next))
+  return out
+}
+
+function CardDivider({ block }: { block: Block }) {
+  return (
+    <button
+      type="button"
+      className="divider"
+      onClick={() => document.getElementById(`block-${block.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+    >
+      <span>{cardLabel(block)}</span>
+    </button>
   )
 }
 
@@ -722,6 +763,7 @@ function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) 
   if (!course || !lesson) return <main className="home">{error && <div className="error">{error}</div>}</main>
 
   const showPlan = lesson.phase === 'interview' && course.ranking.length > 0
+  const dividers = cardDividers(lesson)
   const empty = lesson.blocks.length === 0 && !showPlan
 
   return (
@@ -857,17 +899,23 @@ function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) 
           </span>
         </div>
         <div className="messages">
-          {lesson.messages.map((m) =>
-            m.role === 'learner' ? (
-              <div key={m.id} className="bubble learner">
-                {m.text}
-              </div>
-            ) : (
-              <div key={m.id} className="bubble">
-                <Markdown>{m.text}</Markdown>
-              </div>
-            ),
-          )}
+          {lesson.messages.map((m) => (
+            <Fragment key={m.id}>
+              {(dividers.get(m.id) ?? []).map((b) => (
+                <CardDivider key={b.id} block={b} />
+              ))}
+              {m.role === 'learner' ? (
+                <div className="bubble learner">{m.text}</div>
+              ) : (
+                <div className="bubble">
+                  <Markdown>{m.text}</Markdown>
+                </div>
+              )}
+            </Fragment>
+          ))}
+          {(dividers.get(-1) ?? []).map((b) => (
+            <CardDivider key={b.id} block={b} />
+          ))}
           {streaming && (
             <div className="bubble">
               <Markdown>{streaming}</Markdown>

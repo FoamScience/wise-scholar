@@ -124,7 +124,7 @@ export function QuizCard(props: {
 }) {
   const d = props.data
   return (
-    <section className="block quiz">
+    <section id={`block-${props.id}`} className="block quiz">
       <div className="label">Quick check</div>
       <Markdown>{props.question}</Markdown>
       {d.answer === null ? (
