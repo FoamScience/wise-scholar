@@ -688,7 +688,34 @@ async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
 
 @app.get("/api/reviews")
 def reviews(profile: int) -> list[dict]:
-    return [quiz.public(c) for c in db.due_cards(profile, _now())]
+    return [quiz.public(c) for c in review.interleave(db.due_cards(profile, _now()))]
+
+
+# ponytail: a flat half minute per review; fit it to the answer timestamps if the plan is always off.
+REVIEW_MINUTES = 0.5
+SITTING_MINUTES = 30
+
+
+@app.get("/api/today")
+def today(profile: int) -> dict:
+    """What a sitting of 30 minutes holds: due reviews, then the next unit of each active course, and a ready cast."""
+    due = len(db.due_cards(profile, _now()))
+    units = []
+    for course in db.rows("SELECT id, topic FROM courses WHERE profile_id = ? AND archived = 0 ORDER BY id", profile):
+        mastery = db.concept_mastery(course["id"])
+        concepts = db.concepts(course["id"])
+        pending = next((c for c in concepts if not c["known"] and mastery.get(c["id"], 0) < 2 / 3), None)
+        if pending:
+            units.append({"course_id": course["id"], "topic": course["topic"], "concept_id": pending["id"], "title": pending["title"]})
+        elif not concepts:
+            units.append({"course_id": course["id"], "topic": course["topic"], "concept_id": None, "title": "Finish the interview"})
+    cast = db.row(
+        "SELECT b.id, b.lesson_id, b.markdown AS title, l.course_id FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+        "JOIN courses c ON c.id = l.course_id WHERE c.profile_id = ? AND c.archived = 0 AND b.kind = 'podcast' "
+        "AND json_extract(b.data, '$.status') = 'ready' ORDER BY b.id DESC LIMIT 1",
+        profile,
+    )
+    return {"due": due, "review_minutes": min(SITTING_MINUTES, round(due * REVIEW_MINUTES)), "units": units, "cast": cast}
 
 
 @app.post("/api/cards/{card_id}/review")

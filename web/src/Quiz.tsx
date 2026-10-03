@@ -141,7 +141,7 @@ export function QuizCard(props: {
   )
 }
 
-export function Review({ profile }: { profile: number }) {
+export function Review({ profile, then }: { profile: number; then: string | null }) {
   const [cards, setCards] = useState<DueCard[] | null>(null)
   const [index, setIndex] = useState(0)
   const [given, setGiven] = useState<{ answer: string; confidence: number } | null>(null)
@@ -160,7 +160,13 @@ export function Review({ profile }: { profile: number }) {
     return (
       <main className="home">
         <h1>{cards.length ? 'Review done' : 'Nothing is due'}</h1>
-        <a href="#/">Back to your courses</a>
+        {then ? (
+          <a className="btn primary as-link" href={then}>
+            On to the next unit
+          </a>
+        ) : (
+          <a href="#/">Back to your courses</a>
+        )}
       </main>
     )
 

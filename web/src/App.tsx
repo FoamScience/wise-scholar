@@ -128,6 +128,60 @@ function useHash(): string {
   return hash
 }
 
+type TodayPlan = {
+  due: number
+  review_minutes: number
+  units: { course_id: number; topic: string; concept_id: number | null; title: string }[]
+  cast: { id: number; lesson_id: number; title: string; course_id: number } | null
+}
+
+function unitHash(u: TodayPlan['units'][number]): string {
+  return u.concept_id === null ? `#/course/${u.course_id}` : `#/course/${u.course_id}?concept=${u.concept_id}`
+}
+
+/** The sitting as one plan: reviews first, then the next unit. Start walks through both. */
+function Today({ profile }: { profile: number }) {
+  const [plan, setPlan] = useState<TodayPlan | null>(null)
+  useEffect(() => {
+    api<TodayPlan>(`/api/today?profile=${profile}`).then(setPlan, () => {})
+  }, [profile])
+  if (!plan || (plan.due === 0 && plan.units.length === 0)) return null
+  const unit = plan.units[0]
+  const start = plan.due > 0 ? `#/review${unit ? `?then=${encodeURIComponent(unitHash(unit))}` : ''}` : unit ? unitHash(unit) : '#/review'
+  return (
+    <section className="block today">
+      <div className="label">Today · a sitting of 30 minutes</div>
+      <ol className="plan-steps">
+        {plan.due > 0 && (
+          <li>
+            {plan.due} {plan.due === 1 ? 'review' : 'reviews'} across your courses <span className="muted">· about {Math.max(1, plan.review_minutes)} min</span>
+          </li>
+        )}
+        {unit && (
+          <li>
+            {unit.topic}: {unit.title} <span className="muted">· the rest of the sitting</span>
+          </li>
+        )}
+        {plan.units.slice(1, 4).map((u) => (
+          <li key={u.course_id} className="muted">
+            Later: {u.topic}, {u.title}
+          </li>
+        ))}
+        {plan.cast && (
+          <li className="muted">
+            A cast is ready to listen to: <a href={`#/course/${plan.cast.course_id}`}>{plan.cast.title}</a>
+          </li>
+        )}
+      </ol>
+      <div className="row">
+        <a className="btn primary as-link" href={start}>
+          Start
+        </a>
+      </div>
+    </section>
+  )
+}
+
 function Home({ profile }: { profile: number }) {
   const [courses, setCourses] = useState<Course[]>([])
   const [topic, setTopic] = useState('')
@@ -183,6 +237,7 @@ function Home({ profile }: { profile: number }) {
         <div className="muted">The tutor interviews you first, then picks how to teach it.</div>
       </form>
       {error && <div className="error">{error}</div>}
+      <Today profile={profile} />
       <ReviewPanels profile={profile} />
       {active.length > 0 && (
         <section>
@@ -732,7 +787,7 @@ function Plan(props: {
   )
 }
 
-function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) {
+function Workspace({ courseId, speech, concept }: { courseId: number; speech: boolean; concept: number | null }) {
   const [course, setCourse] = useState<CourseDetail | null>(null)
   const [lessonId, setLessonId] = useState<number | null>(null)
   const [streaming, setStreaming] = useState('')
@@ -818,13 +873,22 @@ function Workspace({ courseId, speech }: { courseId: number; speech: boolean }) 
     api<CourseDetail>(`/api/courses/${courseId}`).then(
       (c) => {
         setCourse(c)
-        setLessonId(c.lessons[c.lessons.length - 1].id)
+        const wanted = concept === null ? undefined : c.lessons.find((l) => l.concept_id === concept)
+        setLessonId(wanted ? wanted.id : c.lessons[c.lessons.length - 1].id)
+        if (!wanted && concept !== null)
+          api<Lesson>(`/api/concepts/${concept}/lesson`, {}).then(
+            (created) => {
+              setCourse((cur) => cur && { ...cur, lessons: [...cur.lessons, created] })
+              setLessonId(created.id)
+            },
+            (err: Error) => setError(err.message),
+          )
         if (c.lessons.some((l) => l.running)) setActivity('thinking…')
       },
       (e) => setError(e.message),
     )
     return () => source.close()
-  }, [courseId])
+  }, [courseId, concept])
 
   useEffect(() => {
     chatBottom.current?.scrollIntoView({ block: 'end' })
@@ -1146,7 +1210,8 @@ export default function App() {
       () => {},
     )
   }, [])
-  const match = hash.match(/^#\/course\/(\d+)$/)
+  const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+))?$/)
+  const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
 
   function page() {
     if (!profiles) return null
@@ -1159,8 +1224,8 @@ export default function App() {
           }}
         />
       )
-    if (match) return <Workspace key={match[1]} courseId={Number(match[1])} speech={speech} />
-    if (hash === '#/review') return <Review profile={current.id} />
+    if (match) return <Workspace key={match[1]} courseId={Number(match[1])} speech={speech} concept={match[2] ? Number(match[2]) : null} />
+    if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} onSelect={select} onChanged={reload} />
     return <Home key={current.id} profile={current.id} />
