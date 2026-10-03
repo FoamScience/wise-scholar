@@ -9,6 +9,8 @@ import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { Correction } from './Diff'
+import { SourcesPanel } from './Sources'
+import type { Source } from './Sources'
 import { usePlayer } from './player'
 import { splitBy } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
@@ -81,6 +83,8 @@ type TutorEvent =
   | { type: 'plan.chosen'; mechanism: string }
   | { type: 'placement.set'; level: string; placement: string }
   | { type: 'map.set'; concepts: Concept[] }
+  | { type: 'source.updated'; source: Source }
+  | { type: 'source.removed'; id: number }
   | { type: 'lesson.created'; lesson: Lesson }
   | { type: 'turn.done'; lesson_id: number; ok: boolean; error: string | null; message: Message | null }
 
@@ -842,6 +846,7 @@ function Plan(props: {
 
 function Workspace({ courseId, speech, concept, start }: { courseId: number; speech: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
   const [course, setCourse] = useState<CourseDetail | null>(null)
+  const [sources, setSources] = useState<Source[]>([])
   const [lessonId, setLessonId] = useState<number | null>(null)
   const [streaming, setStreaming] = useState('')
   const [activity, setActivity] = useState('')
@@ -906,6 +911,10 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
         setCourse((c) => c && { ...c, mechanism: ev.mechanism })
       } else if (ev.type === 'placement.set') {
         setCourse((c) => c && { ...c, level: ev.level, placement: ev.placement })
+      } else if (ev.type === 'source.updated') {
+        setSources((all) => (all.some((s) => s.id === ev.source.id) ? all.map((s) => (s.id === ev.source.id ? ev.source : s)) : [...all, ev.source]))
+      } else if (ev.type === 'source.removed') {
+        setSources((all) => all.filter((s) => s.id !== ev.id))
       } else if (ev.type === 'map.set') {
         setCourse((c) => c && { ...c, concepts: ev.concepts })
       } else if (ev.type === 'lesson.created') {
@@ -923,6 +932,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
         if (!ev.ok && ev.error !== 'stopped') setError(ev.error ?? 'the turn failed')
       }
     }
+    api<Source[]>(`/api/courses/${courseId}/sources`).then(setSources, () => {})
     api<CourseDetail>(`/api/courses/${courseId}`).then(
       (c) => {
         setCourse(c)
@@ -1039,6 +1049,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
             story={course.lang !== null}
           />
         )}
+        {course.concepts.length > 0 && <SourcesPanel courseId={course.id} sources={sources} onChange={setSources} onError={setError} />}
         {course.lessons
           .filter((l) => l.concept_id === null)
           .map((l) => (

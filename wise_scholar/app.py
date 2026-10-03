@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 import simplemma
 
-from . import challenge, db, history, hub, quiz, review, speech, tutor, vocab
+from . import challenge, db, history, hub, quiz, review, sources, speech, tutor, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -25,6 +25,10 @@ WEB_DIST = db.ROOT / "web" / "dist"
 RUN_TIMEOUT = 30
 OUTPUT_LIMIT = 20_000
 CLIP_LIMIT = 25 * 1024 * 1024
+SOURCE_LIMIT = 50 * 1024 * 1024
+SOURCES_PER_COURSE = 20
+SOURCES = db.DB_PATH.parent / "sources"
+_jobs: set[asyncio.Task] = set()
 # ponytail: on synthesized references right words score 0.97+ and wrong ones under 0.45; real accents are untested.
 WEAK_WORD = 0.5
 MISMATCH_SHARE = 0.5
@@ -38,11 +42,12 @@ mcp_app = tutor.mcp.streamable_http_app(stateless_http=True, json_response=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # A cast still rendering when the last process stopped will never finish.
+    # A cast still rendering or a file still processing when the last process stopped will never finish.
     db.conn.execute(
         "UPDATE blocks SET data = json_set(data, '$.status', 'failed', '$.error', 'the server restarted') "
         "WHERE kind = 'podcast' AND json_extract(data, '$.status') = 'rendering'"
     )
+    db.conn.execute("UPDATE sources SET status = 'failed', error = 'the server restarted' WHERE status = 'processing'")
     async with tutor.mcp.session_manager.run():
         await backend.start()
         try:
@@ -481,6 +486,54 @@ async def retake_placement(course_id: int) -> dict:
     return view
 
 
+@app.get("/api/courses/{course_id}/sources")
+def list_sources(course_id: int) -> list[dict]:
+    _course(course_id)
+    return db.sources(course_id)
+
+
+@app.post("/api/courses/{course_id}/sources")
+async def upload_source(course_id: int, file: UploadFile) -> dict:
+    _course(course_id)
+    if len(db.sources(course_id)) >= SOURCES_PER_COURSE:
+        raise HTTPException(409, f"a course holds at most {SOURCES_PER_COURSE} files")
+    data = await file.read(SOURCE_LIMIT + 1)
+    if len(data) > SOURCE_LIMIT:
+        raise HTTPException(413, "files are limited to 50 MB")
+    name = Path(file.filename or "file").name
+    source = db.add_source(course_id, name, len(data))
+    path = SOURCES / str(course_id) / f"{source['id']}-{name}"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    job = asyncio.create_task(_process_source(source["id"], course_id, path))
+    _jobs.add(job)
+    job.add_done_callback(_jobs.discard)
+    return source
+
+
+async def _process_source(source_id: int, course_id: int, path: Path) -> None:
+    try:
+        parts = await asyncio.to_thread(sources.extract, path)
+        cut = sources.sections(parts, path.name.split("-", 1)[-1])
+        source = db.finish_source(source_id, cut, None if cut else "no text could be read from the file")
+    except Exception as e:
+        log.warning("source %s failed: %s", source_id, e)
+        source = db.finish_source(source_id, [], str(e))
+    if source:
+        hub.publish(course_id, {"type": "source.updated", "source": source})
+
+
+@app.post("/api/sources/{source_id}/delete")
+def delete_source(source_id: int) -> None:
+    source = db.row("SELECT * FROM sources WHERE id = ?", source_id)
+    if not source:
+        raise HTTPException(404, "no such file")
+    db.delete_source(source_id)
+    for path in (SOURCES / str(source["course_id"])).glob(f"{source_id}-*"):
+        path.unlink(missing_ok=True)
+    hub.publish(source["course_id"], {"type": "source.removed", "id": source_id})
+
+
 @app.post("/api/courses/{course_id}/episode")
 async def next_episode(course_id: int) -> dict:
     course = _course(course_id)
@@ -536,6 +589,10 @@ async def open_concept(concept_id: int) -> dict:
             strands += "\n" + tutor.vocab_brief(lesson, lesson["lang"])
     if speech.PODCASTS and speech.available():
         strands += "\nCasts (experimental): make_podcast is available when a recap or quiz-cast would serve this lesson"
+    if ready := [f for f in db.sources(concept["course_id"]) if f["status"] == "ready"]:
+        strands += "\nThe learner's own sources (search_sources, then read_source one section at a time): " + ", ".join(
+            f"{f['name']} ({f['sections']} sections)" for f in ready
+        )
     if open_errors := db.errors(lesson["profile_id"], concept["course_id"], open_only=True, limit=5):
         strands += "\nOpen entries in the learner's error notebook (revisit in new material, do not repeat the item): " + "; ".join(
             f"said {e['said'][:80]!r} for {e['prompt'][:80]!r}, right: {e['correct'][:80]!r}" + (f" (learner's note: {e['note'][:80]})" if e["note"] else "")

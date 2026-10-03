@@ -76,6 +76,6 @@ make test    # Python and web tests
 
 ## Where things live
 
-- `data/` holds the database. Before a schema upgrade the file is copied to `data/wise-scholar.db.v<N>.bak`.
+- `data/` holds the database, recordings and casts under `data/audio/`, and the files you add to a course under `data/sources/` (PDF, EPUB, HTML, Markdown, text, code; the tutor searches them and reads one section at a time). Before a schema upgrade the database is copied to `data/wise-scholar.db.v<N>.bak`.
 - `workspace/<course>/` holds each course's exercise files. Deleting a course removes its folder.
 - `.mcp.json` and `opencode.json` declare the tutor's MCP server for this repository only.
