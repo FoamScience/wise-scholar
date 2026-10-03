@@ -113,6 +113,27 @@ MIGRATIONS = [
     """
     ALTER TABLE courses ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
     """,
+    """
+    CREATE TABLE vocab_knowledge (
+        profile_id INTEGER NOT NULL REFERENCES profiles(id),
+        lang TEXT NOT NULL,
+        lemma TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('known', 'learning')),
+        exposures INTEGER NOT NULL DEFAULT 0,
+        source TEXT,
+        updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (profile_id, lang, lemma)
+    );
+    CREATE TABLE vocab_tiers (
+        profile_id INTEGER NOT NULL REFERENCES profiles(id),
+        lang TEXT NOT NULL,
+        tier INTEGER NOT NULL,
+        PRIMARY KEY (profile_id, lang)
+    );
+    ALTER TABLE courses ADD COLUMN lang TEXT;
+    ALTER TABLE cards ADD COLUMN lemma TEXT;
+    ALTER TABLE cards ADD COLUMN lang TEXT;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -222,7 +243,7 @@ def set_concepts(course_id: int, modules: list[dict]) -> None:
 
 def lesson(lesson_id: int) -> dict | None:
     return row(
-        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, p.name AS profile, k.title AS concept, k.module "
+        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, p.name AS profile, k.title AS concept, k.module "
         "FROM lessons l JOIN courses c ON c.id = l.course_id JOIN profiles p ON p.id = c.profile_id "
         "LEFT JOIN concepts k ON k.id = l.concept_id "
         "WHERE l.id = ?",
@@ -365,3 +386,54 @@ def facts(course_id: int) -> list[dict]:
 
 def learner_facts(profile_id: int) -> list[dict]:
     return rows("SELECT id, text FROM facts WHERE course_id IS NULL AND profile_id = ? ORDER BY id", profile_id)
+
+
+def course_lang(course_id: int, lang: str) -> None:
+    conn.execute("UPDATE courses SET lang = COALESCE(lang, ?) WHERE id = ?", (lang, course_id))
+
+
+def vocab_tier(profile_id: int, lang: str, default: int) -> int:
+    row_ = row("SELECT tier FROM vocab_tiers WHERE profile_id = ? AND lang = ?", profile_id, lang)
+    return row_["tier"] if row_ else default
+
+
+def set_vocab_tier(profile_id: int, lang: str, tier: int) -> None:
+    conn.execute(
+        "INSERT INTO vocab_tiers (profile_id, lang, tier) VALUES (?, ?, ?) "
+        "ON CONFLICT(profile_id, lang) DO UPDATE SET tier = excluded.tier",
+        (profile_id, lang, tier),
+    )
+
+
+def vocab_lemmas(profile_id: int, lang: str, states: tuple[str, ...] = ("known", "learning")) -> set[str]:
+    marks = ",".join("?" * len(states))
+    return {
+        r["lemma"]
+        for r in rows(f"SELECT lemma FROM vocab_knowledge WHERE profile_id = ? AND lang = ? AND state IN ({marks})",
+                      profile_id, lang, *states)
+    }
+
+
+def set_vocab(profile_id: int, lang: str, lemma: str, state: str, source: str) -> None:
+    """Record a lemma's state; 'known' is never downgraded to 'learning' by a weaker signal."""
+    conn.execute(
+        "INSERT INTO vocab_knowledge (profile_id, lang, lemma, state, source) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(profile_id, lang, lemma) DO UPDATE SET "
+        "state = CASE WHEN vocab_knowledge.state = 'known' AND excluded.state = 'learning' THEN 'known' ELSE excluded.state END, "
+        "source = excluded.source, updated = CURRENT_TIMESTAMP",
+        (profile_id, lang, lemma.lower(), state, source),
+    )
+
+
+def add_exposures(profile_id: int, lang: str, counts: dict[str, int], promote_at: int) -> None:
+    """Count encounters in accepted texts; enough encounters turn a learning lemma into a known one."""
+    conn.executemany(
+        "INSERT INTO vocab_knowledge (profile_id, lang, lemma, state, exposures, source) VALUES (?, ?, ?, 'learning', ?, 'reading') "
+        "ON CONFLICT(profile_id, lang, lemma) DO UPDATE SET exposures = vocab_knowledge.exposures + excluded.exposures, "
+        "updated = CURRENT_TIMESTAMP",
+        [(profile_id, lang, lemma.lower(), n) for lemma, n in counts.items()],
+    )
+    conn.execute(
+        "UPDATE vocab_knowledge SET state = 'known' WHERE profile_id = ? AND lang = ? AND state = 'learning' AND exposures >= ?",
+        (profile_id, lang, promote_at),
+    )

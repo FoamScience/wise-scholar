@@ -58,3 +58,28 @@ def test_archived_courses_leave_the_review_queue_and_deleted_courses_leave_nothi
         assert db.rows(f"SELECT 1 FROM {table} WHERE course_id = ?", gone) == []
     assert db.course(kept) and len(db.facts(kept)) == 1 and len(db.graded_answers(cy)) == 1
     assert db.conn.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_vocabulary_ledger_promotes_and_scopes_per_profile_and_language():
+    dee = db.conn.execute("INSERT INTO profiles (name) VALUES ('Dee')").lastrowid
+    course = db.create_course("German", dee)["id"]
+    db.course_lang(course, "de")
+    db.course_lang(course, "fr")
+    assert db.course(course)["lang"] == "de"
+
+    assert db.vocab_tier(dee, "de", 3) == 3
+    db.set_vocab_tier(dee, "de", 4)
+    db.set_vocab_tier(dee, "de", 5)
+    assert db.vocab_tier(dee, "de", 3) == 5
+
+    db.set_vocab(dee, "de", "Haus", "learning", "target")
+    db.set_vocab(dee, "de", "Arzt", "known", "learner")
+    db.set_vocab(dee, "de", "Arzt", "learning", "target")
+    assert db.vocab_lemmas(dee, "de", ("known",)) == {"arzt"}
+    assert db.vocab_lemmas(dee, "de") == {"arzt", "haus"}
+    assert db.vocab_lemmas(dee, "fr") == set()
+
+    db.add_exposures(dee, "de", {"haus": 3, "termin": 2}, promote_at=5)
+    assert db.vocab_lemmas(dee, "de", ("known",)) == {"arzt"}
+    db.add_exposures(dee, "de", {"haus": 2}, promote_at=5)
+    assert db.vocab_lemmas(dee, "de", ("known",)) == {"arzt", "haus"}

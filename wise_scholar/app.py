@@ -15,7 +15,9 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import challenge, db, history, hub, quiz, review, speech, tutor
+import simplemma
+
+from . import challenge, db, history, hub, quiz, review, speech, tutor, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -108,9 +110,17 @@ def _course(course_id: int) -> dict:
             {**c, "mastery": mastery.get(c["id"], 1.0 if c["known"] else None)} for c in db.concepts(course_id)
         ],
         "strands": db.strand_counts(course_id) if course["mechanism"] == "leveled-course" else None,
-        "vocabulary": db.vocabulary(course_id, _now()),
+        "vocabulary": {**db.vocabulary(course_id, _now()), **_tier_view(course)},
         "lessons": [_lesson_view(lesson["id"]) for lesson in lessons],
     }
+
+
+def _tier_view(course: dict) -> dict:
+    if not course["lang"]:
+        return {}
+    tier = db.vocab_tier(course["profile_id"], course["lang"], vocab.starting_tier(course["level"]))
+    progress = vocab.tier_progress(course["lang"], tier, db.vocab_lemmas(course["profile_id"], course["lang"], ("known",)))
+    return {"tier": tier, "tier_size": progress["size"], "tier_known": progress["known"], "tier_words": tier * vocab.TIER}
 
 
 def _lesson_view(lesson_id: int) -> dict:
@@ -444,6 +454,8 @@ async def open_concept(concept_id: int) -> dict:
     if lesson["mechanism"] == "leveled-course":
         counts = db.strand_counts(concept["course_id"])
         strands = "\nActivities per strand in the last 7 days: " + ", ".join(f"{k} {v}" for k, v in counts.items())
+        if lesson["lang"]:
+            strands += "\n" + tutor.vocab_brief(lesson, lesson["lang"])
     earlier = history.digest([
         _lesson_view(row["id"])
         for row in db.rows(
@@ -478,11 +490,29 @@ async def add_vocabulary(block_id: int, body: Word) -> dict:
     if body.word in block["data"]["added"]:
         raise HTTPException(409, "already in your vocabulary")
     lesson = _lesson(block["lesson_id"])
-    db.add_card(
+    lang = block["data"]["lang"].split("-")[0].lower()
+    lemma = simplemma.lemmatize(gloss["word"], lang=lang).lower()
+    card = db.add_card(
         lesson["course_id"], lesson["concept_id"], f"What does **{gloss['word']}** mean?", "open", [],
         gloss["meaning"], f"From the text “{block['data']['title']}”.", scheduled=True, vocab_due=_now(),
     )
+    db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lang, card))
+    db.set_vocab(lesson["profile_id"], lang, lemma, "learning", "glossary")
     _, block = _update_block(block, {"added": [*block["data"]["added"], body.word]})
+    return block
+
+
+@app.post("/api/blocks/{block_id}/known")
+async def know_word(block_id: int, body: Word) -> dict:
+    block = db.block(block_id)
+    if not block or block["kind"] != "reading":
+        raise HTTPException(404, "no such reading")
+    lesson = _lesson(block["lesson_id"])
+    lang = block["data"]["lang"].split("-")[0].lower()
+    db.set_vocab(lesson["profile_id"], lang, simplemma.lemmatize(body.word, lang=lang), "known", "learner")
+    tutor.advance_tier(lesson["profile_id"], lang, db.vocab_tier(lesson["profile_id"], lang, vocab.starting_tier(lesson["level"])))
+    known = block["data"].get("known", [])
+    _, block = _update_block(block, {"known": known if body.word in known else [*known, body.word]})
     return block
 
 

@@ -6,6 +6,8 @@ type ReadingData = {
   lang: string
   glossary: { word: string; meaning: string }[]
   added: string[]
+  targets?: string[]
+  known?: string[]
 }
 type Strands = { input: number; output: number; language: number; fluency: number }
 
@@ -91,6 +93,7 @@ export function ReadingCard(props: {
   data: unknown
   speech: boolean
   onAdd: (word: string) => void
+  onKnown: (word: string) => void
 }) {
   const d = props.data as ReadingData
   const [word, setWord] = useState<string | null>(null)
@@ -116,6 +119,16 @@ export function ReadingCard(props: {
         </button>
       </div>
       <h2 lang={d.lang}>{d.title}</h2>
+      {d.targets && d.targets.length > 0 && (
+        <div className="targets">
+          <span className="small">Words to meet in this text:</span>
+          {d.targets.map((t) => (
+            <span key={t} className="chip" lang={d.lang}>
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
       {paragraphs.map((sentences, i) => (
         <p key={i} lang={d.lang}>
           {sentences.map((sentence, k) => (
@@ -164,6 +177,14 @@ export function ReadingCard(props: {
           >
             {d.added.includes(gloss.word) ? 'In your vocabulary' : 'Add to vocabulary'}
           </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={(d.known ?? []).includes(gloss.word)}
+            onClick={() => props.onKnown(gloss.word)}
+          >
+            {(d.known ?? []).includes(gloss.word) ? 'Known' : 'I know this'}
+          </button>
         </div>
       )}
     </section>
@@ -173,7 +194,7 @@ export function ReadingCard(props: {
 export function LevelPanel(props: {
   level: string | null
   strands: Strands
-  vocabulary: { total: number; due: number }
+  vocabulary: { total: number; due: number; tier?: number; tier_size?: number; tier_known?: number; tier_words?: number }
   units: { mastery: number | null }[]
 }) {
   const current = CEFR.find((l) => props.level?.toUpperCase().startsWith(l))
@@ -216,6 +237,12 @@ export function LevelPanel(props: {
         </div>
       ))}
       {total > 0 && <div className="stats">{behind[1]} is behind. The next unit leans on it.</div>}
+      {props.vocabulary.tier && (
+        <div className="small">
+          Tier {props.vocabulary.tier} · the {props.vocabulary.tier_words} most common words: {props.vocabulary.tier_known} of{' '}
+          {props.vocabulary.tier_size} in this tier known
+        </div>
+      )}
       <a className="btn as-link" href="#/review">
         Vocabulary · {props.vocabulary.due} due of {props.vocabulary.total}
       </a>

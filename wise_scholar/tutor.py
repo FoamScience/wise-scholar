@@ -1,9 +1,11 @@
+from collections import Counter
 from typing import Literal
 
+import simplemma
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel
 
-from . import challenge, db, hub, quiz
+from . import challenge, db, hub, quiz, vocab
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
 mcp = MCPServer("scholar")
@@ -210,23 +212,89 @@ async def give_hint(challenge_id: int, hint: str, marks: list[str] = []) -> str:
     return f"shown as hint {len(data['hints']) + 1} of {data['max_hints']}"
 
 
+def _vocab(lesson: dict, lang: str) -> dict:
+    """The learner's vocabulary scope in a language: tier, known lemmas, and the lemmas still to meet."""
+    base = lang.split("-")[0].lower()
+    tier = db.vocab_tier(lesson["profile_id"], base, vocab.starting_tier(lesson["level"]))
+    known = db.vocab_lemmas(lesson["profile_id"], base)
+    return {"lang": base, "tier": tier, "known": known}
+
+
+def vocab_brief(lesson: dict, lang: str, n: int = 6) -> str:
+    """One paragraph for the tutor: where the learner stands and which words to work into the next text."""
+    v = _vocab(lesson, lang)
+    progress = vocab.tier_progress(v["lang"], v["tier"], db.vocab_lemmas(lesson["profile_id"], v["lang"], ("known",)))
+    targets = vocab.next_targets(v["lang"], v["tier"], v["known"], n)
+    return (
+        f"Vocabulary tier {v['tier']} (the {v['tier'] * vocab.TIER} most common words), "
+        f"{progress['known']} of {progress['size']} in this tier known. "
+        f"Targets for the next text, each used at least {vocab.REPEATS} times: {', '.join(targets)}. "
+        f"Texts must keep {vocab.COVERAGE:.0%} of their words inside the tiers up to {v['tier']}, the learner's known words, these targets and declared names."
+    )
+
+
 @mcp.tool()
-async def add_reading(lesson_id: int, title: str, text: str, lang: str, glossary: list[Gloss]) -> str:
+async def next_targets(lesson_id: int, lang: str, n: int = 6) -> str:
+    """The next vocabulary targets for the learner: frequent words of the current tier they do not know yet.
+
+    lang is the language being learned (de, en, ...). Work each target into the next reading at least
+    three times and pass them as targets to add_reading.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    return vocab_brief(lesson, lang, n)
+
+
+@mcp.tool()
+async def add_reading(
+    lesson_id: int, title: str, text: str, lang: str, glossary: list[Gloss], targets: list[str] = [], names: list[str] = []
+) -> str:
     """Show a reading text in the language being learned.
 
     text: plain text, paragraphs separated by blank lines. lang: its BCP 47 code, such as de-DE,
     used to read it aloud. glossary: the words or phrases above the learner's level, each exactly
-    as it appears in the text, with a short meaning in the learner's own language. The learner
-    taps a glossed word to see its meaning and can add it to their vocabulary reviews.
+    as it appears in the text, with a short meaning in the learner's own language. targets: the
+    vocabulary targets (from next_targets) the text works in, each at least three times. names:
+    people and places named in the text. The text is refused when too many of its words lie outside
+    the learner's vocabulary; the refusal lists them so you can rewrite.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     if stray := [g.word for g in glossary if g.word not in text]:
         return f"error: glossary words {stray} do not appear in the text exactly as written"
-    data = {"title": title, "lang": lang, "glossary": [g.model_dump() for g in glossary], "added": []}
+    if len(glossary) > vocab.MAX_GLOSSARY:
+        return f"error: at most {vocab.MAX_GLOSSARY} glossary words; a text that needs more is above the learner's level"
+    v = _vocab(lesson, lang)
+    # Glossed words are the learner's few words above level; they count as in scope, like names.
+    check = vocab.check_reading(text, v["lang"], v["tier"], v["known"], targets, [*names, *(g.word for g in glossary)])
+    if not check["ok"]:
+        problems = []
+        if check["coverage"] < vocab.COVERAGE:
+            problems.append(
+                f"only {check['coverage']:.0%} of the words are inside the learner's vocabulary (need {vocab.COVERAGE:.0%}); "
+                f"outside it: {', '.join(check['unknown'][:15])}"
+            )
+        if check["missing_targets"]:
+            problems.append(f"targets used fewer than {vocab.REPEATS} times: {', '.join(check['missing_targets'])}")
+        return "rewrite: " + "; ".join(problems) + ". Keep the glossary for the words you must keep."
+    db.course_lang(lesson["course_id"], v["lang"])
+    # Function words need no tracking; count the rest of the ranked words the learner met.
+    counts = Counter(l.lower() for l in check["lemmas"] if (vocab.rank(l, v["lang"]) or 0) >= vocab.FUNCTION_WORDS)
+    db.add_exposures(lesson["profile_id"], v["lang"], counts, vocab.EXPOSURES_TO_KNOW)
+    for target in targets:
+        db.set_vocab(lesson["profile_id"], v["lang"], simplemma.lemmatize(target, lang=v["lang"]), "learning", "target")
+    advance_tier(lesson["profile_id"], v["lang"], v["tier"])
+    data = {"title": title, "lang": lang, "glossary": [g.model_dump() for g in glossary], "added": [],
+            "targets": targets, "known": []}
     _show(lesson, db.add_block(lesson_id, "reading", text, data))
-    return "shown"
+    return f"shown; coverage {check['coverage']:.0%}"
+
+
+def advance_tier(profile_id: int, lang: str, tier: int) -> None:
+    if vocab.tier_progress(lang, tier, db.vocab_lemmas(profile_id, lang, ("known",)))["complete"]:
+        db.set_vocab_tier(profile_id, lang, tier + 1)
 
 
 @mcp.tool()
