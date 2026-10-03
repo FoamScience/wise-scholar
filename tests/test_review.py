@@ -33,3 +33,18 @@ def test_calibration_buckets_and_brier():
     assert by_label["90–100%"] == {"label": "90–100%", "n": 2, "stated": 0.9, "actual": 0.5}
     assert by_label["70–89%"]["n"] == 0 and by_label["70–89%"]["actual"] is None
     assert review.calibration([])["brier"] is None
+
+
+def test_due_cards_alternate_across_courses_with_confident_misses_first():
+    from wise_scholar import review
+
+    cards = [
+        {"id": 1, "course_id": 1, "confident_miss": 0},
+        {"id": 2, "course_id": 1, "confident_miss": 0},
+        {"id": 3, "course_id": 1, "confident_miss": 1},
+        {"id": 4, "course_id": 2, "confident_miss": 0},
+        {"id": 5, "course_id": 2, "confident_miss": 0},
+        {"id": 6, "course_id": 3, "confident_miss": 0},
+    ]
+    assert [c["id"] for c in review.interleave(cards)] == [3, 1, 4, 6, 2, 5]
+    assert review.interleave([]) == []

@@ -42,3 +42,19 @@ def calibration(answers: list[tuple[float, bool]]) -> dict:
         })
     brier = sum((p - c) ** 2 for p, c in answers) / len(answers) if answers else None
     return {"n": len(answers), "brier": brier, "buckets": buckets}
+
+
+def interleave(cards: list[dict]) -> list[dict]:
+    """Alternate due cards across courses instead of grouping them, keeping confident misses in front."""
+    out = []
+    for front in (True, False):
+        queues: dict[int, list[dict]] = {}
+        for c in cards:
+            if bool(c["confident_miss"]) == front:
+                queues.setdefault(c["course_id"], []).append(c)
+        while queues:
+            for course_id in list(queues):
+                out.append(queues[course_id].pop(0))
+                if not queues[course_id]:
+                    del queues[course_id]
+    return out
