@@ -13,6 +13,9 @@ LIST_SIZE = 12000
 SAMPLE = 12
 FUNCTION_WORDS = 150
 COVERAGE = 0.95
+# Extensive reading: easy enough to read for volume, so almost nothing is new (Nation's 98%).
+STORY_COVERAGE = 0.98
+STORY_GLOSSARY = 5
 REPEATS = 3
 MAX_GLOSSARY = 10
 EXPOSURES_TO_KNOW = 5
@@ -113,7 +116,7 @@ def starting_tier(level: str | None, lang: str) -> int:
     return min(STARTING_TIER.get((level or "").strip()[:2].upper(), 1), max_tier(lang))
 
 
-def check_reading(text: str, lang: str, tier: int, known: set[str], targets: list[str], names: list[str] = ()) -> dict:
+def check_reading(text: str, lang: str, tier: int, known: set[str], targets: list[str], names: list[str] = (), coverage: float = COVERAGE) -> dict:
     """Does a draft fit the learner? Allowed: tiers up to the current one, known lemmas, the targets, named people and places."""
     lemmas = lemmatize(text, lang)
     counts = Counter(l.lower() for l in lemmas)
@@ -128,11 +131,11 @@ def check_reading(text: str, lang: str, tier: int, known: set[str], targets: lis
         return key in extra or (r is not None and r < limit)
 
     unknown = sorted({l for l in lemmas if not allowed(l)}, key=lambda l: -counts[l.lower()])
-    coverage = 1 - sum(counts[l.lower()] for l in unknown) / len(lemmas) if lemmas else 0.0
+    share = 1 - sum(counts[l.lower()] for l in unknown) / len(lemmas) if lemmas else 0.0
     missing = [t for t in targets if counts[simplemma.lemmatize(t, lang=lang).lower()] < REPEATS]
     return {
-        "ok": bool(lemmas) and coverage >= COVERAGE and not missing,
-        "coverage": round(coverage, 3),
+        "ok": bool(lemmas) and share >= coverage and not missing,
+        "coverage": round(share, 3),
         "unknown": unknown,
         "missing_targets": missing,
         "lemmas": lemmas,

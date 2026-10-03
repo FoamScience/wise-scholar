@@ -12,13 +12,19 @@
       "mode": "primary",
       "description": "wise-scholar tutor: course interview",
       "prompt": "{file:./wise_scholar/prompts/core.md}\n\n{file:./wise_scholar/prompts/interview.md}",
-      "permission": { "*": "deny", "scholar_*": "allow" }
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
     },
     "tutor-placement": {
       "mode": "primary",
       "description": "wise-scholar tutor: placement check",
       "prompt": "{file:./wise_scholar/prompts/core.md}\n\n{file:./wise_scholar/prompts/placement.md}",
-      "permission": { "*": "deny", "scholar_*": "allow" }
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
     },
     "tutor-lesson": {
       "mode": "primary",
@@ -33,6 +39,24 @@
         "glob": "allow",
         "grep": "allow",
         "list": "allow"
+      }
+    },
+    "tutor-story": {
+      "mode": "primary",
+      "description": "wise-scholar tutor: serial story episode",
+      "prompt": "{file:./wise_scholar/prompts/core.md}\n\n{file:./wise_scholar/prompts/story.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
+    },
+    "tutor-writing": {
+      "mode": "primary",
+      "description": "wise-scholar tutor: writing session",
+      "prompt": "{file:./wise_scholar/prompts/core.md}\n\n{file:./wise_scholar/prompts/writing.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
       }
     }
   }

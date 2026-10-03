@@ -151,6 +151,15 @@ MIGRATIONS = [
         created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     """,
+    """
+    CREATE TABLE series (
+        course_id INTEGER PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        characters TEXT NOT NULL,
+        synopsis TEXT NOT NULL DEFAULT '',
+        episodes INTEGER NOT NULL DEFAULT 0
+    );
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -336,7 +345,7 @@ def strand_counts(course_id: int) -> dict[str, int]:
     counts = {"input": 0, "output": 0, "language": 0, "fluency": 0}
     recent = rows(
         "SELECT b.kind, b.data FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
-        "WHERE l.course_id = ? AND l.phase = 'lesson' AND b.created >= datetime('now', '-7 days')",
+        "WHERE l.course_id = ? AND l.phase IN ('lesson', 'story', 'writing') AND b.created >= datetime('now', '-7 days')",
         course_id,
     )
     for b in recent:
@@ -510,3 +519,21 @@ def add_exposures(profile_id: int, lang: str, counts: dict[str, int], promote_at
         "UPDATE vocab_knowledge SET state = 'known' WHERE profile_id = ? AND lang = ? AND state = 'learning' AND exposures >= ?",
         (profile_id, lang, promote_at),
     )
+
+
+def series(course_id: int) -> dict | None:
+    return row("SELECT * FROM series WHERE course_id = ?", course_id)
+
+
+def start_series(course_id: int, title: str, characters: str, synopsis: str) -> None:
+    conn.execute("INSERT INTO series (course_id, title, characters, synopsis) VALUES (?, ?, ?, ?)", (course_id, title, characters, synopsis))
+
+
+def add_episode(course_id: int, recap: str) -> int:
+    if not series(course_id):
+        raise ValueError("no series for this course")
+    conn.execute(
+        "UPDATE series SET episodes = episodes + 1, synopsis = synopsis || ? WHERE course_id = ?",
+        (f"\n{recap}", course_id),
+    )
+    return series(course_id)["episodes"]

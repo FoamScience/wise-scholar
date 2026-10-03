@@ -163,3 +163,30 @@ def test_pretest_gates_explanations_and_stays_out_of_reviews_and_mastery():
 
     known_lesson = db.create_lesson(course, "Traits", "lesson", traits["id"])
     assert asyncio.run(tutor.add_block(known_lesson, "prose", "Traits are…")) == "shown"
+
+
+def test_series_episodes_keep_memory_and_pass_a_stricter_gate():
+    import asyncio
+
+    from wise_scholar import tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Story')").lastrowid
+    course = db.create_course("German", who)["id"]
+    db.course_lang(course, "de")
+    db.set_vocab_tier(who, "de", 30)
+    lesson = db.create_lesson(course, "Episode 1", "story")
+    gloss = tutor.Gloss
+    assert "no series yet" in asyncio.run(tutor.add_episode(lesson, "t", "x " * 500, "de-DE", "r"))
+    assert asyncio.run(tutor.start_series(course, "Lena in Köln", ["Lena: Studentin", "Omar: Nachbar"], "Lena zieht nach Köln.")).startswith("started")
+    assert "already has a series" in asyncio.run(tutor.start_series(course, "x", [], ""))
+    sentence = "Lena geht am Morgen in die Stadt und kauft Brot, dann trifft sie Omar vor dem Haus und sie reden über das Wetter. "
+    text = sentence * 20
+    assert "words" in asyncio.run(tutor.add_episode(lesson, "Brot", sentence * 5, "de-DE", "r"))
+    assert "at most 5 glossary" in asyncio.run(tutor.add_episode(lesson, "Brot", text, "de-DE", "r", glossary=[gloss(word="Brot", meaning="bread")] * 6))
+    rare = text + "Die Thrombozytenzahl der Bürgschaftserklärung war unleserlich. " * 8
+    assert asyncio.run(tutor.add_episode(lesson, "Brot", rare, "de-DE", "r")).startswith("rewrite")
+    assert asyncio.run(tutor.add_episode(lesson, "Brot", text, "de-DE", "Lena kauft Brot und trifft Omar.")).startswith("shown as episode 1")
+    show = db.series(course)
+    assert show["episodes"] == 1 and "Lena kauft Brot" in show["synopsis"]
+    block = db.blocks(lesson)[-1]
+    assert block["kind"] == "reading" and block["data"]["story"] == "Lena in Köln" and block["data"]["episode"] == 1
