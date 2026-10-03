@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -278,6 +278,14 @@ async def text_to_speech(text: str, lang: str) -> FileResponse:
     except RuntimeError as e:
         log.warning("tts failed: %s", e)
         raise HTTPException(503, str(e)) from None
+
+
+@app.get("/api/figures/{block_id}.svg")
+def figure_svg(block_id: int) -> Response:
+    block = db.block(block_id)
+    if not block or block["kind"] != "figure":
+        raise HTTPException(404, "no such figure")
+    return Response(block["data"]["svg"], media_type="image/svg+xml")
 
 
 @app.get("/api/audio/podcasts/{name}")

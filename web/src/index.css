@@ -1442,3 +1442,32 @@ pre:has(> .mermaid) {
   width: 100%;
   height: 6px;
 }
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.figure-box {
+  all: unset;
+  cursor: zoom-in;
+  display: block;
+  max-width: 600px;
+}
+
+.figure-box.large {
+  cursor: zoom-out;
+  max-width: 100%;
+}
+
+.figure-box svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.figure .caption {
+  font-size: 13px;
+  color: var(--muted);
+}
