@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import Markdown from './Md'
 import { api } from './api'
+import Logo from './Logo'
 import { QuizCard, Review, ReviewPanels } from './Quiz'
 import type { QuizData } from './Quiz'
 import { LevelPanel, ReadingCard } from './Language'
@@ -1043,8 +1044,8 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <a className="wordmark" href="#/">
-          wise-scholar
+        <a className="wordmark" href="#/" title="wise-scholar">
+          <Logo />
         </a>
         <span className="grow" />
         <span className="status">agent: {agent}</span>
