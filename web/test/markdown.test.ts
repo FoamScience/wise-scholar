@@ -43,3 +43,12 @@ test('sentences split at terminal punctuation and keep it', () => {
   ])
   assert.deepEqual(splitSentences('Um 3.5 Uhr'), ['Um 3.5 Uhr'])
 })
+
+test('fenced code in Haskell and Python gets syntax classes', () => {
+  const haskell = render('```haskell\nmain :: IO ()\nmain = putStrLn "hi" -- greet\n```')
+  assert.ok(haskell.includes('hljs-type') || haskell.includes('hljs-title'))
+  assert.ok(haskell.includes('hljs-string') && haskell.includes('hljs-comment'))
+  const python = render('```python\ndef f(x):\n    return x * 2\n```')
+  assert.ok(python.includes('hljs-keyword') && python.includes('hljs-number'))
+  assert.ok(!render('```\nplain\n```').includes('hljs-'))
+})
