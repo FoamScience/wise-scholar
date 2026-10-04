@@ -445,9 +445,11 @@ def add_error(profile_id: int, course_id: int, kind: str, prompt: str, said: str
 
 
 def errors(profile_id: int, course_id: int | None = None, open_only: bool = False, limit: int | None = None) -> list[dict]:
-    where = ["e.profile_id = ?", "c.archived = 0"]
+    where = ["e.profile_id = ?"]
     args: list = [profile_id]
-    if course_id is not None:
+    if course_id is None:
+        where.append("c.archived = 0")
+    else:
         where.append("e.course_id = ?")
         args.append(course_id)
     if open_only:

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { usePlayer } from './player'
 import { splitBy, splitSentences } from './text'
 
-type ReadingData = {
+export type ReadingData = {
   title: string
   lang: string
   glossary: { word: string; meaning: string }[]
@@ -124,8 +124,8 @@ export function ReadingCard(props: {
 }
 
 type VocabRound = { tier: number; words: string[]; known: string[]; passed: boolean }
-type VocabData = { lang: string; rounds: VocabRound[]; current: { tier: number; words: string[] } | null; tier: number | null }
-const TIER_WORDS = 200
+export type VocabData = { lang: string; rounds: VocabRound[]; current: { tier: number; words: string[] } | null; tier: number | null }
+export const TIER_WORDS = 200
 
 export function VocabCheckCard(props: { id: number; data: unknown; disabled: boolean; onSubmit: (known: string[]) => void }) {
   const { t } = useTranslation()

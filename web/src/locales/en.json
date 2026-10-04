@@ -352,6 +352,24 @@
       "failed": "The cast could not be rendered: {{error}}",
       "paused": "Paused for a question. Answer it below and the cast goes on.",
       "transcript": "Transcript"
+    },
+    "book": {
+      "export": "Export as a book",
+      "save": "Save as PDF",
+      "saveHint": "In the print dialog, choose “Save as PDF” as the destination.",
+      "back": "Back to the course",
+      "contents": "Contents",
+      "chapter": "Chapter {{n}}",
+      "extras": "Episodes and writing sessions",
+      "projects": "Projects",
+      "appendix": "Appendix",
+      "kicker": "Course record",
+      "exported": "Exported {{date}}",
+      "chosen": "Chosen",
+      "unanswered": "Not answered yet",
+      "yourNote": "Your note",
+      "download": "Download PDF",
+      "preparing": "Preparing the PDF…"
     }
   },
   "server": {}

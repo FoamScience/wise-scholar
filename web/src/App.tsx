@@ -11,9 +11,12 @@ import type { QuizData } from './Quiz'
 import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
-import { Correction } from './Diff'
+import { challengeLabel, lessonTitle } from './course'
+import { HintList, Ladder } from './Ladder'
+import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
 import { PlotCard } from './PlotCard'
+import { Book } from './Book'
 import { SourcesPanel } from './Sources'
 import type { Source } from './Sources'
 import { usePlayer } from './player'
@@ -22,76 +25,6 @@ import { FirstProfile, ProfilePage } from './Profile'
 import { useProfiles } from './profiles'
 import { LOCALES, browserLocale, rememberLocale } from './locale'
 import type { Locale } from './locale'
-
-type Course = {
-  id: number
-  topic: string
-  slug: string
-  mechanism: string | null
-  level: string | null
-  archived: number
-}
-type Message = { id: number; lesson_id: number; role: 'learner' | 'tutor'; text: string; created: string }
-type QuestionData = { options: string[]; answer: string | null }
-type ChallengeData = {
-  attempts: string[]
-  hints: string[]
-  gave_up: boolean
-  solved: boolean
-  solution: string | null
-  reveal_after: number
-  max_hints: number
-  writing?: boolean
-  fluency?: boolean
-  marks?: string[]
-  spoken?: boolean
-  teachback?: boolean
-  pretest?: boolean
-  milestone?: boolean
-  transfer?: boolean
-  lang?: string
-  words?: [number, number] | null
-  structure?: string
-}
-type Scored = { word: string; score: number }
-type SpeakingData = ChallengeData & { speaking: 'read' | 'shadow'; lang: string; scores: { words: Scored[]; heard: string | null; score: number }[] }
-type Block = { id: number; lesson_id: number; kind: string; markdown: string; data: unknown; created: string }
-type Concept = { id: number; module: string; title: string; known: number; mastery: number | null }
-type Lesson = {
-  id: number
-  title: string
-  phase: string
-  concept_id: number | null
-  messages: Message[]
-  blocks: Block[]
-  running: boolean
-}
-type Ranked = {
-  mechanism: string
-  rationale: string
-  title: string
-  summary: string
-  evidence: { source: string; finding: string; url: string }[]
-}
-type Capstone = {
-  id: number
-  module: string
-  title: string
-  brief: string
-  folder: string
-  done: number
-  milestones: { id: number; concept_id: number; concept: string; deliverable: string; done: number }[]
-}
-type CourseDetail = Course & {
-  placement: string | null
-  lang: string | null
-  capstones: Capstone[]
-  ranking: Ranked[]
-  concepts: Concept[]
-  lessons: Lesson[]
-  strands: { input: number; output: number; language: number; fluency: number } | null
-  vocabulary: { total: number; due: number; tier?: number; tier_size?: number; tier_known?: number; tier_words?: number }
-}
 
 type TutorEvent =
   | { type: 'turn.started'; lesson_id: number }
@@ -142,17 +75,6 @@ type TodayPlan = {
   cast: { id: number; lesson_id: number; title: string; course_id: number } | null
   errors: number
   extras: { course_id: number; topic: string; kind: 'episode' | 'writing' }[]
-}
-
-/** The server names its own lessons in English; a concept's lesson carries the tutor's title. */
-function lessonTitle(lesson: Lesson, t: TFunction): string {
-  const n = lesson.title.match(/\d+$/)?.[0]
-  if (lesson.concept_id !== null) return lesson.title
-  if (lesson.phase === 'interview') return t('lesson.interview')
-  if (lesson.phase === 'placement') return n ? t('lesson.placementRetake', { n }) : t('lesson.placement')
-  if (lesson.phase === 'story') return t('lesson.episode', { n })
-  if (lesson.phase === 'writing') return t('lesson.writingSession', { n })
-  return lesson.title
 }
 
 function unitTitle(u: TodayPlan['units'][number], t: TFunction): string {
@@ -440,23 +362,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
-        {d.transfer
-          ? t('challenge.transfer')
-          : d.milestone
-          ? t('challenge.milestone')
-          : d.pretest
-          ? t('challenge.pretest')
-          : d.teachback
-          ? props.speech
-            ? t('challenge.teachbackAloud')
-            : t('challenge.teachback')
-          : d.spoken
-            ? t('challenge.spoken')
-            : d.writing
-              ? d.fluency
-                ? t('challenge.writeFast')
-                : t('challenge.write')
-              : t('challenge.workItOut')}
+        {challengeLabel(d, props.speech, t)}
         {d.solved && <span className="chip">{d.writing ? t('common.done') : t('common.solved')}</span>}
         {d.spoken && d.lang && (
           <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([props.block.markdown]))}>
@@ -575,52 +481,6 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
   )
 }
 
-function Ladder({ data: d }: { data: ChallengeData }) {
-  const { t } = useTranslation()
-  return (
-    <>
-      {d.attempts.map((a, i) => (
-        <div key={i} className="attempt">
-          <span className="label">{t('common.attempt', { n: i + 1 })}</span>
-          <span dir={textDirection(a)}>
-            {splitBy(a, i === d.attempts.length - 1 ? (d.marks ?? []) : []).map((piece, j) =>
-              piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text,
-            )}
-          </span>
-        </div>
-      ))}
-      <HintList data={d} />
-    </>
-  )
-}
-
-function HintList({ data: d }: { data: ChallengeData }) {
-  const { t } = useTranslation()
-  return (
-    <>
-      {d.hints.map((h, i) => (
-        <div key={i} className="hint">
-          <div className="label">
-            {t(d.writing ? 'challenge.promptOf' : 'challenge.hintOf', { n: i + 1, max: d.max_hints })}
-            {d.writing && ` ${t('challenge.notCorrection')}`}
-          </div>
-          <Markdown>{h}</Markdown>
-        </div>
-      ))}
-      {d.solution !== null && (
-        <div className="solution">
-          <div className="label">{d.writing ? t('common.correctedText') : t('common.solution')}</div>
-          {d.writing && d.attempts.length > 0 ? (
-            <Correction attempt={d.attempts[d.attempts.length - 1]} corrected={d.solution} />
-          ) : (
-            <Markdown>{d.solution}</Markdown>
-          )}
-        </div>
-      )}
-    </>
-  )
-}
-
 function HintButton(props: { data: ChallengeData; disabled: boolean; onAct: Act }) {
   const { t } = useTranslation()
   const { hints, max_hints } = props.data
@@ -656,13 +516,6 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
     </div>
   )
 }
-
-type ExerciseData = ChallengeData & {
-  files: string[]
-  run: string
-  last_run: { exit_code: number | null; output: string } | null
-}
-type ExerciseFile = { path: string; absolute: string; content: string | null }
 
 function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
   const { t } = useTranslation()
@@ -1042,6 +895,9 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
     <div className="workspace">
       <nav className="map" aria-label={t('map.label')}>
         <div className="label">{t('map.label')}</div>
+        <a className="small" href={`#/course/${course.id}/book`}>
+          {t('book.export')}
+        </a>
         {(course.level || course.concepts.length > 0) && (
           <div className="level-row">
             {course.level && (
@@ -1420,6 +1276,7 @@ export default function App() {
   const { t } = useTranslation()
   const [agent, setAgent] = useState('')
   const [speech, setSpeech] = useState(false)
+  const [pdf, setPdf] = useState(false)
   const { profiles, current, select, reload } = useProfiles()
   const [chosen, setChosen] = useState<Locale>(browserLocale)
   const [localeError, setLocaleError] = useState('')
@@ -1440,16 +1297,18 @@ export default function App() {
     )
   }
   useEffect(() => {
-    api<{ agent: string; speech: boolean }>('/api/meta').then(
+    api<{ agent: string; speech: boolean; pdf: boolean }>('/api/meta').then(
       (m) => {
         setAgent(m.agent)
         setSpeech(m.speech)
+        setPdf(m.pdf)
       },
       () => {},
     )
   }, [])
   const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing))?$/)
   const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
+  const book = hash.match(/^#\/course\/(\d+)\/book$/)
 
   function page() {
     if (!profiles) return null
@@ -1473,6 +1332,7 @@ export default function App() {
           start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
         />
       )
+    if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={pdf} />
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
     if (hash === '#/errors') return <ErrorsPage profile={current.id} />
     if (hash === '#/profile')

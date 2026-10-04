@@ -58,6 +58,16 @@ The interface and the tutor work in English, French or Arabic. Pick the language
 
 A new language is one file: copy `web/src/locales/en.json`, translate it, and add its code to `web/src/locale.ts`, `web/src/i18n.ts` and the `Locale` names in `wise_scholar/app.py`. `make test` checks that every key and every learner-facing server error is covered.
 
+## Export a course as a PDF (optional)
+
+"Export as a book" on the course map opens the whole course as a book: cover, contents, the interview and the placement check, one chapter per lesson with the tutor conversation, your projects and the course's error notebook. It keeps the theme you are using and the site's typefaces.
+
+```bash
+make pdf
+```
+
+installs Playwright and a headless Chromium, about 110 MB, and the book page gets a "Download PDF" button: the server prints that page itself. An installed Google Chrome is used when the Chromium download is skipped. Without `make pdf` the button opens the browser's print dialog instead; choose "Save as PDF" there.
+
 ## Speech (optional)
 
 Off by default. Listen buttons use the browser's own voice and there is no microphone input until you install the speech extras:

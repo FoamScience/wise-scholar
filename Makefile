@@ -1,4 +1,4 @@
-.PHONY: dev dev-server dev-web build serve test speech
+.PHONY: dev dev-server dev-web build serve test speech pdf
 
 WISE_SCHOLAR_PORT ?= 8321
 export WISE_SCHOLAR_PORT
@@ -28,3 +28,7 @@ test: web/node_modules
 # Opt-in: installs the speech environment (torch, Chatterbox, whisper, Piper) and downloads the models, about 7 GB.
 speech:
 	cd speech && uv sync && uv run --no-sync python worker.py --download
+
+# Opt-in: installs Playwright and its headless Chromium, about 110 MB, for exporting a course as a PDF.
+pdf:
+	uv sync --inexact --extra pdf && uv run --no-sync playwright install --only-shell chromium
