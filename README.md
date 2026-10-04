@@ -24,6 +24,8 @@ make serve
 
 This builds the web interface and serves everything at <http://127.0.0.1:8321>.
 
+A new course opens on its interview page. Before the first question you can say more about what the course should cover (for example "science class, second year of high school") and how many hours of teaching the whole course should take. Both are optional: the tutor keeps the course inside that scope and sizes the course map so its sittings add up to the time.
+
 ## Choose the backend and model
 
 Set `WISE_SCHOLAR_AGENT` to `<backend>` or `<backend>/<model>`. The backend is `claude` or `opencode`.

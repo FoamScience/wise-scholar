@@ -377,6 +377,18 @@
       "yourNote": "Votre note",
       "download": "Télécharger le PDF",
       "preparing": "Préparation du PDF…"
+    },
+    "scope": {
+      "label": "Avant l'entretien · facultatif",
+      "details": "Précisions sur le cours",
+      "detailsHint": "Par exemple : cours de sciences, classe de première",
+      "hours": "Durée d'enseignement estimée pour tout le cours, en heures",
+      "help": "Le tuteur garde le cours dans ce cadre et dimensionne le plan du cours selon cette durée.",
+      "start": "Commencer l'entretien",
+      "summary": "Cadre du cours",
+      "planned_one": "{{count}} heure d'enseignement prévue",
+      "planned_many": "{{count}} d'heures d'enseignement prévues",
+      "planned_other": "{{count}} heures d'enseignement prévues"
     }
   },
   "server": {
@@ -402,6 +414,8 @@
     "episodes are for language courses; the first reading sets the language": "les épisodes sont réservés aux cours de langue ; la première lecture fixe la langue",
     "already in your vocabulary": "déjà dans votre vocabulaire",
     "this check is finished": "ce test est terminé",
-    "already graded": "déjà corrigé"
+    "already graded": "déjà corrigé",
+    "the interview already started": "l'entretien a déjà commencé",
+    "start the interview first": "commencez d'abord l'entretien"
   }
 }

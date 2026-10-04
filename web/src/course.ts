@@ -60,6 +60,9 @@ export type Capstone = {
   milestones: { id: number; concept_id: number; concept: string; deliverable: string; done: number }[]
 }
 export type CourseDetail = Course & {
+  details: string
+  hours: number | null
+  started: number
   placement: string | null
   lang: string | null
   capstones: Capstone[]
