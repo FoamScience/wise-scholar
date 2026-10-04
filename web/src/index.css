@@ -1412,6 +1412,13 @@ mark {
   height: auto;
 }
 
+/* Mermaid calls its node text .label too, and measures it outside .mermaid before drawing. */
+svg .label {
+  font-size: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 pre:has(> .mermaid) {
   padding: 0;
   background: none;
