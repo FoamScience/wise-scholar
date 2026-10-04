@@ -59,7 +59,8 @@
       "run_command": "testing in the workspace…",
       "read_file": "reading your files…",
       "write_file": "writing exercise files…",
-      "ask_network": "asking for internet access…"
+      "ask_network": "asking for internet access…",
+      "revise_course_map": "revising the course map…"
     },
     "block": {
       "prose": "Read",
@@ -185,7 +186,8 @@
       "solved": "{{solved}}/{{total}} solved",
       "hints_one": "{{count}} hint",
       "hints_other": "{{count}} hints",
-      "gaveUp": "gave up {{n}}×"
+      "gaveUp": "gave up {{n}}×",
+      "change": "Change the course"
     },
     "plan": {
       "heading": "How I plan to teach this · ranked for you",
@@ -222,7 +224,8 @@
       "label": "Tutor chat",
       "tutor": "Tutor",
       "message": "Message the tutor",
-      "turnFailed": "the turn failed"
+      "turnFailed": "the turn failed",
+      "changeHint": "Tell the tutor what to change: leave a topic out, add one, reorder, make it shorter…"
     },
     "profile": {
       "who": "Who is learning?",

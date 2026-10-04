@@ -36,7 +36,7 @@ type TutorEvent =
   | { type: 'plan.ranked'; ranking: Ranked[]; mechanism: string }
   | { type: 'plan.chosen'; mechanism: string }
   | { type: 'placement.set'; level: string; placement: string }
-  | { type: 'map.set'; concepts: Concept[] }
+  | { type: 'map.set'; concepts: Concept[]; capstones?: Capstone[] }
   | { type: 'capstone.set'; capstone: Capstone }
   | { type: 'source.updated'; source: Source }
   | { type: 'source.removed'; id: number }
@@ -741,6 +741,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
   const [activity, setActivity] = useState('')
   const [writing, setWriting] = useState(false)
   const [draft, setDraft] = useState('')
+  const [changing, setChanging] = useState(false)
   const [error, setError] = useState('')
   const chatBottom = useRef<HTMLDivElement>(null)
   const lessonBottom = useRef<HTMLDivElement>(null)
@@ -815,7 +816,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
       } else if (ev.type === 'source.removed') {
         setSources((all) => all.filter((s) => s.id !== ev.id))
       } else if (ev.type === 'map.set') {
-        setCourse((c) => c && { ...c, concepts: ev.concepts })
+        setCourse((c) => c && { ...c, concepts: ev.concepts, capstones: ev.capstones ?? c.capstones })
       } else if (ev.type === 'lesson.created') {
         addLesson(ev.lesson)
       } else if (ev.type === 'turn.done') {
@@ -880,6 +881,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
       (message) => {
         patchLesson(lesson.id, (l) => ({ ...l, messages: [...l.messages, message] }))
         setDraft('')
+        setChanging(false)
       },
       (err: Error) => setError(err.message),
     )
@@ -928,6 +930,21 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
                 }
               >
                 {course.level ? t('map.retake') : t('map.take')}
+              </button>
+            )}
+            {course.concepts.length > 0 && (
+              <button
+                type="button"
+                className="link"
+                disabled={lesson.running}
+                onClick={() => {
+                  // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
+                  setLessonId(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
+                  setChanging(true)
+                  document.getElementById('chat')?.focus()
+                }}
+              >
+                {t('map.change')}
               </button>
             )}
           </div>
@@ -1181,6 +1198,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
             className="field" dir="auto"
             rows={3}
             value={draft}
+            placeholder={changing ? t('chat.changeHint') : undefined}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKey}
           />

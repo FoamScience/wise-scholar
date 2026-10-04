@@ -63,6 +63,11 @@ class Module(BaseModel):
     known: list[str] = []
 
 
+class Renamed(BaseModel):
+    old: str
+    new: str
+
+
 class Milestone(BaseModel):
     concept: str
     deliverable: str
@@ -197,6 +202,57 @@ async def set_course_map(course_id: int, modules: list[Module]) -> str:
     db.set_concepts(course_id, [m.model_dump() for m in modules])
     hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id)})
     return "shown"
+
+
+@mcp.tool()
+async def revise_course_map(course_id: int, modules: list[Module], renamed: list[Renamed] = [], hours: int | None = None) -> str:
+    """Change the course map after it exists, when the learner asks to leave something out, add something,
+    reorder, shorten or go deeper. Give the whole new map, in order.
+
+    A unit whose title stays exactly as it is keeps its lesson, its cards and its progress, wherever
+    you move it. A title you leave out is dropped; a new title becomes a new unit. To reword a title
+    without losing its lesson, list it in renamed and use the new title in modules. A unit that already
+    has a lesson cannot be dropped: keep it, and list it in known if the learner is done with it.
+    known: titles to mark as already mastered; units marked before stay marked (set_known unmarks one).
+    hours: set it only when the learner changes the teaching time planned for the whole course.
+    Each module appears once. A capstone keeps the milestones of the units that remain and moves to the
+    module that holds most of them; one whose units are all gone, or whose module another capstone holds,
+    is removed, and you may propose a new one with set_capstone.
+    """
+    if not db.course(course_id):
+        return f"error: no course with id {course_id}"
+    current = {c["title"] for c in db.concepts(course_id)}
+    if not current:
+        return "error: this course has no map yet; use set_course_map"
+    titles = [title for m in modules for title in m.concepts]
+    if not titles:
+        return "error: the map has no concepts"
+    if repeated := sorted({t for t in titles if titles.count(t) > 1}):
+        return f"error: titles {repeated} appear more than once"
+    module_titles = [m.title for m in modules]
+    if repeated := sorted({t for t in module_titles if module_titles.count(t) > 1}):
+        return f"error: modules {repeated} appear more than once; give each module once, with all its units"
+    if hours is not None and not 1 <= hours <= 5000:
+        return "error: hours must be between 1 and 5000"
+    if stray := [k for m in modules for k in m.known if k not in m.concepts]:
+        return f"error: known titles {stray} are not concepts of their module"
+    names = {r.old: r.new for r in renamed}
+    if unknown := sorted(set(names) - current):
+        return f"error: renamed titles {unknown} are not in the current map"
+    if clash := sorted(new for new in names.values() if new in current - set(names) or list(names.values()).count(new) > 1):
+        return f"error: new titles {clash} are taken"
+    after = {names.get(t, t) for t in db.started_concepts(course_id)}
+    if lost := sorted(after - set(titles)):
+        return f"error: units {lost} already have a lesson and cannot be dropped; keep them, and list them in known if the learner is done with them"
+    try:
+        removed = db.revise_concepts(course_id, [m.model_dump() for m in modules], names, hours)
+    except ValueError as started:
+        return f"error: units {started} already have a lesson and cannot be dropped"
+    hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id), "capstones": db.capstones(course_id)})
+    dropped = sorted(current - set(names) - set(titles))
+    note = f"; dropped {dropped}" if dropped else ""
+    note += f"; capstones removed with their units: {removed}" if removed else ""
+    return f"shown{note}"
 
 
 @mcp.tool()

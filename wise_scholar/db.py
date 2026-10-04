@@ -212,6 +212,10 @@ MIGRATIONS = [
     ALTER TABLE courses ADD COLUMN hours INTEGER;
     ALTER TABLE courses ADD COLUMN started INTEGER NOT NULL DEFAULT 1;
     """,
+    """
+    ALTER TABLE concepts ADD COLUMN position INTEGER;
+    UPDATE concepts SET position = id;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -332,7 +336,7 @@ def create_lesson(course_id: int, title: str, phase: str, concept_id: int | None
 
 
 def concepts(course_id: int) -> list[dict]:
-    return rows("SELECT * FROM concepts WHERE course_id = ? ORDER BY id", course_id)
+    return rows("SELECT * FROM concepts WHERE course_id = ? ORDER BY position, id", course_id)
 
 
 def concept_view(course_id: int) -> list[dict]:
@@ -347,10 +351,84 @@ def set_known(course_id: int, known: list[str], unknown: list[str]) -> None:
 
 
 def set_concepts(course_id: int, modules: list[dict]) -> None:
+    units = [(m, title) for m in modules for title in m["concepts"]]
     conn.executemany(
-        "INSERT INTO concepts (course_id, module, title, known) VALUES (?, ?, ?, ?)",
-        [(course_id, m["title"], title, int(title in m["known"])) for m in modules for title in m["concepts"]],
+        "INSERT INTO concepts (course_id, module, title, known, position) VALUES (?, ?, ?, ?, ?)",
+        [(course_id, m["title"], title, int(title in m["known"]), n) for n, (m, title) in enumerate(units, start=1)],
     )
+
+
+def started_concepts(course_id: int) -> set[str]:
+    """Titles of the units that already have a lesson."""
+    return {
+        r["title"]
+        for r in rows("SELECT DISTINCT k.title FROM concepts k JOIN lessons l ON l.concept_id = k.id WHERE k.course_id = ?", course_id)
+    }
+
+
+def revise_concepts(course_id: int, modules: list[dict], renamed: dict[str, str], hours: int | None = None) -> list[str]:
+    """Rewrite a course map in place. A unit that stays, by title, keeps its lessons, cards and progress; a unit
+    that is gone is deleted, unless it has a lesson: then nothing changes and ValueError names it. A capstone
+    goes to the module that holds most of its remaining units; one left without units, or without a module of
+    its own, is removed. Returns the titles of the capstones removed."""
+    # IMMEDIATE: this reads before it writes, and must not find the database changed under it in between.
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        # All renames are looked up before any is applied, so two units can swap titles.
+        ids = {old: row("SELECT id FROM concepts WHERE course_id = ? AND title = ?", course_id, old)["id"] for old in renamed}
+        for old, new in renamed.items():
+            conn.execute("UPDATE concepts SET title = ? WHERE id = ?", (new, ids[old]))
+            conn.execute("UPDATE lessons SET title = ? WHERE concept_id = ?", (new, ids[old]))
+        existing = {c["title"]: c for c in concepts(course_id)}
+        units = [(m, title) for m in modules for title in m["concepts"]]
+        for n, (m, title) in enumerate(units, start=1):
+            if unit := existing.get(title):
+                known = int(title in m["known"] or unit["known"])
+                conn.execute("UPDATE concepts SET module = ?, known = ?, position = ? WHERE id = ?", (m["title"], known, n, unit["id"]))
+            else:
+                conn.execute(
+                    "INSERT INTO concepts (course_id, module, title, known, position) VALUES (?, ?, ?, ?, ?)",
+                    (course_id, m["title"], title, int(title in m["known"]), n),
+                )
+        gone = sorted(existing.keys() - {title for _, title in units})
+        if started := [t for t in gone if row("SELECT 1 FROM lessons WHERE concept_id = ?", existing[t]["id"])]:
+            raise ValueError(started)
+        for title in gone:
+            conn.execute("UPDATE cards SET concept_id = NULL WHERE concept_id = ?", (existing[title]["id"],))
+            conn.execute("DELETE FROM concepts WHERE id = ?", (existing[title]["id"],))
+        removed = _rehome_capstones(course_id)
+        if hours:
+            conn.execute("UPDATE courses SET hours = ? WHERE id = ?", (hours, course_id))
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    return removed
+
+
+def _rehome_capstones(course_id: int) -> list[str]:
+    """After a map revision: each capstone moves to the module with most of its remaining units. A module holds
+    one capstone, so of two that claim the same module the one with more finished milestones stays."""
+    claims = []
+    for capstone in rows("SELECT * FROM capstones WHERE course_id = ?", course_id):
+        home = row(
+            "SELECT k.module, COUNT(*) AS units, SUM(m.done) AS done FROM milestones m JOIN concepts k ON k.id = m.concept_id "
+            "WHERE m.capstone_id = ? GROUP BY k.module ORDER BY units DESC, MIN(k.position) LIMIT 1",
+            capstone["id"],
+        )
+        total = row("SELECT COALESCE(SUM(done), 0) AS done FROM milestones WHERE capstone_id = ?", capstone["id"])["done"]
+        claims.append((capstone, home["module"] if home else None, total))
+        # Out of the way first: the modules are unique per course, and two capstones may trade places.
+        conn.execute("UPDATE capstones SET module = ? WHERE id = ?", (f"\0{capstone['id']}", capstone["id"]))
+    removed, taken = [], set()
+    for capstone, module, _ in sorted(claims, key=lambda claim: (-claim[2], claim[0]["id"])):
+        if module is None or module in taken:
+            conn.execute("DELETE FROM capstones WHERE id = ?", (capstone["id"],))
+            removed.append(capstone["title"])
+        else:
+            taken.add(module)
+            conn.execute("UPDATE capstones SET module = ? WHERE id = ?", (module, capstone["id"]))
+    return sorted(removed)
 
 
 def lesson(lesson_id: int) -> dict | None:
@@ -683,7 +761,7 @@ def capstones(course_id: int, capstone_id: int | None = None) -> list[dict]:
     out = []
     for c in rows("SELECT * FROM capstones WHERE course_id = ?" + (" AND id = ?" if capstone_id else ""), *(course_id, capstone_id) if capstone_id else (course_id,)):
         c["milestones"] = rows(
-            "SELECT m.*, k.title AS concept FROM milestones m JOIN concepts k ON k.id = m.concept_id WHERE m.capstone_id = ? ORDER BY k.id",
+            "SELECT m.*, k.title AS concept FROM milestones m JOIN concepts k ON k.id = m.concept_id WHERE m.capstone_id = ? ORDER BY k.position, k.id",
             c["id"],
         )
         c["done"] = sum(m["done"] for m in c["milestones"])
@@ -699,7 +777,7 @@ def milestone_for(concept_id: int) -> dict | None:
         concept_id,
     )
     if m:
-        order = [x["concept_id"] for x in rows("SELECT m.concept_id FROM milestones m JOIN concepts k ON k.id = m.concept_id WHERE m.capstone_id = ? ORDER BY k.id", m["capstone_id"])]
+        order = [x["concept_id"] for x in rows("SELECT m.concept_id FROM milestones m JOIN concepts k ON k.id = m.concept_id WHERE m.capstone_id = ? ORDER BY k.position, k.id", m["capstone_id"])]
         m["position"], m["total"] = order.index(concept_id) + 1, len(order)
     return m
 
