@@ -39,7 +39,7 @@ def test_specs_resolve_rows_from_functions_inline_data_and_workspace_files(tmp_p
         ({"marks": []}, "non-empty"),
         ({"marks": [{"type": "pie", "data": [{}]}]}, "type must be"),
         ({"marks": [{"type": "line", "data": [{"a": 1}], "x": "a"}]}, "missing \\[.y.\\]"),
-        ({"marks": [{"type": "line", "file": "../../etc/passwd", "x": "a", "y": "b"}]}, "leaves"),
+        ({"marks": [{"type": "line", "file": "../../etc/passwd", "x": "a", "y": "b"}]}, "not a file"),
         ({"marks": [{"type": "line", "file": "nope.csv", "x": "a", "y": "b"}]}, "not a file"),
         ({"marks": [{"type": "rect", "data": [{"x1": 0}], "x1": "x1"}]}, "missing"),
         ({"marks": [{"type": "line", "data": [{"a": 1, "b": 2}], "x": "a", "y": "c"}]}, "not columns"),

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import httpx
 
+from .. import db
 from . import MCP_URL, MODEL
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -88,22 +89,36 @@ class EventParser:
 async def run_turn(
     prompt: str, *, session_id: str, resume: bool, name: str, cwd: Path, phase: str
 ) -> AsyncIterator[dict]:
-    params = {"directory": str(cwd)}
+    # Not the course workspace: opencode loads opencode.json and .opencode/ from its directory, and commands can
+    # write there. A file planted in the workspace could hand the agent its built-in shell back.
+    directory = db.DB_PATH.parent / "agents" / cwd.name
+    directory.mkdir(parents=True, exist_ok=True)
+    params = {"directory": str(directory)}
     body: dict = {"agent": f"tutor-{phase}", "parts": [{"type": "text", "text": prompt}]}
     if MODEL:
         provider, _, model = MODEL.partition("/")
         body["model"] = {"providerID": provider, "modelID": model}
     async with httpx.AsyncClient(base_url=BASE, timeout=None) as client:
-        if not resume:
+        async def create() -> str:
             created = await client.post("/session", params=params, json={"title": name})
             created.raise_for_status()
-            session_id = created.json()["id"]
+            return created.json()["id"]
+
+        if not resume:
+            session_id = await create()
             yield {"type": "session.started", "session_id": session_id}
         parser = EventParser(session_id)
         finished = False
         try:
             async with client.stream("GET", "/event", params=params) as events:
                 sent = await client.post(f"/session/{session_id}/prompt_async", params=params, json=body)
+                if resume and sent.status_code >= 400:
+                    # A session from before the move out of the workspace is not found here: the lesson goes on in
+                    # a fresh one, and the state header of every turn carries it over.
+                    session_id = await create()
+                    yield {"type": "session.started", "session_id": session_id}
+                    parser = EventParser(session_id)
+                    sent = await client.post(f"/session/{session_id}/prompt_async", params=params, json=body)
                 if sent.status_code >= 400:
                     finished = True
                     yield {"type": "turn.done", "ok": False, "error": f"opencode refused the turn: {sent.text[:300]}"}

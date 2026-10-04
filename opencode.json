@@ -32,13 +32,7 @@
       "prompt": "{file:./wise_scholar/prompts/core.md}\n\n{file:./wise_scholar/prompts/lesson.md}",
       "permission": {
         "*": "deny",
-        "scholar_*": "allow",
-        "read": "allow",
-        "edit": "allow",
-        "bash": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "list": "allow"
+        "scholar_*": "allow"
       }
     },
     "tutor-story": {

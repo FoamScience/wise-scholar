@@ -11,10 +11,18 @@ The research behind each teaching behaviour is listed in [docs/science.md](docs/
 - One agent backend:
   - [Claude Code](https://claude.com/claude-code), logged in (`claude` on your `PATH`), or
   - [opencode](https://opencode.ai), with a provider configured (`opencode` on your `PATH`)
+- [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`, Linux), for the sandbox that commands run in
 
 > [!NOTE]
-> The tutor's file and shell tools currently run unsandboxed in `workspace/<course>/`.
-> Run this only on a machine you trust it with.
+> In hands-on lessons the tutor writes exercise files in `workspace/<course>/` and runs commands there, and so does the Run button.
+> Every such command runs inside bubblewrap. It sees the system's programs (`/usr`, `/etc`, `/opt`), the toolchain folders your `PATH`
+> points into under your home directory (`~/.cargo`, `~/.nvm`, `~/go`, `~/.local/bin`, ...), and its own course workspace, which is the
+> only place it can write. It has no network and no access to the machine's sockets (Docker, D-Bus), sees nothing else of your home
+> directory, the database or other courses, and stops after 30 seconds. Where a user systemd runs it gets 2 GB of memory and
+> 256 tasks; elsewhere those two limits are missing and the server says so at start. Two commands run at a time.
+> Not covered: what a command writes into its workspace is not capped, and a token you keep inside one of those toolchain
+> folders is readable to it. The agent itself has no shell or file tools; it acts only through the server.
+> For an instance other people use, switch commands off (`WISE_SCHOLAR_COMMANDS=0`).
 
 ## Run
 
@@ -47,6 +55,9 @@ Other settings, all optional:
 | `WISE_SCHOLAR_DB` | path of the database file | `data/wise-scholar.db` |
 | `WISE_SCHOLAR_WORKSPACE` | root folder of the course workspaces | `workspace/` |
 | `WISE_SCHOLAR_OPENCODE_PORT` | port of the opencode server the app starts | `8322` |
+| `WISE_SCHOLAR_COMMANDS` | `0` serves without command execution: the tutor gets no workspace tools and poses no runnable exercises, and Run is refused. For instances opened to other people | `1` |
+| `WISE_SCHOLAR_SANDBOX` | `0` runs commands without bubblewrap (macOS, containers that forbid it): as the server's user, with network, the whole home directory including the agent's login, no memory or task limits, and processes that can outlive the time limit. Only for a machine and a tutor model you trust fully | `1` |
+| `WISE_SCHOLAR_SANDBOX_PATHS` | extra folders commands may read, separated by `:`, for toolchains that `PATH` does not point into. Everything in them becomes readable to commands; the home directory and folders holding the database or the courses are ignored | none |
 
 A second instance for testing, beside the real one:
 

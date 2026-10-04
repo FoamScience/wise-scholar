@@ -8,9 +8,6 @@ from . import MCP_URL, MODEL, PORT
 ROOT = Path(__file__).resolve().parents[2]
 PROMPTS = ROOT / "wise_scholar" / "prompts"
 MCP_PREFIX = "mcp__scholar__"
-# Lessons let the tutor write and test exercise files in the course workspace, unsandboxed.
-WORKSPACE_TOOLS = ["Read", "Write", "Edit", "Bash"]
-
 
 MCP_CONFIG = ROOT / "data" / f"mcp-{PORT}.json"
 
@@ -49,16 +46,17 @@ async def run_turn(
 ) -> AsyncIterator[dict]:
     session = ["--resume", session_id] if resume else ["--session-id", session_id, "--name", name]
     system_prompt = "\n\n".join((PROMPTS / f"{part}.md").read_text() for part in ("core", phase))
-    tools = WORKSPACE_TOOLS if phase == "lesson" else []
-    # Empty --setting-sources keeps user-level hooks, plugins and CLAUDE.md out of the tutor session.
+    # Empty --setting-sources keeps user-level hooks, plugins and CLAUDE.md out of the tutor session, and with
+    # --strict-mcp-config and no built-in tools nothing a command plants in the workspace (the cwd) is loaded or usable.
     proc = await asyncio.create_subprocess_exec(
         "claude", "-p",
         "--output-format", "stream-json", "--include-partial-messages", "--verbose",
         "--setting-sources", "", "--disable-slash-commands",
         "--strict-mcp-config", "--mcp-config", str(MCP_CONFIG),
         "--system-prompt", system_prompt,
-        "--tools", ",".join(tools),
-        "--allowedTools", "mcp__scholar", *tools,
+        # No built-in tools: the tutor acts only through the server's MCP tools, which sandbox what they run.
+        "--tools", "",
+        "--allowedTools", "mcp__scholar",
         *(["--model", MODEL] if MODEL else []),
         *session,
         cwd=cwd,

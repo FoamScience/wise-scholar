@@ -46,10 +46,6 @@
       "add_figure": "يرسم شكلًا…",
       "add_plot": "يرسم مخطّطًا بيانيًّا…",
       "pose_writing": "يحضّر مهمّة كتابة…",
-      "bash": "يجرّب في مساحة العمل…",
-      "read": "يقرأ ملفاتك…",
-      "write": "يكتب ملفات التمرين…",
-      "edit": "يكتب ملفات التمرين…",
       "give_hint": "يكتب تلميحًا…",
       "reveal": "يفتح الحل…",
       "mark_solved": "يتحقّق من إجابتك…",
@@ -59,7 +55,10 @@
       "pose_teachback": "يحضّر مهمّة شرح…",
       "make_podcast": "يكتب بودكاست…",
       "pose_quiz": "يحضّر سؤالًا سريعًا…",
-      "grade_quiz": "يصحّح إجابتك…"
+      "grade_quiz": "يصحّح إجابتك…",
+      "run_command": "يجرّب في مساحة العمل…",
+      "read_file": "يقرأ ملفاتك…",
+      "write_file": "يكتب ملفات التمرين…"
     },
     "block": {
       "prose": "للقراءة",
@@ -440,6 +439,7 @@
     "this check is finished": "انتهى هذا الاختبار",
     "already graded": "صُحّح من قبل",
     "the interview already started": "المقابلة بدأت من قبل",
-    "start the interview first": "ابدأ المقابلة أولًا"
+    "start the interview first": "ابدأ المقابلة أولًا",
+    "running code is turned off on this server": "تشغيل الشيفرة معطَّل على هذا الخادم"
   }
 }

@@ -2,8 +2,11 @@
 so the browser only draws rows it is given."""
 import ast
 import csv
+import io
 import math
 from pathlib import Path
+
+from . import course_files
 
 MARKS = {"line", "dot", "bar", "area", "rule", "text", "rect"}
 MAX_ROWS = 2000
@@ -93,22 +96,14 @@ def sample(expression: str, domain: list[float], samples: int = DEFAULT_SAMPLES)
 
 def load_rows(path: Path, workspace: Path) -> list[dict]:
     """Rows of a CSV or TSV in the course workspace, numbers parsed, thinned to MAX_ROWS."""
-    target = (workspace / path).resolve()
-    if not target.is_relative_to(workspace.resolve()):
-        raise ValueError(f"{path} leaves the course workspace")
-    if not target.is_file():
+    text = course_files.read_text(workspace, str(path))
+    if text is None:
         raise ValueError(f"{path} is not a file in the workspace")
     try:
-        with target.open(newline="") as f:
-            sample_text = f.read(4096)
-            f.seek(0)
-            try:
-                dialect = csv.Sniffer().sniff(sample_text, delimiters=",;\t")
-            except csv.Error:
-                dialect = csv.excel
-            rows = [{k.strip(): _number(v) for k, v in r.items() if k} for r in csv.DictReader(f, dialect=dialect)]
-    except (OSError, UnicodeDecodeError) as e:
-        raise ValueError(f"{path} could not be read: {e}") from None
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    rows = [{k.strip(): _number(v) for k, v in r.items() if k} for r in csv.DictReader(io.StringIO(text, newline=""), dialect=dialect)]
     if len(rows) > MAX_ROWS:
         step = len(rows) / MAX_ROWS
         rows = [rows[int(i * step)] for i in range(MAX_ROWS)]

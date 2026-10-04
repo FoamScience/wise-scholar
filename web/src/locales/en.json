@@ -46,10 +46,6 @@
       "add_figure": "drawing a figure…",
       "add_plot": "plotting…",
       "pose_writing": "preparing a writing task…",
-      "bash": "testing in the workspace…",
-      "read": "reading your files…",
-      "write": "writing exercise files…",
-      "edit": "writing exercise files…",
       "give_hint": "writing a hint…",
       "reveal": "opening the solution…",
       "mark_solved": "checking your answer…",
@@ -59,7 +55,10 @@
       "pose_teachback": "preparing a teach-back…",
       "make_podcast": "writing a cast…",
       "pose_quiz": "preparing a quick check…",
-      "grade_quiz": "grading your answer…"
+      "grade_quiz": "grading your answer…",
+      "run_command": "testing in the workspace…",
+      "read_file": "reading your files…",
+      "write_file": "writing exercise files…"
     },
     "block": {
       "prose": "Read",
