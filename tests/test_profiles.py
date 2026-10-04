@@ -304,3 +304,22 @@ def test_a_course_waits_for_its_scope_and_hands_it_to_the_tutor_every_turn(monke
     assert again.value.status_code == 409 and len(turns) == 1
     with pytest.raises(Exception):
         app.Scope(hours=0)
+
+
+def test_threads_use_the_database_at_once_without_tripping_over_each_other():
+    from concurrent.futures import ThreadPoolExecutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Busy')").lastrowid
+    course = db.create_course("Concurrency", who)["id"]
+    lesson = db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]
+
+    def work(n: int) -> int:
+        for i in range(150):
+            db.add_message(lesson, "learner", f"{n}-{i}")
+            assert db.rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson)
+            assert db.lesson(lesson)["profile"] == "Busy"
+        return n
+
+    with ThreadPoolExecutor(8) as pool:
+        assert sorted(pool.map(work, range(8))) == list(range(8))
+    assert db.row("SELECT COUNT(*) AS n FROM messages WHERE lesson_id = ?", lesson)["n"] == 8 * 150
