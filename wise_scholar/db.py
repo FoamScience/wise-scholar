@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 import uuid
 from pathlib import Path
 
@@ -214,12 +215,35 @@ MIGRATIONS = [
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
-conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
-conn.row_factory = sqlite3.Row
-conn.execute("PRAGMA foreign_keys = ON")
+
+
+class _PerThread:
+    """One SQLite connection per thread behind the single name `conn`. Sync endpoints run in worker threads beside
+    the event loop; one connection shared between them trips over its own statement cache (InterfaceError), and a
+    BEGIN in one thread would swallow the statements of another."""
+
+    def __init__(self, path: Path):
+        self._path = path
+        self._local = threading.local()
+
+    def __getattr__(self, name: str):
+        connection = getattr(self._local, "connection", None)
+        if connection is None:
+            connection = sqlite3.connect(self._path, isolation_level=None, timeout=30)
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            # Write-ahead log: a thread that writes does not hold up the threads that read.
+            connection.execute("PRAGMA journal_mode = WAL")
+            self._local.connection = connection
+        return getattr(connection, name)
+
+
+conn = _PerThread(DB_PATH)
 _version = conn.execute("PRAGMA user_version").fetchone()[0]
 if 0 < _version < len(MIGRATIONS):
-    # Keep the database as it was before this upgrade, in case a migration goes wrong.
+    # Keep the database as it was before this upgrade, in case a migration goes wrong. The checkpoint moves what
+    # still sits in the write-ahead log into the file that is copied.
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     shutil.copy(DB_PATH, DB_PATH.with_name(f"{DB_PATH.name}.v{_version}.bak"))
 for _n, _script in enumerate(MIGRATIONS[_version:], start=_version + 1):
     conn.executescript(_script)
