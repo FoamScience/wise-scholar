@@ -59,7 +59,8 @@
       "run_command": "essai dans l'espace de travail…",
       "read_file": "lecture de vos fichiers…",
       "write_file": "écriture des fichiers d'exercice…",
-      "ask_network": "demande d'accès à Internet…"
+      "ask_network": "demande d'accès à Internet…",
+      "revise_course_map": "révision du plan du cours…"
     },
     "block": {
       "prose": "À lire",
@@ -190,7 +191,8 @@
       "hints_one": "{{count}} indice",
       "hints_many": "{{count}} d'indices",
       "hints_other": "{{count}} indices",
-      "gaveUp": "abandonné {{n}}×"
+      "gaveUp": "abandonné {{n}}×",
+      "change": "Modifier le cours"
     },
     "plan": {
       "heading": "Comment je compte enseigner ce sujet · classé pour vous",
@@ -227,7 +229,8 @@
       "label": "Discussion avec le tuteur",
       "tutor": "Tuteur",
       "message": "Écrire au tuteur",
-      "turnFailed": "le tour a échoué"
+      "turnFailed": "le tour a échoué",
+      "changeHint": "Dites au tuteur ce qu'il faut changer : retirer un sujet, en ajouter un, réordonner, raccourcir…"
     },
     "profile": {
       "who": "Qui apprend ?",

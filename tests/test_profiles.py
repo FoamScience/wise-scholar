@@ -323,3 +323,65 @@ def test_threads_use_the_database_at_once_without_tripping_over_each_other():
     with ThreadPoolExecutor(8) as pool:
         assert sorted(pool.map(work, range(8))) == list(range(8))
     assert db.row("SELECT COUNT(*) AS n FROM messages WHERE lesson_id = ?", lesson)["n"] == 8 * 150
+
+
+def test_a_course_map_is_revised_in_place_and_started_units_keep_their_work():
+    import asyncio
+
+    from wise_scholar import tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Reviser')").lastrowid
+    course = db.create_course("Revisable", who)["id"]
+    db.set_concepts(course, [
+        {"title": "Basics", "concepts": ["a", "b", "c"], "known": ["a"]},
+        {"title": "Later", "concepts": ["d", "e"], "known": []},
+    ])  # fmt: skip
+    ids = {c["title"]: c["id"] for c in db.concepts(course)}
+    lesson = db.create_lesson(course, "b", "lesson", ids["b"])
+    db.add_capstone(course, "Basics", "Project one", "brief", "p1", [(ids["a"], "x"), (ids["b"], "y"), (ids["c"], "z")])
+    db.add_capstone(course, "Later", "Project two", "brief", "p2", [(ids["d"], "x"), (ids["e"], "y")])
+    module = tutor.Module
+    revise = lambda modules, **more: asyncio.run(tutor.revise_course_map(course, modules, **more))  # noqa: E731
+
+    assert revise([module(title="Basics", concepts=["a", "c"])]).startswith("error: units ['b'] already have a lesson")
+    assert revise([module(title="Basics", concepts=["a", "b", "b"])]).startswith("error: titles ['b'] appear more than once")
+    assert revise([module(title="M", concepts=["a", "b"])], renamed=[tutor.Renamed(old="b", new="a")]).startswith("error: new titles")
+    assert [c["title"] for c in db.concepts(course)] == ["a", "b", "c", "d", "e"]
+
+    done = revise(
+        [module(title="Core", concepts=["new first", "b renamed", "a"], known=["new first"]), module(title="Extra", concepts=["c"])],
+        renamed=[tutor.Renamed(old="b", new="b renamed")],
+        hours=12,
+    )
+    assert done == "shown; dropped ['d', 'e']; capstones removed with their units: ['Project two']"
+    after = db.concepts(course)
+    assert [(c["module"], c["title"], c["known"]) for c in after] == [
+        ("Core", "new first", 1), ("Core", "b renamed", 0), ("Core", "a", 1), ("Extra", "c", 0),
+    ]  # fmt: skip
+    kept = {c["title"]: c["id"] for c in after}
+    assert kept["b renamed"] == ids["b"] and kept["a"] == ids["a"] and kept["c"] == ids["c"]
+    assert db.lesson(lesson)["title"] == "b renamed" and db.lesson(lesson)["concept_id"] == ids["b"]
+    assert db.course(course)["hours"] == 12
+    [capstone] = db.capstones(course)
+    assert capstone["module"] == "Core" and [m["concept"] for m in capstone["milestones"]] == ["b renamed", "a", "c"]
+
+    # Two units trade titles: each keeps its own lesson under the other name.
+    other = db.create_lesson(course, "a", "lesson", ids["a"])
+    swap = [tutor.Renamed(old="a", new="b renamed"), tutor.Renamed(old="b renamed", new="a")]
+    assert revise([module(title="Core", concepts=["new first", "a", "b renamed"]), module(title="Extra", concepts=["c"])], renamed=swap) == "shown"
+    assert {c["id"]: c["title"] for c in db.concepts(course)}[ids["b"]] == "a" and db.lesson(lesson)["title"] == "a"
+    assert db.lesson(other)["title"] == "b renamed"
+
+    for bad, reason in ((0, "hours must be"), (-3, "hours must be"), (10**6, "hours must be")):
+        assert reason in revise([module(title="Core", concepts=["new first", "a", "b renamed", "c"])], hours=bad)
+    twice = [module(title="Core", concepts=["a"]), module(title="Extra", concepts=["c"]), module(title="Core", concepts=["b renamed", "new first"])]
+    assert revise(twice).startswith("error: modules ['Core'] appear more than once")
+    assert db.course(course)["hours"] == 12
+
+    # Two capstones end up claiming one module: the one with finished work stays, the other is reported.
+    fresh = {c["title"]: c["id"] for c in db.concepts(course)}
+    db.add_capstone(course, "Extra", "Project three", "brief", "p3", [(fresh["c"], "w")])
+    db.conn.execute("UPDATE milestones SET done = 1 WHERE concept_id = ? AND capstone_id = (SELECT id FROM capstones WHERE title = 'Project three')", (fresh["c"],))
+    merged = revise([module(title="All", concepts=["new first", "a", "b renamed", "c"])])
+    assert merged == "shown; capstones removed with their units: ['Project one']"
+    assert [(k["title"], k["module"]) for k in db.capstones(course)] == [("Project three", "All")]
