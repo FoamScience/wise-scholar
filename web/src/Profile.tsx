@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from './api'
+import type { Locale } from './locale'
 import type { Profile } from './profiles'
 
 type Fact = { id: number; text: string }
@@ -32,7 +33,7 @@ function NameForm(props: { id: string; label: string; button: string; initial?: 
   )
 }
 
-export function FirstProfile(props: { onCreated: (profile: Profile) => void }) {
+export function FirstProfile(props: { locale: Locale; onCreated: (profile: Profile) => void }) {
   return (
     <main className="home">
       <h1>Who is learning?</h1>
@@ -44,7 +45,7 @@ export function FirstProfile(props: { onCreated: (profile: Profile) => void }) {
         id="first-profile"
         label="Your name"
         button="Start"
-        onSubmit={(name) => api<Profile>('/api/profiles', { name }).then(props.onCreated)}
+        onSubmit={(name) => api<Profile>('/api/profiles', { name, locale: props.locale }).then(props.onCreated)}
       />
     </main>
   )
@@ -53,6 +54,7 @@ export function FirstProfile(props: { onCreated: (profile: Profile) => void }) {
 export function ProfilePage(props: {
   profiles: Profile[]
   current: Profile
+  locale: Locale
   onSelect: (id: number) => void
   onChanged: () => Promise<unknown>
 }) {
@@ -118,7 +120,7 @@ export function ProfilePage(props: {
           label="Add a profile"
           button="Add"
           onSubmit={(name) =>
-            api<Profile>('/api/profiles', { name }).then((created) => props.onChanged().then(() => props.onSelect(created.id)))
+            api<Profile>('/api/profiles', { name, locale: props.locale }).then((created) => props.onChanged().then(() => props.onSelect(created.id)))
           }
         />
         <div className="small">No password. Anyone using this browser can switch profiles.</div>

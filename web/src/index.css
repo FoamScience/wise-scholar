@@ -121,6 +121,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
   color: inherit;
@@ -1044,6 +1045,10 @@ td {
 
 .btn.theme {
   padding: 6px 8px;
+}
+
+.btn.locale {
+  padding: 0 8px;
 }
 
 .file pre.failed {
