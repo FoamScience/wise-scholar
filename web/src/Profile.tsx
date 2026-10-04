@@ -24,7 +24,7 @@ function NameForm(props: { id: string; label: string; button: string; initial?: 
     <form className="name-form" onSubmit={submit}>
       <label htmlFor={props.id}>{props.label}</label>
       <div className="row">
-        <input id={props.id} className="field" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+        <input id={props.id} className="field" dir="auto" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
         <button className="btn primary" disabled={!name.trim() || name.trim() === props.initial}>
           {props.button}
         </button>

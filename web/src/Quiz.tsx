@@ -68,7 +68,7 @@ function QuizForm(props: {
           </label>
           <textarea
             id={`${props.id}-answer`}
-            className="field"
+            className="field" dir="auto"
             rows={3}
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
@@ -287,7 +287,9 @@ export function ReviewPanels({ profile }: { profile: number }) {
                     <span className="bar stated" style={{ height: `${b.stated! * 100}%` }} title={t('review.said', { percent: percent(b.stated!) })} />
                     <span className="bar actual" style={{ height: `${b.actual! * 100}%` }} title={t('review.wasRight', { percent: percent(b.actual!) })} />
                   </div>
-                  <span className="small">{b.label}</span>
+                  <span className="small" dir="ltr">
+                    {b.label}
+                  </span>
                   <span className="small">{t('review.ofN', { percent: percent(b.actual!), n: b.n })}</span>
                 </div>
               ))}

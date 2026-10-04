@@ -4,6 +4,7 @@ import { api } from './api'
 import { day } from './i18n'
 import { Correction } from './Diff'
 import Markdown from './Md'
+import { textDirection } from './text'
 
 type Entry = {
   id: number
@@ -60,7 +61,9 @@ export function ErrorsPage({ profile }: { profile: number }) {
           {e.kind === 'quiz' && <Markdown>{e.prompt}</Markdown>}
           <div className="attempt">
             <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
-            <span className="said">{e.said}</span>
+            <span className="said" dir={textDirection(e.said)}>
+              {e.said}
+            </span>
           </div>
           <div className="solution">
             <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
@@ -72,7 +75,7 @@ export function ErrorsPage({ profile }: { profile: number }) {
           </label>
           <textarea
             id={`note-${e.id}`}
-            className="field"
+            className="field" dir="auto"
             rows={2}
             defaultValue={e.note}
             onBlur={(ev) => ev.target.value !== e.note && patch(e.id, { note: ev.target.value })}

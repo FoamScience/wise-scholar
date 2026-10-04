@@ -16,3 +16,11 @@ export function splitSentences(text: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean)
 }
+
+/** The direction most letters of a text are written in; undefined without letters. */
+export function textDirection(text: string): 'rtl' | 'ltr' | undefined {
+  const letters = text.match(/\p{L}/gu)?.length ?? 0
+  const rtl = text.match(/[\p{Script=Arabic}\p{Script=Hebrew}]/gu)?.length ?? 0
+  if (letters === 0) return undefined
+  return rtl * 2 > letters ? 'rtl' : 'ltr'
+}

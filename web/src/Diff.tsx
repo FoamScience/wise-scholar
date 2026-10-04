@@ -14,7 +14,7 @@ export function Correction({ attempt, corrected }: { attempt: string; corrected:
       {clean || !changed ? (
         <Markdown>{corrected}</Markdown>
       ) : (
-        <p className="word-diff">
+        <p className="word-diff" dir="auto">
           {parts.map((p, i) =>
             p.removed ? (
               <del key={i}>{p.value}</del>

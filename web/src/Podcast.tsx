@@ -65,7 +65,7 @@ export function PodcastCard(props: { id: number; title: string; data: unknown; a
       {d.glossary.length > 0 && (
         <div className="targets">
           {d.glossary.map((g) => (
-            <span key={g.word} className="chip" lang={d.lang} title={g.meaning}>
+            <span key={g.word} className="chip" lang={d.lang} dir="auto" title={g.meaning}>
               {g.word}
             </span>
           ))}
@@ -73,7 +73,7 @@ export function PodcastCard(props: { id: number; title: string; data: unknown; a
       )}
       <details>
         <summary>{t('cast.transcript')}</summary>
-        <div className="transcript" lang={d.lang}>
+        <div className="transcript" lang={d.lang} dir="auto">
           {d.lines.map((l, i) => (
             <p key={i} className={i === line ? 'current' : undefined}>
               <strong>{l.speaker}:</strong> {l.text}

@@ -82,3 +82,22 @@ test('a plot card renders its accessible container before the library loads', as
   const html = renderToStaticMarkup(createElement(PlotCard, { id: 3, title: 'Decay', data: { spec: { marks: [] }, alt: 'exp(-x) falling' } }))
   assert.ok(html.includes('aria-label="exp(-x) falling"') && html.includes('Decay'))
 })
+
+test('each block takes the direction most of its prose is written in, ignoring code and math', () => {
+  const html = renderToStaticMarkup(
+    createElement(
+      Markdown,
+      null,
+      [
+        'جرّب `print("hello world from python, a long line of code")` ثم $E = mc^2 + \\text{energy}$',
+        'The word كتاب means book, and it costs $5 or $10.',
+        '$$x^2 + y^2 = z^2$$',
+        '```python\nprint(1)\n```',
+      ].join('\n\n'),
+    ),
+  )
+  assert.match(html, /<p dir="rtl">جرّب/)
+  assert.match(html, /<p dir="ltr">The word/)
+  assert.match(html, /<p><span class="katex/)
+  assert.ok(html.includes('<pre>'))
+})
