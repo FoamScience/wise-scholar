@@ -8,6 +8,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -72,6 +73,24 @@ class Archive(BaseModel):
 
 class Name(BaseModel):
     name: str = Field(min_length=1, max_length=60)
+
+
+Locale = Literal["en", "fr", "ar"]
+LOCALE_NAMES = {"en": "English", "fr": "French", "ar": "Modern Standard Arabic"}
+# The few learner-facing sentences the server writes itself; everything else comes from the tutor or the web dictionaries.
+WORD_CARD = {
+    "en": ("What does **{}** mean?", "From the text “{}”."),
+    "fr": ("Que signifie **{}** ?", "Tiré du texte « {} »."),
+    "ar": ("ما معنى **{}**؟", "من النص «{}»."),
+}
+
+
+class NewProfile(Name):
+    locale: Locale = "en"
+
+
+class ProfileLocale(BaseModel):
+    locale: Locale
 
 
 class Turn(BaseModel):
@@ -204,7 +223,13 @@ def _turn_prompt(lesson: dict, line: str) -> str:
     ]
     # Resumed sessions keep the style of their earlier replies, so the math rule rides along with every turn.
     fmt = "[format] All math in LaTeX: $...$ inline, $$...$$ displayed. No Unicode math symbols such as x², √, ∫; ordinary letters, accents, currency and units stay as they are."
-    return "\n".join([state, *known, fmt, line])
+    language = (
+        f"[language] Write everything the learner reads in {LOCALE_NAMES[lesson['locale']]}: chat, lesson blocks, questions, "
+        "options, hints, feedback, titles, the course map. Code, commands and identifiers stay as they are. In a language "
+        "course this is the learner's own language, used for instructions and explanations; texts and tasks in the language "
+        "being learned stay in that language."
+    )
+    return "\n".join([state, *known, fmt, language, line])
 
 
 async def _run_turn(lesson: dict, line: str) -> None:
@@ -333,8 +358,8 @@ def list_profiles() -> list[dict]:
 
 
 @app.post("/api/profiles")
-def create_profile(body: Name) -> dict:
-    return db.profile(_save_profile("INSERT INTO profiles (name) VALUES (?)", body.name.strip()))
+def create_profile(body: NewProfile) -> dict:
+    return db.profile(_save_profile("INSERT INTO profiles (name, locale) VALUES (?, ?)", body.name.strip(), body.locale))
 
 
 @app.get("/api/profiles/{profile_id}")
@@ -346,6 +371,13 @@ def get_profile(profile_id: int) -> dict:
 def rename_profile(profile_id: int, body: Name) -> dict:
     _profile(profile_id)
     _save_profile("UPDATE profiles SET name = ? WHERE id = ?", body.name.strip(), profile_id)
+    return db.profile(profile_id)
+
+
+@app.post("/api/profiles/{profile_id}/locale")
+def set_profile_locale(profile_id: int, body: ProfileLocale) -> dict:
+    _profile(profile_id)
+    db.conn.execute("UPDATE profiles SET locale = ? WHERE id = ?", (body.locale, profile_id))
     return db.profile(profile_id)
 
 
@@ -645,9 +677,10 @@ async def add_vocabulary(block_id: int, body: Word) -> dict:
     lesson = _lesson(block["lesson_id"])
     lang = block["data"]["lang"].split("-")[0].lower()
     lemma = simplemma.lemmatize(gloss["word"], lang=lang).lower()
+    question, source = WORD_CARD[lesson["locale"]]
     card = db.add_card(
-        lesson["course_id"], lesson["concept_id"], f"What does **{gloss['word']}** mean?", "open", [],
-        gloss["meaning"], f"From the text “{block['data']['title']}”.", scheduled=True, due=_now(), vocab=True,
+        lesson["course_id"], lesson["concept_id"], question.format(gloss["word"]), "open", [],
+        gloss["meaning"], source.format(block["data"]["title"]), scheduled=True, due=_now(), vocab=True,
     )
     db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lang, card))
     db.set_vocab(lesson["profile_id"], lang, lemma, "learning", "glossary")

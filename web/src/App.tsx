@@ -17,6 +17,8 @@ import { usePlayer } from './player'
 import { splitBy } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
 import { useProfiles } from './profiles'
+import { LOCALES, browserLocale, rememberLocale } from './locale'
+import type { Locale } from './locale'
 
 type Course = {
   id: number
@@ -1412,6 +1414,17 @@ export default function App() {
   const [agent, setAgent] = useState('')
   const [speech, setSpeech] = useState(false)
   const { profiles, current, select, reload } = useProfiles()
+  const [chosen, setChosen] = useState<Locale>(browserLocale)
+  const locale = current?.locale ?? chosen
+  useEffect(() => {
+    document.documentElement.lang = locale
+  }, [locale])
+
+  function switchLocale(next: Locale) {
+    rememberLocale(next)
+    setChosen(next)
+    if (current) api(`/api/profiles/${current.id}/locale`, { locale: next }).then(reload, () => {})
+  }
   useEffect(() => {
     api<{ agent: string; speech: boolean }>('/api/meta').then(
       (m) => {
@@ -1429,6 +1442,7 @@ export default function App() {
     if (!current)
       return (
         <FirstProfile
+          locale={locale}
           onCreated={(created) => {
             reload()
             select(created.id)
@@ -1448,7 +1462,7 @@ export default function App() {
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
     if (hash === '#/errors') return <ErrorsPage profile={current.id} />
     if (hash === '#/profile')
-      return <ProfilePage profiles={profiles} current={current} onSelect={select} onChanged={reload} />
+      return <ProfilePage profiles={profiles} current={current} locale={locale} onSelect={select} onChanged={reload} />
     return <Home key={current.id} profile={current.id} />
   }
 
@@ -1461,6 +1475,13 @@ export default function App() {
         <span className="grow" />
         <span className="status">agent: {agent}</span>
         <ThemeToggle />
+        <select className="btn locale" aria-label="Language" value={locale} onChange={(e) => switchLocale(e.target.value as Locale)}>
+          {Object.entries(LOCALES).map(([code, name]) => (
+            <option key={code} value={code} lang={code}>
+              {name}
+            </option>
+          ))}
+        </select>
         {current && (
           <a className="btn as-link" href="#/profile">
             {current.name}

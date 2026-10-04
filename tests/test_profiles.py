@@ -221,3 +221,12 @@ def test_capstone_milestones_follow_the_module_and_complete_on_mark_solved():
     assert cap["done"] == 1 and [m["done"] for m in cap["milestones"]] == [1, 0]
     transfer = db.add_block(lesson, "challenge", "Transfer", {**challenge.new(), "transfer": True, "max_hints": 0})
     assert "used up" in challenge.hint_blocker(transfer["data"])
+
+
+def test_profile_locale_reaches_the_turn_prompt():
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name, locale) VALUES ('Lina', 'ar')").lastrowid
+    lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", db.create_course("Chemistry", who)["id"])["id"])
+    assert "[language] Write everything the learner reads in Modern Standard Arabic" in app._turn_prompt(lesson, "[event] x")
+    assert db.profile(db.conn.execute("INSERT INTO profiles (name) VALUES ('Default')").lastrowid)["locale"] == "en"

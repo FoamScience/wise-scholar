@@ -203,6 +203,9 @@ MIGRATIONS = [
         done INTEGER NOT NULL DEFAULT 0
     );
     """,
+    """
+    ALTER TABLE profiles ADD COLUMN locale TEXT NOT NULL DEFAULT 'en';
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -323,7 +326,7 @@ def set_concepts(course_id: int, modules: list[dict]) -> None:
 
 def lesson(lesson_id: int) -> dict | None:
     return row(
-        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, p.name AS profile, k.title AS concept, k.module "
+        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, p.name AS profile, p.locale, k.title AS concept, k.module "
         "FROM lessons l JOIN courses c ON c.id = l.course_id JOIN profiles p ON p.id = c.profile_id "
         "LEFT JOIN concepts k ON k.id = l.concept_id "
         "WHERE l.id = ?",
