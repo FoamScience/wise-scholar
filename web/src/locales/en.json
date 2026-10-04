@@ -370,6 +370,17 @@
       "yourNote": "Your note",
       "download": "Download PDF",
       "preparing": "Preparing the PDF…"
+    },
+    "scope": {
+      "label": "Before the interview · optional",
+      "details": "More details on the course",
+      "detailsHint": "For example: science class, second year of high school",
+      "hours": "Estimated teaching time for the whole course, in hours",
+      "help": "The tutor keeps the course inside these details and sizes the course map to the time.",
+      "start": "Start the interview",
+      "summary": "Course scope",
+      "planned_one": "{{count}} hour of teaching planned",
+      "planned_other": "{{count}} hours of teaching planned"
     }
   },
   "server": {}

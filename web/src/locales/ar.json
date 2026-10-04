@@ -398,6 +398,21 @@
       "yourNote": "ملاحظتك",
       "download": "تنزيل PDF",
       "preparing": "جارٍ تحضير ملف PDF…"
+    },
+    "scope": {
+      "label": "قبل المقابلة · اختياري",
+      "details": "تفاصيل إضافية عن الدورة",
+      "detailsHint": "مثلًا: مادة العلوم، السنة الثانية ثانوي",
+      "hours": "مدة التدريس التقديرية للدورة كلها، بالساعات",
+      "help": "يُبقي المعلّم الدورة ضمن هذه التفاصيل ويضبط حجم خريطة الدورة على هذه المدة.",
+      "start": "ابدأ المقابلة",
+      "summary": "نطاق الدورة",
+      "planned_zero": "لا ساعات تدريس مخطَّطة",
+      "planned_one": "ساعة تدريس واحدة مخطَّطة",
+      "planned_two": "ساعتا تدريس مخطَّطتان",
+      "planned_few": "{{count}} ساعات تدريس مخطَّطة",
+      "planned_many": "{{count}} ساعة تدريس مخطَّطة",
+      "planned_other": "{{count}} ساعة تدريس مخطَّطة"
     }
   },
   "server": {
@@ -423,6 +438,8 @@
     "episodes are for language courses; the first reading sets the language": "الحلقات خاصة بدورات اللغات؛ القراءة الأولى تحدّد اللغة",
     "already in your vocabulary": "موجودة في مفرداتك من قبل",
     "this check is finished": "انتهى هذا الاختبار",
-    "already graded": "صُحّح من قبل"
+    "already graded": "صُحّح من قبل",
+    "the interview already started": "المقابلة بدأت من قبل",
+    "start the interview first": "ابدأ المقابلة أولًا"
   }
 }

@@ -1523,6 +1523,16 @@ pre {
   text-align: left;
 }
 
+.scope {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scope input[type='number'] {
+  max-width: 160px;
+}
+
 /* book */
 
 .book {

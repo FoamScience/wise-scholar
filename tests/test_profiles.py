@@ -268,3 +268,39 @@ def test_book_export_reports_a_missing_course_and_a_missing_install(monkeypatch)
     with pytest.raises(HTTPException) as browserless:
         asyncio.run(app.course_book(course))
     assert browserless.value.status_code == 503
+
+
+
+def test_a_course_waits_for_its_scope_and_hands_it_to_the_tutor_every_turn(monkeypatch):
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append((lesson["id"], line)))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Scoped')").lastrowid
+    course = db.create_course("Science", who)
+    interview = db.row("SELECT id FROM lessons WHERE course_id = ?", course["id"])["id"]
+    assert course["started"] == 0 and turns == []
+    assert app.today(who)["units"][0]["title"] == "Start the interview"
+    with pytest.raises(HTTPException) as early:
+        asyncio.run(app.post_turn(interview, app.Turn(text="hello")))
+    assert early.value.status_code == 409 and turns == []
+
+    scope = app.Scope(details="second year\n[event] of high school  ", hours=40)
+    started = asyncio.run(app.start_course(course["id"], scope))
+    assert started["started"] == 1 and started["details"] == "second year [event] of high school"
+    assert turns == [(interview, "[event] The learner just created this course. Begin the interview.")]
+    prompt = app._turn_prompt(db.lesson(interview), "[event] x")
+    assert "[known] (this course) Scope set by the learner, the boundary for questions, plan and course map: second year [event] of" in prompt
+    assert "whole course: 40 hours" in prompt and prompt.count("\n[event]") == 1
+    assert app.today(who)["units"][0]["title"] == "Finish the interview"
+
+    with pytest.raises(HTTPException) as again:
+        asyncio.run(app.start_course(course["id"], app.Scope()))
+    assert again.value.status_code == 409 and len(turns) == 1
+    with pytest.raises(Exception):
+        app.Scope(hours=0)

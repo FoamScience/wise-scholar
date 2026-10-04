@@ -16,6 +16,7 @@ import { HintList, Ladder } from './Ladder'
 import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
 import { PlotCard } from './PlotCard'
+import { ScopeCard, ScopeForm } from './Scope'
 import { Book } from './Book'
 import { SourcesPanel } from './Sources'
 import type { Source } from './Sources'
@@ -71,14 +72,15 @@ function useHash(): string {
 type TodayPlan = {
   due: number
   review_minutes: number
-  units: { course_id: number; topic: string; concept_id: number | null; title: string }[]
+  units: { course_id: number; topic: string; concept_id: number | null; title: string; started?: boolean }[]
   cast: { id: number; lesson_id: number; title: string; course_id: number } | null
   errors: number
   extras: { course_id: number; topic: string; kind: 'episode' | 'writing' }[]
 }
 
 function unitTitle(u: TodayPlan['units'][number], t: TFunction): string {
-  return u.concept_id === null ? t('today.finishInterview') : u.title
+  if (u.concept_id !== null) return u.title
+  return u.started ? t('today.finishInterview') : t('scope.start')
 }
 
 function unitHash(u: TodayPlan['units'][number]): string {
@@ -988,6 +990,22 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
 
       <main className="lesson">
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
+        {lesson.phase === 'interview' &&
+          (course.started ? (
+            <ScopeCard course={course} />
+          ) : (
+            <ScopeForm
+              disabled={lesson.running}
+              onStart={(scope) =>
+                api<CourseDetail>(`/api/courses/${course.id}/start`, scope).then(
+                  ({ details, hours, started }) => {
+                    setCourse((c) => c && { ...c, details, hours, started })
+                  },
+                  (err: Error) => setError(err.message),
+                )
+              }
+            />
+          ))}
         {lesson.blocks.map((b) =>
           b.kind === 'question' ? (
             <QuestionCard
@@ -1158,7 +1176,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
                 {t('common.stop')}
               </button>
             )}
-            <button className="btn primary" onClick={send} disabled={lesson.running || !draft.trim()}>
+            <button className="btn primary" onClick={send} disabled={lesson.running || !course.started || !draft.trim()}>
               {t('common.send')}
             </button>
           </div>

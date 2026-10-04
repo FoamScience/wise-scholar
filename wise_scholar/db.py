@@ -206,6 +206,11 @@ MIGRATIONS = [
     """
     ALTER TABLE profiles ADD COLUMN locale TEXT NOT NULL DEFAULT 'en';
     """,
+    """
+    ALTER TABLE courses ADD COLUMN details TEXT NOT NULL DEFAULT '';
+    ALTER TABLE courses ADD COLUMN hours INTEGER;
+    ALTER TABLE courses ADD COLUMN started INTEGER NOT NULL DEFAULT 1;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -253,7 +258,7 @@ def create_course(topic: str, profile_id: int) -> dict:
     while row("SELECT 1 FROM courses WHERE slug = ?", slug):
         slug, n = f"{base}-{n}", n + 1
     course_id = conn.execute(
-        "INSERT INTO courses (topic, slug, profile_id) VALUES (?, ?, ?)", (topic, slug, profile_id)
+        "INSERT INTO courses (topic, slug, profile_id, started) VALUES (?, ?, ?, 0)", (topic, slug, profile_id)
     ).lastrowid
     create_lesson(course_id, "Interview", "interview")
     return course(course_id)
@@ -326,7 +331,7 @@ def set_concepts(course_id: int, modules: list[dict]) -> None:
 
 def lesson(lesson_id: int) -> dict | None:
     return row(
-        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, p.name AS profile, p.locale, k.title AS concept, k.module "
+        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, c.details, c.hours, c.started, p.name AS profile, p.locale, k.title AS concept, k.module "
         "FROM lessons l JOIN courses c ON c.id = l.course_id JOIN profiles p ON p.id = c.profile_id "
         "LEFT JOIN concepts k ON k.id = l.concept_id "
         "WHERE l.id = ?",

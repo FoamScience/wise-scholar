@@ -67,6 +67,11 @@ class NewCourse(BaseModel):
     profile_id: int
 
 
+class Scope(BaseModel):
+    details: str = Field(default="", max_length=2000)
+    hours: int | None = Field(default=None, ge=1, le=5000)
+
+
 class Archive(BaseModel):
     archived: bool
 
@@ -221,6 +226,13 @@ def _turn_prompt(lesson: dict, line: str) -> str:
     known = [
         f"[known] ({'this course' if f['course_id'] else 'learner'}) {f['text']}" for f in db.facts(lesson["course_id"])
     ]
+    if lesson["details"]:
+        known.append(f"[known] (this course) Scope set by the learner, the boundary for questions, plan and course map: {lesson['details']}")
+    if lesson["hours"]:
+        known.append(
+            f"[known] (this course) Teaching time the learner plans for the whole course: {lesson['hours']} hours. "
+            "Size the course map so its sittings add up to about that, and keep each lesson to one sitting."
+        )
     # Resumed sessions keep the style of their earlier replies, so the math rule rides along with every turn.
     fmt = "[format] All math in LaTeX: $...$ inline, $$...$$ displayed. No Unicode math symbols such as x², √, ∫; ordinary letters, accents, currency and units stay as they are."
     language = (
@@ -419,10 +431,22 @@ async def create_course(body: NewCourse) -> dict:
     topic = body.topic.strip()
     if not topic:
         raise HTTPException(422, "topic is empty")
-    course = db.create_course(topic, _profile(body.profile_id)["id"])
-    interview = db.row("SELECT id FROM lessons WHERE course_id = ?", course["id"])
+    return db.create_course(topic, _profile(body.profile_id)["id"])
+
+
+@app.post("/api/courses/{course_id}/start", status_code=202)
+async def start_course(course_id: int, body: Scope) -> dict:
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    if course["started"]:
+        raise HTTPException(409, "the interview already started")
+    # One line: the scope rides in every turn prompt, where a line break could pass for a new [event] or [state] line.
+    details = " ".join(body.details.split())
+    db.conn.execute("UPDATE courses SET details = ?, hours = ?, started = 1 WHERE id = ?", (details, body.hours, course_id))
+    interview = db.row("SELECT id FROM lessons WHERE course_id = ?", course_id)
     _start_turn(db.lesson(interview["id"]), "[event] The learner just created this course. Begin the interview.")
-    return course
+    return db.course(course_id)
 
 
 @app.get("/api/courses/{course_id}")
@@ -450,6 +474,8 @@ async def choose_mechanism(course_id: int, body: Choice) -> dict:
 async def post_turn(lesson_id: int, body: Turn) -> dict:
     lesson = _lesson(lesson_id)
     _require_idle(lesson_id)
+    if not lesson["started"]:
+        raise HTTPException(409, "start the interview first")
     text = body.text.strip()
     if not text:
         raise HTTPException(422, "message is empty")
@@ -902,14 +928,15 @@ def today(profile: int) -> dict:
     """What a sitting of 30 minutes holds: due reviews, then the next unit of each active course, and a ready cast."""
     due = len(db.due_cards(profile, _now()))
     units = []
-    for course in db.rows("SELECT id, topic FROM courses WHERE profile_id = ? AND archived = 0 ORDER BY id", profile):
+    for course in db.rows("SELECT id, topic, started FROM courses WHERE profile_id = ? AND archived = 0 ORDER BY id", profile):
         mastery = db.concept_mastery(course["id"])
         concepts = db.concepts(course["id"])
         pending = next((c for c in concepts if not c["known"] and mastery.get(c["id"], 0) < 2 / 3), None)
         if pending:
             units.append({"course_id": course["id"], "topic": course["topic"], "concept_id": pending["id"], "title": pending["title"]})
         elif not concepts:
-            units.append({"course_id": course["id"], "topic": course["topic"], "concept_id": None, "title": "Finish the interview"})
+            title = "Finish the interview" if course["started"] else "Start the interview"
+            units.append({"course_id": course["id"], "topic": course["topic"], "concept_id": None, "title": title, "started": bool(course["started"])})
     extras = []
     for course in db.rows("SELECT id, topic, lang FROM courses WHERE profile_id = ? AND archived = 0 AND mechanism = 'leveled-course'", profile):
         counts = db.strand_counts(course["id"])

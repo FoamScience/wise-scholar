@@ -18,6 +18,7 @@ import Logo from './Logo'
 import { PlotCard } from './PlotCard'
 import type { PodcastData } from './Podcast'
 import { QuizResult } from './Quiz'
+import { ScopeCard } from './Scope'
 import type { Graded, QuizData } from './Quiz'
 import { textDirection } from './text'
 import { useTheme } from './theme'
@@ -293,6 +294,7 @@ function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files
         <span className="book-number">{t('book.chapter', { n: props.n })}</span>
         <h2 dir="auto">{lessonTitle(lesson, t)}</h2>
       </header>
+      {lesson.phase === 'interview' && <ScopeCard course={course} />}
       {timeline(lesson).map((item) =>
         'block' in item ? (
           <BookBlock key={`b${item.block.id}`} block={item.block} files={props.files} />
