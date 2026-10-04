@@ -24,8 +24,8 @@
   --code-name: #d2a8ff;
   --code-type: #ffa657;
   --code-failed: #ffc9a3;
-  --sans: 'Instrument Sans', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --sans: 'Instrument Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'IBM Plex Sans Arabic', ui-monospace, monospace;
   color-scheme: light;
 }
 
@@ -298,7 +298,7 @@ pre {
 .menu {
   position: absolute;
   top: 8px;
-  right: 8px;
+  inset-inline-end: 8px;
 }
 
 .menu summary {
@@ -326,7 +326,7 @@ pre {
 .menu-panel {
   position: absolute;
   top: 48px;
-  right: 0;
+  inset-inline-end: 0;
   z-index: 1;
   display: flex;
   flex-direction: column;
@@ -372,7 +372,7 @@ pre {
   padding: 20px 16px;
   overflow-y: auto;
   background: var(--panel);
-  border-right: 1px solid var(--line);
+  border-inline-end: 1px solid var(--line);
 }
 
 .map button {
@@ -381,7 +381,7 @@ pre {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -434,7 +434,7 @@ pre {
   flex-shrink: 0;
   width: 384px;
   background: var(--panel);
-  border-left: 1px solid var(--line);
+  border-inline-start: 1px solid var(--line);
 }
 
 .chat-head {
@@ -476,7 +476,7 @@ pre {
   display: inline-block;
   width: 8px;
   height: 16px;
-  margin-left: 3px;
+  margin-inline-start: 3px;
   background: var(--ink);
   vertical-align: text-bottom;
 }
@@ -945,7 +945,7 @@ pre {
 .legend .bar {
   width: 12px;
   height: 12px;
-  margin-right: 6px;
+  margin-inline-end: 6px;
   vertical-align: -1px;
 }
 
@@ -983,7 +983,7 @@ th,
 td {
   padding: 6px 10px;
   border: 1px solid var(--line);
-  text-align: left;
+  text-align: start;
 }
 
 .next-step {
@@ -1003,7 +1003,7 @@ td {
 }
 
 .block > .label .chip {
-  margin-left: 8px;
+  margin-inline-start: 8px;
   font-family: var(--sans);
   letter-spacing: 0;
   text-transform: none;
@@ -1251,8 +1251,8 @@ mark {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
-  margin-right: 10px;
+  margin-inline-start: auto;
+  margin-inline-end: 10px;
 }
 
 .word.weak {
@@ -1287,7 +1287,7 @@ mark {
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.04em;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -1333,7 +1333,7 @@ mark {
 
 .plan-steps {
   margin: 0;
-  padding-left: 22px;
+  padding-inline-start: 22px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1355,7 +1355,7 @@ mark {
 
 .today .plan-steps {
   gap: 8px;
-  padding-left: 24px;
+  padding-inline-start: 24px;
 }
 
 .today .row {
@@ -1495,4 +1495,30 @@ pre:has(> .mermaid) {
 .plot-box svg {
   max-width: 100%;
   height: auto;
+}
+
+/* Arabic letters join, so spacing them apart breaks the words. */
+:lang(ar) {
+  letter-spacing: 0 !important;
+}
+
+:lang(ar) .label,
+:lang(ar) .status,
+:lang(ar) .divider {
+  font-family: var(--sans);
+}
+
+/* Code, math and drawings read left to right in every language. */
+pre,
+code,
+.katex,
+.mermaid,
+.figure-box,
+.plot-box {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+pre {
+  text-align: left;
 }

@@ -50,19 +50,19 @@ export function ReadingCard(props: {
           {player.current ? t('common.stop') : t('common.listen')}
         </button>
       </div>
-      <h2 lang={d.lang}>{d.title}</h2>
+      <h2 lang={d.lang} dir="auto">{d.title}</h2>
       {d.targets && d.targets.length > 0 && (
         <div className="targets">
           <span className="small">{t('reading.targets')}</span>
           {d.targets.map((target) => (
-            <span key={target} className="chip" lang={d.lang}>
+            <span key={target} className="chip" lang={d.lang} dir="auto">
               {target}
             </span>
           ))}
         </div>
       )}
       {paragraphs.map((sentences, i) => (
-        <p key={i} lang={d.lang}>
+        <p key={i} lang={d.lang} dir="auto">
           {sentences.map((sentence, k) => (
             <span key={k} className={sentence === player.current ? 'sentence playing' : 'sentence'}>
               {splitBy(
@@ -93,7 +93,7 @@ export function ReadingCard(props: {
       {gloss && (
         <div className="hint gloss-panel">
           <span className="grow">
-            <strong lang={d.lang}>{gloss.word}</strong>
+            <strong lang={d.lang} dir="auto">{gloss.word}</strong>
             {shown ? ` · ${gloss.meaning}` : ` ${t('reading.guess')}`}
           </span>
           {!shown && (
@@ -168,6 +168,7 @@ function VocabRoundForm(props: {
             key={w}
             type="button"
             lang={props.lang}
+            dir="auto"
             className={`btn option${ticked.includes(w) ? ' on' : ''}`}
             aria-pressed={ticked.includes(w)}
             onClick={() => toggle(w)}

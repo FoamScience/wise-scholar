@@ -17,7 +17,7 @@ import { PlotCard } from './PlotCard'
 import { SourcesPanel } from './Sources'
 import type { Source } from './Sources'
 import { usePlayer } from './player'
-import { splitBy } from './text'
+import { splitBy, textDirection } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
 import { useProfiles } from './profiles'
 import { LOCALES, browserLocale, rememberLocale } from './locale'
@@ -264,7 +264,7 @@ function Home({ profile }: { profile: number }) {
         <div className="row">
           <input
             id="topic"
-            className="field"
+            className="field" dir="auto"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder={t('home.topicPlaceholder')}
@@ -320,7 +320,7 @@ function CourseCard(props: {
   return (
     <div className="course-card">
       <a href={`#/course/${course.id}`}>
-        <strong>{course.topic}</strong>
+        <strong dir="auto">{course.topic}</strong>
         <span className="muted">{course.mechanism ? lookup(`playbooks.${course.mechanism}.title`, course.mechanism) : t('home.interviewOpen')}</span>
       </a>
       <details ref={menu} className="menu" name="course-menu" onToggle={() => setConfirming(false)}>
@@ -385,8 +385,8 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   if (answer !== null)
     return (
       <section id={`block-${props.block.id}`} className="block answered">
-        <div className="muted">{props.block.markdown}</div>
-        <span className="chip">{answer}</span>
+        <div className="muted" dir="auto">{props.block.markdown}</div>
+        <span className="chip" dir="auto">{answer}</span>
       </section>
     )
 
@@ -397,10 +397,10 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
 
   return (
     <section id={`block-${props.block.id}`} className="block question">
-      <h2>{props.block.markdown}</h2>
+      <h2 dir="auto">{props.block.markdown}</h2>
       <div className="options">
         {options.map((o) => (
-          <button key={o} className="btn option" disabled={props.disabled} onClick={() => props.onAnswer(o)}>
+          <button key={o} className="btn option" dir="auto" disabled={props.disabled} onClick={() => props.onAnswer(o)}>
             {o}
           </button>
         ))}
@@ -410,7 +410,7 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
         <div className="row">
           <input
             id={`own-${props.block.id}`}
-            className="field"
+            className="field" dir="auto"
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
@@ -488,7 +488,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
             </label>
             <textarea
               id={`attempt-${props.block.id}`}
-              className="field"
+              className="field" dir="auto"
               rows={3}
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -543,7 +543,7 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
         </button>
       </div>
       {(d.speaking === 'read' || d.scores.length > 0) && (
-        <p className="spoken-text" lang={d.lang}>
+        <p className="spoken-text" lang={d.lang} dir="auto">
           {splitBy(props.block.markdown, marks).map((piece, j) => (piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text))}
         </p>
       )}
@@ -551,7 +551,7 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
       {d.scores.map((a, i) => (
         <div key={i} className="attempt">
           <span className="label">{t('speaking.attemptScore', { n: i + 1, score: percent(a.score) })}</span>
-          <span lang={d.lang}>
+          <span lang={d.lang} dir="auto">
             {a.words.map((w, j) => (
               <span key={j} className={w.score < WEAK_WORD ? 'word weak' : 'word'} title={percent(w.score)}>
                 {w.word}{' '}
@@ -582,7 +582,7 @@ function Ladder({ data: d }: { data: ChallengeData }) {
       {d.attempts.map((a, i) => (
         <div key={i} className="attempt">
           <span className="label">{t('common.attempt', { n: i + 1 })}</span>
-          <span>
+          <span dir={textDirection(a)}>
             {splitBy(a, i === d.attempts.length - 1 ? (d.marks ?? []) : []).map((piece, j) =>
               piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text,
             )}
@@ -837,7 +837,7 @@ function Plan(props: {
             <strong>
               {i + 1} · {lookup(`playbooks.${r.mechanism}.title`, r.title)}
             </strong>
-            <span>{r.rationale}</span>
+            <span dir="auto">{r.rationale}</span>
             <span className="muted">{lookup(`playbooks.${r.mechanism}.summary`, r.summary)}</span>
             <span className="evidence">
               {t('plan.evidence')}{' '}
@@ -1102,7 +1102,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
             <div key={c.id} className="concept">
               {c.module !== course.concepts[i - 1]?.module && (
                 <>
-                  <strong>{c.module}</strong>
+                  <strong dir="auto">{c.module}</strong>
                   {course.capstones
                     .filter((k) => k.module === c.module)
                     .map((k) => (
@@ -1115,7 +1115,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
                 </>
               )}
               <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
-                <span className="concept-title">
+                <span className="concept-title" dir="auto">
                   {c.title}
                   <span className="mastery" aria-label={t('map.mastery', { n: Math.round((c.mastery ?? 0) * 3) })}>
                     {[1, 2, 3].map((n) => (
@@ -1131,7 +1131,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
       </nav>
 
       <main className="lesson">
-        <h1>{lessonTitle(lesson, t)}</h1>
+        <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
         {lesson.blocks.map((b) =>
           b.kind === 'question' ? (
             <QuestionCard
@@ -1263,7 +1263,9 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
                 <CardDivider key={b.id} block={b} />
               ))}
               {m.role === 'learner' ? (
-                <div className="bubble learner">{m.text}</div>
+                <div className="bubble learner" dir={textDirection(m.text)}>
+                  {m.text}
+                </div>
               ) : (
                 <div className="bubble">
                   <Markdown>{m.text}</Markdown>
@@ -1287,7 +1289,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
           <label htmlFor="chat">{t('chat.message')}</label>
           <textarea
             id="chat"
-            className="field"
+            className="field" dir="auto"
             rows={3}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -1420,16 +1422,22 @@ export default function App() {
   const [speech, setSpeech] = useState(false)
   const { profiles, current, select, reload } = useProfiles()
   const [chosen, setChosen] = useState<Locale>(browserLocale)
+  const [localeError, setLocaleError] = useState('')
   const locale = current?.locale ?? chosen
   useEffect(() => {
-    document.documentElement.lang = locale
     i18n.changeLanguage(locale)
   }, [locale])
 
   function switchLocale(next: Locale) {
-    rememberLocale(next)
-    setChosen(next)
-    if (current) api(`/api/profiles/${current.id}/locale`, { locale: next }).then(reload, () => {})
+    setLocaleError('')
+    const saved = current ? api(`/api/profiles/${current.id}/locale`, { locale: next }).then(reload) : Promise.resolve()
+    saved.then(
+      () => {
+        rememberLocale(next)
+        setChosen(next)
+      },
+      (err: Error) => setLocaleError(err.message),
+    )
   }
   useEffect(() => {
     api<{ agent: string; speech: boolean }>('/api/meta').then(
@@ -1481,6 +1489,7 @@ export default function App() {
         <span className="grow" />
         <span className="status">{t('header.agent', { agent })}</span>
         <ThemeToggle />
+        {localeError && <span className="error">{localeError}</span>}
         <select className="btn locale" aria-label={t('header.language')} value={locale} onChange={(e) => switchLocale(e.target.value as Locale)}>
           {Object.entries(LOCALES).map(([code, name]) => (
             <option key={code} value={code} lang={code}>
