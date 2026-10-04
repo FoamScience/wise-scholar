@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
 import { api } from './api'
+import { percent } from './i18n'
 
 export type QuizData = {
   card_id: number
@@ -32,8 +34,6 @@ type Calibration = {
   buckets: { label: string; n: number; stated: number | null; actual: number | null }[]
 }
 
-const percent = (p: number) => `${Math.round(p * 100)}%`
-
 function QuizForm(props: {
   id: string
   kind: 'choice' | 'open'
@@ -41,6 +41,7 @@ function QuizForm(props: {
   disabled: boolean
   onSubmit: (answer: string, confidence: number) => void
 }) {
+  const { t } = useTranslation()
   const [answer, setAnswer] = useState('')
   const [confidence, setConfidence] = useState(50)
 
@@ -63,7 +64,7 @@ function QuizForm(props: {
       ) : (
         <>
           <label htmlFor={`${props.id}-answer`} className="small">
-            Your answer
+            {t('common.yourAnswer')}
           </label>
           <textarea
             id={`${props.id}-answer`}
@@ -75,8 +76,8 @@ function QuizForm(props: {
         </>
       )}
       <div className="confidence">
-        <label htmlFor={`${props.id}-confidence`}>How sure are you?</label>
-        <span className="small">guessing</span>
+        <label htmlFor={`${props.id}-confidence`}>{t('quiz.howSure')}</label>
+        <span className="small">{t('quiz.guessing')}</span>
         <input
           id={`${props.id}-confidence`}
           type="range"
@@ -86,10 +87,10 @@ function QuizForm(props: {
           value={confidence}
           onChange={(e) => setConfidence(Number(e.target.value))}
         />
-        <span className="small">certain</span>
-        <output>{confidence}%</output>
+        <span className="small">{t('quiz.certain')}</span>
+        <output>{percent(confidence / 100)}</output>
         <button className="btn primary" disabled={props.disabled || !answer.trim()}>
-          Submit
+          {t('common.submit')}
         </button>
       </div>
     </form>
@@ -98,18 +99,19 @@ function QuizForm(props: {
 
 function QuizResult(props: { answer: string; confidence: number; result: Graded; feedback?: string }) {
   const { result } = props
+  const { t } = useTranslation()
   return (
     <div className="quiz-result">
       <div className="attempt">
-        <span className="label">Your answer · {percent(props.confidence)} sure</span>
+        <span className="label">{t('quiz.answerSure', { percent: percent(props.confidence) })}</span>
         {props.answer}
       </div>
       <div className={result.correct ? 'solution' : 'hint'}>
-        <div className="label">{result.correct ? 'Correct' : 'Not quite'}</div>
-        {!result.correct && <Markdown>{`**Answer:** ${result.answer_key}`}</Markdown>}
+        <div className="label">{result.correct ? t('quiz.correct') : t('quiz.notQuite')}</div>
+        {!result.correct && <Markdown>{t('quiz.answerKey', { answer: result.answer_key })}</Markdown>}
         <Markdown>{props.feedback || result.explanation}</Markdown>
         {result.confident_miss && (
-          <p>You were {percent(props.confidence)} sure. This one comes back first in your reviews.</p>
+          <p>{t('quiz.confidentMiss', { percent: percent(props.confidence) })}</p>
         )}
       </div>
     </div>
@@ -124,15 +126,16 @@ export function QuizCard(props: {
   onSubmit: (answer: string, confidence: number) => void
 }) {
   const d = props.data
+  const { t } = useTranslation()
   return (
     <section id={`block-${props.id}`} className="block quiz">
-      <div className="label">{props.data.pretest ? 'Before we start: what do you think?' : 'Quick check'}</div>
+      <div className="label">{props.data.pretest ? t('quiz.pretest') : t('quiz.quickCheck')}</div>
       <Markdown>{props.question}</Markdown>
       {d.answer === null ? (
         <QuizForm id={`quiz-${props.id}`} kind={d.kind} options={d.options} disabled={props.disabled} onSubmit={props.onSubmit} />
       ) : d.correct === undefined ? (
         <div className="attempt">
-          <span className="label">Your answer · {percent(d.confidence!)} sure · the tutor is grading…</span>
+          <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
           {d.answer}
         </div>
       ) : (
@@ -143,6 +146,7 @@ export function QuizCard(props: {
 }
 
 export function Review({ profile, then }: { profile: number; then: string | null }) {
+  const { t } = useTranslation()
   const [cards, setCards] = useState<DueCard[] | null>(null)
   const [index, setIndex] = useState(0)
   const [given, setGiven] = useState<{ answer: string; confidence: number } | null>(null)
@@ -160,13 +164,13 @@ export function Review({ profile, then }: { profile: number; then: string | null
   if (!card)
     return (
       <main className="home">
-        <h1>{cards.length ? 'Review done' : 'Nothing is due'}</h1>
+        <h1>{cards.length ? t('review.done') : t('review.nothingDue')}</h1>
         {then ? (
           <a className="btn primary as-link" href={then}>
-            On to the next unit
+            {t('review.onToNext')}
           </a>
         ) : (
-          <a href="#/">Back to your courses</a>
+          <a href="#/">{t('review.back')}</a>
         )}
       </main>
     )
@@ -194,28 +198,28 @@ export function Review({ profile, then }: { profile: number; then: string | null
     <main className="home">
       <section className="block quiz">
         <div className="label">
-          Review · {index + 1} of {cards.length} · {card.topic}
-          {card.confident_miss && <span className="chip warn">You were sure and missed this</span>}
+          {t('review.position', { n: index + 1, total: cards.length, topic: card.topic })}
+          {card.confident_miss && <span className="chip warn">{t('review.sureAndMissed')}</span>}
         </div>
         <Markdown>{card.question}</Markdown>
         {!given && <QuizForm key={card.id} id={`card-${card.id}`} kind={card.kind} options={card.options} disabled={false} onSubmit={submit} />}
         {given && pending && (
           <div className="quiz-result">
             <div className="attempt">
-              <span className="label">Your answer · {percent(given.confidence)} sure</span>
+              <span className="label">{t('quiz.answerSure', { percent: percent(given.confidence) })}</span>
               {given.answer}
             </div>
             <div className="solution">
-              <div className="label">Model answer</div>
+              <div className="label">{t('review.model')}</div>
               <Markdown>{pending.answer_key}</Markdown>
               <Markdown>{pending.explanation}</Markdown>
             </div>
             <div className="row">
               <button className="btn" onClick={() => selfGrade(false)}>
-                I missed it
+                {t('review.missed')}
               </button>
               <button className="btn primary" onClick={() => selfGrade(true)}>
-                I had it right
+                {t('review.right')}
               </button>
             </div>
           </div>
@@ -225,7 +229,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
             <QuizResult answer={given.answer} confidence={given.confidence} result={result} />
             <div className="row">
               <button className="btn primary" onClick={next}>
-                {index + 1 < cards.length ? 'Next' : 'Finish'}
+                {index + 1 < cards.length ? t('common.next') : t('common.finish')}
               </button>
             </div>
           </>
@@ -237,6 +241,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
 }
 
 export function ReviewPanels({ profile }: { profile: number }) {
+  const { t } = useTranslation()
   const [due, setDue] = useState<DueCard[]>([])
   const [calibration, setCalibration] = useState<Calibration | null>(null)
 
@@ -252,8 +257,8 @@ export function ReviewPanels({ profile }: { profile: number }) {
   return (
     <div className="panels">
       <section className="block">
-        <div className="label">Due for review</div>
-        {byTopic.length === 0 && <div className="muted">Nothing is due.</div>}
+        <div className="label">{t('review.due')}</div>
+        {byTopic.length === 0 && <div className="muted">{t('review.nothingDueNow')}</div>}
         {byTopic.map(([topic, count]) => (
           <div key={topic} className="due-row">
             <span>{topic}</span>
@@ -262,45 +267,40 @@ export function ReviewPanels({ profile }: { profile: number }) {
         ))}
         {due.length > 0 && (
           <a className="btn primary as-link" href="#/review">
-            Start review
+            {t('review.start')}
           </a>
         )}
         <a className="btn as-link" href="#/errors">
-          Error notebook
+          {t('review.errorNotebook')}
         </a>
       </section>
 
       {calibration && calibration.n > 0 && (
         <section className="block">
-          <div className="label">Calibration · how sure you said vs how often you were right</div>
+          <div className="label">{t('review.calibration')}</div>
           <div className="bars">
             {calibration.buckets
               .filter((b) => b.n > 0)
               .map((b) => (
                 <div key={b.label} className="bar-group">
                   <div className="bar-pair">
-                    <span className="bar stated" style={{ height: `${b.stated! * 100}%` }} title={`said ${percent(b.stated!)}`} />
-                    <span className="bar actual" style={{ height: `${b.actual! * 100}%` }} title={`right ${percent(b.actual!)}`} />
+                    <span className="bar stated" style={{ height: `${b.stated! * 100}%` }} title={t('review.said', { percent: percent(b.stated!) })} />
+                    <span className="bar actual" style={{ height: `${b.actual! * 100}%` }} title={t('review.wasRight', { percent: percent(b.actual!) })} />
                   </div>
                   <span className="small">{b.label}</span>
-                  <span className="small">
-                    {percent(b.actual!)} of {b.n}
-                  </span>
+                  <span className="small">{t('review.ofN', { percent: percent(b.actual!), n: b.n })}</span>
                 </div>
               ))}
           </div>
           <div className="legend">
             <span>
-              <i className="bar stated" /> How sure you said
+              <i className="bar stated" /> {t('review.howSure')}
             </span>
             <span>
-              <i className="bar actual" /> How often you were right
+              <i className="bar actual" /> {t('review.howOften')}
             </span>
           </div>
-          <div className="muted">
-            Brier score {calibration.brier!.toFixed(2)} over {calibration.n} answers. 0 is perfect; 0.25 is what always
-            saying 50% scores.
-          </div>
+          <div className="muted">{t('review.brier', { brier: calibration.brier!.toFixed(2), n: calibration.n })}</div>
         </section>
       )}
     </div>

@@ -52,6 +52,12 @@ A second instance for testing, beside the real one:
 WISE_SCHOLAR_PORT=8331 WISE_SCHOLAR_OPENCODE_PORT=8332 WISE_SCHOLAR_DB=/tmp/test.db WISE_SCHOLAR_WORKSPACE=/tmp/ws make serve
 ```
 
+## Languages
+
+The interface and the tutor work in English, French or Arabic. Pick the language at the top right, next to the profile name. It is stored with the profile, and the tutor writes in it from its next reply; lessons already written stay as they are. In a language course it is the language of instructions and explanations, not the one being learned.
+
+A new language is one file: copy `web/src/locales/en.json`, translate it, and add its code to `web/src/locale.ts`, `web/src/i18n.ts` and the `Locale` names in `wise_scholar/app.py`. `make test` checks that every key and every learner-facing server error is covered.
+
 ## Speech (optional)
 
 Off by default. Listen buttons use the browser's own voice and there is no microphone input until you install the speech extras:

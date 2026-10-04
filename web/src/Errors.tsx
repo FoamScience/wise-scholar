@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from './api'
+import { day } from './i18n'
 import { Correction } from './Diff'
 import Markdown from './Md'
 
@@ -19,6 +21,7 @@ type Entry = {
 
 /** The learner's own confident misses and corrected texts, with a note in their words; open ones lead the reviews. */
 export function ErrorsPage({ profile }: { profile: number }) {
+  const { t } = useTranslation()
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [showResolved, setShowResolved] = useState(false)
   const [error, setError] = useState('')
@@ -41,31 +44,31 @@ export function ErrorsPage({ profile }: { profile: number }) {
   return (
     <main className="home">
       <div className="row">
-        <h1 className="grow">Error notebook · {open} open</h1>
+        <h1 className="grow">{t('notebook.heading', { n: open })}</h1>
         <label className="small">
-          <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} /> show resolved
+          <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} /> {t('notebook.showResolved')}
         </label>
       </div>
       {error && <div className="error">{error}</div>}
-      {shown.length === 0 && <div className="muted">Nothing here. Confident misses and corrected texts land here on their own.</div>}
+      {shown.length === 0 && <div className="muted">{t('notebook.empty')}</div>}
       {shown.map((e) => (
         <section key={e.id} className={`block entry${e.resolved ? ' resolved' : ''}`}>
           <div className="label">
-            {e.kind === 'writing' ? 'Corrected text' : 'Confident miss'} · {e.topic} · {e.created.slice(0, 10)}
-            {e.pinned ? <span className="chip">Pinned</span> : null}
+            {e.kind === 'writing' ? t('common.correctedText') : t('notebook.confidentMiss')} · {e.topic} · {day(e.created)}
+            {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
           </div>
           {e.kind === 'quiz' && <Markdown>{e.prompt}</Markdown>}
           <div className="attempt">
-            <span className="label">{e.kind === 'writing' ? 'You wrote' : 'You said'}</span>
+            <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
             <span className="said">{e.said}</span>
           </div>
           <div className="solution">
-            <div className="label">{e.kind === 'writing' ? 'Corrected' : 'Right answer'}</div>
+            <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
             {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
             {e.explanation && <Markdown>{e.explanation}</Markdown>}
           </div>
           <label className="small" htmlFor={`note-${e.id}`}>
-            In your own words: what went wrong, what to watch for
+            {t('notebook.note')}
           </label>
           <textarea
             id={`note-${e.id}`}
@@ -76,10 +79,10 @@ export function ErrorsPage({ profile }: { profile: number }) {
           />
           <div className="row">
             <button type="button" className="btn" onClick={() => patch(e.id, { pinned: !e.pinned })}>
-              {e.pinned ? 'Unpin' : 'Pin'}
+              {e.pinned ? t('notebook.unpin') : t('notebook.pin')}
             </button>
             <button type="button" className="btn" onClick={() => patch(e.id, { resolved: !e.resolved })}>
-              {e.resolved ? 'Reopen' : 'Resolved'}
+              {e.resolved ? t('notebook.reopen') : t('notebook.resolve')}
             </button>
           </div>
         </section>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import type { Locale } from './locale'
 import type { Profile } from './profiles'
@@ -34,17 +35,15 @@ function NameForm(props: { id: string; label: string; button: string; initial?: 
 }
 
 export function FirstProfile(props: { locale: Locale; onCreated: (profile: Profile) => void }) {
+  const { t } = useTranslation()
   return (
     <main className="home">
-      <h1>Who is learning?</h1>
-      <div className="muted">
-        A profile keeps one person's courses, reviews and what the tutor knows about them. No password; anyone using this
-        browser can switch profiles.
-      </div>
+      <h1>{t('profile.who')}</h1>
+      <div className="muted">{t('profile.intro')}</div>
       <NameForm
         id="first-profile"
-        label="Your name"
-        button="Start"
+        label={t('profile.yourName')}
+        button={t('common.start')}
         onSubmit={(name) => api<Profile>('/api/profiles', { name, locale: props.locale }).then(props.onCreated)}
       />
     </main>
@@ -59,6 +58,7 @@ export function ProfilePage(props: {
   onChanged: () => Promise<unknown>
 }) {
   const { current } = props
+  const { t } = useTranslation()
   const [facts, setFacts] = useState<Fact[]>([])
 
   useEffect(() => {
@@ -74,56 +74,56 @@ export function ProfilePage(props: {
       <h1>{current.name}</h1>
 
       <section className="block stack">
-        <div className="label">What the tutor knows about you</div>
-        {facts.length === 0 && <div className="muted">Nothing yet. The tutor records what you tell it in interviews.</div>}
+        <div className="label">{t('profile.knows')}</div>
+        {facts.length === 0 && <div className="muted">{t('profile.nothing')}</div>}
         {facts.map((f) => (
           <div key={f.id} className="fact">
             <span>{f.text}</span>
             <button type="button" className="link" onClick={() => forget(f)}>
-              Forget
+              {t('profile.forget')}
             </button>
           </div>
         ))}
-        <div className="small">These facts are used in every course of this profile. Facts about one course stay with that course.</div>
+        <div className="small">{t('profile.factsScope')}</div>
       </section>
 
       <section className="block stack">
-        <div className="label">Profile name</div>
+        <div className="label">{t('profile.nameHeading')}</div>
         <NameForm
           key={current.id}
           id="rename"
-          label="Name"
-          button="Rename"
+          label={t('profile.name')}
+          button={t('profile.rename')}
           initial={current.name}
           onSubmit={(name) => api(`/api/profiles/${current.id}`, { name }).then(props.onChanged)}
         />
       </section>
 
       <section className="block stack">
-        <div className="label">Profiles on this computer</div>
+        <div className="label">{t('profile.onComputer')}</div>
         {props.profiles.map((p) => (
           <div key={p.id} className="fact">
             <span>
-              <strong>{p.name}</strong> · {p.courses} {p.courses === 1 ? 'course' : 'courses'}
+              <strong>{p.name}</strong> · {t('profile.courses', { count: p.courses })}
             </span>
             {p.id === current.id ? (
-              <span className="chip">Current</span>
+              <span className="chip">{t('profile.current')}</span>
             ) : (
               <button type="button" className="btn" onClick={() => props.onSelect(p.id)}>
-                Switch
+                {t('profile.switch')}
               </button>
             )}
           </div>
         ))}
         <NameForm
           id="new-profile"
-          label="Add a profile"
-          button="Add"
+          label={t('profile.add')}
+          button={t('profile.addButton')}
           onSubmit={(name) =>
             api<Profile>('/api/profiles', { name, locale: props.locale }).then((created) => props.onChanged().then(() => props.onSelect(created.id)))
           }
         />
-        <div className="small">No password. Anyone using this browser can switch profiles.</div>
+        <div className="small">{t('profile.noPassword')}</div>
       </section>
     </main>
   )

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 type PodcastData = {
   lang: string
@@ -20,6 +21,7 @@ function clock(seconds: number): string {
 
 /** A two-voice cast with a collapsed transcript; a quiz-cast pauses at each cue until its question is answered. */
 export function PodcastCard(props: { id: number; title: string; data: unknown; answered: (blockId: number) => boolean }) {
+  const { t } = useTranslation()
   const d = props.data as PodcastData
   const audio = useRef<HTMLAudioElement | null>(null)
   const paused = useRef(false)
@@ -41,16 +43,14 @@ export function PodcastCard(props: { id: number; title: string; data: unknown; a
   return (
     <section id={`block-${props.id}`} className="block podcast">
       <div className="label">
-        {d.cues.length ? 'Quiz-cast' : 'Recap cast'} · experimental
+        {d.cues.length ? t('cast.quiz') : t('cast.recap')} · {t('cast.experimental')}
         {d.duration !== null && <span className="small"> · {clock(d.duration)}</span>}
       </div>
       <h2>{props.title}</h2>
       {d.status === 'rendering' && (
-        <div className="small">
-          Rendering the voices: {d.done} of {d.lines.length} lines…
-        </div>
+        <div className="small">{t('cast.rendering', { done: d.done, total: d.lines.length })}</div>
       )}
-      {d.status === 'failed' && <div className="error">The cast could not be rendered: {d.error}</div>}
+      {d.status === 'failed' && <div className="error">{t('cast.failed', { error: d.error })}</div>}
       {d.audio && (
         <audio
           ref={audio}
@@ -61,7 +61,7 @@ export function PodcastCard(props: { id: number; title: string; data: unknown; a
           style={{ width: '100%' }}
         />
       )}
-      {pending !== null && <div className="hint">Paused for a question. Answer it below and the cast goes on.</div>}
+      {pending !== null && <div className="hint">{t('cast.paused')}</div>}
       {d.glossary.length > 0 && (
         <div className="targets">
           {d.glossary.map((g) => (
@@ -72,7 +72,7 @@ export function PodcastCard(props: { id: number; title: string; data: unknown; a
         </div>
       )}
       <details>
-        <summary>Transcript</summary>
+        <summary>{t('cast.transcript')}</summary>
         <div className="transcript" lang={d.lang}>
           {d.lines.map((l, i) => (
             <p key={i} className={i === line ? 'current' : undefined}>

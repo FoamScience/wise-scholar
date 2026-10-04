@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useTheme } from './theme'
 
 type Mark = { type: 'line' | 'dot' | 'bar' | 'area' | 'rule' | 'text' | 'rect'; data?: Record<string, unknown>[]; [k: string]: unknown }
@@ -14,6 +15,7 @@ function palette(): string[] {
 
 /** A plot drawn by Observable Plot from a spec the server resolved; axes and text follow the theme through currentColor. */
 export function PlotCard(props: { id: number; title: string; data: unknown }) {
+  const { t } = useTranslation()
   const d = props.data as PlotData
   const box = useRef<HTMLDivElement | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -68,13 +70,13 @@ export function PlotCard(props: { id: number; title: string; data: unknown }) {
 
   return (
     <section id={`block-${props.id}`} className="block plot">
-      <div className="label">Plot</div>
+      <div className="label">{t('block.plot')}</div>
       {props.title && <h2>{props.title}</h2>}
       <div ref={box} className="plot-box" role="img" aria-label={d.alt} />
       {error && (
         <div className="mermaid-error">
           <pre>{JSON.stringify(d.spec, null, 1).slice(0, 2000)}</pre>
-          <div className="error">The plot did not render: {error}</div>
+          <div className="error">{t('block.plotFailed', { error })}</div>
         </div>
       )}
     </section>

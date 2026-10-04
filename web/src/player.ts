@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { failure } from './api'
+import i18n from './i18n'
 
 const SLOW_RATE = 0.8
 
@@ -39,7 +41,7 @@ export function usePlayer(lang: string, local: boolean) {
         const res = await fetch(url(sentences[i])).catch(() => null)
         if (run.current !== mine) return
         if (!res?.ok) {
-          setError((await res?.json().catch(() => null))?.detail ?? 'The voice service did not answer.')
+          setError(res ? (await failure(res)).message : i18n.t('speaking.voiceSilent'))
           break
         }
         const src = URL.createObjectURL(await res.blob())
