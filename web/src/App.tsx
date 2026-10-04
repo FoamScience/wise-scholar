@@ -519,7 +519,7 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
   )
 }
 
-function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
+function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolean; onAct: Act }) {
   const { t } = useTranslation()
   const d = props.block.data as ExerciseData
   const [files, setFiles] = useState<ExerciseFile[]>([])
@@ -575,9 +575,11 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
       <div className="row">
         <code className="grow">$ {d.run}</code>
         {open && <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />}
-        <button type="button" className="btn" disabled={running} onClick={run}>
-          {running ? t('exercise.running') : t('exercise.run')}
-        </button>
+        {props.commands && (
+          <button type="button" className="btn" disabled={running} onClick={run}>
+            {running ? t('exercise.running') : t('exercise.run')}
+          </button>
+        )}
         {open && (
           <button type="button" className="btn primary" disabled={props.disabled} onClick={() => props.onAct('check')}>
             {t('exercise.check')}
@@ -727,7 +729,7 @@ function Plan(props: {
   )
 }
 
-function Workspace({ courseId, speech, concept, start }: { courseId: number; speech: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
+function Workspace({ courseId, speech, commands, concept, start }: { courseId: number; speech: boolean; commands: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
   const { t } = useTranslation()
   const [course, setCourse] = useState<CourseDetail | null>(null)
   const [sources, setSources] = useState<Source[]>([])
@@ -1046,6 +1048,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
               key={b.id}
               block={b}
               disabled={lesson.running}
+              commands={commands}
               onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
             />
           ) : b.kind === 'challenge' ? (
@@ -1295,6 +1298,7 @@ export default function App() {
   const [agent, setAgent] = useState('')
   const [speech, setSpeech] = useState(false)
   const [pdf, setPdf] = useState(false)
+  const [commands, setCommands] = useState(true)
   const { profiles, current, select, reload } = useProfiles()
   const [chosen, setChosen] = useState<Locale>(browserLocale)
   const [localeError, setLocaleError] = useState('')
@@ -1315,11 +1319,12 @@ export default function App() {
     )
   }
   useEffect(() => {
-    api<{ agent: string; speech: boolean; pdf: boolean }>('/api/meta').then(
+    api<{ agent: string; speech: boolean; pdf: boolean; commands: boolean }>('/api/meta').then(
       (m) => {
         setAgent(m.agent)
         setSpeech(m.speech)
         setPdf(m.pdf)
+        setCommands(m.commands)
       },
       () => {},
     )
@@ -1346,6 +1351,7 @@ export default function App() {
           key={match[1]}
           courseId={Number(match[1])}
           speech={speech}
+          commands={commands}
           concept={match[2] ? Number(match[2]) : null}
           start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
         />

@@ -46,10 +46,6 @@
       "add_figure": "dessin d'une figure…",
       "add_plot": "tracé d'un graphique…",
       "pose_writing": "préparation d'un sujet d'écriture…",
-      "bash": "essai dans l'espace de travail…",
-      "read": "lecture de vos fichiers…",
-      "write": "écriture des fichiers d'exercice…",
-      "edit": "écriture des fichiers d'exercice…",
       "give_hint": "rédaction d'un indice…",
       "reveal": "ouverture de la solution…",
       "mark_solved": "vérification de votre réponse…",
@@ -59,7 +55,10 @@
       "pose_teachback": "préparation d'une explication à rendre…",
       "make_podcast": "écriture d'un podcast…",
       "pose_quiz": "préparation d'une question rapide…",
-      "grade_quiz": "correction de votre réponse…"
+      "grade_quiz": "correction de votre réponse…",
+      "run_command": "essai dans l'espace de travail…",
+      "read_file": "lecture de vos fichiers…",
+      "write_file": "écriture des fichiers d'exercice…"
     },
     "block": {
       "prose": "À lire",
@@ -416,6 +415,7 @@
     "this check is finished": "ce test est terminé",
     "already graded": "déjà corrigé",
     "the interview already started": "l'entretien a déjà commencé",
-    "start the interview first": "commencez d'abord l'entretien"
+    "start the interview first": "commencez d'abord l'entretien",
+    "running code is turned off on this server": "l'exécution de code est désactivée sur ce serveur"
   }
 }

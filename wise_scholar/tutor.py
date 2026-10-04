@@ -11,7 +11,7 @@ import simplemma
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel
 
-from . import challenge, db, figures, hub, plots, quiz, speech, vocab
+from . import challenge, course_files, db, figures, hub, plots, quiz, sandbox, speech, vocab
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
 mcp = MCPServer("scholar")
@@ -345,11 +345,46 @@ async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, m
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
 
 
-@mcp.tool()
+async def run_command(lesson_id: int, command: str) -> str:
+    """Run one shell command in the course workspace and get its exit code and output.
+
+    Use it to check which tools are installed and to test exercise files before you show them.
+    The command is stopped after 30 seconds. Unless the server's owner switched the sandbox off,
+    it can write only inside the workspace and has no network.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    result = await sandbox.run(command, db.workspace(lesson["slug"]))
+    code = "stopped at the time limit" if result["exit_code"] is None else f"exit code {result['exit_code']}"
+    return f"{code}\n{result['output']}"
+
+
+async def write_file(lesson_id: int, path: str, content: str) -> str:
+    """Write a file in the course workspace; path is relative to it. An existing file is replaced."""
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if not course_files.write_text(db.workspace(lesson["slug"]), path, content):
+        return f"error: {path!r} is not a file path inside the course workspace"
+    return "written"
+
+
+async def read_file(lesson_id: int, path: str) -> str:
+    """Read a text file of the course workspace; path is relative to it. Long files come back cut at 20,000 characters."""
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    text = course_files.read_text(db.workspace(lesson["slug"]), path)
+    if text is None:
+        return f"error: no file {path!r} in the course workspace"
+    return text[: sandbox.OUTPUT_LIMIT]
+
+
 async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile], run: str, milestone: bool = False) -> str:
     """Show a hands-on exercise: starter files the learner edits in their own editor, and a command that runs them.
 
-    files: paths relative to the course workspace (your working directory), with the starter
+    files: paths relative to the course workspace, with the starter
     content; put each concept's files in its own subfolder. Existing files are overwritten.
     run: one shell command, executed in the workspace when the learner presses Run.
     The card shows the files as they are on disk, the run output, a hint ladder and a locked
@@ -363,16 +398,17 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
     if not files:
         return "error: an exercise needs at least one file"
     workspace = db.workspace(lesson["slug"])
-    targets = [(workspace / f.path).resolve() for f in files]
-    if outside := [f.path for f, t in zip(files, targets) if not t.is_relative_to(workspace)]:
-        return f"error: paths {outside} leave the course workspace"
-    for f, target in zip(files, targets):
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(f.content)
+    if outside := [f.path for f in files if not course_files.write_text(workspace, f.path, f.content)]:
+        return f"error: paths {outside} are not file paths inside the course workspace"
     data = {**challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone}
     block = db.add_block(lesson_id, "exercise", markdown, data)
     _show(lesson, block)
     return f"shown as exercise {block['id']}; end the turn and wait for the learner"
+
+
+if sandbox.commands():
+    for _tool in (run_command, write_file, read_file, pose_exercise):
+        mcp.tool()(_tool)
 
 
 @mcp.tool()

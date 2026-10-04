@@ -1,8 +1,6 @@
 import asyncio
 import logging
-import os
 import shutil
-import signal
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
@@ -18,13 +16,11 @@ from pydantic import BaseModel, Field
 
 import simplemma
 
-from . import book, challenge, db, history, hub, quiz, review, sources, speech, tutor, vocab
+from . import book, challenge, course_files, db, history, hub, quiz, review, sandbox, sources, speech, tutor, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
 WEB_DIST = db.ROOT / "web" / "dist"
-RUN_TIMEOUT = 30
-OUTPUT_LIMIT = 20_000
 CLIP_LIMIT = 25 * 1024 * 1024
 SOURCE_LIMIT = 50 * 1024 * 1024
 SOURCES_PER_COURSE = 20
@@ -49,6 +45,12 @@ async def lifespan(app: FastAPI):
         "WHERE kind = 'podcast' AND json_extract(data, '$.status') = 'rendering'"
     )
     db.conn.execute("UPDATE sources SET status = 'failed', error = 'the server restarted' WHERE status = 'processing'")
+    if sandbox.COMMANDS and not sandbox.commands():
+        log.warning("commands are off: bubblewrap is missing or cannot make namespaces here (WISE_SCHOLAR_SANDBOX=0 runs without it)")
+    elif sandbox.COMMANDS and not sandbox.SANDBOX:
+        log.warning("commands run WITHOUT a sandbox: as this user, with network, the whole home directory and no limits")
+    elif sandbox.COMMANDS and not sandbox.capped():
+        log.warning("no user systemd here: sandboxed commands run without the memory and task limits")
     async with tutor.mcp.session_manager.run():
         await backend.start()
         try:
@@ -241,7 +243,14 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         "course this is the learner's own language, used for instructions and explanations; texts and tasks in the language "
         "being learned stay in that language."
     )
-    return "\n".join([state, *known, fmt, language, line])
+    tools = []
+    if not sandbox.commands():
+        tools = [
+            "[tools] This server runs no code: there is no run_command, write_file, read_file or pose_exercise, and no "
+            "workspace. Where a playbook calls for an exercise, use pose_challenge with code the learner runs on their own "
+            "machine and pastes back."
+        ]
+    return "\n".join([state, *known, fmt, language, *tools, line])
 
 
 async def _run_turn(lesson: dict, line: str) -> None:
@@ -303,7 +312,7 @@ def _require_unplaced(course: dict) -> None:
 
 @app.get("/api/meta")
 def meta() -> dict:
-    return {"agent": AGENT, "speech": speech.available(), "pdf": book.available()}
+    return {"agent": AGENT, "speech": speech.available(), "pdf": book.available(), "commands": sandbox.commands()}
 
 
 @app.get("/api/tts")
@@ -424,6 +433,9 @@ def delete_course(course_id: int) -> None:
     db.delete_course(course_id)
     shutil.rmtree(db.workspace(course["slug"]), ignore_errors=True)
     shutil.rmtree(SOURCES / str(course_id), ignore_errors=True)
+    # A later course may get the same slug: it must not inherit this one's command cache or agent folder.
+    for leftover in ("sandbox-cache", "agents"):
+        shutil.rmtree(db.DB_PATH.parent / leftover / course["slug"], ignore_errors=True)
 
 
 @app.post("/api/courses")
@@ -803,9 +815,7 @@ def _exercise(block_id: int) -> tuple[dict, Path]:
 def _read_files(block: dict, workspace: Path) -> list[dict]:
     files = []
     for path in block["data"]["files"]:
-        target = workspace / path
-        content = target.read_text(errors="replace") if target.is_file() else None
-        files.append({"path": path, "absolute": str(target), "content": content})
+        files.append({"path": path, "absolute": str(workspace / path), "content": course_files.read_text(workspace, path)})
     return files
 
 
@@ -817,21 +827,9 @@ def exercise_files(block_id: int) -> list[dict]:
 @app.post("/api/blocks/{block_id}/run")
 async def run_exercise(block_id: int) -> dict:
     block, workspace = _exercise(block_id)
-    proc = await asyncio.create_subprocess_shell(
-        block["data"]["run"],
-        cwd=workspace,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        start_new_session=True,
-    )
-    try:
-        output, _ = await asyncio.wait_for(proc.communicate(), RUN_TIMEOUT)
-        text, exit_code = output.decode(errors="replace"), proc.returncode
-    except TimeoutError:
-        os.killpg(proc.pid, signal.SIGKILL)
-        await proc.wait()
-        text, exit_code = f"stopped: still running after {RUN_TIMEOUT} s", None
-    last_run = {"exit_code": exit_code, "output": text[-OUTPUT_LIMIT:]}
+    if not sandbox.commands():
+        raise HTTPException(409, "running code is turned off on this server")
+    last_run = await sandbox.run(block["data"]["run"], workspace)
     _update_block(db.block(block_id), {"last_run": last_run})
     return last_run
 
