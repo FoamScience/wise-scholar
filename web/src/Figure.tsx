@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-type FigureData = { svg: string; alt: string }
+export type FigureData = { svg: string; alt: string }
 
 /** A tutor-drawn SVG: inline so its text follows the theme; click to see it large. */
 export function FigureCard(props: { id: number; caption: string; data: unknown }) {

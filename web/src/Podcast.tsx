@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-type PodcastData = {
+export type PodcastData = {
   lang: string
   speakers: string[]
   lines: { speaker: string; text: string }[]

@@ -359,6 +359,24 @@
       "failed": "Le podcast n'a pas pu être produit : {{error}}",
       "paused": "En pause pour une question. Répondez ci-dessous et le podcast reprend.",
       "transcript": "Transcription"
+    },
+    "book": {
+      "export": "Exporter en livre",
+      "save": "Enregistrer en PDF",
+      "saveHint": "Dans la boîte d'impression, choisissez « Enregistrer au format PDF » comme destination.",
+      "back": "Retour au cours",
+      "contents": "Sommaire",
+      "chapter": "Chapitre {{n}}",
+      "extras": "Épisodes et séances d'écriture",
+      "projects": "Projets",
+      "appendix": "Annexe",
+      "kicker": "Carnet de cours",
+      "exported": "Exporté le {{date}}",
+      "chosen": "Choisie",
+      "unanswered": "Pas encore de réponse",
+      "yourNote": "Votre note",
+      "download": "Télécharger le PDF",
+      "preparing": "Préparation du PDF…"
     }
   },
   "server": {

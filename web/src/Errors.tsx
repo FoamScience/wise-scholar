@@ -6,7 +6,7 @@ import { Correction } from './Diff'
 import Markdown from './Md'
 import { textDirection } from './text'
 
-type Entry = {
+export type Entry = {
   id: number
   topic: string
   kind: 'quiz' | 'writing'

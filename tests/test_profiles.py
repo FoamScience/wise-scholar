@@ -230,3 +230,41 @@ def test_profile_locale_reaches_the_turn_prompt():
     lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", db.create_course("Chemistry", who)["id"])["id"])
     assert "[language] Write everything the learner reads in Modern Standard Arabic" in app._turn_prompt(lesson, "[event] x")
     assert db.profile(db.conn.execute("INSERT INTO profiles (name) VALUES ('Default')").lastrowid)["locale"] == "en"
+
+
+def test_a_course_keeps_its_error_notebook_when_archived():
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Arch')").lastrowid
+    course = db.create_course("Archived topic", who)["id"]
+    db.add_error(who, course, "quiz", "q", "said", "right")
+    db.conn.execute("UPDATE courses SET archived = 1 WHERE id = ?", (course,))
+    assert db.errors(who) == []
+    assert [e["said"] for e in db.errors(who, course)] == ["said"]
+
+
+def test_book_export_reports_a_missing_course_and_a_missing_install(monkeypatch):
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app
+
+    with pytest.raises(HTTPException) as missing:
+        asyncio.run(app.course_book(10**9))
+    assert missing.value.status_code == 404
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Booker')").lastrowid
+    course = db.create_course("Bookbinding", who)["id"]
+    monkeypatch.setattr(app.book, "available", lambda: False)
+    with pytest.raises(HTTPException) as uninstalled:
+        asyncio.run(app.course_book(course))
+    assert uninstalled.value.status_code == 503 and "make pdf" in uninstalled.value.detail
+
+    async def no_browser(*_):
+        raise app.book.NoBrowser
+
+    monkeypatch.setattr(app.book, "available", lambda: True)
+    monkeypatch.setattr(app.book, "render", no_browser)
+    with pytest.raises(HTTPException) as browserless:
+        asyncio.run(app.course_book(course))
+    assert browserless.value.status_code == 503

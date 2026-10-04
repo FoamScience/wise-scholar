@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 import simplemma
 
-from . import challenge, db, history, hub, quiz, review, sources, speech, tutor, vocab
+from . import book, challenge, db, history, hub, quiz, review, sources, speech, tutor, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -291,7 +291,7 @@ def _require_unplaced(course: dict) -> None:
 
 @app.get("/api/meta")
 def meta() -> dict:
-    return {"agent": AGENT, "speech": speech.available()}
+    return {"agent": AGENT, "speech": speech.available(), "pdf": book.available()}
 
 
 @app.get("/api/tts")
@@ -852,6 +852,31 @@ async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
 @app.get("/api/errors")
 def list_errors(profile: int) -> list[dict]:
     return db.errors(profile)
+
+
+@app.get("/api/courses/{course_id}/book.pdf")
+async def course_book(course_id: int, theme: Literal["light", "dark"] = "light") -> Response:
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    if not book.available():
+        raise HTTPException(503, "PDF export is not installed; run make pdf")
+    try:
+        pdf = await book.render(course_id, course["profile_id"], theme)
+    except book.NoBrowser:
+        raise HTTPException(503, "PDF export has no browser to print with; run make pdf") from None
+    except TimeoutError as e:
+        log.warning("book export timed out: %s", e)
+        raise HTTPException(504, "the book did not finish drawing") from None
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{course["slug"]}.pdf"'})
+
+
+@app.get("/api/courses/{course_id}/errors")
+def list_course_errors(course_id: int) -> list[dict]:
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    return db.errors(course["profile_id"], course_id)
 
 
 @app.post("/api/errors/{error_id}")

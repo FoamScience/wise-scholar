@@ -19,7 +19,7 @@ export type QuizData = {
   feedback?: string
 }
 
-type Graded = { correct: boolean; confident_miss: boolean; answer_key: string; explanation: string }
+export type Graded = { correct: boolean; confident_miss: boolean; answer_key: string; explanation: string }
 type DueCard = {
   id: number
   topic: string
@@ -97,7 +97,7 @@ function QuizForm(props: {
   )
 }
 
-function QuizResult(props: { answer: string; confidence: number; result: Graded; feedback?: string }) {
+export function QuizResult(props: { answer: string; confidence: number; result: Graded; feedback?: string }) {
   const { result } = props
   const { t } = useTranslation()
   return (

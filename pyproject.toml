@@ -18,6 +18,11 @@ dependencies = [
     "wordfreq>=3.1.1",
 ]
 
+[project.optional-dependencies]
+pdf = [
+    "playwright>=1.63.0",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
