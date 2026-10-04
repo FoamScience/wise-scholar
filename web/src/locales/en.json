@@ -58,7 +58,8 @@
       "grade_quiz": "grading your answer…",
       "run_command": "testing in the workspace…",
       "read_file": "reading your files…",
-      "write_file": "writing exercise files…"
+      "write_file": "writing exercise files…",
+      "ask_network": "asking for internet access…"
     },
     "block": {
       "prose": "Read",
@@ -167,7 +168,8 @@
       "transfer": "Transfer",
       "teachback": "Teach-back",
       "writing": "Writing",
-      "challenge": "Challenge"
+      "challenge": "Challenge",
+      "network": "Internet request"
     },
     "map": {
       "label": "Course map",
@@ -380,6 +382,17 @@
       "summary": "Course scope",
       "planned_one": "{{count}} hour of teaching planned",
       "planned_other": "{{count}} hours of teaching planned"
+    },
+    "network": {
+      "label": "The tutor asks to use the internet",
+      "explain": "Runs once, in the sandbox, for up to two minutes. It can reach public internet sites over HTTP and HTTPS; it cannot reach this computer or private network addresses, and it can write only in this course's own folders. It runs the files of the workspace as they are now.",
+      "allow": "Allow once",
+      "refuse": "Don't allow",
+      "running": "Running with internet…",
+      "allowed": "Allowed",
+      "refused": "Refused",
+      "exit": "exit code {{code}}",
+      "stopped": "stopped at the time limit"
     }
   },
   "server": {}

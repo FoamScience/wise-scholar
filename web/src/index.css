@@ -1529,6 +1529,18 @@ pre {
   gap: 8px;
 }
 
+.network {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.network pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .scope input[type='number'] {
   max-width: 160px;
 }

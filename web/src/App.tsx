@@ -15,6 +15,7 @@ import { challengeLabel, lessonTitle } from './course'
 import { HintList, Ladder } from './Ladder'
 import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
+import { NetworkCard } from './Network'
 import { PlotCard } from './PlotCard'
 import { ScopeCard, ScopeForm } from './Scope'
 import { Book } from './Book'
@@ -45,6 +46,7 @@ type TutorEvent =
 const LESSON_AREA_TOOLS = [
   'add_block',
   'ask',
+  'ask_network',
   'rank_mechanisms',
   'pose_challenge',
   'pose_exercise',
@@ -605,7 +607,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
   )
 }
 
-const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking', 'podcast'])
+const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking', 'podcast', 'network'])
 
 function cardLabel(b: Block, t: TFunction): string {
   const d = (b.data ?? {}) as { writing?: boolean; teachback?: boolean; pretest?: boolean; milestone?: boolean; transfer?: boolean; files?: string[]; title?: string }
@@ -615,6 +617,7 @@ function cardLabel(b: Block, t: TFunction): string {
   if (b.kind === 'quiz') return `${d.pretest ? t('card.pretest') : t('card.quickCheck')} · ${short}`
   if (b.kind === 'reading') return `${t('card.reading')} · ${d.title ?? short}`
   if (b.kind === 'vocab') return t('card.vocab')
+  if (b.kind === 'network') return t('card.network')
   if (b.kind === 'speaking') return `${t('card.speaking')} · ${short}`
   if (b.kind === 'podcast') return `${t('card.cast')} · ${short}`
   if (b.kind === 'exercise') return `${d.milestone ? t('card.milestone') : t('card.exercise')} · ${d.files?.[0] ?? short}`
@@ -1059,6 +1062,15 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
               speech={speech}
               onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
               onError={setError}
+            />
+          ) : b.kind === 'network' ? (
+            <NetworkCard
+              key={b.id}
+              id={b.id}
+              reason={b.markdown}
+              data={b.data}
+              disabled={lesson.running}
+              onDecide={(allow) => post(`/api/blocks/${b.id}/network`, { allow })}
             />
           ) : b.kind === 'plot' ? (
             <PlotCard key={b.id} id={b.id} title={b.markdown} data={b.data} />

@@ -58,7 +58,8 @@
       "grade_quiz": "يصحّح إجابتك…",
       "run_command": "يجرّب في مساحة العمل…",
       "read_file": "يقرأ ملفاتك…",
-      "write_file": "يكتب ملفات التمرين…"
+      "write_file": "يكتب ملفات التمرين…",
+      "ask_network": "يطلب استخدام الإنترنت…"
     },
     "block": {
       "prose": "للقراءة",
@@ -183,7 +184,8 @@
       "transfer": "نقل",
       "teachback": "اشرح بنفسك",
       "writing": "كتابة",
-      "challenge": "تحدٍّ"
+      "challenge": "تحدٍّ",
+      "network": "طلب استخدام الإنترنت"
     },
     "map": {
       "label": "خريطة الدورة",
@@ -412,6 +414,17 @@
       "planned_few": "{{count}} ساعات تدريس مخطَّطة",
       "planned_many": "{{count}} ساعة تدريس مخطَّطة",
       "planned_other": "{{count}} ساعة تدريس مخطَّطة"
+    },
+    "network": {
+      "label": "المعلّم يطلب استخدام الإنترنت",
+      "explain": "يُشغَّل مرة واحدة داخل البيئة المعزولة، لمدة دقيقتين على الأكثر. يستطيع الوصول إلى مواقع الإنترنت العامة عبر HTTP و HTTPS؛ لا يستطيع الوصول إلى هذا الحاسوب ولا إلى عناوين الشبكات الخاصة، ولا يكتب إلا في مجلدات هذه الدورة. يشغّل ملفات مساحة العمل كما هي الآن.",
+      "allow": "اسمح مرة واحدة",
+      "refuse": "لا تسمح",
+      "running": "جارٍ التشغيل مع الإنترنت…",
+      "allowed": "مسموح",
+      "refused": "مرفوض",
+      "exit": "رمز الخروج {{code}}",
+      "stopped": "أُوقف عند انتهاء المهلة"
     }
   },
   "server": {
@@ -440,6 +453,8 @@
     "already graded": "صُحّح من قبل",
     "the interview already started": "المقابلة بدأت من قبل",
     "start the interview first": "ابدأ المقابلة أولًا",
-    "running code is turned off on this server": "تشغيل الشيفرة معطَّل على هذا الخادم"
+    "running code is turned off on this server": "تشغيل الشيفرة معطَّل على هذا الخادم",
+    "already decided": "تم البتّ فيه من قبل",
+    "this server cannot give commands the internet": "هذا الخادم لا يستطيع منح الأوامر اتصالًا بالإنترنت"
   }
 }

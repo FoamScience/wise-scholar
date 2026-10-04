@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
+import { NetworkCard } from './Network'
 import { api, failure } from './api'
 import { parts, timeline } from './chapters'
 import { challengeLabel, lessonTitle } from './course'
@@ -142,6 +143,7 @@ function BookBlock({ block, files }: { block: Block; files: Files }) {
   if (block.kind === 'reading') return <ReadingBlock block={block} />
   if (block.kind === 'exercise') return <ExerciseBlock block={block} files={files.get(block.id) ?? []} />
   if (block.kind === 'plot') return <PlotCard id={block.id} title={block.markdown} data={block.data} />
+  if (block.kind === 'network') return <NetworkCard id={block.id} reason={block.markdown} data={block.data} disabled />
   if (block.kind === 'question') {
     const d = block.data as QuestionData
     return (

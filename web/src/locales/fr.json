@@ -58,7 +58,8 @@
       "grade_quiz": "correction de votre réponse…",
       "run_command": "essai dans l'espace de travail…",
       "read_file": "lecture de vos fichiers…",
-      "write_file": "écriture des fichiers d'exercice…"
+      "write_file": "écriture des fichiers d'exercice…",
+      "ask_network": "demande d'accès à Internet…"
     },
     "block": {
       "prose": "À lire",
@@ -171,7 +172,8 @@
       "transfer": "Transfert",
       "teachback": "Explication à rendre",
       "writing": "Écriture",
-      "challenge": "Défi"
+      "challenge": "Défi",
+      "network": "Demande d'accès à Internet"
     },
     "map": {
       "label": "Plan du cours",
@@ -388,6 +390,17 @@
       "planned_one": "{{count}} heure d'enseignement prévue",
       "planned_many": "{{count}} d'heures d'enseignement prévues",
       "planned_other": "{{count}} heures d'enseignement prévues"
+    },
+    "network": {
+      "label": "Le tuteur demande à utiliser Internet",
+      "explain": "S'exécute une fois, dans le bac à sable, pendant deux minutes au plus. La commande peut joindre les sites publics d'Internet en HTTP et HTTPS ; elle ne peut joindre ni cet ordinateur ni les adresses de réseau privé, et ne peut écrire que dans les dossiers de ce cours. Elle exécute les fichiers de l'espace de travail tels qu'ils sont maintenant.",
+      "allow": "Autoriser une fois",
+      "refuse": "Ne pas autoriser",
+      "running": "Exécution avec Internet…",
+      "allowed": "Autorisé",
+      "refused": "Refusé",
+      "exit": "code de retour {{code}}",
+      "stopped": "arrêté à la limite de temps"
     }
   },
   "server": {
@@ -416,6 +429,8 @@
     "already graded": "déjà corrigé",
     "the interview already started": "l'entretien a déjà commencé",
     "start the interview first": "commencez d'abord l'entretien",
-    "running code is turned off on this server": "l'exécution de code est désactivée sur ce serveur"
+    "running code is turned off on this server": "l'exécution de code est désactivée sur ce serveur",
+    "already decided": "déjà décidé",
+    "this server cannot give commands the internet": "ce serveur ne peut pas donner Internet aux commandes"
   }
 }

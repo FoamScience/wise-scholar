@@ -360,12 +360,41 @@ async def run_command(lesson_id: int, command: str) -> str:
     return f"{code}\n{result['output']}"
 
 
+NETWORK_COMMAND_LIMIT = 300
+ONLINE_BUSY = "error: a command the learner allowed to use the internet is waiting or running in this course; its files stay as they are until it ends"
+
+
+async def ask_network(lesson_id: int, command: str, reason: str) -> str:
+    """Ask the learner to let one command use the internet, for what cannot work without it:
+    installing a package, cloning a repository, fetching data.
+
+    Commands are offline otherwise. The learner sees the command and your reason, one sentence
+    in their language, and allows or refuses. Allowed, the command runs once in the sandbox for
+    up to two minutes and reaches public internet hosts over HTTP and HTTPS (package indexes,
+    git over https, downloads), not this machine or its local network; an [event] brings you
+    its exit code and output. Refused, the [event] says so and you go on without it.
+    command: one line of plain ASCII, at most 300 characters, so the learner can read all of
+    it. End your turn after asking.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if not command.strip() or len(command) > NETWORK_COMMAND_LIMIT or not (command.isascii() and command.isprintable()):
+        return f"error: the command must be one line of printable ASCII, at most {NETWORK_COMMAND_LIMIT} characters"
+    block = db.add_block(lesson_id, "network", reason, {"command": command, "status": "asked", "result": None})
+    _show(lesson, block)
+    return f"asked on card {block['id']}; end the turn and wait for the event"
+
+
 async def write_file(lesson_id: int, path: str, content: str) -> str:
     """Write a file in the course workspace; path is relative to it. An existing file is replaced."""
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    if not course_files.write_text(db.workspace(lesson["slug"]), path, content):
+    workspace = db.workspace(lesson["slug"])
+    if sandbox.online(workspace):
+        return ONLINE_BUSY
+    if not course_files.write_text(workspace, path, content):
         return f"error: {path!r} is not a file path inside the course workspace"
     return "written"
 
@@ -387,6 +416,7 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
     files: paths relative to the course workspace, with the starter
     content; put each concept's files in its own subfolder. Existing files are overwritten.
     run: one shell command, executed in the workspace when the learner presses Run.
+    Run is always offline; what an exercise needs from the internet is fetched once with ask_network.
     The card shows the files as they are on disk, the run output, a hint ladder and a locked
     solution, exactly like a challenge; its id works with give_hint, reveal and mark_solved.
     `[learner attempt]` turns for an exercise carry the current files and the last run output.
@@ -398,6 +428,8 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
     if not files:
         return "error: an exercise needs at least one file"
     workspace = db.workspace(lesson["slug"])
+    if sandbox.online(workspace):
+        return ONLINE_BUSY
     if outside := [f.path for f in files if not course_files.write_text(workspace, f.path, f.content)]:
         return f"error: paths {outside} are not file paths inside the course workspace"
     data = {**challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone}
@@ -407,7 +439,7 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
 
 
 if sandbox.commands():
-    for _tool in (run_command, write_file, read_file, pose_exercise):
+    for _tool in (run_command, write_file, read_file, pose_exercise, *([ask_network] if sandbox.networked() else [])):
         mcp.tool()(_tool)
 
 
