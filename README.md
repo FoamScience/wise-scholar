@@ -23,6 +23,15 @@ The research behind each teaching behaviour is listed in [docs/science.md](docs/
 > Not covered: what a command writes into its workspace is not capped, and a token you keep inside one of those toolchain
 > folders is readable to it. The agent itself has no shell or file tools; it acts only through the server.
 > For an instance other people use, switch commands off (`WISE_SCHOLAR_COMMANDS=0`).
+>
+> A command reaches the internet only when the learner allows it. The tutor asks on a card that shows the command and its reason
+> ("Allow once" or "Don't allow"). An allowed command runs once, for up to two minutes, still without a network of its own: it gets
+> an HTTP proxy that the server runs for it, and that proxy connects only to ports 80 and 443 of public IPv4 addresses: not to
+> this machine, private ranges, the networks this machine is attached to, or anything over IPv6. Package indexes, git over https
+> and downloads work. No other command of that course runs meanwhile and the tutor cannot change its files; the Run button of an
+> exercise is always offline. What it does not stop: an allowed command can send what it can read (the workspace, the toolchain
+> folders) to any public site; and it can reach whatever answers on a public address, which includes your router's outer address
+> and anything you expose through it. Read the command before you allow it.
 
 ## Run
 
