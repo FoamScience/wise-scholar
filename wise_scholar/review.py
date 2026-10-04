@@ -3,7 +3,7 @@ from datetime import datetime
 from fsrs import Card, Rating, Scheduler
 
 CONFIDENT = 0.75
-BUCKETS = [(0.0, "under 50%"), (0.5, "50–69%"), (0.7, "70–89%"), (0.9, "90–100%")]
+BUCKETS = [(0.0, "0–49%"), (0.5, "50–69%"), (0.7, "70–89%"), (0.9, "90–100%")]
 
 scheduler = Scheduler()
 

@@ -5,7 +5,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import ReactMarkdown from 'react-markdown'
 import Markdown from '../src/Md.tsx'
 import { rehypePlugins, remarkPlugins } from '../src/markdown.ts'
+import i18n from '../src/i18n.ts'
 import { splitSentences } from '../src/text.ts'
+
+// The interface language otherwise follows the machine's locale.
+await i18n.changeLanguage('en')
 
 const render = (text: string) =>
   renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins, rehypePlugins }, text))

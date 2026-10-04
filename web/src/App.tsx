@@ -1,7 +1,10 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
-import { api } from './api'
+import { api, failure } from './api'
+import i18n, { lookup, percent } from './i18n'
 import Logo from './Logo'
 import { QuizCard, Review, ReviewPanels } from './Quiz'
 import type { QuizData } from './Quiz'
@@ -105,36 +108,6 @@ type TutorEvent =
   | { type: 'lesson.created'; lesson: Lesson }
   | { type: 'turn.done'; lesson_id: number; ok: boolean; error: string | null; message: Message | null }
 
-const BLOCK_LABELS: Record<string, string> = { prose: 'Read', example: 'Example' }
-const ACTIVITY_LABELS: Record<string, string> = {
-  add_block: 'writing in the lesson area…',
-  ask: 'preparing a question…',
-  note_learner: 'noting what you said…',
-  list_playbooks: 'weighing teaching approaches…',
-  get_playbook: 'reading a playbook…',
-  rank_mechanisms: 'ranking teaching approaches…',
-  set_course_map: 'laying out the course…',
-  pose_challenge: 'preparing a challenge…',
-  pose_exercise: 'preparing an exercise…',
-  add_reading: 'writing a text for you…',
-  add_figure: 'drawing a figure…',
-  add_plot: 'plotting…',
-  pose_writing: 'preparing a writing task…',
-  bash: 'testing in the workspace…',
-  read: 'reading your files…',
-  write: 'writing exercise files…',
-  edit: 'writing exercise files…',
-  give_hint: 'writing a hint…',
-  reveal: 'opening the solution…',
-  mark_solved: 'checking your answer…',
-  set_placement: 'working out your level…',
-  pose_vocab_check: 'picking words to check…',
-  pose_speaking: 'preparing a speaking task…',
-  pose_teachback: 'preparing a teach-back…',
-  make_podcast: 'writing a cast…',
-  pose_quiz: 'preparing a quick check…',
-  grade_quiz: 'grading your answer…',
-}
 const LESSON_AREA_TOOLS = [
   'add_block',
   'ask',
@@ -171,12 +144,28 @@ type TodayPlan = {
   extras: { course_id: number; topic: string; kind: 'episode' | 'writing' }[]
 }
 
+/** The server names its own lessons in English; a concept's lesson carries the tutor's title. */
+function lessonTitle(lesson: Lesson, t: TFunction): string {
+  const n = lesson.title.match(/\d+$/)?.[0]
+  if (lesson.concept_id !== null) return lesson.title
+  if (lesson.phase === 'interview') return t('lesson.interview')
+  if (lesson.phase === 'placement') return n ? t('lesson.placementRetake', { n }) : t('lesson.placement')
+  if (lesson.phase === 'story') return t('lesson.episode', { n })
+  if (lesson.phase === 'writing') return t('lesson.writingSession', { n })
+  return lesson.title
+}
+
+function unitTitle(u: TodayPlan['units'][number], t: TFunction): string {
+  return u.concept_id === null ? t('today.finishInterview') : u.title
+}
+
 function unitHash(u: TodayPlan['units'][number]): string {
   return u.concept_id === null ? `#/course/${u.course_id}` : `#/course/${u.course_id}?concept=${u.concept_id}`
 }
 
 /** The sitting as one plan: reviews first, then the next unit. Start walks through both. */
 function Today({ profile }: { profile: number }) {
+  const { t } = useTranslation()
   const [plan, setPlan] = useState<TodayPlan | null>(null)
   useEffect(() => {
     api<TodayPlan>(`/api/today?profile=${profile}`).then(setPlan, () => {})
@@ -186,45 +175,45 @@ function Today({ profile }: { profile: number }) {
   const start = plan.due > 0 ? `#/review${unit ? `?then=${encodeURIComponent(unitHash(unit))}` : ''}` : unit ? unitHash(unit) : '#/review'
   return (
     <section className="block today">
-      <div className="label">Today · a sitting of 30 minutes</div>
+      <div className="label">{t('today.heading')}</div>
       <ol className="plan-steps">
         {plan.due > 0 && (
           <li>
-            {plan.due} {plan.due === 1 ? 'review' : 'reviews'} across your courses <span className="muted">· about {Math.max(1, plan.review_minutes)} min</span>
+            {t('today.reviews', { count: plan.due })} <span className="muted">{t('today.reviewMinutes', { minutes: Math.max(1, plan.review_minutes) })}</span>
           </li>
         )}
         {unit && (
           <li>
-            {unit.topic}: {unit.title} <span className="muted">· the rest of the sitting</span>
+            {t('today.unit', { topic: unit.topic, title: unitTitle(unit, t) })} <span className="muted">{t('today.restOfSitting')}</span>
           </li>
         )}
         {plan.units.slice(1, 4).map((u) => (
           <li key={u.course_id} className="muted">
-            Later: {u.topic}, {u.title}
+            {t('today.later', { topic: u.topic, title: unitTitle(u, t) })}
           </li>
         ))}
         {plan.cast && (
           <li className="muted">
-            A cast is ready to listen to: <a href={`#/course/${plan.cast.course_id}`}>{plan.cast.title}</a>
+            {t('today.castReady')} <a href={`#/course/${plan.cast.course_id}`}>{plan.cast.title}</a>
           </li>
         )}
         {plan.extras.map((x) => (
           <li key={`${x.course_id}-${x.kind}`} className="muted">
             <a href={`#/course/${x.course_id}?start=${x.kind}`}>
-              {x.kind === 'episode' ? `Next episode of your ${x.topic} story` : `A writing session in ${x.topic}`}
+              {x.kind === 'episode' ? t('today.nextEpisode', { topic: x.topic }) : t('today.writingSession', { topic: x.topic })}
             </a>{' '}
-            · that strand is behind
+            {t('today.strandBehind')}
           </li>
         ))}
         {plan.errors > 0 && (
           <li className="muted">
-            <a href="#/errors">{plan.errors} open {plan.errors === 1 ? 'entry' : 'entries'} in your error notebook</a>
+            <a href="#/errors">{t('today.errors', { count: plan.errors })}</a>
           </li>
         )}
       </ol>
       <div className="row">
         <a className="btn primary as-link" href={start}>
-          Start
+          {t('common.start')}
         </a>
       </div>
     </section>
@@ -232,6 +221,7 @@ function Today({ profile }: { profile: number }) {
 }
 
 function Home({ profile }: { profile: number }) {
+  const { t } = useTranslation()
   const [courses, setCourses] = useState<Course[]>([])
   const [topic, setTopic] = useState('')
   const [error, setError] = useState('')
@@ -270,27 +260,27 @@ function Home({ profile }: { profile: number }) {
   return (
     <main className="home">
       <form className="topic-form" onSubmit={start}>
-        <label htmlFor="topic">What do you want to learn?</label>
+        <label htmlFor="topic">{t('home.topicLabel')}</label>
         <div className="row">
           <input
             id="topic"
             className="field"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="A language, a tool, a field…"
+            placeholder={t('home.topicPlaceholder')}
           />
           <button className="btn primary" disabled={!topic.trim()}>
-            Start
+            {t('common.start')}
           </button>
         </div>
-        <div className="muted">The tutor interviews you first, then picks how to teach it.</div>
+        <div className="muted">{t('home.topicHelp')}</div>
       </form>
       {error && <div className="error">{error}</div>}
       <Today profile={profile} />
       <ReviewPanels profile={profile} />
       {active.length > 0 && (
         <section>
-          <div className="label gap-below">Your courses</div>
+          <div className="label gap-below">{t('home.courses')}</div>
           <div className="courses">
             {active.map((c) => (
               <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} />
@@ -300,7 +290,7 @@ function Home({ profile }: { profile: number }) {
       )}
       {archived.length > 0 && (
         <details className="archived">
-          <summary className="label">Archived courses · {archived.length}</summary>
+          <summary className="label">{t('home.archived', { n: archived.length })}</summary>
           <div className="courses">
             {archived.map((c) => (
               <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} />
@@ -318,6 +308,7 @@ function CourseCard(props: {
   onDelete: (course: Course) => void
 }) {
   const { course } = props
+  const { t } = useTranslation()
   const [confirming, setConfirming] = useState(false)
   const menu = useRef<HTMLDetailsElement>(null)
 
@@ -330,10 +321,10 @@ function CourseCard(props: {
     <div className="course-card">
       <a href={`#/course/${course.id}`}>
         <strong>{course.topic}</strong>
-        <span className="muted">{course.mechanism ?? 'interview not finished'}</span>
+        <span className="muted">{course.mechanism ? lookup(`playbooks.${course.mechanism}.title`, course.mechanism) : t('home.interviewOpen')}</span>
       </a>
       <details ref={menu} className="menu" name="course-menu" onToggle={() => setConfirming(false)}>
-        <summary aria-label={`Options for ${course.topic}`}>
+        <summary aria-label={t('home.options', { topic: course.topic })}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <circle cx="12" cy="5" r="2" />
             <circle cx="12" cy="12" r="2" />
@@ -343,14 +334,12 @@ function CourseCard(props: {
         <div className="menu-panel">
           {confirming ? (
             <>
-              <div>
-                Delete “{course.topic}” with its lessons, reviews and exercise files? This cannot be undone.
-              </div>
+              <div>{t('home.deleteConfirm', { topic: course.topic })}</div>
               <button type="button" className="btn danger" onClick={() => props.onDelete(course)}>
-                Delete course
+                {t('home.deleteCourse')}
               </button>
               <button type="button" className="btn" onClick={close}>
-                Cancel
+                {t('common.cancel')}
               </button>
             </>
           ) : (
@@ -363,10 +352,10 @@ function CourseCard(props: {
                   props.onArchive(course, !course.archived)
                 }}
               >
-                {course.archived ? 'Unarchive' : 'Archive'}
+                {course.archived ? t('home.unarchive') : t('home.archive')}
               </button>
               <button type="button" className="btn" onClick={() => setConfirming(true)}>
-                Delete…
+                {t('home.delete')}
               </button>
             </>
           )}
@@ -377,8 +366,9 @@ function CourseCard(props: {
 }
 
 function Skeleton() {
+  const { t } = useTranslation()
   return (
-    <section className="block skeleton" role="status" aria-label="The tutor is working">
+    <section className="block skeleton" role="status" aria-label={t('block.tutorWorking')}>
       <span style={{ width: '22%' }} />
       <span style={{ width: '92%' }} />
       <span style={{ width: '78%' }} />
@@ -388,6 +378,7 @@ function Skeleton() {
 }
 
 function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answer: string) => void }) {
+  const { t } = useTranslation()
   const [text, setText] = useState('')
   const { options, answer } = props.block.data as QuestionData
 
@@ -415,7 +406,7 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
         ))}
       </div>
       <form onSubmit={submit}>
-        <label htmlFor={`own-${props.block.id}`}>Or say it in your own words</label>
+        <label htmlFor={`own-${props.block.id}`}>{t('question.own')}</label>
         <div className="row">
           <input
             id={`own-${props.block.id}`}
@@ -424,7 +415,7 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
             onChange={(e) => setText(e.target.value)}
           />
           <button className="btn primary" disabled={props.disabled || !text.trim()}>
-            Answer
+            {t('question.answer')}
           </button>
         </div>
       </form>
@@ -433,6 +424,7 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
 }
 
 function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean; onAct: Act; onError: (m: string) => void }) {
+  const { t } = useTranslation()
   const [text, setText] = useState('')
   const d = props.block.data as ChallengeData
   const open = !d.solved && d.solution === null
@@ -449,24 +441,26 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
     <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
         {d.transfer
-          ? 'Transfer: same idea, new ground, no hints'
+          ? t('challenge.transfer')
           : d.milestone
-          ? 'Capstone milestone'
+          ? t('challenge.milestone')
           : d.pretest
-          ? 'Before we start: try it'
+          ? t('challenge.pretest')
           : d.teachback
-          ? `Explain it in 60 seconds${props.speech ? ', out loud' : ''}`
+          ? props.speech
+            ? t('challenge.teachbackAloud')
+            : t('challenge.teachback')
           : d.spoken
-            ? 'Listen and answer by speaking'
+            ? t('challenge.spoken')
             : d.writing
               ? d.fluency
-                ? 'Write fast'
-                : 'Write'
-              : 'Work it out'}
-        {d.solved && <span className="chip">{d.writing ? 'Done' : 'Solved'}</span>}
+                ? t('challenge.writeFast')
+                : t('challenge.write')
+              : t('challenge.workItOut')}
+        {d.solved && <span className="chip">{d.writing ? t('common.done') : t('common.solved')}</span>}
         {d.spoken && d.lang && (
           <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([props.block.markdown]))}>
-            {player.current ? 'Stop' : 'Listen'}
+            {player.current ? t('common.stop') : t('common.listen')}
           </button>
         )}
       </div>
@@ -479,11 +473,16 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
         <>
           <form onSubmit={submit}>
             <label htmlFor={`attempt-${props.block.id}`}>
-              Your answer
+              {t('common.yourAnswer')}
               {d.words && (
                 <span className="muted">
                   {' '}
-                  · {d.words[0]} to {d.words[1]} words{d.structure ? `, using ${d.structure}` : ''} · {text.trim() ? text.trim().split(/\s+/).length : 0} so far
+                  {t(d.structure ? 'challenge.wordRangeStructure' : 'challenge.wordRange', {
+                    min: d.words[0],
+                    max: d.words[1],
+                    structure: d.structure,
+                    n: text.trim() ? text.trim().split(/\s+/).length : 0,
+                  })}
                 </span>
               )}
             </label>
@@ -505,7 +504,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
                 />
               )}
               <button className="btn primary" disabled={props.disabled || !text.trim()}>
-                Submit attempt
+                {t('challenge.submit')}
               </button>
             </div>
           </form>
@@ -521,6 +520,7 @@ type Act = (action: string, body?: unknown) => void
 const WEAK_WORD = 0.5
 
 function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean; onAct: Act; onError: (m: string) => void }) {
+  const { t } = useTranslation()
   const d = props.block.data as SpeakingData
   const open = !d.solved && d.solution === null
   const player = usePlayer(d.lang, props.speech)
@@ -530,16 +530,16 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
     const form = new FormData()
     form.append('audio', clip, 'clip.webm')
     const res = await fetch(`/api/blocks/${props.block.id}/speak`, { method: 'POST', body: form })
-    if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? res.statusText)
+    if (!res.ok) throw await failure(res)
   }
 
   return (
     <section id={`block-${props.block.id}`} className="block challenge speaking">
       <div className="label">
-        {d.speaking === 'shadow' ? 'Listen, then say it the same way' : 'Read aloud'}
-        {d.solved && <span className="chip">Done</span>}
+        {d.speaking === 'shadow' ? t('speaking.shadow') : t('speaking.read')}
+        {d.solved && <span className="chip">{t('common.done')}</span>}
         <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([props.block.markdown]))}>
-          {player.current ? 'Stop' : 'Listen'}
+          {player.current ? t('common.stop') : t('common.listen')}
         </button>
       </div>
       {(d.speaking === 'read' || d.scores.length > 0) && (
@@ -550,16 +550,14 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
       {player.error && <div className="error">{player.error}</div>}
       {d.scores.map((a, i) => (
         <div key={i} className="attempt">
-          <span className="label">
-            Attempt {i + 1} · {Math.round(a.score * 100)}%
-          </span>
+          <span className="label">{t('speaking.attemptScore', { n: i + 1, score: percent(a.score) })}</span>
           <span lang={d.lang}>
             {a.words.map((w, j) => (
-              <span key={j} className={w.score < WEAK_WORD ? 'word weak' : 'word'} title={`${Math.round(w.score * 100)}%`}>
+              <span key={j} className={w.score < WEAK_WORD ? 'word weak' : 'word'} title={percent(w.score)}>
                 {w.word}{' '}
               </span>
             ))}
-            {a.heard !== null && <span className="small"> · heard: “{a.heard}”</span>}
+            {a.heard !== null && <span className="small"> {t('speaking.heard', { text: a.heard })}</span>}
           </span>
         </div>
       ))}
@@ -568,7 +566,7 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
         <>
           <div className="row">
             <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
-            <Mic onClip={upload} onError={props.onError} label="Record" disabled={props.disabled} />
+            <Mic onClip={upload} onError={props.onError} label={t('speaking.record')} disabled={props.disabled} />
           </div>
           <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />
         </>
@@ -578,11 +576,12 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
 }
 
 function Ladder({ data: d }: { data: ChallengeData }) {
+  const { t } = useTranslation()
   return (
     <>
       {d.attempts.map((a, i) => (
         <div key={i} className="attempt">
-          <span className="label">Attempt {i + 1}</span>
+          <span className="label">{t('common.attempt', { n: i + 1 })}</span>
           <span>
             {splitBy(a, i === d.attempts.length - 1 ? (d.marks ?? []) : []).map((piece, j) =>
               piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text,
@@ -596,20 +595,21 @@ function Ladder({ data: d }: { data: ChallengeData }) {
 }
 
 function HintList({ data: d }: { data: ChallengeData }) {
+  const { t } = useTranslation()
   return (
     <>
       {d.hints.map((h, i) => (
         <div key={i} className="hint">
           <div className="label">
-            {d.writing ? 'Prompt' : 'Hint'} {i + 1} of {d.max_hints}
-            {d.writing && ' · not the correction'}
+            {t(d.writing ? 'challenge.promptOf' : 'challenge.hintOf', { n: i + 1, max: d.max_hints })}
+            {d.writing && ` ${t('challenge.notCorrection')}`}
           </div>
           <Markdown>{h}</Markdown>
         </div>
       ))}
       {d.solution !== null && (
         <div className="solution">
-          <div className="label">{d.writing ? 'Corrected text' : 'Solution'}</div>
+          <div className="label">{d.writing ? t('common.correctedText') : t('common.solution')}</div>
           {d.writing && d.attempts.length > 0 ? (
             <Correction attempt={d.attempts[d.attempts.length - 1]} corrected={d.solution} />
           ) : (
@@ -622,6 +622,7 @@ function HintList({ data: d }: { data: ChallengeData }) {
 }
 
 function HintButton(props: { data: ChallengeData; disabled: boolean; onAct: Act }) {
+  const { t } = useTranslation()
   const { hints, max_hints } = props.data
   return (
     <button
@@ -630,12 +631,13 @@ function HintButton(props: { data: ChallengeData; disabled: boolean; onAct: Act 
       disabled={props.disabled || hints.length >= max_hints}
       onClick={() => props.onAct('hint')}
     >
-      {hints.length ? 'Next hint' : 'Hint'}
+      {hints.length ? t('challenge.nextHint') : t('challenge.hint')}
     </button>
   )
 }
 
 function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }) {
+  const { t } = useTranslation()
   const attemptsLeft = props.data.reveal_after - props.data.attempts.length
   return (
     <div className="locked">
@@ -645,11 +647,11 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
       </svg>
       <span className="grow">
         {attemptsLeft > 0
-          ? `${props.data.writing ? 'Corrected text' : 'Solution'} locked. Opens after ${attemptsLeft} more ${attemptsLeft === 1 ? 'attempt' : 'attempts'}, or when you give up.`
-          : 'You can ask the tutor for the solution now, or keep trying.'}
+          ? t(props.data.writing ? 'challenge.correctionLocked' : 'challenge.solutionLocked', { count: attemptsLeft })
+          : t('challenge.unlocked')}
       </span>
       <button type="button" className="link" disabled={props.disabled} onClick={() => props.onAct('give-up')}>
-        {attemptsLeft > 0 ? 'Give up' : 'Show solution'}
+        {attemptsLeft > 0 ? t('challenge.giveUp') : t('challenge.showSolution')}
       </button>
     </div>
   )
@@ -663,6 +665,7 @@ type ExerciseData = ChallengeData & {
 type ExerciseFile = { path: string; absolute: string; content: string | null }
 
 function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
+  const { t } = useTranslation()
   const d = props.block.data as ExerciseData
   const [files, setFiles] = useState<ExerciseFile[]>([])
   const [running, setRunning] = useState(false)
@@ -690,8 +693,8 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
-        {d.milestone ? 'Capstone milestone' : 'Exercise'}
-        {d.solved && <span className="chip">Solved</span>}
+        {d.milestone ? t('challenge.milestone') : t('exercise.label')}
+        {d.solved && <span className="chip">{t('common.solved')}</span>}
       </div>
       <Markdown>{props.block.markdown}</Markdown>
 
@@ -700,11 +703,11 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
           <div className="file-head">
             <code>{f.absolute}</code>
             <button type="button" className="link" onClick={() => navigator.clipboard.writeText(f.absolute)}>
-              Copy path
+              {t('exercise.copyPath')}
             </button>
           </div>
           {f.content === null ? (
-            <pre>This file is missing from the workspace.</pre>
+            <pre>{t('exercise.missing')}</pre>
           ) : (
             <div className="file-body">
               <Markdown>{`\`\`\`\`${f.path.split('.').pop() ?? ''}\n${f.content}\n\`\`\`\``}</Markdown>
@@ -712,17 +715,17 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
           )}
         </div>
       ))}
-      <div className="small">Edit the file in your own editor. This view follows what is saved on disk.</div>
+      <div className="small">{t('exercise.follows')}</div>
 
       <div className="row">
         <code className="grow">$ {d.run}</code>
         {open && <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />}
         <button type="button" className="btn" disabled={running} onClick={run}>
-          {running ? 'Running…' : 'Run'}
+          {running ? t('exercise.running') : t('exercise.run')}
         </button>
         {open && (
           <button type="button" className="btn primary" disabled={props.disabled} onClick={() => props.onAct('check')}>
-            Check with tutor
+            {t('exercise.check')}
           </button>
         )}
       </div>
@@ -731,10 +734,10 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
         <div className="file">
           <div className="file-head">
             <span className="label">
-              Output · {d.last_run.exit_code === null ? 'stopped' : `exit code ${d.last_run.exit_code}`}
+              {d.last_run.exit_code === null ? t('exercise.outputStopped') : t('exercise.outputExit', { code: d.last_run.exit_code })}
             </span>
           </div>
-          <pre className={d.last_run.exit_code === 0 ? '' : 'failed'}>{d.last_run.output || '(no output)'}</pre>
+          <pre className={d.last_run.exit_code === 0 ? '' : 'failed'}>{d.last_run.output || t('exercise.noOutput')}</pre>
         </div>
       )}
       {error && <div className="error">{error}</div>}
@@ -747,18 +750,19 @@ function ExerciseCard(props: { block: Block; disabled: boolean; onAct: Act }) {
 
 const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking', 'podcast'])
 
-function cardLabel(b: Block): string {
+function cardLabel(b: Block, t: TFunction): string {
   const d = (b.data ?? {}) as { writing?: boolean; teachback?: boolean; pretest?: boolean; milestone?: boolean; transfer?: boolean; files?: string[]; title?: string }
   const head = b.markdown.replace(/[*_`#>]/g, '').split('\n')[0].trim()
   const short = head.length > 48 ? `${head.slice(0, 47)}…` : head
-  if (b.kind === 'question') return `Question · ${short}`
-  if (b.kind === 'quiz') return `${d.pretest ? 'Pretest' : 'Quick check'} · ${short}`
-  if (b.kind === 'reading') return `Reading · ${d.title ?? short}`
-  if (b.kind === 'vocab') return 'Vocabulary check'
-  if (b.kind === 'speaking') return `Speaking · ${short}`
-  if (b.kind === 'podcast') return `Cast · ${short}`
-  if (b.kind === 'exercise') return `${d.milestone ? 'Milestone' : 'Exercise'} · ${d.files?.[0] ?? short}`
-  return `${d.transfer ? 'Transfer' : d.milestone ? 'Milestone' : d.pretest ? 'Pretest' : d.teachback ? 'Teach-back' : d.writing ? 'Writing' : 'Challenge'} · ${short}`
+  if (b.kind === 'question') return `${t('card.question')} · ${short}`
+  if (b.kind === 'quiz') return `${d.pretest ? t('card.pretest') : t('card.quickCheck')} · ${short}`
+  if (b.kind === 'reading') return `${t('card.reading')} · ${d.title ?? short}`
+  if (b.kind === 'vocab') return t('card.vocab')
+  if (b.kind === 'speaking') return `${t('card.speaking')} · ${short}`
+  if (b.kind === 'podcast') return `${t('card.cast')} · ${short}`
+  if (b.kind === 'exercise') return `${d.milestone ? t('card.milestone') : t('card.exercise')} · ${d.files?.[0] ?? short}`
+  const kind = d.transfer ? 'transfer' : d.milestone ? 'milestone' : d.pretest ? 'pretest' : d.teachback ? 'teachback' : d.writing ? 'writing' : 'challenge'
+  return `${t(`card.${kind}`)} · ${short}`
 }
 
 /** Which cards were posed before each message: the chat gets a labelled divider there. Key -1 = after the last message. */
@@ -778,29 +782,30 @@ function cardDividers(lesson: Lesson): Map<number, Block[]> {
 }
 
 function CardDivider({ block }: { block: Block }) {
+  const { t } = useTranslation()
   return (
     <button
       type="button"
       className="divider"
       onClick={() => document.getElementById(`block-${block.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
     >
-      <span>{cardLabel(block)}</span>
+      <span>{cardLabel(block, t)}</span>
     </button>
   )
 }
 
-function conceptStats(concept: Concept, lesson: Lesson | undefined): string {
-  if (!lesson) return concept.known ? 'placed out' : 'not started'
+function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction): string {
+  if (!lesson) return concept.known ? t('map.placedOut') : t('map.notStarted')
   const cs = lesson.blocks
     .filter((b) => b.kind === 'challenge' || b.kind === 'exercise' || b.kind === 'speaking')
     .map((b) => b.data as ChallengeData)
-  if (cs.length === 0) return 'started'
+  if (cs.length === 0) return t('map.started')
   const hints = cs.reduce((n, c) => n + c.hints.length, 0)
   const gaveUp = cs.filter((c) => c.gave_up).length
   return [
-    `${cs.filter((c) => c.solved).length}/${cs.length} solved`,
-    hints > 0 && `${hints} ${hints === 1 ? 'hint' : 'hints'}`,
-    gaveUp > 0 && `gave up ${gaveUp}×`,
+    t('map.solved', { solved: cs.filter((c) => c.solved).length, total: cs.length }),
+    hints > 0 && t('map.hints', { count: hints }),
+    gaveUp > 0 && t('map.gaveUp', { n: gaveUp }),
   ]
     .filter(Boolean)
     .join(' · ')
@@ -815,9 +820,10 @@ function Plan(props: {
   onAccept: () => void
   onPlacement: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <section className="plan">
-      <div className="label">How I plan to teach this · ranked for you</div>
+      <div className="label">{t('plan.heading')}</div>
       {props.ranking.map((r, i) => (
         <label key={r.mechanism} className={r.mechanism === props.mechanism ? 'plan-card chosen' : 'plan-card'}>
           <input
@@ -829,12 +835,12 @@ function Plan(props: {
           />
           <span>
             <strong>
-              {i + 1} · {r.title}
+              {i + 1} · {lookup(`playbooks.${r.mechanism}.title`, r.title)}
             </strong>
             <span>{r.rationale}</span>
-            <span className="muted">{r.summary}</span>
+            <span className="muted">{lookup(`playbooks.${r.mechanism}.summary`, r.summary)}</span>
             <span className="evidence">
-              Evidence:{' '}
+              {t('plan.evidence')}{' '}
               {r.evidence.map((e, n) => (
                 <span key={e.url}>
                   {n > 0 && '; '}
@@ -847,20 +853,17 @@ function Plan(props: {
           </span>
         </label>
       ))}
-      <div className="muted">Always on, whatever you pick: hints before answers, confidence-rated checks, spaced reviews.</div>
+      <div className="muted">{t('plan.always')}</div>
       {!props.accepted && (
         <div className="block next-step">
-          <div className="label">Next · placement check</div>
-          <div>
-            About 8 questions, harder or easier depending on your answers. It decides where the course starts and what
-            you can skip.
-          </div>
+          <div className="label">{t('plan.next')}</div>
+          <div>{t('plan.placementInfo')}</div>
           <div className="row">
             <button className="btn primary" disabled={props.disabled} onClick={props.onPlacement}>
-              Start placement check
+              {t('plan.startPlacement')}
             </button>
             <button className="btn" disabled={props.disabled} onClick={props.onAccept}>
-              Skip, start from the beginning
+              {t('plan.skip')}
             </button>
           </div>
         </div>
@@ -870,6 +873,7 @@ function Plan(props: {
 }
 
 function Workspace({ courseId, speech, concept, start }: { courseId: number; speech: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
+  const { t } = useTranslation()
   const [course, setCourse] = useState<CourseDetail | null>(null)
   const [sources, setSources] = useState<Source[]>([])
   const [lessonId, setLessonId] = useState<number | null>(null)
@@ -914,13 +918,13 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
       const ev: TutorEvent = JSON.parse(raw.data)
       if (ev.type === 'turn.started') {
         patchLesson(ev.lesson_id, (l) => ({ ...l, running: true }))
-        setActivity('thinking…')
+        setActivity('thinking')
         setError('')
       } else if (ev.type === 'chat.delta') {
         setActivity('')
         setStreaming((s) => s + ev.text)
       } else if (ev.type === 'activity') {
-        setActivity(ACTIVITY_LABELS[ev.tool] ?? 'working…')
+        setActivity(ev.tool)
         setWriting(LESSON_AREA_TOOLS.includes(ev.tool))
       } else if (ev.type === 'block.added') {
         setWriting(false)
@@ -964,7 +968,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
         setStreaming('')
         setActivity('')
         setWriting(false)
-        if (!ev.ok && ev.error !== 'stopped') setError(ev.error ?? 'the turn failed')
+        if (!ev.ok && ev.error !== 'stopped') setError(ev.error ?? i18n.t('chat.turnFailed'))
       }
     }
     api<Source[]>(`/api/courses/${courseId}/sources`).then(setSources, () => {})
@@ -990,7 +994,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
             },
             (err: Error) => setError(err.message),
           )
-        if (c.lessons.some((l) => l.running)) setActivity('thinking…')
+        if (c.lessons.some((l) => l.running)) setActivity('thinking')
       },
       (e) => setError(e.message),
     )
@@ -1036,13 +1040,13 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
 
   return (
     <div className="workspace">
-      <nav className="map" aria-label="Course map">
-        <div className="label">Course map</div>
+      <nav className="map" aria-label={t('map.label')}>
+        <div className="label">{t('map.label')}</div>
         {(course.level || course.concepts.length > 0) && (
           <div className="level-row">
             {course.level && (
               <span>
-                Level <span className="chip">{course.level}</span>
+                {t('map.level')} <span className="chip">{course.level}</span>
               </span>
             )}
             {course.concepts.length > 0 && (
@@ -1060,7 +1064,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
                   )
                 }
               >
-                {course.level ? 'Retake placement' : 'Take the placement check'}
+                {course.level ? t('map.retake') : t('map.take')}
               </button>
             )}
           </div>
@@ -1089,7 +1093,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
           .filter((l) => l.concept_id === null)
           .map((l) => (
             <button key={l.id} aria-current={l.id === lesson.id} onClick={() => setLessonId(l.id)}>
-              {l.title}
+              {lessonTitle(l, t)}
             </button>
           ))}
         {course.concepts.map((c, i) => {
@@ -1103,11 +1107,9 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
                     .filter((k) => k.module === c.module)
                     .map((k) => (
                       <div key={k.id} className="capstone" title={k.brief}>
-                        <span className="small">Project · {k.title}</span>
+                        <span className="small">{t('map.project', { title: k.title })}</span>
                         <progress value={k.done} max={k.milestones.length} />
-                        <span className="small">
-                          {k.done} of {k.milestones.length} milestones
-                        </span>
+                        <span className="small">{t('map.milestones', { done: k.done, total: k.milestones.length })}</span>
                       </div>
                     ))}
                 </>
@@ -1115,13 +1117,13 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
               <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
                 <span className="concept-title">
                   {c.title}
-                  <span className="mastery" aria-label={`mastery ${Math.round((c.mastery ?? 0) * 3)} of 3`}>
+                  <span className="mastery" aria-label={t('map.mastery', { n: Math.round((c.mastery ?? 0) * 3) })}>
                     {[1, 2, 3].map((n) => (
                       <i key={n} className={n <= Math.round((c.mastery ?? 0) * 3) ? 'on' : ''} />
                     ))}
                   </span>
                 </span>
-                <span className="stats">{conceptStats(c, conceptLesson)}</span>
+                <span className="stats">{conceptStats(c, conceptLesson, t)}</span>
               </button>
             </div>
           )
@@ -1129,7 +1131,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
       </nav>
 
       <main className="lesson">
-        <h1>{lesson.title}</h1>
+        <h1>{lessonTitle(lesson, t)}</h1>
         {lesson.blocks.map((b) =>
           b.kind === 'question' ? (
             <QuestionCard
@@ -1188,7 +1190,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
           ) : b.kind === 'placement' ? (
             <section key={b.id} className="block">
               <div className="label">
-                Placement result <span className="chip">{(b.data as { level: string }).level}</span>
+                {t('block.placementResult')} <span className="chip">{(b.data as { level: string }).level}</span>
               </div>
               <Markdown>{b.markdown}</Markdown>
             </section>
@@ -1211,7 +1213,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
             />
           ) : (
             <section key={b.id} className="block">
-              <div className="label">{BLOCK_LABELS[b.kind] ?? b.kind}</div>
+              <div className="label">{lookup(`block.${b.kind}`, b.kind)}</div>
               <Markdown>{b.markdown}</Markdown>
             </section>
           ),
@@ -1238,7 +1240,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
         {lesson.phase === 'placement' && course.placement && course.lessons.find((l) => l.phase === 'placement')?.id === lesson.id && !lesson.blocks.some((b) => b.kind === 'placement') && (
           <section className="block">
             <div className="label">
-              Placement result <span className="chip">{course.level}</span>
+              {t('block.placementResult')} <span className="chip">{course.level}</span>
             </div>
             <Markdown>{course.placement}</Markdown>
           </section>
@@ -1247,11 +1249,11 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
         <div ref={lessonBottom} />
       </main>
 
-      <aside className="chat" aria-label="Tutor chat">
+      <aside className="chat" aria-label={t('chat.label')}>
         <div className="chat-head">
-          <strong>Tutor</strong>
+          <strong>{t('chat.tutor')}</strong>
           <span className="status" role="status">
-            {activity}
+            {activity && lookup(`activity.${activity}`, t('activity.working'))}
           </span>
         </div>
         <div className="messages">
@@ -1282,7 +1284,7 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
           <div ref={chatBottom} />
         </div>
         <div className="composer">
-          <label htmlFor="chat">Message the tutor</label>
+          <label htmlFor="chat">{t('chat.message')}</label>
           <textarea
             id="chat"
             className="field"
@@ -1295,11 +1297,11 @@ function Workspace({ courseId, speech, concept, start }: { courseId: number; spe
             {speech && <Mic onClip={(clip) => transcribe(clip).then((t) => setDraft((d) => (d ? `${d} ${t}` : t)))} onError={setError} />}
             {lesson.running && (
               <button className="btn" onClick={() => post(`/api/lessons/${lesson.id}/stop`, {})}>
-                Stop
+                {t('common.stop')}
               </button>
             )}
             <button className="btn primary" onClick={send} disabled={lesson.running || !draft.trim()}>
-              Send
+              {t('common.send')}
             </button>
           </div>
         </div>
@@ -1313,11 +1315,12 @@ async function transcribe(clip: Blob, lang?: string): Promise<string> {
   const form = new FormData()
   form.append('audio', clip, 'clip.webm')
   const res = await fetch(`/api/stt${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? res.statusText)
+  if (!res.ok) throw await failure(res)
   return (await res.json()).text
 }
 
 function Mic(props: { onClip: (clip: Blob) => Promise<void>; onError: (message: string) => void; label?: string; disabled?: boolean; limit?: number }) {
+  const { t } = useTranslation()
   const [recording, setRecording] = useState(false)
   const recorder = useRef<MediaRecorder | null>(null)
   const timer = useRef<number | undefined>(undefined)
@@ -1353,15 +1356,15 @@ function Mic(props: { onClip: (clip: Blob) => Promise<void>; onError: (message: 
       type="button"
       className={recording ? 'btn recording' : 'btn'}
       disabled={props.disabled && !recording}
-      aria-label={recording ? 'Stop recording' : (props.label ?? 'Speak your message')}
-      title={recording ? 'Stop recording' : (props.label ?? 'Speak your message')}
+      aria-label={recording ? t('speaking.stopRecording') : (props.label ?? t('speaking.speakMessage'))}
+      title={recording ? t('speaking.stopRecording') : (props.label ?? t('speaking.speakMessage'))}
       onClick={recording ? stop : start}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
         <rect x="9" y="3" width="6" height="11" rx="3" />
         <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
       </svg>
-      {recording ? ' Stop' : props.label ? ` ${props.label}` : ''}
+      {recording ? ` ${t('common.stop')}` : props.label ? ` ${props.label}` : ''}
     </button>
   )
 }
@@ -1380,6 +1383,7 @@ function readTheme(): Theme {
 
 /** Light or dark; the system choice until the learner picks one, which the browser remembers. */
 function ThemeToggle() {
+  const { t } = useTranslation()
   const [theme, setTheme] = useState<Theme>(readTheme)
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -1394,7 +1398,7 @@ function ThemeToggle() {
     }
   }
   return (
-    <button type="button" className="btn theme" onClick={flip} title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'} aria-label="Toggle theme">
+    <button type="button" className="btn theme" onClick={flip} title={theme === 'dark' ? t('header.toLight') : t('header.toDark')} aria-label={t('header.toggleTheme')}>
       {theme === 'dark' ? (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="12" cy="12" r="4" />
@@ -1411,6 +1415,7 @@ function ThemeToggle() {
 
 export default function App() {
   const hash = useHash()
+  const { t } = useTranslation()
   const [agent, setAgent] = useState('')
   const [speech, setSpeech] = useState(false)
   const { profiles, current, select, reload } = useProfiles()
@@ -1418,6 +1423,7 @@ export default function App() {
   const locale = current?.locale ?? chosen
   useEffect(() => {
     document.documentElement.lang = locale
+    i18n.changeLanguage(locale)
   }, [locale])
 
   function switchLocale(next: Locale) {
@@ -1473,9 +1479,9 @@ export default function App() {
           <Logo />
         </a>
         <span className="grow" />
-        <span className="status">agent: {agent}</span>
+        <span className="status">{t('header.agent', { agent })}</span>
         <ThemeToggle />
-        <select className="btn locale" aria-label="Language" value={locale} onChange={(e) => switchLocale(e.target.value as Locale)}>
+        <select className="btn locale" aria-label={t('header.language')} value={locale} onChange={(e) => switchLocale(e.target.value as Locale)}>
           {Object.entries(LOCALES).map(([code, name]) => (
             <option key={code} value={code} lang={code}>
               {name}

@@ -1,14 +1,13 @@
 import { useRef, useState } from 'react'
-import { api } from './api'
+import { useTranslation } from 'react-i18next'
+import { api, failure } from './api'
+import { fileSize } from './i18n'
 
 export type Source = { id: number; name: string; size: number; status: 'processing' | 'ready' | 'failed'; error: string | null; sections: number }
 
-function mb(size: number): string {
-  return size >= 1_000_000 ? `${(size / 1_000_000).toFixed(1)} MB` : `${Math.round(size / 1000)} kB`
-}
-
 /** The learner's own files for a course; processed in the background, the tutor reads them a section at a time. */
 export function SourcesPanel(props: { courseId: number; sources: Source[]; onChange: (s: Source[]) => void; onError: (m: string) => void }) {
+  const { t } = useTranslation()
   const input = useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -18,7 +17,7 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
     setBusy(true)
     try {
       const res = await fetch(`/api/courses/${props.courseId}/sources`, { method: 'POST', body: form })
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? res.statusText)
+      if (!res.ok) throw await failure(res)
       props.onChange([...props.sources, (await res.json()) as Source])
     } catch (err) {
       props.onError((err as Error).message)
@@ -37,16 +36,16 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
 
   return (
     <div className="sources">
-      <div className="label">Your sources</div>
+      <div className="label">{t('sources.label')}</div>
       {props.sources.map((s) => (
         <div key={s.id} className="source-row" title={s.error ?? undefined}>
           <span className="grow">
-            {s.name} <span className="muted">· {mb(s.size)}</span>
+            {s.name} <span className="muted">· {fileSize(s.size)}</span>
           </span>
           <span className={`chip${s.status === 'failed' ? ' warn' : ''}`}>
-            {s.status === 'ready' ? `${s.sections} sections` : s.status === 'failed' ? 'failed' : 'processing…'}
+            {s.status === 'ready' ? t('sources.sections', { count: s.sections }) : s.status === 'failed' ? t('sources.failed') : t('sources.processing')}
           </span>
-          <button type="button" className="link" aria-label={`Remove ${s.name}`} onClick={() => remove(s)}>
+          <button type="button" className="link" aria-label={t('sources.remove', { name: s.name })} onClick={() => remove(s)}>
             ×
           </button>
         </div>
@@ -59,9 +58,9 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
         onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
       />
       <button type="button" className="btn" disabled={busy} onClick={() => input.current?.click()}>
-        {busy ? 'Uploading…' : 'Add a file'}
+        {busy ? t('sources.uploading') : t('sources.add')}
       </button>
-      <div className="small">A book, documentation or your notes. The tutor searches it and reads one section at a time.</div>
+      <div className="small">{t('sources.help')}</div>
     </div>
   )
 }

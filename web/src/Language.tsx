@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { usePlayer } from './player'
 import { splitBy, splitSentences } from './text'
 
@@ -15,12 +16,8 @@ type ReadingData = {
 type Strands = { input: number; output: number; language: number; fluency: number }
 
 const CEFR = ['C2', 'C1', 'B2', 'B1', 'A2', 'A1']
-const STRAND_LABELS: [keyof Strands, string][] = [
-  ['input', 'Reading, listening'],
-  ['output', 'Writing'],
-  ['language', 'Grammar, words'],
-  ['fluency', 'Fluency'],
-]
+const STRANDS = ['input', 'output', 'language', 'fluency'] as const
+
 export function ReadingCard(props: {
   id: number
   text: string
@@ -29,6 +26,7 @@ export function ReadingCard(props: {
   onAdd: (word: string) => void
   onKnown: (word: string) => void
 }) {
+  const { t } = useTranslation()
   const d = props.data as ReadingData
   const [word, setWord] = useState<string | null>(null)
   const [shown, setShown] = useState(false)
@@ -39,26 +37,26 @@ export function ReadingCard(props: {
   return (
     <section id={`block-${props.id}`} className="block reading">
       <div className="reading-head">
-        <div className="label">{d.story ? `${d.story} · episode ${d.episode} · read for pleasure` : 'Read · tap a marked word for its meaning'}</div>
+        <div className="label">{d.story ? t('reading.story', { story: d.story, n: d.episode }) : t('reading.label')}</div>
         <label className="small">
-          <input type="checkbox" checked={player.slow} onChange={(e) => player.setSlow(e.target.checked)} /> slow
+          <input type="checkbox" checked={player.slow} onChange={(e) => player.setSlow(e.target.checked)} /> {t('reading.slow')}
         </label>
         <button
           type="button"
           className="btn"
-          title={props.speech ? 'Local voice' : 'Browser voice; run make speech for a natural one'}
+          title={props.speech ? t('reading.localVoice') : t('reading.browserVoice')}
           onClick={() => (player.current ? player.stop() : player.play(paragraphs.flat()))}
         >
-          {player.current ? 'Stop' : 'Listen'}
+          {player.current ? t('common.stop') : t('common.listen')}
         </button>
       </div>
       <h2 lang={d.lang}>{d.title}</h2>
       {d.targets && d.targets.length > 0 && (
         <div className="targets">
-          <span className="small">Words to meet in this text:</span>
-          {d.targets.map((t) => (
-            <span key={t} className="chip" lang={d.lang}>
-              {t}
+          <span className="small">{t('reading.targets')}</span>
+          {d.targets.map((target) => (
+            <span key={target} className="chip" lang={d.lang}>
+              {target}
             </span>
           ))}
         </div>
@@ -96,11 +94,11 @@ export function ReadingCard(props: {
         <div className="hint gloss-panel">
           <span className="grow">
             <strong lang={d.lang}>{gloss.word}</strong>
-            {shown ? ` · ${gloss.meaning}` : ' · guess from the sentence first'}
+            {shown ? ` · ${gloss.meaning}` : ` ${t('reading.guess')}`}
           </span>
           {!shown && (
             <button type="button" className="btn" onClick={() => setShown(true)}>
-              Show meaning
+              {t('reading.showMeaning')}
             </button>
           )}
           <button
@@ -109,7 +107,7 @@ export function ReadingCard(props: {
             disabled={d.added.includes(gloss.word)}
             onClick={() => props.onAdd(gloss.word)}
           >
-            {d.added.includes(gloss.word) ? 'In your vocabulary' : 'Add to vocabulary'}
+            {d.added.includes(gloss.word) ? t('reading.inVocabulary') : t('reading.addVocabulary')}
           </button>
           <button
             type="button"
@@ -117,7 +115,7 @@ export function ReadingCard(props: {
             disabled={(d.known ?? []).includes(gloss.word)}
             onClick={() => props.onKnown(gloss.word)}
           >
-            {(d.known ?? []).includes(gloss.word) ? 'Known' : 'I know this'}
+            {(d.known ?? []).includes(gloss.word) ? t('reading.known') : t('reading.iKnow')}
           </button>
         </div>
       )}
@@ -130,13 +128,14 @@ type VocabData = { lang: string; rounds: VocabRound[]; current: { tier: number; 
 const TIER_WORDS = 200
 
 export function VocabCheckCard(props: { id: number; data: unknown; disabled: boolean; onSubmit: (known: string[]) => void }) {
+  const { t } = useTranslation()
   const d = props.data as VocabData
   return (
     <section id={`block-${props.id}`} className="block vocab-check">
-      <div className="label">Vocabulary check · tick the words whose meaning you could give</div>
+      <div className="label">{t('vocab.label')}</div>
       {d.rounds.map((r) => (
         <div key={r.tier} className="small">
-          The {r.tier * TIER_WORDS} most common words: {r.known.length} of {r.words.length} known
+          {t('vocab.round', { n: r.tier * TIER_WORDS, known: r.known.length, total: r.words.length })}
         </div>
       ))}
       {d.current && (
@@ -144,7 +143,7 @@ export function VocabCheckCard(props: { id: number; data: unknown; disabled: boo
       )}
       {d.tier && (
         <div>
-          Your vocabulary: <span className="chip">tier {d.tier}</span> working on the {d.tier * TIER_WORDS} most common words
+          {t('vocab.yours')} <span className="chip">{t('vocab.tier', { tier: d.tier })}</span> {t('vocab.working', { n: d.tier * TIER_WORDS })}
         </div>
       )}
     </section>
@@ -157,11 +156,12 @@ function VocabRoundForm(props: {
   disabled: boolean
   onSubmit: (known: string[]) => void
 }) {
+  const { t } = useTranslation()
   const [ticked, setTicked] = useState<string[]>([])
-  const toggle = (w: string) => setTicked((t) => (t.includes(w) ? t.filter((x) => x !== w) : [...t, w]))
+  const toggle = (w: string) => setTicked((all) => (all.includes(w) ? all.filter((x) => x !== w) : [...all, w]))
   return (
     <>
-      <h2>From the {props.round.tier * TIER_WORDS} most common words</h2>
+      <h2>{t('vocab.from', { n: props.round.tier * TIER_WORDS })}</h2>
       <div className="options">
         {props.round.words.map((w) => (
           <button
@@ -178,7 +178,7 @@ function VocabRoundForm(props: {
       </div>
       <div className="row">
         <button type="button" className="btn primary" disabled={props.disabled} onClick={() => props.onSubmit(ticked)}>
-          I know {ticked.length} of {props.round.words.length}
+          {t('vocab.iKnow', { known: ticked.length, total: props.round.words.length })}
         </button>
       </div>
     </>
@@ -194,11 +194,12 @@ export function LevelPanel(props: {
   story: boolean
   onStart: (kind: 'episode' | 'writing') => void
 }) {
+  const { t } = useTranslation()
   const current = CEFR.find((l) => props.level?.toUpperCase().startsWith(l))
   const done = props.units.filter((u) => (u.mastery ?? 0) >= 2 / 3).length
   const most = Math.max(1, ...Object.values(props.strands))
   const total = Object.values(props.strands).reduce((a, b) => a + b, 0)
-  const behind = STRAND_LABELS.reduce((low, s) => (props.strands[s[0]] < props.strands[low[0]] ? s : low))
+  const behind = STRANDS.reduce((low, s) => (props.strands[s] < props.strands[low] ? s : low))
 
   return (
     <div className="level-panel">
@@ -209,9 +210,7 @@ export function LevelPanel(props: {
               <div key={l} className="rung current">
                 <div>
                   <strong>{l}</strong>
-                  <span>
-                    {done} of {props.units.length} units
-                  </span>
+                  <span>{t('level.units', { done, total: props.units.length })}</span>
                 </div>
                 <progress value={done} max={Math.max(1, props.units.length)} />
               </div>
@@ -223,34 +222,38 @@ export function LevelPanel(props: {
           )}
         </div>
       )}
-      <div className="label">Last 7 days by strand</div>
-      {STRAND_LABELS.map(([key, label]) => (
+      <div className="label">{t('level.byStrand')}</div>
+      {STRANDS.map((key) => (
         <div key={key} className="strand">
-          <span>{label}</span>
+          <span>{t(`level.${key}`)}</span>
           <span className="strand-bar">
             <i style={{ width: `${(props.strands[key] / most) * 100}%` }} />
           </span>
           <span>{props.strands[key]}</span>
         </div>
       ))}
-      {total > 0 && <div className="stats">{behind[1]} is behind. The next unit leans on it.</div>}
+      {total > 0 && <div className="stats">{t('level.behind', { strand: t(`level.${behind}`) })}</div>}
       {props.vocabulary.tier && (
         <div className="small">
-          Tier {props.vocabulary.tier} · the {props.vocabulary.tier_words} most common words: {props.vocabulary.tier_known} of{' '}
-          {props.vocabulary.tier_size} in this tier known
+          {t('level.tier', {
+            tier: props.vocabulary.tier,
+            words: props.vocabulary.tier_words,
+            known: props.vocabulary.tier_known,
+            size: props.vocabulary.tier_size,
+          })}
         </div>
       )}
       <a className="btn as-link" href="#/review">
-        Vocabulary · {props.vocabulary.due} due of {props.vocabulary.total}
+        {t('level.vocabulary', { due: props.vocabulary.due, total: props.vocabulary.total })}
       </a>
       <div className="row">
         {props.story && (
           <button type="button" className="btn" disabled={props.disabled} onClick={() => props.onStart('episode')}>
-            Next episode
+            {t('level.nextEpisode')}
           </button>
         )}
         <button type="button" className="btn" disabled={props.disabled} onClick={() => props.onStart('writing')}>
-          Writing session
+          {t('level.writing')}
         </button>
       </div>
     </div>

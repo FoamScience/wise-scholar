@@ -1,9 +1,11 @@
 import { diffWords } from 'diff'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
 
 /** The learner's text against its correction, word by word; a toggle shows the clean corrected text instead. */
 export function Correction({ attempt, corrected }: { attempt: string; corrected: string }) {
+  const { t } = useTranslation()
   const [clean, setClean] = useState(false)
   const parts = diffWords(attempt, corrected)
   const changed = parts.some((p) => p.added || p.removed)
@@ -26,10 +28,10 @@ export function Correction({ attempt, corrected }: { attempt: string; corrected:
       )}
       {changed && (
         <button type="button" className="link" onClick={() => setClean(!clean)}>
-          {clean ? 'Show the changes' : 'Show the clean text'}
+          {clean ? t('notebook.showChanges') : t('notebook.showClean')}
         </button>
       )}
-      {!changed && <div className="small">No changes: your text already matched.</div>}
+      {!changed && <div className="small">{t('notebook.noChanges')}</div>}
     </div>
   )
 }

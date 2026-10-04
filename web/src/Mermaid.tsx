@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useTheme } from './theme'
 
 let seq = 0
@@ -33,6 +34,7 @@ function themeVariables() {
 }
 
 export default function Mermaid({ code }: { code: string }) {
+  const { t } = useTranslation()
   const box = useRef<HTMLDivElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const theme = useTheme()
@@ -59,7 +61,7 @@ export default function Mermaid({ code }: { code: string }) {
     return (
       <div className="mermaid-error">
         <pre>{code}</pre>
-        <div className="error">Diagram did not render: {error}</div>
+        <div className="error">{t('block.diagramFailed', { error })}</div>
       </div>
     )
   return <div ref={box} className="mermaid" />
