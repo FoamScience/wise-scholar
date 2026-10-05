@@ -49,6 +49,8 @@ def _now() -> str:
 # A cast of 5 to 8 minutes at the voices' pace of about 155 words a minute; one Chatterbox line stays short.
 CAST_WORDS = (750, 1250)
 LINE_CHARS = 300
+# The placement card adds "I don't know" as one more option.
+PLACEMENT_OPTIONS = 4
 _renders: set[asyncio.Task] = set()
 
 
@@ -950,6 +952,8 @@ async def pose_quiz(
     """Show a quick check that the learner answers together with how sure they are.
 
     choice: 2 to 5 options, and answer_key is exactly the right option; the server grades it.
+    In the placement check a choice has 2 to 4 options: the card adds "I don't know" as the last one
+    by itself, so never write such an option.
     open: options is empty and answer_key is the model answer; you grade it with grade_quiz
     when the answer arrives. The learner sees answer_key and explanation only after grading.
     The question comes back later in spaced reviews, so it must make sense on its own.
@@ -960,8 +964,9 @@ async def pose_quiz(
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    if kind == "choice" and not (2 <= len(options) <= 5 and answer_key in options):
-        return "error: a choice quiz needs 2 to 5 options, one of them exactly equal to answer_key"
+    most = PLACEMENT_OPTIONS if lesson["phase"] == "placement" else 5
+    if kind == "choice" and not (2 <= len(options) <= most and answer_key in options):
+        return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
     if lemma and not lesson["lang"]:
         return "error: lemma needs a language course; pose_vocab_check or add_reading sets the language"
     if kind == "open":

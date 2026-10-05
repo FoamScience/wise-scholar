@@ -64,7 +64,7 @@ function QuizBlock({ block }: { block: Block }) {
           <span dir={textDirection(d.answer)}>{d.answer}</span>
         </div>
       ) : (
-        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} />
+        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} />
       )}
     </Card>
   )

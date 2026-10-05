@@ -1043,6 +1043,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
               question={b.markdown}
               data={b.data as QuizData}
               disabled={lesson.running}
+              onUnknown={lesson.phase === 'placement' ? () => post(`/api/blocks/${b.id}/quiz/unknown`, {}) : undefined}
               onSubmit={(answer, confidence) => post(`/api/blocks/${b.id}/quiz`, { answer, confidence })}
             />
           ) : b.kind === 'reading' ? (

@@ -258,7 +258,8 @@
       "answerKey": "**Answer:** {{answer}}",
       "confidentMiss": "You were {{percent}} sure. This one comes back first in your reviews.",
       "pretest": "Before we start: what do you think?",
-      "quickCheck": "Quick check"
+      "quickCheck": "Quick check",
+      "dontKnow": "I don't know"
     },
     "review": {
       "done": "Review done",

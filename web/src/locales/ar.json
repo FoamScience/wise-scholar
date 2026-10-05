@@ -282,7 +282,8 @@
       "answerKey": "**الإجابة:** {{answer}}",
       "confidentMiss": "كانت ثقتك {{percent}}. سيعود هذا السؤال أولًا في مراجعاتك.",
       "pretest": "قبل أن نبدأ: ما رأيك؟",
-      "quickCheck": "سؤال سريع"
+      "quickCheck": "سؤال سريع",
+      "dontKnow": "لا أعرف"
     },
     "review": {
       "done": "انتهت المراجعة",
@@ -458,6 +459,7 @@
     "start the interview first": "ابدأ المقابلة أولًا",
     "running code is turned off on this server": "تشغيل الشيفرة معطَّل على هذا الخادم",
     "already decided": "تم البتّ فيه من قبل",
-    "this server cannot give commands the internet": "هذا الخادم لا يستطيع منح الأوامر اتصالًا بالإنترنت"
+    "this server cannot give commands the internet": "هذا الخادم لا يستطيع منح الأوامر اتصالًا بالإنترنت",
+    "\"I don't know\" is an answer only to a choice question of the placement check": "«لا أعرف» جواب لأسئلة الاختيار في اختبار تحديد المستوى فقط"
   }
 }

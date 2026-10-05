@@ -11,6 +11,7 @@ export type QuizData = {
   options: string[]
   answer: string | null
   pretest?: boolean
+  unknown?: boolean
   confidence?: number
   correct?: boolean
   confident_miss?: boolean
@@ -39,15 +40,23 @@ function QuizForm(props: {
   kind: 'choice' | 'open'
   options: string[]
   disabled: boolean
+  onUnknown?: () => void
   onSubmit: (answer: string, confidence: number) => void
 }) {
   const { t } = useTranslation()
   const [answer, setAnswer] = useState('')
+  const [unknown, setUnknown] = useState(false)
   const [confidence, setConfidence] = useState(50)
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    if (answer.trim()) props.onSubmit(answer.trim(), confidence / 100)
+    if (unknown) props.onUnknown!()
+    else if (answer.trim()) props.onSubmit(answer.trim(), confidence / 100)
+  }
+
+  function pick(option: string) {
+    setAnswer(option)
+    setUnknown(false)
   }
 
   return (
@@ -56,10 +65,24 @@ function QuizForm(props: {
         <div className="quiz-options">
           {props.options.map((o) => (
             <label key={o} className={o === answer ? 'quiz-option picked' : 'quiz-option'}>
-              <input type="radio" name={props.id} checked={o === answer} onChange={() => setAnswer(o)} />
+              <input type="radio" name={props.id} checked={o === answer} onChange={() => pick(o)} />
               <Markdown>{o}</Markdown>
             </label>
           ))}
+          {props.onUnknown && (
+            <label className={unknown ? 'quiz-option unknown picked' : 'quiz-option unknown'}>
+              <input
+                type="radio"
+                name={props.id}
+                checked={unknown}
+                onChange={() => {
+                  setAnswer('')
+                  setUnknown(true)
+                }}
+              />
+              {t('quiz.dontKnow')}
+            </label>
+          )}
         </div>
       ) : (
         <>
@@ -84,12 +107,13 @@ function QuizForm(props: {
           min={0}
           max={100}
           step={5}
-          value={confidence}
+          value={unknown ? 0 : confidence}
+          disabled={unknown}
           onChange={(e) => setConfidence(Number(e.target.value))}
         />
         <span className="small">{t('quiz.certain')}</span>
-        <output>{percent(confidence / 100)}</output>
-        <button className="btn primary" disabled={props.disabled || !answer.trim()}>
+        <output>{percent(unknown ? 0 : confidence / 100)}</output>
+        <button className="btn primary" disabled={props.disabled || !(unknown || answer.trim())}>
           {t('common.submit')}
         </button>
       </div>
@@ -97,14 +121,16 @@ function QuizForm(props: {
   )
 }
 
-export function QuizResult(props: { answer: string; confidence: number; result: Graded; feedback?: string }) {
+export function QuizResult(props: { answer: string; confidence: number; result: Graded; feedback?: string; unknown?: boolean }) {
   const { result } = props
   const { t } = useTranslation()
   return (
     <div className="quiz-result">
       <div className="attempt">
-        <span className="label">{t('quiz.answerSure', { percent: percent(props.confidence) })}</span>
-        {props.answer}
+        <span className="label">
+          {props.unknown ? t('common.yourAnswer') : t('quiz.answerSure', { percent: percent(props.confidence) })}
+        </span>
+        {props.unknown ? t('quiz.dontKnow') : props.answer}
       </div>
       <div className={result.correct ? 'solution' : 'hint'}>
         <div className="label">{result.correct ? t('quiz.correct') : t('quiz.notQuite')}</div>
@@ -123,6 +149,7 @@ export function QuizCard(props: {
   question: string
   data: QuizData
   disabled: boolean
+  onUnknown?: () => void
   onSubmit: (answer: string, confidence: number) => void
 }) {
   const d = props.data
@@ -132,14 +159,21 @@ export function QuizCard(props: {
       <div className="label">{props.data.pretest ? t('quiz.pretest') : t('quiz.quickCheck')}</div>
       <Markdown>{props.question}</Markdown>
       {d.answer === null ? (
-        <QuizForm id={`quiz-${props.id}`} kind={d.kind} options={d.options} disabled={props.disabled} onSubmit={props.onSubmit} />
+        <QuizForm
+          id={`quiz-${props.id}`}
+          kind={d.kind}
+          options={d.options}
+          disabled={props.disabled}
+          onUnknown={props.onUnknown}
+          onSubmit={props.onSubmit}
+        />
       ) : d.correct === undefined ? (
         <div className="attempt">
           <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
           {d.answer}
         </div>
       ) : (
-        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} />
+        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} />
       )}
     </section>
   )
