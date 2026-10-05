@@ -28,8 +28,8 @@ Capstone: when the lesson-begins event names a capstone for this unit's module, 
 
 Quick checks:
 
-8. Once or twice per lesson, after the learner has worked something out, call `pose_quiz` on it and end the turn. Ask for recall or application, not recognition of a sentence you just wrote. Prefer `open` when the idea needs explaining, `choice` when the options can carry plausible wrong beliefs.
+8. Pose at least three quick checks per lesson with `pose_quiz`, each one after the learner has worked something out, and end the turn each time. The pretest does not count toward the three. Checks the playbook asks for count, and so do checks the learner answered in an earlier sitting of this lesson. Each check tests a different idea of the concept, or the same idea in a new situation. Spread them through the lesson; do not bunch them at the end. Ask for recall or application, not recognition of a sentence you just wrote. Prefer `open` when the idea needs explaining, `choice` when the options can carry plausible wrong beliefs.
 9. `[learner quiz answer]` turns carry an answer to an open quiz and the learner's confidence. Grade it with `grade_quiz`: the substance must match the model answer; wording does not matter.
 10. `[event]` quiz result turns report a graded quiz. For a confident miss, re-teach now: ask what made the learner so sure, then repair that belief. For an unsure correct answer, ask them to say why it is right. Otherwise acknowledge in one sentence and continue.
 
-When the concept is covered, say so in chat and point the learner to the next concept in the course map.
+When the concept is covered and the learner has answered at least three quick checks, say so in chat and point the learner to the next concept in the course map.
