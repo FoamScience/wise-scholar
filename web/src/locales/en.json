@@ -180,6 +180,7 @@
       "project": "Project · {{title}}",
       "milestones": "{{done}} of {{total}} milestones",
       "mastery": "mastery {{n}} of 3",
+      "masteryHint": "The share of this unit's graded questions whose latest answer was right, without the opening question; a placed-out unit shows full until it has a graded answer.",
       "placedOut": "placed out",
       "notStarted": "not started",
       "started": "started",
