@@ -426,3 +426,24 @@ def test_placement_choice_offers_i_dont_know_as_a_miss_that_stays_out_of_calibra
             asyncio.run(app.dont_know_quiz(block["id"]))
         assert refused.value.status_code == 409 and db.block(block["id"])["data"]["answer"] is None
     assert len(turns) == 1
+
+
+def test_posed_choice_options_are_shuffled_the_same_way_for_card_and_block():
+    import asyncio
+
+    from wise_scholar import tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Shuffled')").lastrowid
+    lesson = db.create_lesson(db.create_course("Physics", who)["id"], "Placement", "placement")
+    written = ["newton", "joule", "watt", "pascal"]
+    first = set()
+    for n in range(20):
+        asyncio.run(tutor.pose_quiz(lesson, f"Unit of force? ({n})", "choice", written, "newton", ""))
+        block = db.blocks(lesson)[-1]
+        card = db.card(block["data"]["card_id"])
+        assert block["data"]["options"] == card["options"] and sorted(card["options"]) == sorted(written)
+        assert card["answer_key"] == "newton"
+        first.add(card["options"][0])
+    assert len(first) > 1 and written == ["newton", "joule", "watt", "pascal"]
+    asyncio.run(tutor.pose_quiz(lesson, "Define force.", "open", ["stray"], "a push or pull", ""))
+    assert db.blocks(lesson)[-1]["data"]["options"] == []
