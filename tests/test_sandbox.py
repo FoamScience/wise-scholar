@@ -105,6 +105,70 @@ def test_a_command_is_capped_in_time_output_and_scratch_space_and_keeps_its_own_
 
 
 @needs_bwrap
+def test_a_command_is_stopped_when_it_pushes_its_course_past_the_disk_limit_and_cleanup_still_runs(place, monkeypatch):
+    megabyte = 1024 * 1024
+    monkeypatch.setattr(sandbox, "QUOTA", 5 * megabyte)
+    monkeypatch.setattr(sandbox, "WATCH", 0.1)
+    mine = place / "courses/mine"
+    stopped_line = "stopped: this course holds more than 5 MB on disk; delete files to go on"
+    # 2 MB every 50 ms, for 20 s at most: far longer than the watch needs, far shorter than the time limit.
+    fill = "i=0; while [ $i -lt 400 ]; do dd if=/dev/zero of=$1/f$i bs=1M count=2 2>/dev/null; i=$((i+1)); sleep 0.05; done; echo filled"
+
+    stopped = run(f"echo start; set -- .; {fill}", mine)
+    assert stopped["exit_code"] is None and stopped["output"].startswith("start\n") and stopped["output"].endswith(stopped_line)
+    assert 5 * megabyte < sandbox.usage(mine) < 200 * megabyte
+
+    # Past the limit: more writing is stopped again, and so is deleting a little and writing back less than that.
+    assert run(f"set -- .; {fill}", mine)["output"].endswith(stopped_line)
+    for leftover in mine.glob("f*"):
+        leftover.unlink()
+    for n in range(10):
+        (mine / f"kept{n}").write_bytes(b"x" * megabyte)
+    creep = run("rm kept0 kept1; sleep 0.3; dd if=/dev/zero of=back bs=1M count=1 2>/dev/null; sleep 5; echo survived", mine)
+    assert creep["exit_code"] is None and creep["output"].endswith(stopped_line)
+    assert run("rm -f kept* back; echo cleaned", mine) == {"exit_code": 0, "output": "cleaned\n"}
+    assert sandbox.usage(mine) < megabyte
+
+    # One file cannot pass the limit however fast it is written.
+    run("dd if=/dev/zero of=big bs=1M count=50 2>/dev/null; sync", mine)
+    assert megabyte < (mine / "big").stat().st_size <= 5 * megabyte
+    (mine / "big").unlink()
+
+    # Several files written between two looks: the command ends on its own, and is told.
+    monkeypatch.setattr(sandbox, "WATCH", 60)
+    quick = run("for i in 1 2 3 4; do dd if=/dev/zero of=q$i bs=1M count=2 2>/dev/null; done; echo done", mine)
+    assert quick["exit_code"] == 0 and quick["output"].startswith("done\n")
+    assert quick["output"].endswith("note: this course now holds more than 5 MB on disk; delete files before running more")
+    assert run("rm -f q*; echo cleaned", mine) == {"exit_code": 0, "output": "cleaned\n"}
+
+    # The cache has the same limit, and is emptied once a command leaves it too full.
+    monkeypatch.setattr(sandbox, "WATCH", 0.1)
+    assert run(f"set -- ~/.cache; {fill}", mine)["output"].endswith(stopped_line)
+    assert sandbox.usage(sandbox._cache(mine)) == 0 and sandbox.usage(mine) < megabyte
+
+
+def test_disk_usage_counts_what_files_take_not_what_they_claim(tmp_path):
+    (tmp_path / "deep/er").mkdir(parents=True)
+    (tmp_path / "deep/er/real").write_bytes(b"x" * 300_000)
+    os.link(tmp_path / "deep/er/real", tmp_path / "second-name")
+    with open(tmp_path / "sparse", "wb") as f:
+        f.truncate(500 * 1024 * 1024)
+    (tmp_path / "link").symlink_to("/usr")
+    (tmp_path / "deep").chmod(0)
+    assert 300_000 <= sandbox.usage(tmp_path) < 400_000
+    assert (tmp_path / "deep/er/real").exists()
+
+
+def test_the_disk_limit_setting_must_be_a_positive_number_of_megabytes(monkeypatch):
+    monkeypatch.setenv("WISE_SCHOLAR_WORKSPACE_MB", "512")
+    assert sandbox._megabytes("WISE_SCHOLAR_WORKSPACE_MB", 2048) == 512
+    for bad in ("0", "-5", "2GB", ""):
+        monkeypatch.setenv("WISE_SCHOLAR_WORKSPACE_MB", bad)
+        with pytest.raises(SystemExit):
+            sandbox._megabytes("WISE_SCHOLAR_WORKSPACE_MB", 2048)
+
+
+@needs_bwrap
 @pytest.mark.skipif(not sandbox.capped(), reason="no user systemd: sandboxed commands run without the memory limit here")
 def test_a_command_cannot_take_more_memory_than_its_limit(place):
     hog = run("python3 -c 'x = bytearray(3 * 1024**3); print(len(x))'", place / "courses/mine")
