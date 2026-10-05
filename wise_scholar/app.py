@@ -918,15 +918,32 @@ async def check_exercise(block_id: int) -> None:
     _start_turn(lesson, f"[learner attempt] exercise {_challenge_state(block)}\n{files}\n--- last run ---\n{output}")
 
 
-@app.post("/api/blocks/{block_id}/quiz", status_code=202)
-async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
+def _unanswered_quiz(block_id: int) -> tuple[dict, dict]:
     block = db.block(block_id)
     if not block or block["kind"] != "quiz":
         raise HTTPException(404, "no such quiz")
     _require_idle(block["lesson_id"])
     if block["data"]["answer"] is not None:
         raise HTTPException(409, "already answered")
-    card = db.card(block["data"]["card_id"])
+    return block, db.card(block["data"]["card_id"])
+
+
+@app.post("/api/blocks/{block_id}/quiz/unknown", status_code=202)
+async def dont_know_quiz(block_id: int) -> None:
+    block, card = _unanswered_quiz(block_id)
+    if db.lesson(block["lesson_id"])["phase"] != "placement" or card["kind"] != "choice":
+        raise HTTPException(409, "\"I don't know\" is an answer only to a choice question of the placement check")
+    lesson, block = _update_block(block, {"answer": "I don't know", "confidence": 0, "unknown": True, **quiz.dont_know(card)})
+    _start_turn(
+        lesson,
+        f"[event] Quiz {block_id} result: the learner chose \"I don't know\"; the right answer is "
+        f"{card['answer_key']!r}\nquestion: {card['question']!r}",
+    )
+
+
+@app.post("/api/blocks/{block_id}/quiz", status_code=202)
+async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
+    block, card = _unanswered_quiz(block_id)
     answer_id = quiz.submit(card, body.answer, body.confidence)
     given = {"answer": body.answer, "confidence": body.confidence, "answer_id": answer_id}
     said = f"question: {card['question']!r}\nlearner answer: {body.answer!r}\nconfidence: {body.confidence:.0%}"

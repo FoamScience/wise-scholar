@@ -264,7 +264,8 @@
       "answerKey": "**Réponse :** {{answer}}",
       "confidentMiss": "Votre certitude était de {{percent}}. Cette question reviendra en premier dans vos révisions.",
       "pretest": "Avant de commencer : qu'en pensez-vous ?",
-      "quickCheck": "Question rapide"
+      "quickCheck": "Question rapide",
+      "dontKnow": "Je ne sais pas"
     },
     "review": {
       "done": "Révision terminée",
@@ -434,6 +435,7 @@
     "start the interview first": "commencez d'abord l'entretien",
     "running code is turned off on this server": "l'exécution de code est désactivée sur ce serveur",
     "already decided": "déjà décidé",
-    "this server cannot give commands the internet": "ce serveur ne peut pas donner Internet aux commandes"
+    "this server cannot give commands the internet": "ce serveur ne peut pas donner Internet aux commandes",
+    "\"I don't know\" is an answer only to a choice question of the placement check": "« Je ne sais pas » ne répond qu'à une question à choix du test de niveau"
   }
 }

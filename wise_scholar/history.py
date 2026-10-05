@@ -20,6 +20,8 @@ def _line(block: dict) -> str:
     if kind == "quiz":
         if data.get("correct") is None:
             return f"quiz: {text} -> not answered"
+        if data.get("unknown"):
+            return f"quiz: {text} -> did not know"
         verdict = "right" if data["correct"] else "wrong"
         miss = " (confident miss)" if data.get("confident_miss") else ""
         return f"quiz: {text} -> {verdict} at {data['confidence']:.0%} sure{miss}"

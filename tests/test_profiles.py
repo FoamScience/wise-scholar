@@ -385,3 +385,44 @@ def test_a_course_map_is_revised_in_place_and_started_units_keep_their_work():
     merged = revise([module(title="All", concepts=["new first", "a", "b renamed", "c"])])
     assert merged == "shown; capstones removed with their units: ['Project one']"
     assert [(k["title"], k["module"]) for k in db.capstones(course)] == [("Project three", "All")]
+
+
+def test_placement_choice_offers_i_dont_know_as_a_miss_that_stays_out_of_calibration(monkeypatch):
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app, history, tutor
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Unsure')").lastrowid
+    course = db.create_course("Chemistry", who)["id"]
+    placement = db.create_lesson(course, "Placement", "placement")
+
+    five = ["1", "2", "3", "4", "5"]
+    assert asyncio.run(tutor.pose_quiz(placement, "Valence of carbon?", "choice", five, "4", "")).startswith("error: a choice quiz needs 2 to 4")
+    assert asyncio.run(tutor.pose_quiz(placement, "Valence of carbon?", "choice", five[:4], "4", "four bonds")).startswith("shown")
+    quiz = db.blocks(placement)[-1]
+    db.conn.execute("UPDATE cards SET lemma = 'Kohlenstoff', lang = 'de' WHERE id = ?", (quiz["data"]["card_id"],))
+    db.set_vocab(who, "de", "Kohlenstoff", "known", "placement")
+    asyncio.run(app.dont_know_quiz(quiz["id"]))
+    data = db.block(quiz["id"])["data"]
+    assert data["unknown"] and data["confidence"] == 0 and data["correct"] is False and data["answer_key"] == "4"
+    assert len(turns) == 1 and "I don't know" in turns[0] and "'4'" in turns[0]
+    assert db.row("SELECT state FROM vocab_knowledge WHERE profile_id = ? AND lemma = 'kohlenstoff'", who)["state"] == "learning"
+    assert db.graded_answers(who) == [] and app.calibration(who)["n"] == 0
+    assert history._line(db.block(quiz["id"])) == "quiz: Valence of carbon? -> did not know"
+    with pytest.raises(HTTPException) as twice:
+        asyncio.run(app.dont_know_quiz(quiz["id"]))
+    assert twice.value.detail == "already answered"
+
+    asyncio.run(tutor.pose_quiz(placement, "Name a noble gas.", "open", [], "helium", ""))
+    lesson = db.create_lesson(course, "Bonds", "lesson")
+    assert asyncio.run(tutor.pose_quiz(lesson, "Valence of carbon?", "choice", five, "4", "", pretest=True)).startswith("shown")
+    for block in (db.blocks(placement)[-1], db.blocks(lesson)[-1]):
+        with pytest.raises(HTTPException) as refused:
+            asyncio.run(app.dont_know_quiz(block["id"]))
+        assert refused.value.status_code == 409 and db.block(block["id"])["data"]["answer"] is None
+    assert len(turns) == 1

@@ -832,6 +832,11 @@ pre {
   cursor: pointer;
 }
 
+.quiz-option.unknown {
+  border-style: dashed;
+  color: var(--muted);
+}
+
 .quiz-option.picked {
   background: var(--teal-tint);
   border-color: var(--teal);
