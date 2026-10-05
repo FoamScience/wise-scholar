@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import re
 import sqlite3
 import unicodedata
@@ -42,6 +43,11 @@ class CastQuestion(BaseModel):
 
 
 log = logging.getLogger(__name__)
+
+
+def _shuffled(options: list[str]) -> list[str]:
+    """The tutor tends to write the right option first; every choice card stores its options in random order."""
+    return random.sample(options, len(options))
 
 
 def _now() -> str:
@@ -804,6 +810,7 @@ async def make_podcast(
     in all. Write a recap cast (the two hosts talk through what the lesson taught, with examples) or a
     quiz-cast: pass questions, each placed after a line, roughly every two minutes; the cast pauses there
     and the learner answers with a confidence rating before it goes on. lang: BCP 47 code of the dialogue.
+    The server shuffles the options of a choice question, so none may refer to another by position.
     In a language course the dialogue passes the reading gate like add_reading (glossary and names count
     as in scope). The audio renders in the background; end your turn after calling this.
     """
@@ -842,7 +849,7 @@ async def make_podcast(
     }
     block = db.add_block(lesson_id, "podcast", title, data)
     for q in sorted(questions, key=lambda q: q.after_line):
-        options = q.options if q.kind == "choice" else []
+        options = _shuffled(q.options) if q.kind == "choice" else []
         card_id = db.add_card(
             lesson["course_id"], lesson["concept_id"], q.question, q.kind, options, q.answer_key, q.explanation,
             scheduled=lesson["phase"] != "placement",
@@ -952,6 +959,8 @@ async def pose_quiz(
     """Show a quick check that the learner answers together with how sure they are.
 
     choice: 2 to 5 options, and answer_key is exactly the right option; the server grades it.
+    The server shuffles the options, so none may refer to another by position or letter
+    (no "both of the above", no "A and C").
     In the placement check a choice has 2 to 4 options: the card adds "I don't know" as the last one
     by itself, so never write such an option.
     open: options is empty and answer_key is the model answer; you grade it with grade_quiz
@@ -969,8 +978,7 @@ async def pose_quiz(
         return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
     if lemma and not lesson["lang"]:
         return "error: lemma needs a language course; pose_vocab_check or add_reading sets the language"
-    if kind == "open":
-        options = []
+    options = _shuffled(options) if kind == "choice" else []
     card_id = db.add_card(
         lesson["course_id"], None if pretest else lesson["concept_id"], question, kind, options, answer_key, explanation,
         scheduled=lesson["phase"] != "placement" and not pretest,
