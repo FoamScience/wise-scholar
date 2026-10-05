@@ -654,6 +654,10 @@ function CardDivider({ block }: { block: Block }) {
   )
 }
 
+function squares(concept: Concept): number {
+  return Math.round((concept.mastery ?? 0) * 3)
+}
+
 function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction): string {
   if (!lesson) return concept.known ? t('map.placedOut') : t('map.notStarted')
   const cs = lesson.blocks
@@ -997,9 +1001,9 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
               <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
                 <span className="concept-title" dir="auto">
                   {c.title}
-                  <span className="mastery" aria-label={t('map.mastery', { n: Math.round((c.mastery ?? 0) * 3) })}>
+                  <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
                     {[1, 2, 3].map((n) => (
-                      <i key={n} className={n <= Math.round((c.mastery ?? 0) * 3) ? 'on' : ''} />
+                      <i key={n} className={n <= squares(c) ? 'on' : ''} />
                     ))}
                   </span>
                 </span>

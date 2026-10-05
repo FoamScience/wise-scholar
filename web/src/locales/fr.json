@@ -184,6 +184,7 @@
       "project": "Projet · {{title}}",
       "milestones": "{{done}} étapes sur {{total}}",
       "mastery": "maîtrise {{n}} sur 3",
+      "masteryHint": "La part des questions notées de cette unité dont la dernière réponse était juste, sans la question d'ouverture ; une unité déjà acquise s'affiche pleine jusqu'à sa première réponse notée.",
       "placedOut": "déjà acquis",
       "notStarted": "pas commencé",
       "started": "commencé",
