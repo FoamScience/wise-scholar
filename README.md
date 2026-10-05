@@ -20,8 +20,11 @@ The research behind each teaching behaviour is listed in [docs/science.md](docs/
 > only place it can write. It has no network and no access to the machine's sockets (Docker, D-Bus), sees nothing else of your home
 > directory, the database or other courses, and stops after 30 seconds. Where a user systemd runs it gets 2 GB of memory and
 > 256 tasks; elsewhere those two limits are missing and the server says so at start. Two commands run at a time.
-> Not covered: what a command writes into its workspace is not capped, and a token you keep inside one of those toolchain
-> folders is readable to it. The agent itself has no shell or file tools; it acts only through the server.
+> A course has a disk limit of 2 GB for its workspace, and as much again for its command cache. No single file can pass it, and the
+> server looks about twice a second while a command runs: a command found pushing its course past the limit is stopped, and a cache
+> past it is emptied. That is a watch, not a filesystem quota: a fast disk takes what is written between two looks, and a file
+> deleted while still open is not seen until the command ends. Not covered either: a token you keep inside one of those toolchain
+> folders is readable to commands. The agent itself has no shell or file tools; it acts only through the server.
 > For an instance other people use, switch commands off (`WISE_SCHOLAR_COMMANDS=0`).
 >
 > A command reaches the internet only when the learner allows it. The tutor asks on a card that shows the command and its reason
@@ -65,6 +68,7 @@ Other settings, all optional:
 | `WISE_SCHOLAR_WORKSPACE` | root folder of the course workspaces | `workspace/` |
 | `WISE_SCHOLAR_OPENCODE_PORT` | port of the opencode server the app starts | `8322` |
 | `WISE_SCHOLAR_COMMANDS` | `0` serves without command execution: the tutor gets no workspace tools and poses no runnable exercises, and Run is refused. For instances opened to other people | `1` |
+| `WISE_SCHOLAR_WORKSPACE_MB` | what one course may hold on disk, in its workspace and again in its command cache. Watched while a command runs, not a filesystem quota; with the sandbox off only the workspace is watched | `2048` |
 | `WISE_SCHOLAR_SANDBOX` | `0` runs commands without bubblewrap (macOS, containers that forbid it): as the server's user, with network, the whole home directory including the agent's login, no memory or task limits, and processes that can outlive the time limit. Only for a machine and a tutor model you trust fully | `1` |
 | `WISE_SCHOLAR_SANDBOX_PATHS` | extra folders commands may read, separated by `:`, for toolchains that `PATH` does not point into. Everything in them becomes readable to commands; the home directory and folders holding the database or the courses are ignored | none |
 
