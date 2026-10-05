@@ -26,6 +26,14 @@ test('display math between double dollars is typeset as a block', () => {
   assert.ok(html.includes('<annotation encoding="application/x-tex">'))
 })
 
+test('a paragraph that is only $$…$$ on one line is displayed too, other inline math is not', () => {
+  const html = render('The type as a function:\n\n$$\\text{isBig} : \\mathbb{Z} \\to \\{0, 1\\}$$\n\nand inline $$a$$ here, or alone:\n\n$x$')
+  assert.equal(html.match(/katex-display/g)?.length, 1)
+  assert.match(html, /<p><span class="katex-display">/)
+  assert.match(html, /inline <span class="katex">/)
+  assert.match(html, /<p><span class="katex">/)
+})
+
 test('dollars in code spans and escaped dollars stay text', () => {
   const html = render('Run `echo $HOME and $PATH`, then pay \\$5.')
   assert.ok(html.includes('<code>echo $HOME and $PATH</code>'))
