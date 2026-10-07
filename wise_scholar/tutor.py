@@ -395,7 +395,8 @@ async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, m
     The card has an answer box, a hint ladder and a locked solution. Attempts, hint
     requests and give-ups arrive as later turns that name the challenge id. End your
     turn after posing it. pretest: the opening attempt of a concept lesson, before anything
-    is taught; a wrong answer is expected and teaching starts from it. milestone: this is the
+    is taught; a wrong answer is expected and teaching starts from it. It asks for something the
+    learner can attempt, as the lesson rules say. milestone: this is the
     unit's capstone deliverable. transfer: a far-transfer task after the capstone, with no hints.
     """
     lesson = db.lesson(lesson_id)
@@ -969,7 +970,8 @@ async def pose_quiz(
     The question comes back later in spaced reviews, so it must make sense on its own.
     lemma: in a language course, the vocabulary word the question tests; the grade sets its ledger state.
     pretest: the opening attempt of a concept lesson; it measures prior knowledge, so it never comes back
-    as a review and does not count toward mastery.
+    as a review and does not count toward mastery. It asks for something the learner can attempt, as
+    the lesson rules say.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
