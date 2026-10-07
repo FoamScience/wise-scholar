@@ -28,7 +28,8 @@
       "placement": "اختبار تحديد المستوى",
       "placementRetake": "اختبار تحديد المستوى · الإعادة {{n}}",
       "episode": "الحلقة {{n}}",
-      "writingSession": "جلسة الكتابة {{n}}"
+      "writingSession": "جلسة الكتابة {{n}}",
+      "nextUnit": "التالي · {{title}}"
     },
     "activity": {
       "thinking": "يفكّر…",
@@ -72,7 +73,8 @@
       "plotFailed": "تعذّر عرض المخطّط البياني: {{error}}",
       "diagramFailed": "تعذّر عرض المخطّط: {{error}}",
       "placementResult": "نتيجة اختبار تحديد المستوى",
-      "tutorWorking": "المعلّم يعمل"
+      "tutorWorking": "المعلّم يعمل",
+      "done": "اكتملت الوحدة"
     },
     "today": {
       "heading": "اليوم · جلسة من 30 دقيقة",

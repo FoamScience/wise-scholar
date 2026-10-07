@@ -447,3 +447,28 @@ def test_posed_choice_options_are_shuffled_the_same_way_for_card_and_block():
     assert len(first) > 1 and written == ["newton", "joule", "watt", "pascal"]
     asyncio.run(tutor.pose_quiz(lesson, "Define force.", "open", ["stray"], "a push or pull", ""))
     assert db.blocks(lesson)[-1]["data"]["options"] == []
+
+
+def test_finish_lesson_closes_a_unit_once_its_quick_checks_are_answered():
+    import asyncio
+
+    from wise_scholar import history, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Finisher')").lastrowid
+    course = db.create_course("Chemistry", who)["id"]
+    db.set_concepts(course, [{"title": "Atoms", "concepts": ["Bonds"], "known": []}])
+    unit = db.concepts(course)[0]["id"]
+    lesson = db.create_lesson(course, "Bonds", "lesson", unit)
+    story = db.create_lesson(course, "Story", "story")
+    assert asyncio.run(tutor.finish_lesson(story, "done")).startswith("error: only a unit lesson")
+    asyncio.run(tutor.pose_quiz(lesson, "Bond count of carbon?", "choice", ["4", "2"], "4", ""))
+    assert asyncio.run(tutor.finish_lesson(lesson, "done")) == "refused: a quick check is still unanswered or ungraded"
+    quiz = db.blocks(lesson)[-1]
+    db.set_block_data(quiz["id"], {**quiz["data"], "answer": "4"})
+    assert asyncio.run(tutor.finish_lesson(lesson, "done")) == "refused: a quick check is still unanswered or ungraded"
+    db.set_block_data(quiz["id"], {**quiz["data"], "answer": "4", "correct": True})
+    assert asyncio.run(tutor.finish_lesson(lesson, "You can now count bonds.")) == "finished; end the turn"
+    assert asyncio.run(tutor.finish_lesson(lesson, "again")) == "refused: this lesson is already finished"
+    done = db.blocks(lesson)[-1]
+    assert done["kind"] == "done" and done["markdown"] == "You can now count bonds."
+    assert history._line(done) == "finished: You can now count bonds."

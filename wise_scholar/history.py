@@ -31,6 +31,8 @@ def _line(block: dict) -> str:
         return f"{'writing' if data.get('writing') else 'challenge'}: {text} -> {_outcome(data)}"
     if kind == "reading":
         return f"reading: {data['title']}"
+    if kind == "done":
+        return f"finished: {text}"
     return f"taught: {text}"
 
 
