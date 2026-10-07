@@ -1174,8 +1174,8 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
       <aside className="chat" aria-label={t('chat.label')}>
         <div className="chat-head">
           <strong>{t('chat.tutor')}</strong>
-          <span className="status" role="status">
-            {activity && lookup(`activity.${activity}`, t('activity.working'))}
+          <span className={lesson.running ? 'status live' : 'status'} role="status">
+            {lesson.running && (activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working'))}
           </span>
         </div>
         <div className="messages">
