@@ -94,6 +94,8 @@ make pdf
 
 installs Playwright and a headless Chromium, about 110 MB, and the book page gets a "Download PDF" button: the server prints that page itself. An installed Google Chrome is used when the Chromium download is skipped. Without `make pdf` the button opens the browser's print dialog instead; choose "Save as PDF" there.
 
+The downloaded file is encrypted (AES-256) and opens without a password; readers that honour PDF permissions then allow printing only: no copying, text extraction, editing or annotation. That lock is advisory. A tool that ignores the permission bits still reads the text, so it keeps honest readers out, not determined ones. The browser's own "Save as PDF" is not locked.
+
 ## Speech (optional)
 
 Off by default. Listen buttons use the browser's own voice and there is no microphone input until you install the speech extras:

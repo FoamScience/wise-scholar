@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 pdf = [
     "playwright>=1.63.0",
+    "pypdf>=6.19.0",
 ]
 
 [tool.pytest.ini_options]
