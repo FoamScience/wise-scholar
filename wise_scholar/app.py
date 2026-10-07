@@ -822,7 +822,7 @@ def _exercise(block_id: int) -> tuple[dict, Path]:
 def _read_files(block: dict, workspace: Path) -> list[dict]:
     files = []
     for path in block["data"]["files"]:
-        files.append({"path": path, "absolute": str(workspace / path), "content": course_files.read_text(workspace, path)})
+        files.append({"path": path, "location": sandbox.location(workspace, path), "content": course_files.read_text(workspace, path)})
     return files
 
 

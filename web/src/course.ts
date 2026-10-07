@@ -99,4 +99,4 @@ export type ExerciseData = ChallengeData & {
   run: string
   last_run: { exit_code: number | null; output: string } | null
 }
-export type ExerciseFile = { path: string; absolute: string; content: string | null }
+export type ExerciseFile = { path: string; location: string; content: string | null }

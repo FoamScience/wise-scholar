@@ -558,8 +558,8 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       {files.map((f) => (
         <div key={f.path} className="file">
           <div className="file-head">
-            <code>{f.absolute}</code>
-            <button type="button" className="link" onClick={() => navigator.clipboard.writeText(f.absolute)}>
+            <code>{f.location}</code>
+            <button type="button" className="link" onClick={() => navigator.clipboard.writeText(f.location)}>
               {t('exercise.copyPath')}
             </button>
           </div>

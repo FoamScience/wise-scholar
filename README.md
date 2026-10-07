@@ -20,6 +20,10 @@ The research behind each teaching behaviour is listed in [docs/science.md](docs/
 > only place it can write. It has no network and no access to the machine's sockets (Docker, D-Bus), sees nothing else of your home
 > directory, the database or other courses, and stops after 30 seconds. Where a user systemd runs it gets 2 GB of memory and
 > 256 tasks; elsewhere those two limits are missing and the server says so at start. Two commands run at a time.
+> Inside, the user is `learner` with the home directory `/home/learner`, and the course sits at
+> `/home/learner/wise-scholar/workspace/<course>`: paths, tracebacks, `whoami` and the environment name no real user or folder, and
+> the exercise card names files the same way. A command can still read the real folders behind the mounts in `/proc/self/mountinfo`.
+> Without the sandbox (`WISE_SCHOLAR_SANDBOX=0`) commands see and print the real paths.
 > A course has a disk limit of 2 GB for its workspace, and as much again for its command cache. No single file can pass it, and the
 > server looks about twice a second while a command runs: a command found pushing its course past the limit is stopped, and a cache
 > past it is emptied. That is a watch, not a filesystem quota: a fast disk takes what is written between two looks, and a file
