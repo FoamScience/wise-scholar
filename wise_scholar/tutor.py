@@ -1011,6 +1011,27 @@ async def grade_quiz(quiz_id: int, correct: bool, feedback: str) -> str:
 
 
 @mcp.tool()
+async def finish_lesson(lesson_id: int, summary: str) -> str:
+    """Close a unit lesson once its concept is covered and the quick checks are answered.
+
+    summary: two or three sentences to the learner on what they can now do. It becomes the last card of
+    the lesson, under which the learner gets a button to the next unit. Call it once, then end the turn.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if lesson["concept_id"] is None:
+        return "error: only a unit lesson is finished this way"
+    blocks = db.blocks(lesson_id)
+    if any(b["kind"] == "done" for b in blocks):
+        return "refused: this lesson is already finished"
+    if any(b["kind"] == "quiz" and b["data"].get("correct") is None for b in blocks):
+        return "refused: a quick check is still unanswered or ungraded"
+    _show(lesson, db.add_block(lesson_id, "done", summary, {}))
+    return "finished; end the turn"
+
+
+@mcp.tool()
 async def set_placement(course_id: int, level: str, summary: str) -> str:
     """Record the result of the placement check.
 

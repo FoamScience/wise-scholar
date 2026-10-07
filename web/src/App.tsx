@@ -901,6 +901,10 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
   if (!course || !lesson) return <main className="home">{error && <div className="error">{error}</div>}</main>
 
   const showPlan = lesson.phase === 'interview' && course.ranking.length > 0
+  const finished = lesson.concept_id !== null && lesson.blocks.some((b) => b.kind === 'done')
+  const nextUnit = finished
+    ? course.concepts.slice(course.concepts.findIndex((c) => c.id === lesson.concept_id) + 1).find((c) => !c.known && (c.mastery ?? 0) < 2 / 3)
+    : undefined
   const dividers = cardDividers(lesson)
   const empty = lesson.blocks.length === 0 && !showPlan
 
@@ -1157,6 +1161,13 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
           </section>
         )}
         {lesson.running && (empty || writing) && <Skeleton />}
+        {nextUnit && !lesson.running && (
+          <div className="lesson-next">
+            <button className="btn primary" onClick={() => openConcept(nextUnit)}>
+              {t('lesson.nextUnit', { title: nextUnit.title })}
+            </button>
+          </div>
+        )}
         <div ref={lessonBottom} />
       </main>
 

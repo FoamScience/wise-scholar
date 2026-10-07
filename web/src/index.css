@@ -196,6 +196,12 @@ pre {
   color: var(--muted);
 }
 
+.lesson-next {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 24px;
+}
+
 .btn {
   min-height: 44px;
   padding: 0 16px;

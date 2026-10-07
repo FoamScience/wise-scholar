@@ -28,7 +28,8 @@
       "placement": "Test de niveau",
       "placementRetake": "Test de niveau · reprise {{n}}",
       "episode": "Épisode {{n}}",
-      "writingSession": "Séance d'écriture {{n}}"
+      "writingSession": "Séance d'écriture {{n}}",
+      "nextUnit": "Suivant · {{title}}"
     },
     "activity": {
       "thinking": "réflexion…",
@@ -72,7 +73,8 @@
       "plotFailed": "Le graphique ne s'est pas affiché : {{error}}",
       "diagramFailed": "Le schéma ne s'est pas affiché : {{error}}",
       "placementResult": "Résultat du test de niveau",
-      "tutorWorking": "Le tuteur travaille"
+      "tutorWorking": "Le tuteur travaille",
+      "done": "Unité couverte"
     },
     "today": {
       "heading": "Aujourd'hui · une séance de 30 minutes",

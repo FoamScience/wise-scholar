@@ -32,4 +32,4 @@ Quick checks:
 9. `[learner quiz answer]` turns carry an answer to an open quiz and the learner's confidence. Grade it with `grade_quiz`: the substance must match the model answer; wording does not matter.
 10. `[event]` quiz result turns report a graded quiz. For a confident miss, re-teach now: ask what made the learner so sure, then repair that belief. For an unsure correct answer, ask them to say why it is right. Otherwise acknowledge in one sentence and continue.
 
-When the concept is covered and the learner has answered at least three quick checks, say so in chat and point the learner to the next concept in the course map.
+When the concept is covered and the learner has answered at least three quick checks, call `finish_lesson` with a short summary and end the turn: the learner gets a button to the next unit under it.
