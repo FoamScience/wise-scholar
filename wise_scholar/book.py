@@ -2,6 +2,8 @@
 
 import asyncio
 import importlib.util
+import io
+import secrets
 
 from .backends import PORT
 
@@ -23,7 +25,29 @@ class NoBrowser(Exception):
 
 
 def available() -> bool:
-    return importlib.util.find_spec("playwright") is not None
+    installed = importlib.util.find_spec
+    return installed("playwright") is not None and installed("pypdf") is not None
+
+
+def lock(pdf: bytes) -> bytes:
+    """Encrypt the book so that it opens without a password but readers that honour PDF permissions
+    allow printing only: no copying, text extraction, editing or annotation. The owner password is thrown away."""
+    from pypdf import PdfReader, PdfWriter
+    from pypdf.constants import UserAccessPermissions as Permissions
+
+    writer = PdfWriter(clone_from=PdfReader(io.BytesIO(pdf)))
+    writer.encrypt(
+        user_password="",
+        owner_password=secrets.token_urlsafe(32),
+        permissions_flag=Permissions.all() & ~(
+            Permissions.MODIFY | Permissions.EXTRACT | Permissions.ADD_OR_MODIFY | Permissions.FILL_FORM_FIELDS
+            | Permissions.EXTRACT_TEXT_AND_GRAPHICS | Permissions.ASSEMBLE_DOC
+        ),
+        algorithm="AES-256",
+    )
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
 
 
 async def _launch(chromium):
@@ -58,6 +82,7 @@ async def render(course_id: int, profile_id: int, theme: str) -> bytes:
             await page.goto(f"http://127.0.0.1:{PORT}/#/course/{int(course_id)}/book")
             await page.wait_for_function(READY)
             await page.evaluate("() => document.fonts.ready.then(() => true)")
-            return await page.pdf(prefer_css_page_size=True, print_background=True)
+            pdf = await page.pdf(prefer_css_page_size=True, print_background=True)
         finally:
             await browser.close()
+    return await asyncio.to_thread(lock, pdf)
