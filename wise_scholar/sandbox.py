@@ -43,6 +43,10 @@ QUOTA = _megabytes("WISE_SCHOLAR_WORKSPACE_MB", 2048) * 1024 * 1024
 WATCH = 0.5
 
 SYSTEM = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/etc", "/opt")
+# Inside the sandbox the home folder and the course sit at fixed, neutral places, so nothing a command prints
+# (a traceback, pwd, whoami, the environment) names the server's user or folders.
+HOME_INSIDE = Path("/home/learner")
+COURSES_INSIDE = HOME_INSIDE / "wise-scholar" / "workspace"
 # Home folders that PATH may point into but that hold credentials, shell history or the agent's own state.
 PRIVATE = {".claude", ".config", ".ssh", ".gnupg", ".aws", ".opencode", ".atuin"}
 # ~/.local mixes programs with application data: only its program folders are shown.
@@ -53,7 +57,7 @@ COMPANIONS = {".cargo": (".rustup",)}
 MASKED = (".cargo/credentials.toml", ".cargo/credentials", ".nvm/.npmrc", ".bun/.npmrc", ".julia/config")
 ENV_NAMES = {
     "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TERM", "TZ",
-    "GOPATH", "GOROOT", "GOBIN", "GOFLAGS", "GOTOOLCHAIN", "JAVA_HOME", "VIRTUAL_ENV",
+    "GOPATH", "GOROOT", "GOBIN", "GOFLAGS", "GOTOOLCHAIN", "JAVA_HOME",
 }  # fmt: skip
 ENV_PREFIXES = ("LC_", "PYENV_", "PYTHON", "NVM_", "NODE_", "BUN_", "CARGO_", "RUSTUP_", "GHCUP_", "JULIA_")
 SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASS|CREDENTIAL|AUTH", re.IGNORECASE)
@@ -87,14 +91,14 @@ def capped() -> bool:
 
 def _toolchains(home: Path) -> list[Path]:
     """Per-user language toolchains: the home folders PATH points into, plus WISE_SCHOLAR_SANDBOX_PATHS."""
-    # Never shown, whatever PATH or the setting says: the home directory itself, and anything that holds the
-    # database or the courses.
+    # Never shown, whatever PATH or the setting says: the home directory itself, anything that holds the
+    # database or the courses, and the app's own install with its virtual environment.
     kept = [home, db.DB_PATH.parent.resolve(), db.WORKSPACE.resolve()]
     exposes = lambda folder: any(secret.is_relative_to(folder) for secret in kept)  # noqa: E731
     found = []
     for entry in os.environ.get("PATH", "").split(os.pathsep):
         path = Path(entry)
-        if not entry or not path.is_dir() or not path.is_relative_to(home) or path == home:
+        if not entry or not path.is_dir() or not path.is_relative_to(home) or path == home or path.resolve().is_relative_to(db.ROOT):
             continue
         top = path.relative_to(home).parts[0]
         if top in PRIVATE:
@@ -108,6 +112,20 @@ def _toolchains(home: Path) -> list[Path]:
             found.append(path if path.name != "bin" or exposes(path.parent) else path.parent)
     found += [Path(p) for p in os.environ.get("WISE_SCHOLAR_SANDBOX_PATHS", "").split(os.pathsep) if p]
     return [p for p in dict.fromkeys(found) if p.exists() and not exposes(p.resolve())]
+
+
+def inside(path: Path, workspace: Path | None = None) -> Path:
+    """Where a path of the server is seen inside the sandbox: the course at its fixed place, the user's home
+    folder at the neutral one, anything else unchanged."""
+    if workspace and path.is_relative_to(workspace):
+        return COURSES_INSIDE / workspace.name / path.relative_to(workspace)
+    home = Path.home()
+    return HOME_INSIDE / path.relative_to(home) if path.is_relative_to(home) else path
+
+
+def location(workspace: Path, path: str) -> str:
+    """A course file as the learner sees it named: from the install folder on, never the server's full path."""
+    return str(inside(workspace / path, workspace).relative_to(HOME_INSIDE))
 
 
 def _cache(workspace: Path) -> Path:
@@ -190,24 +208,27 @@ def _args(workspace: Path, extra: list[str]) -> list[str]:
     cache = _cache(workspace)
     cache.mkdir(parents=True, exist_ok=True)
     toolchains = _toolchains(home)
-    visible = [arg for path in (*SYSTEM, *map(str, toolchains)) for arg in ("--ro-bind-try", path, path)]
+    visible = [arg for path in (*map(Path, SYSTEM), *toolchains) for arg in ("--ro-bind-try", str(path), str(inside(path)))]
     masked = []
     for path in (home / name for name in MASKED):
         if not any(path.is_relative_to(shown) for shown in toolchains):
             continue
         if path.is_dir():
-            masked += ["--tmpfs", str(path)]
+            masked += ["--tmpfs", str(inside(path))]
         elif path.exists():
-            masked += ["--ro-bind", "/dev/null", str(path)]
-    env = [arg for name, value in _env().items() for arg in ("--setenv", name, value)]
+            masked += ["--ro-bind", "/dev/null", str(inside(path))]
+    env = [arg for name, value in _env_inside().items() for arg in ("--setenv", name, value)]
+    course = inside(workspace, workspace)
     return [
         "--die-with-parent", "--new-session", "--unshare-all", "--clearenv", *env,
         "--proc", "/proc", "--dev", "/dev", "--size", str(SCRATCH), "--tmpfs", "/dev/shm", "--remount-ro", "/dev",
         "--size", str(SCRATCH), "--tmpfs", "/tmp",
-        "--size", str(SCRATCH), "--tmpfs", str(home),
+        "--size", str(SCRATCH), "--tmpfs", str(HOME_INSIDE),
+        # Absolute links inside a toolchain (uv tool, pipx) still point at the real home: they resolve through this.
+        "--symlink", str(HOME_INSIDE), str(home),
         *visible, *masked,
-        "--bind", str(cache), str(home / ".cache"),
-        "--bind", str(workspace), str(workspace), "--chdir", str(workspace),
+        "--bind", str(cache), str(HOME_INSIDE / ".cache"),
+        "--bind", str(workspace), str(course), "--chdir", str(course),
         *extra,
         "--remount-ro", "/",
     ]  # fmt: skip
@@ -230,6 +251,21 @@ def _env() -> dict[str, str]:
         for k, v in os.environ.items()
         if (k in ENV_NAMES or k.startswith(ENV_PREFIXES)) and not SECRET_NAME.search(k)
     }
+
+
+def _env_inside() -> dict[str, str]:
+    """The environment as the sandbox sees it: paths into the user's home folder moved to the neutral one, PATH
+    reduced to the system folders and the toolchains that are shown, and the user named learner."""
+    home = Path.home()
+    at_home = re.compile(re.escape(str(home)) + r"(?=/|:|$)")
+    env = {k: at_home.sub(str(HOME_INSIDE), v) for k, v in _env().items()}
+    shown = [*map(Path, SYSTEM), *_toolchains(home)]
+    path = [
+        str(inside(Path(entry)))
+        for entry in os.environ.get("PATH", "").split(os.pathsep)
+        if entry and any(Path(entry).is_relative_to(folder) for folder in shown)
+    ]
+    return {**env, "PATH": os.pathsep.join(dict.fromkeys(path)), "HOME": str(HOME_INSIDE), "USER": "learner", "LOGNAME": "learner"}
 
 
 # Each command may take its full memory and scratch space, so only a few run at once; the rest wait.
@@ -284,18 +320,26 @@ async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[st
     # No single file larger than the whole limit, whatever the watch below sees or misses (ulimit counts 512-byte blocks).
     command = f"ulimit -f {QUOTA // 512}\n{command}"
     argv, fds = ["sh", "-c", command], ()
-    script, options = tempfile.TemporaryFile(), tempfile.TemporaryFile()
+    script, options, passwd, group = (tempfile.TemporaryFile() for _ in range(4))
     if SANDBOX:
         # Neither the command nor bubblewrap's options are arguments of systemd-run, which expands ${VAR} and $$
         # in what it is given from the server's own environment: the command is a file inside the sandbox, the
         # options are read from a file, and only fixed words stay on the command line.
         script.write(command.encode())
         script.seek(0)
-        extra = [*extra, "--ro-bind-data", str(script.fileno()), "/run/command"]
+        # The account files name only root and the learner, so id, ls -l and whoami never show the server's user.
+        passwd.write(f"root:x:0:0:root:/root:/bin/sh\nlearner:x:{os.getuid()}:{os.getgid()}:learner:{HOME_INSIDE}:/bin/sh\n".encode())
+        group.write(f"root:x:0:\nlearner:x:{os.getgid()}:\n".encode())
+        passwd.seek(0)
+        group.seek(0)
+        extra = [
+            *extra, "--ro-bind-data", str(script.fileno()), "/run/command",
+            "--ro-bind-data", str(passwd.fileno()), "/etc/passwd", "--ro-bind-data", str(group.fileno()), "/etc/group",
+        ]  # fmt: skip
         options.write(b"\0".join(arg.encode() for arg in _args(workspace, extra)) + b"\0")
         options.seek(0)
         argv = [*_scope(), "bwrap", "--args", str(options.fileno()), *wrapper, "sh", "/run/command"]
-        fds = (script.fileno(), options.fileno())
+        fds = (script.fileno(), options.fileno(), passwd.fileno(), group.fileno())
     try:
         proc = await asyncio.create_subprocess_exec(
             *argv,

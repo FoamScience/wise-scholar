@@ -54,7 +54,7 @@ def test_a_command_writes_inside_its_workspace_and_sees_no_data_of_the_app(place
 
     probe = run(
         f"touch {place}/data/x {place}/courses/other/x {place}/bin/x /usr/x /x /dev/x 2>&1 | grep -c -e Read-only -e 'No such'; "
-        f"cat {place}/data/test.db {place}/courses/other/notes.txt 2>/dev/null; ls {place}/courses; echo done",
+        f"cat {place}/data/test.db {place}/courses/other/notes.txt 2>/dev/null; ls {place}/courses 2>/dev/null; ls ~/wise-scholar/workspace; echo done",
         mine,
     )
     assert probe["output"] == "6\nmine\ndone\n"
@@ -78,7 +78,7 @@ def test_a_command_sees_only_toolchains_of_the_home_directory_and_no_secrets(pla
         "~/.ssh/id_ed25519 ~/.bash_history 2>/dev/null | wc -c",
         place / "courses/mine",
     )
-    assert probe["output"].split("\n")[:6] == ["key= bus=", "1", "/run: command ", ".cache .cargo .local ", "a toolchain program", "0"]
+    assert probe["output"].split("\n")[:6] == ["key= bus=", "1", "/run: command ", ".cache .cargo .local wise-scholar ", "a toolchain program", "0"]
 
 
 @needs_bwrap
@@ -474,3 +474,39 @@ def test_run_is_refused_and_the_lesson_prompt_says_so_when_commands_are_off(tmp_
     monkeypatch.setattr(sandbox, "COMMANDS", True)
     monkeypatch.setattr(sandbox, "SANDBOX", False)
     assert "[tools]" not in app._turn_prompt(db.lesson(lesson), "[event] x")
+
+
+def test_a_course_file_is_named_from_the_install_folder_whatever_the_server_layout(tmp_path):
+    assert sandbox.location(tmp_path / "srv" / "courses" / "rust", "ch1/main.rs") == "wise-scholar/workspace/rust/ch1/main.rs"
+    assert sandbox.inside(Path.home() / ".local/bin") == Path("/home/learner/.local/bin")
+    assert sandbox.inside(Path("/usr/bin")) == Path("/usr/bin")
+
+
+@needs_bwrap
+def test_commands_see_a_neutral_user_home_and_course_place(place, monkeypatch):
+    home = Path(os.environ["HOME"])
+    (home / ".cargo/real").write_text("echo through the link\n")
+    (home / ".cargo/bin/linked").symlink_to(home / ".cargo/real")
+    monkeypatch.setenv("CARGO_HOME", f"{home}/.cargo")
+    monkeypatch.setenv("USER", "someone")
+    mine = place / "courses/mine"
+    (mine / "boom.py").write_text("open('missing.txt')\n")
+    seen = run(
+        "pwd; echo $HOME; whoami; id -gn; echo $CARGO_HOME; sh ~/.cargo/bin/linked; env | grep -c -e someone -e " + str(home) + "; "
+        "echo $PATH | tr : ' '; python3 boom.py 2>&1 | grep File",
+        mine,
+    )["output"]
+    assert str(home) not in seen and "someone" not in seen
+    lines = seen.splitlines()
+    assert lines[:7] == [
+        "/home/learner/wise-scholar/workspace/mine", "/home/learner", "learner", "learner", "/home/learner/.cargo",
+        "through the link", "0",
+    ]
+    assert lines[7].split() == ["/home/learner/.cargo/bin", "/home/learner/.local/bin", "/usr/bin", "/bin"]
+    assert lines[8].strip() == 'File "/home/learner/wise-scholar/workspace/mine/boom.py", line 1, in <module>'
+
+
+def test_unsandboxed_commands_keep_the_real_environment(place, monkeypatch):
+    monkeypatch.setattr(sandbox, "SANDBOX", False)
+    seen = run("echo $HOME; pwd", place / "courses/mine")["output"].splitlines()
+    assert seen == [os.environ["HOME"], str((place / "courses/mine").resolve())]
