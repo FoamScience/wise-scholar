@@ -20,7 +20,7 @@ import { NetworkCard } from './Network'
 import { PlotCard } from './PlotCard'
 import { ScopeCard, ScopeForm } from './Scope'
 import { Book } from './Book'
-import { SourcesPanel } from './Sources'
+import { SourcesPanel, SOURCE_TYPES } from './Sources'
 import type { Source } from './Sources'
 import { usePlayer } from './player'
 import { splitBy, textDirection } from './text'
@@ -151,6 +151,10 @@ function Home({ profile }: { profile: number }) {
   const { t } = useTranslation()
   const [courses, setCourses] = useState<Course[]>([])
   const [topic, setTopic] = useState('')
+  const [materials, setMaterials] = useState<File[]>([])
+  const [url, setUrl] = useState('')
+  const [starting, setStarting] = useState('')
+  const picker = useRef<HTMLInputElement | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -159,11 +163,31 @@ function Home({ profile }: { profile: number }) {
 
   async function start(e: FormEvent) {
     e.preventDefault()
+    setError('')
     try {
       const course = await api<Course>('/api/courses', { topic, profile_id: profile })
+      // Materials go in before the interview, so its first turn already knows them.
+      for (const file of materials) {
+        setStarting(t('home.adding', { name: file.name }))
+        const form = new FormData()
+        form.append('file', file)
+        const res = await fetch(`/api/courses/${course.id}/sources`, { method: 'POST', body: form })
+        if (!res.ok) throw await failure(res)
+      }
+      if (url.trim()) {
+        setStarting(t('home.adding', { name: url.trim() }))
+        await api(`/api/courses/${course.id}/sources/url`, { url: url.trim() })
+      }
       location.hash = `#/course/${course.id}`
     } catch (err) {
       setError((err as Error).message)
+      // The course may exist by now: show it in the list rather than inviting a second Start.
+      api<Course[]>(`/api/courses?profile=${profile}`).then(setCourses, () => {})
+      setTopic('')
+      setMaterials([])
+      setUrl('')
+    } finally {
+      setStarting('')
     }
   }
 
@@ -196,11 +220,41 @@ function Home({ profile }: { profile: number }) {
             onChange={(e) => setTopic(e.target.value)}
             placeholder={t('home.topicPlaceholder')}
           />
-          <button className="btn primary" disabled={!topic.trim()}>
-            {t('common.start')}
+          <button className="btn primary" disabled={!topic.trim() || starting !== ''}>
+            {starting ? t('home.starting') : t('common.start')}
           </button>
         </div>
         <div className="muted">{t('home.topicHelp')}</div>
+        <details className="block materials">
+          <summary className="label">{t('home.materials')}</summary>
+          <div className="stack">
+            <div className="muted">{t('home.materialsHelp')}</div>
+            <div className="row">
+              <button type="button" className="btn" onClick={() => picker.current?.click()}>
+                {t('sources.add')}
+              </button>
+              <span className="small grow">{materials.map((f) => f.name).join(' · ')}</span>
+            </div>
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              hidden
+              accept={SOURCE_TYPES}
+              onChange={(e) => setMaterials(Array.from(e.target.files ?? []))}
+            />
+            <input
+              className="field"
+              type="text"
+              inputMode="url"
+              dir="ltr"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={t('home.urlPlaceholder')}
+            />
+            {starting && <div className="small">{starting}</div>}
+          </div>
+        </details>
       </form>
       {error && <div className="error">{error}</div>}
       <Today profile={profile} />

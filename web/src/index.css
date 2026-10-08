@@ -1224,6 +1224,15 @@ mark {
   overflow: auto;
 }
 
+.materials summary {
+  cursor: pointer;
+  min-height: 24px;
+}
+
+.materials[open] summary {
+  margin-bottom: 12px;
+}
+
 /* profiles */
 
 .stack {

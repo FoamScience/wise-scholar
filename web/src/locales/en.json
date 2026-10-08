@@ -104,7 +104,12 @@
       "deleteCourse": "Delete course",
       "archive": "Archive",
       "unarchive": "Unarchive",
-      "delete": "Delete…"
+      "delete": "Delete…",
+      "materials": "Materials for this course (optional)",
+      "materialsHelp": "A book, documentation or notes the course should teach from: files, or the address of a PDF, EPUB or web page.",
+      "urlPlaceholder": "https://…/book.pdf",
+      "adding": "Adding {{name}}…",
+      "starting": "Starting…"
     },
     "question": {
       "own": "Or say it in your own words",

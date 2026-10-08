@@ -112,7 +112,12 @@
       "deleteCourse": "حذف الدورة",
       "archive": "أرشفة",
       "unarchive": "إلغاء الأرشفة",
-      "delete": "حذف…"
+      "delete": "حذف…",
+      "materials": "مواد لهذه الدورة (اختياري)",
+      "materialsHelp": "كتاب أو توثيق أو ملاحظات تُدرَّس الدورة منها: ملفات، أو عنوان ملف PDF أو EPUB أو صفحة ويب.",
+      "urlPlaceholder": "https://…/book.pdf",
+      "adding": "جارٍ إضافة {{name}}…",
+      "starting": "جارٍ البدء…"
     },
     "question": {
       "own": "أو قلها بكلماتك",
@@ -484,6 +489,14 @@
     "already decided": "تم البتّ فيه من قبل",
     "this server cannot give commands the internet": "هذا الخادم لا يستطيع منح الأوامر اتصالًا بالإنترنت",
     "\"I don't know\" is an answer only to a choice question of the placement check": "«لا أعرف» جواب لأسئلة الاختيار في اختبار تحديد المستوى فقط",
-    "this course's files were cleaned up; ask the tutor to pose the exercise again": "نُظّفت ملفات هذه الدورة؛ اطلب من المعلّم طرح التمرين من جديد"
+    "this course's files were cleaned up; ask the tutor to pose the exercise again": "نُظّفت ملفات هذه الدورة؛ اطلب من المعلّم طرح التمرين من جديد",
+    "the address must start with http:// or https://": "يجب أن يبدأ العنوان بـ http:// أو https://",
+    "that address does not resolve": "هذا العنوان غير موجود",
+    "only public web addresses can be fetched": "لا يمكن جلب إلا عناوين الويب العامة",
+    "the address did not answer with a document": "لم يُجب العنوان بمستند",
+    "the address redirects too many times": "يعيد العنوان التوجيه مرات كثيرة",
+    "that address is not a PDF, EPUB, HTML, Markdown or text document": "هذا العنوان ليس مستند PDF أو EPUB أو HTML أو Markdown أو نصًّا",
+    "the address could not be fetched": "تعذّر جلب العنوان",
+    "the address took too long to answer": "استغرق العنوان وقتًا طويلًا للإجابة"
   }
 }
