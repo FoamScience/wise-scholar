@@ -11,8 +11,9 @@ from pathlib import Path
 
 from . import course_files, db, sandbox
 
-# WISE_SCHOLAR_KEEP_DAYS: a course untouched for this long has its files cleaned up.
-KEEP_DAYS = int(os.environ.get("WISE_SCHOLAR_KEEP_DAYS", "90"))
+# WISE_SCHOLAR_KEEP_DAYS: a course untouched for this long has its files cleaned up. Unset: nothing is ever cleaned
+# up on its own; the owner chooses.
+KEEP_DAYS = int(os.environ["WISE_SCHOLAR_KEEP_DAYS"]) if os.environ.get("WISE_SCHOLAR_KEEP_DAYS") else None
 EVERY = 6 * 3600
 STAMP = "%Y-%m-%d %H:%M:%S"
 
@@ -36,11 +37,14 @@ def last_activity(course_id: int) -> str | None:
     return row["last"] if row else None
 
 
-def stale(now: datetime | None = None) -> list[dict]:
-    """Courses whose files are due for cleanup: untouched for KEEP_DAYS, not yet cleaned since their last activity,
+def stale(days: int | None = None, now: datetime | None = None) -> list[dict]:
+    """Courses whose files are due for cleanup: untouched for `days`, not yet cleaned since their last activity,
     and with something on disk."""
+    days = KEEP_DAYS if days is None else days
+    if days is None:
+        return []
     now = now or datetime.now(timezone.utc)
-    cutoff = (now - timedelta(days=KEEP_DAYS)).strftime(STAMP)
+    cutoff = (now - timedelta(days=days)).strftime(STAMP)
     out = []
     for course in db.rows("SELECT * FROM courses ORDER BY id"):
         last = last_activity(course["id"])
@@ -90,10 +94,10 @@ def clean(course: dict, busy=lambda course_id: False, dry_run: bool = False) -> 
     return size
 
 
-def run(busy=lambda course_id: False, dry_run: bool = False) -> list[tuple[dict, int]]:
+def run(busy=lambda course_id: False, dry_run: bool = False, days: int | None = None) -> list[tuple[dict, int]]:
     """One pass over the stale courses, without the server's per-course locks: for the command line, with the server stopped."""
     done = []
-    for course in stale():
+    for course in stale(days):
         size = clean(course, busy, dry_run)
         if size:
             done.append((course, size))
@@ -111,7 +115,10 @@ async def sweep(busy) -> None:
 
 
 async def forever(busy) -> None:
-    """Runs at startup and then every EVERY seconds, in the server's own loop."""
+    """Runs at startup and then every EVERY seconds, in the server's own loop; only when the owner set a limit."""
+    if KEEP_DAYS is None:
+        log.info("cleanup is off: set WISE_SCHOLAR_KEEP_DAYS to clean up the files of untouched courses")
+        return
     while True:
         try:
             await sweep(busy)
@@ -121,10 +128,13 @@ async def forever(busy) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="clean up the files of courses untouched for WISE_SCHOLAR_KEEP_DAYS days; prints what would go unless --delete is given. Run it with the server stopped.")
+    parser = argparse.ArgumentParser(description="clean up the files of courses untouched for a number of days; prints what would go unless --delete is given. Run it with the server stopped.")
+    parser.add_argument("--days", type=int, default=KEEP_DAYS, help="courses untouched for this many days (default: WISE_SCHOLAR_KEEP_DAYS)")
     parser.add_argument("--delete", action="store_true", help="remove the files instead of only listing them")
     args = parser.parse_args()
-    for course, size in run(dry_run=not args.delete):
+    if args.days is None:
+        parser.error("give --days or set WISE_SCHOLAR_KEEP_DAYS")
+    for course, size in run(dry_run=not args.delete, days=args.days):
         print(f"{'cleaned' if args.delete else 'would clean'}: {course['topic']} ({size / (1024 * 1024):.1f} MB)")
 
 

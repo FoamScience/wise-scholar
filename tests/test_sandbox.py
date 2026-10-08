@@ -576,6 +576,8 @@ def test_cleanup_removes_an_old_courses_folders_and_keeps_its_record(place, monk
     db.conn.execute("UPDATE blocks SET created = '2020-01-01 00:00:00' WHERE lesson_id = ?", (lessons[fresh],))
     db.add_message(lessons[fresh], "learner", "still here")
 
+    assert cleanup.stale() == [] and asyncio.run(cleanup.forever(lambda course_id: False)) is None  # off until the owner sets a limit
+    monkeypatch.setattr(cleanup, "KEEP_DAYS", 90)
     assert [c["id"] for c in cleanup.stale()] == [old]
     assert cleanup.run(dry_run=True)[0][1] >= 10_000 and db.workspace(db.course(old)["slug"]).exists()
     assert cleanup.run(busy=lambda course_id: course_id == old) == []
