@@ -298,7 +298,7 @@ function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files
         <h2 dir="auto">{lessonTitle(lesson, t)}</h2>
       </header>
       {lesson.phase === 'interview' && <ScopeCard course={course} />}
-      {timeline(lesson).map((item) =>
+      {timeline(lesson, course.mode === 'teacher').map((item) =>
         'block' in item ? (
           <BookBlock key={`b${item.block.id}`} block={item.block} files={props.files} />
         ) : (

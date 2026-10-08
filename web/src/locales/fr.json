@@ -454,6 +454,21 @@
       "student": "Version élèves",
       "markdown": "Markdown",
       "back": "Retour au plan"
+    },
+    "edit": {
+      "edit": "Modifier",
+      "up": "Monter",
+      "down": "Descendre",
+      "remove": "Supprimer",
+      "removeConfirm": "Supprimer cette carte",
+      "text": "Texte",
+      "hints": "Indices, un par ligne",
+      "solution": "Solution",
+      "run": "Commande d'exécution",
+      "options": "Options, une par ligne",
+      "key": "Clé",
+      "explanation": "Explication",
+      "save": "Enregistrer"
     }
   },
   "server": {
@@ -498,6 +513,9 @@
     "a prepared course has no placement check": "un cours préparé n'a pas de test de niveau",
     "a prepared course's cards take no answers": "les cartes d'un cours préparé ne prennent pas de réponses",
     "hand-outs come from a unit of a prepared course": "les documents viennent d'une unité d'un cours préparé",
-    "only a prepared course can be duplicated": "seul un cours préparé peut être dupliqué"
+    "only a prepared course can be duplicated": "seul un cours préparé peut être dupliqué",
+    "only the cards of a prepared course can be edited": "seules les cartes d'un cours préparé peuvent être modifiées",
+    "a choice quiz needs 2 to 5 options, one of them exactly the key": "une question à choix a besoin de 2 à 5 options, dont une exactement égale à la clé",
+    "the designer is still answering in this course": "le concepteur répond encore dans ce cours"
   }
 }

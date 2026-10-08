@@ -4,7 +4,7 @@ import type { TFunction } from 'i18next'
 import { parts, timeline } from '../src/chapters.ts'
 import type { Block, CourseDetail, Lesson, Message } from '../src/course.ts'
 
-const block = (id: number, created: string): Block => ({ id, lesson_id: 1, kind: 'prose', markdown: '', data: null, created })
+const block = (id: number, created: string): Block => ({ id, lesson_id: 1, kind: 'prose', markdown: '', data: null, created, position: id })
 const message = (id: number, role: Message['role'], created: string): Message => ({ id, lesson_id: 1, role, text: '', created })
 const lesson = (id: number, phase: string, concept_id: number | null): Lesson => ({
   id,

@@ -195,6 +195,9 @@ class Vault:
 
     def _timeline(self, lesson: dict) -> list[dict]:
         """Blocks and chat in the order they happened; within one second the learner speaks, then cards, then the tutor."""
+        if self.course["mode"] == "teacher":
+            # A plan is read in the order the teacher set; the revision chat follows it.
+            return [*lesson["blocks"], *lesson["messages"]]
         rank = lambda item: 1 if "kind" in item else (0 if item["role"] == "learner" else 2)  # noqa: E731
         items = [*lesson["blocks"], *lesson["messages"]]
         return sorted(items, key=lambda i: (i["created"], rank(i), i["id"]))

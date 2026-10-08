@@ -35,6 +35,8 @@ type TutorEvent =
   | { type: 'chat.delta'; lesson_id: number; text: string }
   | { type: 'activity'; lesson_id: number; tool: string }
   | { type: 'block.added' | 'block.updated'; lesson_id: number; block: Block }
+  | { type: 'block.removed'; lesson_id: number; id: number }
+  | { type: 'lesson.ordered'; lesson_id: number; blocks: Block[] }
   | { type: 'plan.ranked'; ranking: Ranked[]; mechanism: string }
   | { type: 'plan.chosen'; mechanism: string }
   | { type: 'placement.set'; level: string; placement: string }
@@ -738,6 +740,126 @@ function squares(concept: Concept): number {
   return Math.round((concept.mastery ?? 0) * 3)
 }
 
+type Draft = { markdown: string; solution: string; hints: string; run: string; options: string; answer_key: string; explanation: string }
+
+function draftOf(block: Block): Draft {
+  const d = (block.data ?? {}) as Partial<ChallengeData & ExerciseData & QuizData>
+  return {
+    markdown: block.markdown,
+    solution: d.solution ?? '',
+    hints: (d.hints ?? []).join('\n'),
+    run: d.run ?? '',
+    options: (d.options ?? []).join('\n'),
+    answer_key: d.answer_key ?? '',
+    explanation: d.explanation ?? '',
+  }
+}
+
+/** A teacher's hand on a card of a prepared course: edit its text and answers, move it, remove it. */
+function EditBar(props: { block: Block; first: boolean; last: boolean; disabled: boolean; onError: (m: string) => void }) {
+  const { t } = useTranslation()
+  const { block } = props
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const kind = block.kind
+  const task = kind === 'challenge' || kind === 'exercise' || kind === 'speaking'
+  const quiz = kind === 'quiz'
+
+  function act(path: string, body: unknown = {}) {
+    return api(`/api/blocks/${block.id}/${path}`, body).catch((err: Error) => props.onError(err.message))
+  }
+
+  function save() {
+    if (!draft) return
+    const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean)
+    const body: Record<string, unknown> = { markdown: draft.markdown }
+    if (task) Object.assign(body, { solution: draft.solution, hints: lines(draft.hints), run: draft.run })
+    if (quiz) Object.assign(body, { options: lines(draft.options), answer_key: draft.answer_key, explanation: draft.explanation })
+    act('edit', body).then(() => setDraft(null))
+  }
+
+  const set = (key: keyof Draft) => (e: { target: { value: string } }) => setDraft((d) => d && { ...d, [key]: e.target.value })
+
+  if (draft) {
+    return (
+      <form
+        className="edit-form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save()
+        }}
+      >
+        <label className="small">{t('edit.text')}</label>
+        <textarea className="field" dir="auto" rows={4} value={draft.markdown} onChange={set('markdown')} />
+        {task && (
+          <>
+            <label className="small">{t('edit.hints')}</label>
+            <textarea className="field" dir="auto" rows={3} value={draft.hints} onChange={set('hints')} />
+            <label className="small">{t('edit.solution')}</label>
+            <textarea className="field" dir="auto" rows={4} value={draft.solution} onChange={set('solution')} />
+            {kind === 'exercise' && (
+              <>
+                <label className="small">{t('edit.run')}</label>
+                <input className="field" dir="ltr" value={draft.run} onChange={set('run')} />
+              </>
+            )}
+          </>
+        )}
+        {quiz && (
+          <>
+            {draft.options !== '' || (block.data as QuizData).kind === 'choice' ? (
+              <>
+                <label className="small">{t('edit.options')}</label>
+                <textarea className="field" dir="auto" rows={4} value={draft.options} onChange={set('options')} />
+              </>
+            ) : null}
+            <label className="small">{t('edit.key')}</label>
+            <input className="field" dir="auto" value={draft.answer_key} onChange={set('answer_key')} />
+            <label className="small">{t('edit.explanation')}</label>
+            <textarea className="field" dir="auto" rows={3} value={draft.explanation} onChange={set('explanation')} />
+          </>
+        )}
+        <div className="row">
+          <button className="btn primary" disabled={!draft.markdown.trim()}>
+            {t('edit.save')}
+          </button>
+          <button type="button" className="btn" onClick={() => setDraft(null)}>
+            {t('common.cancel')}
+          </button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <div className="edit-bar row">
+      <button type="button" className="link" disabled={props.disabled} onClick={() => setDraft(draftOf(block))}>
+        {t('edit.edit')}
+      </button>
+      <button type="button" className="link" disabled={props.disabled || props.first} onClick={() => act('move', { direction: 'up' })}>
+        {t('edit.up')}
+      </button>
+      <button type="button" className="link" disabled={props.disabled || props.last} onClick={() => act('move', { direction: 'down' })}>
+        {t('edit.down')}
+      </button>
+      {confirming ? (
+        <>
+          <button type="button" className="btn danger" disabled={props.disabled} onClick={() => act('remove')}>
+            {t('edit.removeConfirm')}
+          </button>
+          <button type="button" className="link" onClick={() => setConfirming(false)}>
+            {t('common.cancel')}
+          </button>
+        </>
+      ) : (
+        <button type="button" className="link" disabled={props.disabled} onClick={() => setConfirming(true)}>
+          {t('edit.remove')}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction, prepared = false): string {
   if (prepared) return !lesson ? t('map.notPlanned') : lesson.blocks.some((b) => b.kind === 'done') ? t('map.planned') : t('map.drafting')
   if (!lesson) return concept.known ? t('map.placedOut') : t('map.notStarted')
@@ -882,6 +1004,10 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
       } else if (ev.type === 'block.updated') {
         patchLesson(ev.lesson_id, (l) => ({ ...l, blocks: l.blocks.map((b) => (b.id === ev.block.id ? ev.block : b)) }))
         refreshTotals()
+      } else if (ev.type === 'block.removed') {
+        patchLesson(ev.lesson_id, (l) => ({ ...l, blocks: l.blocks.filter((b) => b.id !== ev.id) }))
+      } else if (ev.type === 'lesson.ordered') {
+        patchLesson(ev.lesson_id, (l) => ({ ...l, blocks: ev.blocks }))
       } else if (ev.type === 'plan.ranked') {
         setWriting(false)
         setCourse((c) => c && { ...c, ranking: ev.ranking, mechanism: ev.mechanism })
@@ -1133,8 +1259,8 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
               }
             />
           ))}
-        {lesson.blocks.map((b) =>
-          b.kind === 'question' ? (
+        {lesson.blocks.map((b, i) => {
+          const card = b.kind === 'question' ? (
             <QuestionCard
               key={b.id}
               block={b}
@@ -1231,8 +1357,21 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
               <div className="label">{lookup(`block.${b.kind}`, b.kind)}</div>
               <Markdown>{b.markdown}</Markdown>
             </section>
-          ),
-        )}
+          )
+          if (course.mode !== 'teacher' || b.kind === 'question') return card
+          return (
+            <Fragment key={b.id}>
+              {card}
+              <EditBar
+                block={b}
+                first={i === 0}
+                last={i === lesson.blocks.length - 1}
+                disabled={lesson.running}
+                onError={setError}
+              />
+            </Fragment>
+          )
+        })}
         {showPlan && (
           <Plan
             ranking={course.ranking}

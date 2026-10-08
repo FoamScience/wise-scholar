@@ -5,7 +5,9 @@ export type Item = { block: Block } | { message: Message }
 export type Part = { title: string | null; lessons: Lesson[] }
 
 /** A lesson's blocks and chat in the order they happened: within one second, the learner's message, then cards, then the tutor's reply. */
-export function timeline(lesson: Lesson): Item[] {
+export function timeline(lesson: Lesson, prepared = false): Item[] {
+  // A prepared course's plan reads in the order the teacher set; its revision chat follows.
+  if (prepared) return [...lesson.blocks.map((block) => ({ block })), ...lesson.messages.map((message) => ({ message }))]
   const rank = (i: Item) => ('block' in i ? 1 : i.message.role === 'learner' ? 0 : 2)
   const stamp = (i: Item) => ('block' in i ? i.block.created : i.message.created)
   const id = (i: Item) => ('block' in i ? i.block.id : i.message.id)
