@@ -248,7 +248,10 @@
       "switch": "Switch",
       "add": "Add a profile",
       "addButton": "Add",
-      "noPassword": "No password. Anyone using this browser can switch profiles."
+      "noPassword": "No password. Anyone using this browser can switch profiles.",
+      "commandsHeading": "Commands run for you",
+      "commandsScope": "Every command the tutor ran, every Run you pressed, and every command you allowed or refused internet for, across your courses.",
+      "commands": "Command log"
     },
     "quiz": {
       "howSure": "How sure are you?",
@@ -400,6 +403,20 @@
       "refused": "Refused",
       "exit": "exit code {{code}}",
       "stopped": "stopped at the time limit"
+    },
+    "commands": {
+      "heading": "Command log",
+      "intro": "Newest first. The tutor's own checks, your Run on exercises, and commands with internet after you decided.",
+      "empty": "No command yet.",
+      "tutor": "tutor",
+      "learner": "you · Run",
+      "network": "internet",
+      "allowed": "allowed",
+      "refused": "refused",
+      "stopped": "stopped at the time limit",
+      "exit": "exit code {{code}}",
+      "seconds": "{{n}} s",
+      "output": "Output"
     }
   },
   "server": {}

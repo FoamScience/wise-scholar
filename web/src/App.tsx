@@ -11,6 +11,7 @@ import type { QuizData } from './Quiz'
 import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
+import { CommandsPage } from './Commands'
 import { challengeLabel, lessonTitle } from './course'
 import { HintList, Ladder } from './Ladder'
 import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
@@ -1405,6 +1406,7 @@ export default function App() {
     if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={pdf} />
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
     if (hash === '#/errors') return <ErrorsPage profile={current.id} />
+    if (hash === '#/commands') return <CommandsPage profile={current.id} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} locale={locale} onSelect={select} onChanged={reload} />
     return <Home key={current.id} profile={current.id} />

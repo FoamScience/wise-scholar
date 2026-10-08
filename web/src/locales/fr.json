@@ -254,7 +254,10 @@
       "switch": "Choisir",
       "add": "Ajouter un profil",
       "addButton": "Ajouter",
-      "noPassword": "Pas de mot de passe. Toute personne utilisant ce navigateur peut changer de profil."
+      "noPassword": "Pas de mot de passe. Toute personne utilisant ce navigateur peut changer de profil.",
+      "commandsHeading": "Commandes exécutées pour vous",
+      "commandsScope": "Chaque commande lancée par le tuteur, chaque Exécuter que vous avez pressé, et chaque commande pour laquelle vous avez accordé ou refusé internet, dans tous vos cours.",
+      "commands": "Journal des commandes"
     },
     "quiz": {
       "howSure": "Quel est votre degré de certitude ?",
@@ -408,6 +411,20 @@
       "refused": "Refusé",
       "exit": "code de retour {{code}}",
       "stopped": "arrêté à la limite de temps"
+    },
+    "commands": {
+      "heading": "Journal des commandes",
+      "intro": "Les plus récentes d'abord. Les vérifications du tuteur, vos exécutions d'exercices, et les commandes avec internet après votre décision.",
+      "empty": "Aucune commande pour l'instant.",
+      "tutor": "tuteur",
+      "learner": "vous · Exécuter",
+      "network": "internet",
+      "allowed": "accordé",
+      "refused": "refusé",
+      "stopped": "arrêtée à la limite de temps",
+      "exit": "code de sortie {{code}}",
+      "seconds": "{{n}} s",
+      "output": "Sortie"
     }
   },
   "server": {

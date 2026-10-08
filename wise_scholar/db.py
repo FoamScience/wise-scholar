@@ -5,6 +5,7 @@ import shutil
 import sqlite3
 import threading
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -216,6 +217,22 @@ MIGRATIONS = [
     ALTER TABLE concepts ADD COLUMN position INTEGER;
     UPDATE concepts SET position = id;
     """,
+    """
+    CREATE TABLE commands (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id),
+        profile_id INTEGER NOT NULL REFERENCES profiles(id),
+        lesson_id INTEGER NOT NULL REFERENCES lessons(id),
+        origin TEXT NOT NULL CHECK (origin IN ('tutor', 'learner', 'network')),
+        command TEXT NOT NULL,
+        consent TEXT NOT NULL CHECK (consent IN ('none', 'allowed', 'refused') AND (origin = 'network') = (consent != 'none')),
+        exit_code INTEGER,
+        output TEXT NOT NULL DEFAULT '',
+        started TEXT NOT NULL,
+        seconds REAL
+    );
+    CREATE INDEX commands_profile ON commands(profile_id, id);
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -292,12 +309,44 @@ def create_course(topic: str, profile_id: int) -> dict:
     return course(course_id)
 
 
+# What the log keeps of a command's output: the tail the tutor is shown.
+COMMAND_OUTPUT = 4000
+
+
+def log_command(lesson: dict, origin: str, command: str, consent: str = "none") -> int:
+    """A command is logged before it runs, whoever asked for it, so a stopped one leaves a row too;
+    finish_command adds its result. A refused request is logged and never finished."""
+    return conn.execute(
+        "INSERT INTO commands (course_id, profile_id, lesson_id, origin, command, consent, started) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (lesson["course_id"], lesson["profile_id"], lesson["id"], origin, command, consent, datetime.now(timezone.utc).isoformat()),
+    ).lastrowid
+
+
+def finish_command(command_id: int, result: dict | None, seconds: float) -> None:
+    """result None: the command was stopped or could not be run."""
+    output = result["output"] if result else "stopped before it ended"
+    conn.execute(
+        "UPDATE commands SET exit_code = ?, output = ?, seconds = ? WHERE id = ?",
+        (result["exit_code"] if result else None, output[-COMMAND_OUTPUT:], seconds, command_id),
+    )
+
+
+def commands(profile_id: int) -> list[dict]:
+    """Every command run for the profile's courses, newest first, with the course and lesson it ran for."""
+    return rows(
+        "SELECT c.*, k.topic, l.title AS lesson FROM commands c JOIN courses k ON k.id = c.course_id "
+        "JOIN lessons l ON l.id = c.lesson_id WHERE c.profile_id = ? ORDER BY c.id DESC",
+        profile_id,
+    )
+
+
 def delete_course(course_id: int) -> None:
     """Remove a course and everything stored under it, all or nothing."""
     lessons = "SELECT id FROM lessons WHERE course_id = ?"
     conn.execute("BEGIN")
     try:
         for sql in (
+            "DELETE FROM commands WHERE course_id = ?",
             "DELETE FROM answers WHERE card_id IN (SELECT id FROM cards WHERE course_id = ?)",
             "DELETE FROM cards WHERE course_id = ?",
             f"DELETE FROM blocks WHERE lesson_id IN ({lessons})",
