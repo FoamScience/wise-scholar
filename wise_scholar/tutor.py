@@ -57,6 +57,8 @@ CAST_WORDS = (750, 1250)
 LINE_CHARS = 300
 # The placement card adds "I don't know" as one more option.
 PLACEMENT_OPTIONS = 4
+# A pretest is one short question; past this length it has become a lecture with questions attached.
+PRETEST_CHARS = 700
 _renders: set[asyncio.Task] = set()
 
 
@@ -113,6 +115,15 @@ async def add_block(lesson_id: int, kind: Literal["prose", "example"], markdown:
         return f"refused: {problem}"
     _show(lesson, db.add_block(lesson_id, kind, markdown))
     return "shown"
+
+
+def _pretest_length_error(text: str) -> str | None:
+    if len(text) <= PRETEST_CHARS:
+        return None
+    return (
+        f"error: not shown. A pretest is one question with one prediction, at most {PRETEST_CHARS} characters; "
+        f"this one has {len(text)}. Pose again with one question, without code or names the learner has not met"
+    )
 
 
 def pretest_blocker(lesson: dict) -> str | None:
@@ -402,6 +413,8 @@ async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, m
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
+    if pretest and (problem := _pretest_length_error(markdown)):
+        return problem
     data = {**challenge.new(), "pretest": pretest, "milestone": milestone, "transfer": transfer}
     if transfer:
         data["max_hints"] = 0
@@ -981,6 +994,8 @@ async def pose_quiz(
         return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
     if lemma and not lesson["lang"]:
         return "error: lemma needs a language course; pose_vocab_check or add_reading sets the language"
+    if pretest and (problem := _pretest_length_error("\n".join([question, *options]))):
+        return problem
     options = _shuffled(options) if kind == "choice" else []
     card_id = db.add_card(
         lesson["course_id"], None if pretest else lesson["concept_id"], question, kind, options, answer_key, explanation,

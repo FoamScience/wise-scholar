@@ -472,3 +472,22 @@ def test_finish_lesson_closes_a_unit_once_its_quick_checks_are_answered():
     done = db.blocks(lesson)[-1]
     assert done["kind"] == "done" and done["markdown"] == "You can now count bonds."
     assert history._line(done) == "finished: You can now count bonds."
+
+
+def test_a_long_pretest_is_refused_and_a_short_one_shown():
+    import asyncio
+
+    from wise_scholar import tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Brief')").lastrowid
+    course = db.create_course("CAD", who)["id"]
+    db.set_concepts(course, [{"title": "Shapes", "concepts": ["Topology"], "known": []}])
+    lesson = db.create_lesson(course, "Topology", "lesson", db.concepts(course)[0]["id"])
+    lecture = "Predict before anything runs. " * 40
+    assert asyncio.run(tutor.pose_challenge(lesson, lecture, pretest=True)).startswith("error: not shown. A pretest is one question")
+    assert asyncio.run(tutor.pose_quiz(lesson, lecture, "open", [], "x", "", pretest=True)).startswith("error: not shown")
+    assert asyncio.run(tutor.pose_quiz(lesson, "x" * 600, "choice", ["a" * 100, "b"], "b", "", pretest=True)).startswith("error: not shown")
+    assert db.blocks(lesson) == [] and db.row("SELECT COUNT(*) AS n FROM cards WHERE course_id = ?", course)["n"] == 0
+    assert asyncio.run(tutor.pose_challenge(lesson, lecture, milestone=True)).startswith("shown")
+    assert asyncio.run(tutor.pose_challenge(lesson, "x" * tutor.PRETEST_CHARS, pretest=True)).startswith("shown")
+    assert asyncio.run(tutor.pose_challenge(lesson, "x" * (tutor.PRETEST_CHARS + 1), pretest=True)).startswith("error: not shown")
