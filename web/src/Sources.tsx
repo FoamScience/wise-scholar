@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { api, failure } from './api'
 import { fileSize } from './i18n'
 
+export const SOURCE_TYPES =
+  '.pdf,.epub,.html,.htm,.md,.markdown,.txt,.rst,.py,.rs,.js,.ts,.tsx,.c,.cpp,.h,.hs,.go,.java,.kt,.rb,.sh,.toml,.yaml,.yml,.json,.csv,.tex'
+
 export type Source = { id: number; name: string; size: number; status: 'processing' | 'ready' | 'failed'; error: string | null; sections: number }
 
 /** The learner's own files for a course; processed in the background, the tutor reads them a section at a time. */
@@ -53,7 +56,7 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
       <input
         ref={input}
         type="file"
-        accept=".pdf,.epub,.html,.htm,.md,.markdown,.txt,.rst,.py,.rs,.js,.ts,.tsx,.c,.cpp,.h,.hs,.go,.java,.kt,.rb,.sh,.toml,.yaml,.yml,.json,.csv,.tex"
+        accept={SOURCE_TYPES}
         hidden
         onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
       />

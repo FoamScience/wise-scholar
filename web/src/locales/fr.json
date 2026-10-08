@@ -106,7 +106,12 @@
       "deleteCourse": "Supprimer le cours",
       "archive": "Archiver",
       "unarchive": "Désarchiver",
-      "delete": "Supprimer…"
+      "delete": "Supprimer…",
+      "materials": "Supports pour ce cours (facultatif)",
+      "materialsHelp": "Un livre, une documentation ou des notes sur lesquels le cours doit s'appuyer : des fichiers, ou l'adresse d'un PDF, d'un EPUB ou d'une page web.",
+      "urlPlaceholder": "https://…/livre.pdf",
+      "adding": "Ajout de {{name}}…",
+      "starting": "Démarrage…"
     },
     "question": {
       "own": "Ou dites-le avec vos propres mots",
@@ -460,6 +465,14 @@
     "already decided": "déjà décidé",
     "this server cannot give commands the internet": "ce serveur ne peut pas donner Internet aux commandes",
     "\"I don't know\" is an answer only to a choice question of the placement check": "« Je ne sais pas » ne répond qu'à une question à choix du test de niveau",
-    "this course's files were cleaned up; ask the tutor to pose the exercise again": "les fichiers de ce cours ont été nettoyés ; demandez au tuteur de reposer l'exercice"
+    "this course's files were cleaned up; ask the tutor to pose the exercise again": "les fichiers de ce cours ont été nettoyés ; demandez au tuteur de reposer l'exercice",
+    "the address must start with http:// or https://": "l'adresse doit commencer par http:// ou https://",
+    "that address does not resolve": "cette adresse n'existe pas",
+    "only public web addresses can be fetched": "seules les adresses web publiques peuvent être récupérées",
+    "the address did not answer with a document": "l'adresse n'a pas répondu par un document",
+    "the address redirects too many times": "l'adresse redirige trop de fois",
+    "that address is not a PDF, EPUB, HTML, Markdown or text document": "cette adresse n'est pas un document PDF, EPUB, HTML, Markdown ou texte",
+    "the address could not be fetched": "l'adresse n'a pas pu être récupérée",
+    "the address took too long to answer": "l'adresse a mis trop de temps à répondre"
   }
 }

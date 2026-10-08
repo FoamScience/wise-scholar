@@ -668,3 +668,68 @@ def test_two_courses_with_one_title_get_two_vault_folders():
     first = db.create_course("Chemistry: bonds & shells", who)["id"]
     second = db.create_course("chemistry bonds & shells", who)["id"]
     assert obsidian.Vault(first).root != obsidian.Vault(second).root and obsidian.Vault(second).root.endswith(f"({second})")
+
+
+def test_a_material_url_is_fetched_through_checked_hops_and_private_addresses_are_refused(monkeypatch):
+    import asyncio
+    import functools
+
+    import httpx
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Reader')").lastrowid
+    course = db.create_course("Git internals", who)["id"]
+    hops = []
+
+    def serve(request: httpx.Request) -> httpx.Response:
+        hops.append(str(request.url))
+        if request.url.path == "/raw/peepcode-git":
+            assert request.headers["host"] == "github.example.org"
+            return httpx.Response(302, headers={"location": "https://cdn.example.org/peepcode"})
+        if request.url.path == "/peepcode":
+            assert request.headers["host"] == "cdn.example.org"
+            return httpx.Response(200, headers={"content-type": "application/pdf"}, content=b"%PDF-1.4 fake")
+        if request.url.path == "/page.cgi":
+            return httpx.Response(200, headers={"content-type": "text/html; charset=utf-8"}, content=b"<p>hi</p>")
+        if request.url.path == "/big.pdf":
+            return httpx.Response(200, headers={"content-type": "application/pdf"}, content=b"x" * (app.SOURCE_LIMIT + 1))
+        if request.url.path == "/loop":
+            return httpx.Response(302, headers={"location": "https://example.org/loop"})
+        return httpx.Response(404)
+
+    # The real check, on addresses that need no DNS: this machine and a private range are refused, a public one passes.
+    for private in ("127.0.0.1", "localhost", "10.0.0.1", "169.254.169.254"):
+        with pytest.raises(HTTPException) as refused:
+            asyncio.run(app._public_address(private, []))
+        assert refused.value.status_code == 422, private
+    assert asyncio.run(app._public_address("93.184.216.34", [])) == "93.184.216.34"
+    with pytest.raises(HTTPException):
+        asyncio.run(app._public_address("::1", []))
+
+    async def public(host, networks):
+        return "203.0.113.9"
+
+    monkeypatch.setattr(app, "_public_address", public)
+    monkeypatch.setattr(app.httpx, "AsyncClient", functools.partial(httpx.AsyncClient, transport=httpx.MockTransport(serve)))
+
+    source = asyncio.run(app.fetch_source(course, app.SourceUrl(url="https://github.example.org/raw/peepcode-git")))
+    assert source["name"] == "peepcode.pdf" and source["size"] == 13
+    # Each hop is sent to the checked address, with the name kept for the Host header and the certificate.
+    assert hops == ["https://203.0.113.9/raw/peepcode-git", "https://203.0.113.9/peepcode"]
+    assert any(p.name == f"{source['id']}-peepcode.pdf" for p in (app.SOURCES / str(course)).iterdir())
+    page = asyncio.run(app.fetch_source(course, app.SourceUrl(url="https://example.org/page.cgi")))
+    assert page["name"] == "page.html"
+    for bad, status, detail in (("http://example.org:8321/api/profiles", 422, "only public"), ("ftp://example.org/x.pdf", 422, "http://"),
+                                ("https://example.org/loop", 422, "too many"), ("https://example.org/missing", 422, "did not answer"),
+                                ("https://example.org/big.pdf", 413, "50 MB"), ("not a url", 422, "http://")):
+        with pytest.raises(HTTPException) as refused:
+            asyncio.run(app.fetch_source(course, app.SourceUrl(url=bad)))
+        assert refused.value.status_code == status and detail in refused.value.detail, bad
+    prompt = app._turn_prompt(db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]), "[event] x")
+    assert "peepcode.pdf (still being read)" in prompt
+    db.finish_source(source["id"], [("page 1", "Git stores snapshots.")])
+    prompt = app._turn_prompt(db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]), "[event] x")
+    assert "Materials the learner gave for this course, to plan and teach from: peepcode.pdf (1 sections)" in prompt

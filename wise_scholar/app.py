@@ -1,11 +1,14 @@
 import asyncio
 import logging
+import re
+import socket
 import shutil
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -14,9 +17,10 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import httpx
 import simplemma
 
-from . import book, challenge, cleanup, course_files, db, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
+from . import book, challenge, cleanup, course_files, db, egress, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -74,6 +78,21 @@ app.router.routes.extend(mcp_app.routes)
 class NewCourse(BaseModel):
     topic: str
     profile_id: int
+
+
+class SourceUrl(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+
+
+# A fetched material: hops followed by hand so each one is checked, time per hop, and the file types accepted.
+FETCH_HOPS = 5
+FETCH_TIMEOUT = 30
+# Whole download, all hops included.
+FETCH_DEADLINE = 300
+FETCH_TYPES = {
+    "application/pdf": ".pdf", "application/epub+zip": ".epub", "text/html": ".html", "text/markdown": ".md",
+    "text/plain": ".txt", "application/xhtml+xml": ".html",
+}
 
 
 class Scope(BaseModel):
@@ -239,6 +258,11 @@ def _turn_prompt(lesson: dict, line: str) -> str:
     known = [
         f"[known] ({'this course' if f['course_id'] else 'learner'}) {f['text']}" for f in db.facts(lesson["course_id"])
     ]
+    if given := [f for f in db.sources(lesson["course_id"]) if f["status"] != "failed"][:SOURCES_PER_COURSE]:
+        known.append(
+            "[known] (this course) Materials the learner gave for this course, to plan and teach from: "
+            + ", ".join(f"{f['name']} ({f['sections']} sections)" if f["status"] == "ready" else f"{f['name']} (still being read)" for f in given)
+        )
     if lesson["details"]:
         known.append(f"[known] (this course) Scope set by the learner, the boundary for questions, plan and course map: {lesson['details']}")
     if lesson["hours"]:
@@ -588,15 +612,11 @@ def list_sources(course_id: int) -> list[dict]:
     return db.sources(course_id)
 
 
-@app.post("/api/courses/{course_id}/sources")
-async def upload_source(course_id: int, file: UploadFile) -> dict:
-    _course(course_id)
+def _store_source(course_id: int, name: str, data: bytes) -> dict:
     if len(db.sources(course_id)) >= SOURCES_PER_COURSE:
         raise HTTPException(409, f"a course holds at most {SOURCES_PER_COURSE} files")
-    data = await file.read(SOURCE_LIMIT + 1)
     if len(data) > SOURCE_LIMIT:
         raise HTTPException(413, "files are limited to 50 MB")
-    name = Path(file.filename or "file").name
     source = db.add_source(course_id, name, len(data))
     path = SOURCES / str(course_id) / f"{source['id']}-{name}"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -605,6 +625,96 @@ async def upload_source(course_id: int, file: UploadFile) -> dict:
     _jobs.add(job)
     job.add_done_callback(_jobs.discard)
     return source
+
+
+@app.post("/api/courses/{course_id}/sources")
+async def upload_source(course_id: int, file: UploadFile) -> dict:
+    _course(course_id)
+    data = await file.read(SOURCE_LIMIT + 1)
+    return _store_source(course_id, Path(file.filename or "file").name, data)
+
+
+async def _public_address(host: str, networks: list) -> str:
+    """The address the server will connect to: resolved here, checked here, and used for the connection itself,
+    so a name cannot answer one thing to the check and another to the connect."""
+    try:
+        found = await asyncio.get_running_loop().getaddrinfo(host, None, family=socket.AF_INET, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise HTTPException(422, "that address does not resolve") from None
+    addresses = [info[4][0] for info in found]
+    if not addresses or not all(egress.allowed(address, networks) for address in addresses):
+        raise HTTPException(422, "only public web addresses can be fetched")
+    return addresses[0]
+
+
+def _material_name(url: httpx.URL, kind: str) -> str:
+    """A file name for a fetched document: from the address, else from its type; bounded and plain."""
+    name = Path(unquote(url.path)).name
+    if name in ("", ".", ".."):
+        name = url.host
+    name = re.sub(r"[\\/\n\r\t\[\]]+", " ", name).strip()[:100] or "document"
+    suffix = FETCH_TYPES.get(kind)
+    if suffix and Path(name).suffix.lower() != suffix:
+        name = Path(name).stem + suffix
+    if Path(name).suffix.lower() not in sources.HEADING_SUFFIXES | sources.TEXT_SUFFIXES:
+        raise HTTPException(422, "that address is not a PDF, EPUB, HTML, Markdown or text document")
+    return name
+
+
+async def fetch_material(url: str) -> tuple[str, bytes]:
+    """Download a document for a course on the learner's behalf: public addresses only, ports 80 and 443, every
+    redirect hop checked, the connection made to the checked address; returns (file name, bytes)."""
+    try:
+        target = httpx.URL(url)
+    except httpx.InvalidURL:
+        raise HTTPException(422, "the address must start with http:// or https://") from None
+    networks = await asyncio.to_thread(egress.local_networks)
+    async with httpx.AsyncClient(follow_redirects=False, timeout=FETCH_TIMEOUT, trust_env=False, headers={"User-Agent": "wise-scholar"}) as client:
+        for _ in range(FETCH_HOPS):
+            if target.scheme not in ("http", "https") or not target.host:
+                raise HTTPException(422, "the address must start with http:// or https://")
+            if target.port not in (None, 80, 443):
+                raise HTTPException(422, "only public web addresses can be fetched")
+            address = await _public_address(target.host, networks)
+            request = client.build_request(
+                "GET", target.copy_with(host=address), headers={"Host": target.host}, extensions={"sni_hostname": target.host}
+            )
+            res = await client.send(request, stream=True)
+            try:
+                if res.is_redirect and res.headers.get("location"):
+                    try:
+                        target = target.join(res.headers["location"])
+                    except httpx.InvalidURL:
+                        raise HTTPException(422, "the address must start with http:// or https://") from None
+                    continue
+                if res.status_code != 200:
+                    raise HTTPException(422, "the address did not answer with a document")
+                kind = (res.headers.get("content-type") or "").split(";")[0].strip().lower()
+                data = bytearray()
+                async for chunk in res.aiter_bytes():
+                    data += chunk
+                    if len(data) > SOURCE_LIMIT:
+                        raise HTTPException(413, "files are limited to 50 MB")
+                break
+            finally:
+                await res.aclose()
+        else:
+            raise HTTPException(422, "the address redirects too many times")
+    return _material_name(target, kind), bytes(data)
+
+
+@app.post("/api/courses/{course_id}/sources/url")
+async def fetch_source(course_id: int, body: SourceUrl) -> dict:
+    _course(course_id)
+    if len(db.sources(course_id)) >= SOURCES_PER_COURSE:
+        raise HTTPException(409, f"a course holds at most {SOURCES_PER_COURSE} files")
+    try:
+        name, data = await asyncio.wait_for(fetch_material(body.url.strip()), FETCH_DEADLINE)
+    except httpx.HTTPError as e:
+        raise HTTPException(422, "the address could not be fetched") from e
+    except TimeoutError:
+        raise HTTPException(422, "the address took too long to answer") from None
+    return _store_source(course_id, name, data)
 
 
 async def _process_source(source_id: int, course_id: int, path: Path) -> None:
