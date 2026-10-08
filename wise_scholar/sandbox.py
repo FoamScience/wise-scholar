@@ -35,7 +35,7 @@ def _megabytes(name: str, default: int) -> int:
 
 
 # WISE_SCHOLAR_WORKSPACE_MB: what one course may hold on disk, in its workspace and again in its command cache.
-QUOTA = _megabytes("WISE_SCHOLAR_WORKSPACE_MB", 2048) * 1024 * 1024
+QUOTA = _megabytes("WISE_SCHOLAR_WORKSPACE_MB", 4096) * 1024 * 1024
 # ponytail: the limit is watched, not enforced by the filesystem. No single file can pass it (ulimit), but a command
 # is stopped only at the first look that finds its course past the limit: a fast disk takes what is written in
 # between, a tree of millions of files is slow to look through, and a file deleted while still open is not seen
