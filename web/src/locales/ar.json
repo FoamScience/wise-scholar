@@ -172,7 +172,8 @@
       "check": "تحقّق مع المعلّم",
       "outputStopped": "المخرجات · أُوقف",
       "outputExit": "المخرجات · رمز الخروج {{code}}",
-      "noOutput": "(لا مخرجات)"
+      "noOutput": "(لا مخرجات)",
+      "cleaned": "نُظّفت ملفات الدورة؛ هذه النسخ للقراءة فقط. اطلب من المعلّم طرح التمرين من جديد للعمل عليه."
     },
     "card": {
       "question": "سؤال",
@@ -210,7 +211,8 @@
       "hints_many": "{{count}} تلميحًا",
       "hints_other": "{{count}} تلميح",
       "gaveUp": "استسلام {{n}}×",
-      "change": "عدّل الدورة"
+      "change": "عدّل الدورة",
+      "cleaned": "نُظّفت الملفات في {{date}}: ذهبت ملفات التمارين والذاكرة المؤقتة والجلسات؛ السجل باقٍ."
     },
     "plan": {
       "heading": "كيف أنوي تدريس هذا الموضوع · مرتّبة لك",
@@ -481,6 +483,7 @@
     "running code is turned off on this server": "تشغيل الشيفرة معطَّل على هذا الخادم",
     "already decided": "تم البتّ فيه من قبل",
     "this server cannot give commands the internet": "هذا الخادم لا يستطيع منح الأوامر اتصالًا بالإنترنت",
-    "\"I don't know\" is an answer only to a choice question of the placement check": "«لا أعرف» جواب لأسئلة الاختيار في اختبار تحديد المستوى فقط"
+    "\"I don't know\" is an answer only to a choice question of the placement check": "«لا أعرف» جواب لأسئلة الاختيار في اختبار تحديد المستوى فقط",
+    "this course's files were cleaned up; ask the tutor to pose the exercise again": "نُظّفت ملفات هذه الدورة؛ اطلب من المعلّم طرح التمرين من جديد"
   }
 }

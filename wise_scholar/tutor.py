@@ -96,6 +96,11 @@ async def _logged(lesson: dict, origin: str, command: str, run, consent: str = "
         db.finish_command(row, result, round(time.monotonic() - clock, 3))
 
 
+def _files_back(lesson: dict) -> None:
+    """A course whose files were cleaned up has files again: it leaves the cleaned state."""
+    db.conn.execute("UPDATE courses SET cleaned = NULL WHERE id = ? AND cleaned IS NOT NULL", (lesson["course_id"],))
+
+
 def _show(lesson: dict, block: dict, event: str = "block.added") -> None:
     hub.publish(lesson["course_id"], {"type": event, "lesson_id": lesson["id"], "block": block})
 
@@ -491,6 +496,7 @@ async def write_file(lesson_id: int, path: str, content: str) -> str:
         return ONLINE_BUSY
     if not course_files.write_text(workspace, path, content):
         return f"error: {path!r} is not a file path inside the course workspace"
+    _files_back(lesson)
     return "written"
 
 
@@ -529,6 +535,7 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
         return ONLINE_BUSY
     if outside := [f.path for f in files if not course_files.write_text(workspace, f.path, f.content)]:
         return f"error: paths {outside} are not file paths inside the course workspace"
+    _files_back(lesson)
     data = {**challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone, "form": form.strip()}
     block = db.add_block(lesson_id, "exercise", markdown, data)
     _show(lesson, block)

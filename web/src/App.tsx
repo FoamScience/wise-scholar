@@ -4,7 +4,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
 import { api, failure } from './api'
-import i18n, { lookup, percent } from './i18n'
+import i18n, { day, lookup, percent } from './i18n'
 import Logo from './Logo'
 import { QuizCard, Review, ReviewPanels } from './Quiz'
 import type { QuizData } from './Quiz'
@@ -530,6 +530,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
   const [error, setError] = useState('')
   const open = !d.solved && d.solution === null
   const blockId = props.block.id
+  const kept = files.length > 0 && files.every((f) => f.kept)
 
   useEffect(() => {
     const load = () => api<ExerciseFile[]>(`/api/blocks/${blockId}/files`).then(setFiles, () => {})
@@ -573,12 +574,12 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
           )}
         </div>
       ))}
-      <div className="small">{t('exercise.follows')}</div>
+      <div className="small">{kept ? t('exercise.cleaned') : t('exercise.follows')}</div>
 
       <div className="row">
         <code className="grow">$ {d.run}</code>
         {open && <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />}
-        {props.commands && (
+        {props.commands && !kept && (
           <button type="button" className="btn" disabled={running} onClick={run}>
             {running ? t('exercise.running') : t('exercise.run')}
           </button>
@@ -919,6 +920,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
         <a className="small" href={`/api/courses/${course.id}/obsidian.zip`} download>
           {t('book.obsidian')}
         </a>
+        {course.cleaned && <div className="small muted">{t('map.cleaned', { date: day(course.cleaned) })}</div>}
         {(course.level || course.concepts.length > 0) && (
           <div className="level-row">
             {course.level && (

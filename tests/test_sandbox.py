@@ -556,3 +556,45 @@ def test_every_command_is_logged_with_its_origin_and_consent(place, monkeypatch)
     assert app.list_commands(who) == logged and db.commands(other) == []
     db.delete_course(course)
     assert db.commands(who) == []
+
+
+def test_cleanup_removes_an_old_courses_folders_and_keeps_its_record(place, monkeypatch):
+    from fastapi import HTTPException
+
+    from wise_scholar import app, cleanup
+
+    monkeypatch.setattr(sandbox, "SANDBOX", False)
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Dusty')").lastrowid
+    old = db.create_course("Old shell", who)["id"]
+    fresh = db.create_course("Fresh shell", who)["id"]
+    lessons = {c: db.create_lesson(c, "Echo", "lesson") for c in (old, fresh)}
+    for c in (old, fresh):
+        asyncio.run(tutor.pose_exercise(lessons[c], "Run it", [tutor.ExerciseFile(path="e/x.sh", content="echo kept")], "sh e/x.sh"))
+        (db.workspace(db.course(c)["slug"]) / "big.bin").write_bytes(b"\0" * 10_000)
+        (db.DB_PATH.parent / "sandbox-cache" / db.course(c)["slug"]).mkdir(parents=True)
+    db.conn.execute("UPDATE blocks SET created = '2020-01-01 00:00:00' WHERE lesson_id = ?", (lessons[old],))
+    db.conn.execute("UPDATE blocks SET created = '2020-01-01 00:00:00' WHERE lesson_id = ?", (lessons[fresh],))
+    db.add_message(lessons[fresh], "learner", "still here")
+
+    assert [c["id"] for c in cleanup.stale()] == [old]
+    assert cleanup.run(dry_run=True)[0][1] >= 10_000 and db.workspace(db.course(old)["slug"]).exists()
+    assert cleanup.run(busy=lambda course_id: course_id == old) == []
+    done = cleanup.run()
+    assert [c["id"] for c, _ in done] == [old] and done[0][1] >= 10_000
+    course = db.course(old)
+    assert course["cleaned"] and not any(f.exists() for f in cleanup.folders(course))
+    assert db.workspace(db.course(fresh)["slug"]).exists() and db.course(fresh)["cleaned"] is None
+    block = db.blocks(lessons[old])[-1]
+    assert block["data"]["files_kept"] == {"e/x.sh": "echo kept"}
+    shown = app._read_files(block, db.WORKSPACE / course["slug"])
+    assert shown == [{"path": "e/x.sh", "location": sandbox.location(db.WORKSPACE / course["slug"], "e/x.sh"), "content": "echo kept", "kept": True}]
+    assert cleanup.stale() == []
+    monkeypatch.setattr(sandbox, "commands", lambda: True)
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(app.run_exercise(block["id"]))
+    assert refused.value.status_code == 409 and "cleaned up" in refused.value.detail
+    # The tutor poses a new exercise: files are back, the course is live again and the new card runs.
+    asyncio.run(tutor.pose_exercise(lessons[old], "Again", [tutor.ExerciseFile(path="e/y.sh", content="echo back")], "sh e/y.sh"))
+    assert db.course(old)["cleaned"] is None
+    assert asyncio.run(app.run_exercise(db.blocks(lessons[old])[-1]["id"]))["output"].strip() == "back"
+    assert cleanup.stale() == []

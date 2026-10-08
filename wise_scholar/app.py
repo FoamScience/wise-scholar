@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 import simplemma
 
-from . import book, challenge, course_files, db, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vocab
+from . import book, challenge, cleanup, course_files, db, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -56,9 +56,11 @@ async def lifespan(app: FastAPI):
         log.warning("no user systemd here: sandboxed commands run without the memory and task limits")
     async with tutor.mcp.session_manager.run():
         await backend.start()
+        sweeper = asyncio.create_task(cleanup.forever(_busy))
         try:
             yield
         finally:
+            sweeper.cancel()
             await backend.stop()
             speech.worker.stop()
 
@@ -819,10 +821,22 @@ def _exercise(block_id: int) -> tuple[dict, Path]:
     return block, db.workspace(_lesson(block["lesson_id"])["slug"])
 
 
+def _busy(course_id: int) -> bool:
+    """Whether a turn is running in any lesson of the course; read from a snapshot, as the sweeper asks from a thread."""
+    running = list(_turns)
+    return any(lesson["id"] in running for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id))
+
+
 def _read_files(block: dict, workspace: Path) -> list[dict]:
+    """The exercise's files from disk, or the copies kept when the course's files were cleaned up."""
     files = []
+    kept = block["data"].get("files_kept", {})
     for path in block["data"]["files"]:
-        files.append({"path": path, "location": sandbox.location(workspace, path), "content": course_files.read_text(workspace, path)})
+        content = course_files.read_text(workspace, path)
+        if content is None and path in kept:
+            files.append({"path": path, "location": sandbox.location(workspace, path), "content": kept[path], "kept": True})
+        else:
+            files.append({"path": path, "location": sandbox.location(workspace, path), "content": content, "kept": False})
     return files
 
 
@@ -836,6 +850,8 @@ async def run_exercise(block_id: int) -> dict:
     block, workspace = _exercise(block_id)
     if not sandbox.commands():
         raise HTTPException(409, "running code is turned off on this server")
+    if block["data"].get("files_kept") and all(f["kept"] for f in _read_files(block, workspace)):
+        raise HTTPException(409, "this course's files were cleaned up; ask the tutor to pose the exercise again")
     run = block["data"]["run"]
     last_run = await tutor._logged(_lesson(block["lesson_id"]), "learner", run, sandbox.run(run, workspace))
     _update_block(db.block(block_id), {"last_run": last_run})
