@@ -123,7 +123,14 @@
     },
     "question": {
       "own": "أو قلها بكلماتك",
-      "answer": "أجب"
+      "answer": "أجب",
+      "several": "اختر كل ما ينطبق.",
+      "done_zero": "تم",
+      "done_one": "تم · خيار واحد",
+      "done_two": "تم · خياران",
+      "done_few": "تم · {{count}} خيارات",
+      "done_many": "تم · {{count}} خيارًا",
+      "done_other": "تم · {{count}} خيار"
     },
     "challenge": {
       "transfer": "نقل: الفكرة نفسها في سياق جديد، بلا تلميحات",

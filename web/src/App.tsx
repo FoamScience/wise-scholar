@@ -387,7 +387,8 @@ function Skeleton() {
 function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answer: string) => void }) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
-  const { options, answer } = props.block.data as QuestionData
+  const [picked, setPicked] = useState<string[]>([])
+  const { options, answer, multiple } = props.block.data as QuestionData
 
   if (answer !== null)
     return (
@@ -405,12 +406,32 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   return (
     <section id={`block-${props.block.id}`} className="block question">
       <h2 dir="auto">{props.block.markdown}</h2>
+      {multiple && <div className="small">{t('question.several')}</div>}
       <div className="options">
-        {options.map((o) => (
-          <button key={o} className="btn option" dir="auto" disabled={props.disabled} onClick={() => props.onAnswer(o)}>
-            {o}
+        {options.map((o) =>
+          multiple ? (
+            <button
+              key={o}
+              type="button"
+              className={picked.includes(o) ? 'btn option on' : 'btn option'}
+              aria-pressed={picked.includes(o)}
+              dir="auto"
+              disabled={props.disabled}
+              onClick={() => setPicked((all) => (all.includes(o) ? all.filter((x) => x !== o) : [...all, o]))}
+            >
+              {o}
+            </button>
+          ) : (
+            <button key={o} className="btn option" dir="auto" disabled={props.disabled} onClick={() => props.onAnswer(o)}>
+              {o}
+            </button>
+          ),
+        )}
+        {multiple && (
+          <button type="button" className="btn primary" disabled={props.disabled || picked.length === 0} onClick={() => props.onAnswer(picked.join('; '))}>
+            {t('question.done', { count: picked.length })}
           </button>
-        ))}
+        )}
       </div>
       <form onSubmit={submit}>
         <label htmlFor={`own-${props.block.id}`}>{t('question.own')}</label>

@@ -4,7 +4,7 @@ Goal: learn enough about the learner to choose how to teach the topic, in at mos
 
 How:
 
-1. Ask one question per turn with `ask`, then end the turn. Offer 2 to 5 options that fit this topic. Put a one-line lead-in in the chat if it helps; the question itself lives on the card.
+1. Ask one question per turn with `ask`, then end the turn. Offer 2 to 5 options that fit this topic; set `multiple` when more than one can be true at once (what is already known, what the course should enable, what equipment there is), so nobody has to choose one truth among several. Put a one-line lead-in in the chat if it helps; the question itself lives on the card.
 2. A scope the learner set in `[known]` is a boundary: every question, the ranking and the course map stay inside it, and you do not ask what it already says. Cover, in this order, whatever the `[known]` lines do not already answer:
    - what the learner already knows that sits close to the topic, and how well
    - what they want to be able to do with it
