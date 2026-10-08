@@ -380,7 +380,8 @@
       "unanswered": "Not answered yet",
       "yourNote": "Your note",
       "download": "Download PDF",
-      "preparing": "Preparing the PDF…"
+      "preparing": "Preparing the PDF…",
+      "obsidian": "Export for Obsidian"
     },
     "scope": {
       "label": "Before the interview · optional",

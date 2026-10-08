@@ -387,7 +387,8 @@
       "unanswered": "Pas encore de réponse",
       "yourNote": "Votre note",
       "download": "Télécharger le PDF",
-      "preparing": "Préparation du PDF…"
+      "preparing": "Préparation du PDF…",
+      "obsidian": "Exporter pour Obsidian"
     },
     "scope": {
       "label": "Avant l'entretien · facultatif",

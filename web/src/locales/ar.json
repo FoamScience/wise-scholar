@@ -408,7 +408,8 @@
       "unanswered": "لم يُجب عنه بعد",
       "yourNote": "ملاحظتك",
       "download": "تنزيل PDF",
-      "preparing": "جارٍ تحضير ملف PDF…"
+      "preparing": "جارٍ تحضير ملف PDF…",
+      "obsidian": "تصدير إلى Obsidian"
     },
     "scope": {
       "label": "قبل المقابلة · اختياري",

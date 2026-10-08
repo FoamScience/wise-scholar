@@ -916,6 +916,9 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
         <a className="small" href={`#/course/${course.id}/book`}>
           {t('book.export')}
         </a>
+        <a className="small" href={`/api/courses/${course.id}/obsidian.zip`} download>
+          {t('book.obsidian')}
+        </a>
         {(course.level || course.concepts.length > 0) && (
           <div className="level-row">
             {course.level && (

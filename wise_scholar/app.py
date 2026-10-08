@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 import simplemma
 
-from . import book, challenge, course_files, db, history, hub, quiz, review, sandbox, sources, speech, tutor, vocab
+from . import book, challenge, course_files, db, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -988,6 +988,22 @@ async def course_book(course_id: int, theme: Literal["light", "dark"] = "light")
         log.warning("book export timed out: %s", e)
         raise HTTPException(504, "the book did not finish drawing") from None
     return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{course["slug"]}.pdf"'})
+
+
+@app.get("/api/courses/{course_id}/obsidian.zip")
+async def course_vault(course_id: int) -> Response:
+    """The course as a folder of linked Markdown notes for Obsidian; plots become PNGs when a browser is installed."""
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    pictures = {}
+    if book.available():
+        try:
+            pictures = await book.plots(course_id, course["profile_id"], obsidian.plot_blocks(course_id))
+        except Exception as e:  # the browser is optional here: specs stand in for pictures
+            log.warning("plots left as specs in the Obsidian export: %s", e)
+    data = await asyncio.to_thread(obsidian.export, course_id, pictures)
+    return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{course["slug"]}-obsidian.zip"'})
 
 
 @app.get("/api/courses/{course_id}/errors")
