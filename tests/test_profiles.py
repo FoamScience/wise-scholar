@@ -783,3 +783,40 @@ def test_a_teacher_profile_prepares_courses_with_the_designer_prompts_and_no_lea
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: None)
     retake = asyncio.run(app.retake_placement(plain))
     assert retake["phase"] == "placement"
+
+
+def test_handouts_give_the_teacher_the_solutions_and_the_students_the_tasks(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, handout, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name, mode) VALUES ('Handout', 'teacher')").lastrowid
+    course = db.create_course("Chemistry handouts", who)["id"]
+    db.set_concepts(course, [{"title": "Atoms", "concepts": ["Bonds"], "known": []}])
+    lesson = db.create_lesson(course, "Bonds", "lesson", db.concepts(course)[0]["id"])
+    asyncio.run(tutor.add_block(lesson, "prose", "## Objectives\n\nCount bonds."))
+    asyncio.run(tutor.pose_challenge(lesson, "How many bonds does carbon form?", pretest=True, form="prediction"))
+    opening = db.blocks(lesson)[-1]
+    asyncio.run(tutor.give_hint(opening["id"], "Count valence electrons."))
+    asyncio.run(tutor.reveal(opening["id"], "Four."))
+    asyncio.run(tutor.pose_quiz(lesson, "Which is a noble gas?", "choice", ["Helium", "Oxygen"], "Helium", "Full outer shell."))
+    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A pair", "two atoms"))
+
+    from wise_scholar import sandbox
+
+    monkeypatch.setattr(sandbox, "COMMANDS", True)
+    asyncio.run(tutor.pose_exercise(lesson, "Count the bonds in water.", [tutor.ExerciseFile(path="w/count.py", content="print(2)")], "uv run w/count.py"))
+    exercise = db.blocks(lesson)[-1]
+    db.set_block_data(exercise["id"], {**exercise["data"], "last_run": {"exit_code": 0, "output": "2\n"}, "solution": "Two bonds."})
+    teacher = handout.markdown(lesson, solutions=True)
+    student = handout.markdown(lesson, solutions=False)
+    assert teacher.startswith("# Bonds\n\nChemistry handouts\n") and "## Objectives" in teacher and "data:image/svg+xml;base64," in teacher
+    assert "Count valence electrons." in teacher and "Four." in teacher and "**Helium**" in teacher and "Full outer shell." in teacher
+    assert "How many bonds does carbon form?" in student and "Which is a noble gas?" in student and "- Helium" in student
+    for secret in ("Count valence electrons.", "Four.", "**Helium**", "Full outer shell.", "## Objectives", "Two bonds.", "exit 0", "[["):
+        assert secret not in student, secret
+    assert "Count the bonds in water." in student and "`w/count.py`" in student and "data:image/svg+xml;base64," in student
+    assert "**Solution**\n>" in teacher and "[!solution]" not in teacher and "Two bonds." in teacher
+    sent = app.lesson_handout(lesson, "student")
+    assert sent.media_type.startswith("text/markdown") and sent.body.decode() == student
+    assert app.get_lesson(lesson)["course_id"] == course

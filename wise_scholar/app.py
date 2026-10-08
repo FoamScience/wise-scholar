@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 import httpx
 import simplemma
 
-from . import book, challenge, cleanup, course_files, db, egress, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
+from . import book, challenge, cleanup, course_files, db, egress, handout, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -1156,6 +1156,45 @@ async def course_book(course_id: int, theme: Literal["light", "dark"] = "light")
         log.warning("book export timed out: %s", e)
         raise HTTPException(504, "the book did not finish drawing") from None
     return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{course["slug"]}.pdf"'})
+
+
+Version = Literal["student", "teacher"]
+
+
+@app.get("/api/lessons/{lesson_id}")
+def get_lesson(lesson_id: int) -> dict:
+    """The lesson's heading only; its content comes with the course."""
+    lesson = _lesson(lesson_id)
+    return {k: lesson[k] for k in ("id", "title", "phase", "concept_id", "course_id", "topic", "mode")}
+
+
+@app.get("/api/lessons/{lesson_id}/handout.md")
+def lesson_handout(lesson_id: int, version: Version = "student") -> Response:
+    """A unit's lesson plan as Markdown: the teacher's copy, or the students' copy without solutions."""
+    lesson = _lesson(lesson_id)
+    if lesson["mode"] != "teacher" or lesson["concept_id"] is None:
+        raise HTTPException(409, "hand-outs come from a unit of a prepared course")
+    text = handout.markdown(lesson_id, solutions=version == "teacher")
+    name = f"{lesson['slug']}-{lesson_id}-{version}.md"
+    return Response(text, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/api/lessons/{lesson_id}/handout.pdf")
+async def lesson_handout_pdf(lesson_id: int, version: Version = "student", theme: Literal["light", "dark"] = "light") -> Response:
+    lesson = _lesson(lesson_id)
+    if lesson["mode"] != "teacher" or lesson["concept_id"] is None:
+        raise HTTPException(409, "hand-outs come from a unit of a prepared course")
+    if not book.available():
+        raise HTTPException(503, "PDF export is not installed; run make pdf")
+    try:
+        pdf = await book.render(lesson["course_id"], lesson["profile_id"], theme, path=f"#/lesson/{lesson_id}/handout/{version}")
+    except book.NoBrowser:
+        raise HTTPException(503, "PDF export has no browser to print with; run make pdf") from None
+    except TimeoutError as e:
+        log.warning("hand-out export timed out: %s", e)
+        raise HTTPException(504, "the book did not finish drawing") from None
+    name = f"{lesson['slug']}-{lesson_id}-{version}.pdf"
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.get("/api/courses/{course_id}/obsidian.zip")

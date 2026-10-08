@@ -99,7 +99,7 @@ async def plots(course_id: int, profile_id: int, block_ids: list[int]) -> dict[i
     return out
 
 
-async def render(course_id: int, profile_id: int, theme: str) -> bytes:
+async def render(course_id: int, profile_id: int, theme: str, path: str | None = None) -> bytes:
     """The course as a PDF. Raises NoBrowser without a Chromium or Chrome, and Playwright's TimeoutError
     when the page does not finish drawing."""
     from playwright.async_api import async_playwright
@@ -113,7 +113,7 @@ async def render(course_id: int, profile_id: int, theme: str) -> bytes:
                 f"localStorage.setItem('wise-scholar.profile', '{int(profile_id)}'); localStorage.setItem('theme', '{theme}')"
             )
             page = await context.new_page()
-            await page.goto(f"http://127.0.0.1:{PORT}/#/course/{int(course_id)}/book")
+            await page.goto(f"http://127.0.0.1:{PORT}/{path or f'#/course/{int(course_id)}/book'}")
             await page.wait_for_function(READY)
             await page.evaluate("() => document.fonts.ready.then(() => true)")
             pdf = await page.pdf(prefer_css_page_size=True, print_background=True)

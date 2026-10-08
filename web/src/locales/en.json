@@ -434,6 +434,13 @@
       "exit": "exit code {{code}}",
       "seconds": "{{n}} s",
       "output": "Output"
+    },
+    "handout": {
+      "label": "Hand-outs:",
+      "teacher": "Teacher's copy",
+      "student": "Students' copy",
+      "markdown": "Markdown",
+      "back": "Back to the plan"
     }
   },
   "server": {}

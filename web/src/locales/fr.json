@@ -442,6 +442,13 @@
       "exit": "code de sortie {{code}}",
       "seconds": "{{n}} s",
       "output": "Sortie"
+    },
+    "handout": {
+      "label": "Documents :",
+      "teacher": "Version enseignant",
+      "student": "Version élèves",
+      "markdown": "Markdown",
+      "back": "Retour au plan"
     }
   },
   "server": {
@@ -484,6 +491,7 @@
     "the address could not be fetched": "l'adresse n'a pas pu être récupérée",
     "the address took too long to answer": "l'adresse a mis trop de temps à répondre",
     "a prepared course has no placement check": "un cours préparé n'a pas de test de niveau",
-    "a prepared course's cards take no answers": "les cartes d'un cours préparé ne prennent pas de réponses"
+    "a prepared course's cards take no answers": "les cartes d'un cours préparé ne prennent pas de réponses",
+    "hand-outs come from a unit of a prepared course": "les documents viennent d'une unité d'un cours préparé"
   }
 }

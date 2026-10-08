@@ -1233,6 +1233,14 @@ mark {
   margin-bottom: 12px;
 }
 
+.handouts {
+  margin-top: -8px;
+}
+
+.handout-cover {
+  min-height: 0;
+}
+
 /* profiles */
 
 .stack {
