@@ -151,7 +151,7 @@ def test_pretest_gates_explanations_and_stays_out_of_reviews_and_mastery():
     db.set_concepts(course, [{"title": "Basics", "concepts": ["Ownership", "Traits"], "known": ["Traits"]}])
     own, traits = db.concepts(course)
     lesson = db.create_lesson(course, "Ownership", "lesson", own["id"])
-    assert asyncio.run(tutor.add_block(lesson, "prose", "Ownership means…")).startswith("refused: no pretest")
+    assert asyncio.run(tutor.add_block(lesson, "prose", "Ownership means…")).startswith("refused: the lesson has no attempted opening")
     asyncio.run(tutor.pose_quiz(lesson, "What happens to s after let t = s;?", "open", [], "s is moved", "", pretest=True))
     block = db.blocks(lesson)[-1]
     card = db.card(block["data"]["card_id"])
@@ -585,3 +585,21 @@ def test_vault_endpoint_serves_a_zip_without_a_browser(monkeypatch):
     assert sent.media_type == "application/zip" and zipfile.ZipFile(io.BytesIO(sent.body)).testzip() is None
     plot = [n for n in zipfile.ZipFile(io.BytesIO(sent.body)).namelist() if "plot-" in n]
     assert plot == []
+
+
+def test_an_exercise_with_a_run_counts_as_the_lesson_opening(monkeypatch):
+    import asyncio
+
+    from wise_scholar import sandbox, tutor
+
+    monkeypatch.setattr(sandbox, "commands", lambda: True)
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Opener')").lastrowid
+    course = db.create_course("Shell", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Pipes"], "known": []}])
+    lesson = db.create_lesson(course, "Pipes", "lesson", db.concepts(course)[0]["id"])
+    assert asyncio.run(tutor.add_block(lesson, "prose", "A pipe joins…")).startswith("refused")
+    assert asyncio.run(tutor.pose_exercise(lesson, "Run it", [tutor.ExerciseFile(path="p/x.sh", content="echo hi | wc -c")], "sh p/x.sh")).startswith("shown")
+    assert asyncio.run(tutor.add_block(lesson, "prose", "A pipe joins…")).startswith("refused")
+    block = db.blocks(lesson)[-1]
+    db.set_block_data(block["id"], {**block["data"], "last_run": {"exit_code": 0, "output": "3\n"}})
+    assert asyncio.run(tutor.add_block(lesson, "prose", "A pipe joins…")) == "shown"

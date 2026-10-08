@@ -17,7 +17,7 @@ url = "https://doi.org/10.1145/3377811.3380352"
 For each new concept, sort it into one of three cases and say which case it is.
 
 1. Same idea, new spelling. Show the known form next to the new form and move on quickly.
-2. False friend. The new thing looks like something known but behaves differently. Ask the learner to predict the behaviour first, let the prediction fail, then contrast the two.
+2. False friend. The new thing looks like something known but behaves differently. Open with a prediction or a bug hunt on it, let the attempt fail, then contrast the two.
 3. No counterpart. Say plainly that nothing known maps onto it, and teach it from scratch with a worked example.
 
 Always ask the learner to state the mapping in their own words before confirming it. Keep a running list of false friends and revisit them in later checks, because old habits return under load.

@@ -17,6 +17,8 @@ def _outcome(data: dict) -> str:
 
 def _line(block: dict) -> str:
     kind, data, text = block["kind"], block["data"] or {}, _short(block["markdown"])
+    if data.get("form"):
+        text = f"[opening: {data['form']}] {text}"
     if kind == "quiz":
         if data.get("correct") is None:
             return f"quiz: {text} -> not answered"
