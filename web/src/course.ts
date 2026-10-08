@@ -60,6 +60,7 @@ export type Capstone = {
   milestones: { id: number; concept_id: number; concept: string; deliverable: string; done: number }[]
 }
 export type CourseDetail = Course & {
+  cleaned: string | null
   details: string
   hours: number | null
   started: number
@@ -99,4 +100,4 @@ export type ExerciseData = ChallengeData & {
   run: string
   last_run: { exit_code: number | null; output: string } | null
 }
-export type ExerciseFile = { path: string; location: string; content: string | null }
+export type ExerciseFile = { path: string; location: string; content: string | null; kept: boolean }

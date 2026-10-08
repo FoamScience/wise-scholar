@@ -156,7 +156,8 @@
       "check": "Check with tutor",
       "outputStopped": "Output · stopped",
       "outputExit": "Output · exit code {{code}}",
-      "noOutput": "(no output)"
+      "noOutput": "(no output)",
+      "cleaned": "The course's files were cleaned up; these copies are read-only. Ask the tutor to pose the exercise again to work on it."
     },
     "card": {
       "question": "Question",
@@ -190,7 +191,8 @@
       "hints_one": "{{count}} hint",
       "hints_other": "{{count}} hints",
       "gaveUp": "gave up {{n}}×",
-      "change": "Change the course"
+      "change": "Change the course",
+      "cleaned": "Files cleaned up on {{date}}: exercise files, caches and sessions are gone; the record stays."
     },
     "plan": {
       "heading": "How I plan to teach this · ranked for you",

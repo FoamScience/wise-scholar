@@ -233,6 +233,7 @@ MIGRATIONS = [
     );
     CREATE INDEX commands_profile ON commands(profile_id, id);
     """,
+    "ALTER TABLE courses ADD COLUMN cleaned TEXT;",
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)

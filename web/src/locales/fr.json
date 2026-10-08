@@ -160,7 +160,8 @@
       "check": "Vérifier avec le tuteur",
       "outputStopped": "Sortie · arrêté",
       "outputExit": "Sortie · code de retour {{code}}",
-      "noOutput": "(aucune sortie)"
+      "noOutput": "(aucune sortie)",
+      "cleaned": "Les fichiers du cours ont été nettoyés ; ces copies sont en lecture seule. Demandez au tuteur de reposer l'exercice pour y travailler."
     },
     "card": {
       "question": "Question",
@@ -195,7 +196,8 @@
       "hints_many": "{{count}} d'indices",
       "hints_other": "{{count}} indices",
       "gaveUp": "abandonné {{n}}×",
-      "change": "Modifier le cours"
+      "change": "Modifier le cours",
+      "cleaned": "Fichiers nettoyés le {{date}} : fichiers d'exercices, caches et sessions supprimés ; le dossier reste."
     },
     "plan": {
       "heading": "Comment je compte enseigner ce sujet · classé pour vous",
@@ -457,6 +459,7 @@
     "running code is turned off on this server": "l'exécution de code est désactivée sur ce serveur",
     "already decided": "déjà décidé",
     "this server cannot give commands the internet": "ce serveur ne peut pas donner Internet aux commandes",
-    "\"I don't know\" is an answer only to a choice question of the placement check": "« Je ne sais pas » ne répond qu'à une question à choix du test de niveau"
+    "\"I don't know\" is an answer only to a choice question of the placement check": "« Je ne sais pas » ne répond qu'à une question à choix du test de niveau",
+    "this course's files were cleaned up; ask the tutor to pose the exercise again": "les fichiers de ce cours ont été nettoyés ; demandez au tuteur de reposer l'exercice"
   }
 }
