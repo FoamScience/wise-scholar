@@ -466,6 +466,13 @@
       "exit": "رمز الخروج {{code}}",
       "seconds": "{{n}} ث",
       "output": "المخرجات"
+    },
+    "handout": {
+      "label": "النشرات:",
+      "teacher": "نسخة المعلّم",
+      "student": "نسخة الطلاب",
+      "markdown": "Markdown",
+      "back": "عودة إلى الخطة"
     }
   },
   "server": {
@@ -508,6 +515,7 @@
     "the address could not be fetched": "تعذّر جلب العنوان",
     "the address took too long to answer": "استغرق العنوان وقتًا طويلًا للإجابة",
     "a prepared course has no placement check": "الدورة المُعدّة لا اختبار تحديد مستوى فيها",
-    "a prepared course's cards take no answers": "بطاقات الدورة المُعدّة لا تقبل إجابات"
+    "a prepared course's cards take no answers": "بطاقات الدورة المُعدّة لا تقبل إجابات",
+    "hand-outs come from a unit of a prepared course": "النشرات تأتي من وحدة في دورة مُعدّة"
   }
 }

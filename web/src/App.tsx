@@ -20,6 +20,7 @@ import { NetworkCard } from './Network'
 import { PlotCard } from './PlotCard'
 import { ScopeCard, ScopeForm } from './Scope'
 import { Book } from './Book'
+import { Handout } from './Handout'
 import { SourcesPanel, SOURCE_TYPES } from './Sources'
 import type { Source } from './Sources'
 import { usePlayer } from './player'
@@ -1085,6 +1086,13 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
 
       <main className="lesson">
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
+        {course.mode === 'teacher' && lesson.concept_id !== null && (
+          <div className="small handouts">
+            {t('handout.label')}{' '}
+            <a href={`#/lesson/${lesson.id}/handout/teacher`}>{t('handout.teacher')}</a> ·{' '}
+            <a href={`#/lesson/${lesson.id}/handout/student`}>{t('handout.student')}</a>
+          </div>
+        )}
         {lesson.phase === 'interview' &&
           (course.started ? (
             <ScopeCard course={course} />
@@ -1447,6 +1455,7 @@ export default function App() {
   const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing))?$/)
   const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
   const book = hash.match(/^#\/course\/(\d+)\/book$/)
+  const handout = hash.match(/^#\/lesson\/(\d+)\/handout\/(student|teacher)$/)
 
   function page() {
     if (!profiles) return null
@@ -1472,6 +1481,7 @@ export default function App() {
         />
       )
     if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={pdf} />
+    if (handout) return <Handout key={handout[0]} lessonId={Number(handout[1])} version={handout[2] as 'student' | 'teacher'} pdf={pdf} />
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
     if (hash === '#/errors') return <ErrorsPage profile={current.id} />
     if (hash === '#/commands') return <CommandsPage profile={current.id} />

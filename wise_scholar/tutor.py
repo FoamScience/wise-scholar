@@ -1037,7 +1037,11 @@ async def pose_quiz(
     if lemma:
         lemma = simplemma.lemmatize(lemma, lang=lesson["lang"]).lower()
         db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lesson["lang"], card_id))
-    block = db.add_block(lesson_id, "quiz", question, {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest, "form": form.strip()})
+    shown = {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest, "form": form.strip()}
+    if prepared(lesson):
+        # Material for the teacher: the key and the explanation are part of the card from the start.
+        shown.update({"answer_key": answer_key, "explanation": explanation})
+    block = db.add_block(lesson_id, "quiz", question, shown)
     _show(lesson, block)
     return f"shown as quiz {block['id']}; end the turn and wait for the answer"
 

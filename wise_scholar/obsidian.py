@@ -1,6 +1,7 @@
 """A course as a folder of Markdown notes for Obsidian: one note per course, module, unit, lesson, card, mistake,
 project and word, linked with wikilinks and carrying properties, so the learner's record becomes a graph."""
 
+import base64
 import io
 import json
 import re
@@ -25,7 +26,7 @@ WORDS = {
         "correct": "Right answer", "resolved": "resolved", "pinned": "pinned", "unit_covered": "Unit covered", "result": "Result",
         "glossary": "Glossary", "known": "known", "learning": "learning", "seen_in": "Seen in", "flashcards": "Review cards",
         "pretest": "Opening question", "gave_up": "gave up", "solved": "solved", "unanswered": "not answered", "cast": "Cast",
-        "map": "Course map", "unknown": "I don't know",
+        "map": "Course map", "quick_check": "Quick check", "exercise": "Exercise", "challenge": "Task", "unknown": "I don't know",
     },
     "fr": {
         "course": "Cours", "modules": "Modules", "units": "Unités", "lessons": "Leçons", "cards": "Cartes", "mistakes": "Erreurs",
@@ -38,7 +39,7 @@ WORDS = {
         "correct": "Bonne réponse", "resolved": "résolue", "pinned": "épinglée", "unit_covered": "Unité couverte", "result": "Résultat",
         "glossary": "Glossaire", "known": "connu", "learning": "en cours", "seen_in": "Vu dans", "flashcards": "Cartes de révision",
         "pretest": "Question d'ouverture", "gave_up": "abandon", "solved": "résolu", "unanswered": "sans réponse", "cast": "Émission",
-        "map": "Plan du cours", "unknown": "Je ne sais pas",
+        "map": "Plan du cours", "quick_check": "Question rapide", "exercise": "Exercice", "challenge": "Tâche", "unknown": "Je ne sais pas",
     },
     "ar": {
         "course": "الدورة", "modules": "الوحدات الكبرى", "units": "الوحدات", "lessons": "الدروس", "cards": "البطاقات", "mistakes": "الأخطاء",
@@ -51,7 +52,7 @@ WORDS = {
         "correct": "الجواب الصحيح", "resolved": "تم حلّه", "pinned": "مثبّت", "unit_covered": "اكتملت الوحدة", "result": "النتيجة",
         "glossary": "المسرد", "known": "معروف", "learning": "قيد التعلم", "seen_in": "ورد في", "flashcards": "بطاقات المراجعة",
         "pretest": "سؤال البداية", "gave_up": "استسلام", "solved": "محلول", "unanswered": "بلا إجابة", "cast": "حلقة",
-        "map": "خريطة الدورة", "unknown": "لا أعرف",
+        "map": "خريطة الدورة", "quick_check": "سؤال سريع", "exercise": "تمرين", "challenge": "مهمة", "unknown": "لا أعرف",
     },
 }
 CARD_KINDS = ("challenge", "exercise", "quiz", "speaking")
@@ -86,9 +87,15 @@ def _front(props: dict) -> str:
     return "---\n" + "".join(f"{k}: {_yaml(v)}\n" for k, v in props.items() if v is not None) + "---\n"
 
 
-def _callout(kind: str, title: str, body: str, folded: bool = True) -> str:
+def _callout(kind: str, title: str, body: str, folded: bool = True, plain: bool = False) -> str:
+    """An Obsidian callout; plain: a bold title and a quote, for pages that are not Obsidian."""
     lines = body.strip().splitlines() or [""]
-    return f"> [!{kind}]{'-' if folded else ''} {title}\n" + "\n".join(f"> {line}" for line in lines) + "\n"
+    head = f"**{title}**\n>" if plain else f"> [!{kind}]{'-' if folded else ''} {title}"
+    return f"{head}\n" + "\n".join(f"> {line}" for line in lines) + "\n"
+
+
+def _alt(text: str) -> str:
+    return " ".join(text.replace("]", ")").replace("[", "(").split())
 
 
 def _code(text: str, lang: str = "") -> str:
@@ -99,7 +106,10 @@ def _code(text: str, lang: str = "") -> str:
 class Vault:
     """Builds the notes of one course; paths are vault-relative so links stay valid beside other courses."""
 
-    def __init__(self, course_id: int):
+    def __init__(self, course_id: int, inline: bool = False, solutions: bool = True):
+        """inline: cards and figures written into the lesson text (a hand-out) instead of linked notes;
+        solutions: False leaves out solutions, hints, keys and attempts (a student's copy)."""
+        self.inline, self.solutions = inline, solutions
         self.course = db.course(course_id)
         self.profile = db.profile(self.course["profile_id"])
         self.t = WORDS.get(self.profile["locale"], WORDS["en"])
@@ -192,8 +202,14 @@ class Vault:
     def _block_text(self, lesson: dict, block: dict) -> str:
         t, d, kind = self.t, block["data"], block["kind"]
         if kind in CARD_KINDS:
+            if self.inline:
+                return f"### {self._card_label(block)}\n\n{self._card_body(lesson, block)}\n"
             return self.embed(("card", block["id"]))
         if kind == "figure":
+            if self.inline:
+                data = base64.b64encode(d["svg"].encode()).decode()
+                caption = " ".join(block["markdown"].split())
+                return f"![{_alt(d.get('alt', ''))}](data:image/svg+xml;base64,{data})\n" + (f"*{caption}*\n" if caption else "")
             path = f"{self.root}/attachments/figure-{block['id']}.svg"
             self.files[path] = d["svg"].encode()
             return f"![[{path}]]\n" + (f"*{block['markdown']}*\n" if block["markdown"] else "")
@@ -211,22 +227,40 @@ class Vault:
         if kind == "placement":
             return f"**{t['result']}** · {t['level']}: {d.get('level', '')}\n\n{block['markdown']}\n"
         if kind == "done":
-            return _callout("success", t["unit_covered"], block["markdown"], folded=False)
+            return _callout("success", t["unit_covered"], block["markdown"], folded=False, plain=self.inline)
         if kind == "podcast":
             lines = "\n".join(f"**{l['speaker']}:** {l['text']}" for l in d.get("lines", []))
-            return _callout("quote", f"{t['cast']} · {block['markdown']}", lines)
+            return _callout("quote", f"{t['cast']} · {block['markdown']}", lines, plain=self.inline)
         if kind in ("network", "vocab"):
             return ""
         return block["markdown"] + "\n"
+
+    def _card_label(self, block: dict) -> str:
+        t, d, kind = self.t, block["data"], block["kind"]
+        if d.get("pretest"):
+            return t["pretest"]
+        if kind == "quiz":
+            return t["quick_check"]
+        if kind == "exercise":
+            return t["exercise"]
+        return t["challenge"]
 
     def _card_body(self, lesson: dict, block: dict) -> str:
         t, d, kind = self.t, block["data"], block["kind"]
         out = [block["markdown"], ""]
         if kind == "quiz":
             if d.get("options"):
-                out += [f"- {'**' if o == d.get('answer_key') else ''}{o}{'**' if o == d.get('answer_key') else ''}" for o in d["options"]] + [""]
-            if d.get("answer") is None:
-                out.append(f"*{t['unanswered']}*")
+                mark = lambda o: "**" if self.solutions and o == d.get("answer_key") else ""  # noqa: E731
+                out += [f"- {mark(o)}{o}{mark(o)}" for o in d["options"]] + [""]
+            if not self.solutions:
+                out.append("")
+            elif d.get("answer") is None:
+                if d.get("answer_key"):
+                    out.append(f"**{t['answer']}**: {d['answer_key']}")
+                    if d.get("explanation"):
+                        out.append(f"**{t['explanation']}**: {d['explanation']}")
+                else:
+                    out.append(f"*{t['unanswered']}*")
             else:
                 shown = t["unknown"] if d.get("unknown") else d["answer"]
                 sure = "" if d.get("unknown") else f" · {t['sure'].format(round(d.get('confidence', 0) * 100))}"
@@ -244,22 +278,22 @@ class Vault:
                 out.append(f"**{t['files']}**:")
                 for path in d.get("files", []):
                     kept = f"{self.root}/attachments/exercise-{block['id']}/{path}"
-                    content = course_files.read_text(self.workspace, path) if self.workspace.exists() else None
+                    content = None if self.inline or not self.workspace.exists() else course_files.read_text(self.workspace, path)
                     if content is not None:
                         self.files[kept] = content.encode()
                         out.append(f"- [[{kept}|{_name(path)}]]")
                     else:
                         out.append(f"- `{path}`")
-                if d.get("last_run"):
+                if self.solutions and d.get("last_run"):
                     out += ["", f"**{t['output']}** (exit {d['last_run'].get('exit_code')})", _code(d["last_run"].get("output", ""))]
-            if d.get("attempts"):
+            if self.solutions and d.get("attempts"):
                 out += ["", f"**{t['attempts']}**"] + [f"{i + 1}. {a}" for i, a in enumerate(d["attempts"])]
-            if d.get("hints"):
+            if self.solutions and d.get("hints"):
                 out += ["", f"**{t['hints']}**"] + [f"- {h}" for h in d["hints"]]
-            if d.get("solution"):
-                out += ["", _callout("solution", t["solution"], d["solution"])]
+            if self.solutions and d.get("solution"):
+                out += ["", _callout("solution", t["solution"], d["solution"], plain=self.inline)]
         mine = [e for e in self.errors if e.get("card_id") and self.by_card.get(e["card_id"], {}).get("id") == block["id"]]
-        if mine:
+        if mine and not self.inline:
             out += ["", f"**{t['mistakes']}**: " + ", ".join(self.link(("mistake", e["id"])) for e in mine)]
         return "\n".join(out)
 
@@ -300,13 +334,7 @@ class Vault:
             for block in lesson["blocks"]:
                 if block["kind"] in CARD_KINDS:
                     self.put(("card", block["id"]), self._card_props(lesson, block), self._card_body(lesson, block))
-            body = []
-            for item in self._timeline(lesson):
-                if "kind" in item:
-                    body.append(self._block_text(lesson, item))
-                else:
-                    who = t["you"] if item["role"] == "learner" else t["tutor"]
-                    body.append(_callout("quote", who, item["text"], folded=item["role"] == "tutor"))
+            body = self.lesson_text(lesson)
             opening = lesson["phase"] in ("interview", "placement")
             props = {
                 "type": "lesson", "id": lesson["id"], "phase": lesson["phase"], "course": self.link(("course",)),
@@ -389,6 +417,18 @@ class Vault:
         self._course_note()
         self._canvas()
         return self.files
+
+    def lesson_text(self, lesson: dict, chat: bool = True, kinds: tuple[str, ...] | None = None) -> list[str]:
+        """The lesson's blocks (and chat) in order, as Markdown pieces; kinds limits the blocks included."""
+        t, body = self.t, []
+        for item in self._timeline(lesson):
+            if "kind" in item:
+                if kinds is None or item["kind"] in kinds:
+                    body.append(self._block_text(lesson, item))
+            elif chat:
+                who = t["you"] if item["role"] == "learner" else t["tutor"]
+                body.append(_callout("quote", who, item["text"], folded=item["role"] == "tutor", plain=self.inline))
+        return body
 
     def _outcome(self, block: dict) -> str:
         t, d = self.t, block["data"]

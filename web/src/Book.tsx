@@ -22,6 +22,7 @@ import { QuizResult } from './Quiz'
 import { ScopeCard } from './Scope'
 import type { Graded, QuizData } from './Quiz'
 import { textDirection } from './text'
+import { pageStyle } from './print'
 import { useTheme } from './theme'
 
 type Files = Map<number, ExerciseFile[]>
@@ -374,14 +375,6 @@ function Notebook({ entries }: { entries: Entry[] }) {
 }
 
 /** Running head and page number sit in the page margins, which only take literal values: read them from the live theme. */
-function pageStyle(topic: string): string {
-  const css = getComputedStyle(document.documentElement)
-  const text = `font-family: ${css.getPropertyValue('--mono')}; font-size: 8pt; color: ${css.getPropertyValue('--muted')};`
-  // A CSS string: anything outside letters, digits and spaces goes in as a hex escape.
-  const quoted = `"${topic.replace(/[^\p{L}\p{N} ]/gu, (c) => `\\${c.codePointAt(0)!.toString(16)} `)}"`
-  return `@page { background: ${css.getPropertyValue('--ground')}; @top-center { content: ${quoted}; ${text} } @bottom-center { content: counter(page); ${text} } }
-@page :first { margin: 0; @top-center { content: none } @bottom-center { content: none } }`
-}
 
 /** A whole course laid out as a book. The server prints this same page to a PDF, so the file has the site's theme and type;
  * without the PDF extra the browser's print dialog does it. */
