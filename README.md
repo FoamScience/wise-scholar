@@ -100,6 +100,8 @@ installs Playwright and a headless Chromium, about 110 MB, and the book page get
 
 The downloaded file is encrypted (AES-256) and opens without a password; readers that honour PDF permissions then allow printing only: no copying, text extraction, editing or annotation. That lock is advisory. A tool that ignores the permission bits still reads the text, so it keeps honest readers out, not determined ones. The browser's own "Save as PDF" is not locked.
 
+"Export for Obsidian", beside it, downloads the course as a folder of Markdown notes to drop into any [Obsidian](https://obsidian.md) vault: one note per unit, lesson, card, mistake, project and (in a language course) word, linked with wikilinks and carrying properties, with the course map as a canvas, the unit's review cards in the Spaced Repetition plugin's format, figures as SVG and plots as PNG when `make pdf` was run. Notes are named by id and title, so a later export overwrites them (a renamed unit leaves its old note behind) and leaves your own notes alone; keep your writing in notes of your own that link to these. It is plain text: no lock.
+
 ## Speech (optional)
 
 Off by default. Listen buttons use the browser's own voice and there is no microphone input until you install the speech extras:

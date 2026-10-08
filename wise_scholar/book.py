@@ -3,9 +3,12 @@
 import asyncio
 import importlib.util
 import io
+import logging
 import secrets
 
 from .backends import PORT
+
+log = logging.getLogger(__name__)
 
 # The cover appears once the course, its notebook and its exercise files are loaded; then every diagram
 # has drawn (a failed one is replaced by its error) and every plot has drawn or reported its error.
@@ -63,6 +66,37 @@ async def _launch(chromium):
         return await chromium.launch(channel="chrome")
     except Error:
         raise NoBrowser from None
+
+
+# Per plot, in milliseconds; a plot that has not drawn by then is left out.
+PLOT_TIMEOUT = 5000
+
+
+async def plots(course_id: int, profile_id: int, block_ids: list[int]) -> dict[int, bytes]:
+    """Each plot of the course as a PNG, drawn by the book page; blocks that do not draw are left out."""
+    from playwright.async_api import async_playwright
+
+    if not block_ids:
+        return {}
+    out = {}
+    async with _exporting, async_playwright() as p:
+        browser = await _launch(p.chromium)
+        try:
+            context = await browser.new_context(device_scale_factor=2)
+            await context.add_init_script(f"localStorage.setItem('wise-scholar.profile', '{int(profile_id)}'); localStorage.setItem('theme', 'light')")
+            page = await context.new_page()
+            await page.goto(f"http://127.0.0.1:{PORT}/#/course/{int(course_id)}/book")
+            await page.wait_for_function(READY)
+            for block_id in block_ids:
+                box = page.locator(f"#block-{int(block_id)} .plot-box > svg")
+                try:
+                    if await box.count():
+                        out[block_id] = await box.first.screenshot(type="png", timeout=PLOT_TIMEOUT)
+                except Exception as e:  # a plot that will not draw is left as its spec
+                    log.warning("plot %s not rendered for the export: %s", block_id, e)
+        finally:
+            await browser.close()
+    return out
 
 
 async def render(course_id: int, profile_id: int, theme: str) -> bytes:

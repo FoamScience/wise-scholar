@@ -491,3 +491,97 @@ def test_a_long_pretest_is_refused_and_a_short_one_shown():
     assert asyncio.run(tutor.pose_challenge(lesson, lecture, milestone=True)).startswith("shown")
     assert asyncio.run(tutor.pose_challenge(lesson, "x" * tutor.PRETEST_CHARS, pretest=True)).startswith("shown")
     assert asyncio.run(tutor.pose_challenge(lesson, "x" * (tutor.PRETEST_CHARS + 1), pretest=True)).startswith("error: not shown")
+
+# Obsidian export: seeds profiles, so it lives here with the other profile-creating tests.
+
+
+def seed_vault(name: str) -> tuple[int, int]:
+    """A small course with every kind of note; returns the course and its plot block."""
+    import asyncio
+
+    from wise_scholar import quiz, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name, locale) VALUES (?, 'en')", (name,)).lastrowid
+    course = db.create_course("Chemistry: bonds & shells", who)["id"]
+    db.conn.execute("UPDATE courses SET details = 'second year', hours = 20, level = 'beginner', placement = 'Knows atoms.' WHERE id = ?", (course,))
+    db.set_concepts(course, [
+        {"title": "Atoms", "concepts": ["Electrons", "Bonds"], "known": ["Electrons"]},
+        {"title": "Reactions", "concepts": ["Acids/Bases?", "Acids/Bases?"], "known": []},
+    ])
+    units = db.concepts(course)
+    interview = db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]
+    db.add_block(interview, "question", "Why chemistry?", {"options": ["fun", "work"], "answer": "fun"})
+    db.add_message(interview, "tutor", "Welcome.")
+    lesson = db.create_lesson(course, "Bonds", "lesson", units[1]["id"])
+    db.add_message(lesson, "learner", "ready")
+    asyncio.run(tutor.pose_challenge(lesson, "Predict: do two H atoms bond? [note] #tag", pretest=True))
+    pretest = db.blocks(lesson)[-1]
+    db.set_block_data(pretest["id"], {**pretest["data"], "attempts": ["yes"], "hints": ["think of shells"], "solved": True})
+    asyncio.run(tutor.add_block(lesson, "prose", "Atoms share electrons."))
+    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A pair", "two atoms"))
+    asyncio.run(tutor.pose_quiz(lesson, "How many bonds does carbon form?", "choice", ["4", "2"], "4", "Four valence electrons."))
+    q = db.blocks(lesson)[-1]
+    card = db.card(q["data"]["card_id"])
+    answer_id = quiz.submit(card, "2", 0.9)
+    result = quiz.grade(answer_id, False)
+    db.set_block_data(q["id"], {**q["data"], "answer": "2", "confidence": 0.9, "answer_id": answer_id, **result})
+    asyncio.run(tutor.finish_lesson(lesson, "You can now count bonds."))
+    db.add_capstone(course, "Atoms", "Model kit", "Build a molecule model.", "kit", [(units[1]["id"], "a water model")])
+    plot = db.add_block(lesson, "plot", "Bond energies", {"spec": {"marks": []}, "alt": "bars"})
+    return course, plot["id"]
+
+
+def test_export_is_a_vault_folder_whose_links_all_resolve():
+    import io
+    import json
+    import re
+    import zipfile
+
+    from wise_scholar import obsidian
+
+    course, plot = seed_vault("Vault")
+    z = zipfile.ZipFile(io.BytesIO(obsidian.export(course, {plot: b"png"})))
+    names = set(z.namelist())
+    root = "Wise Scholar/Chemistry bonds & shells"
+    assert f"{root}/Chemistry bonds & shells.md" in names and f"{root}/Interview.md" in names
+    assert f"{root}/Modules/Atoms.md" in names and f"{root}/Units/Electrons.md" in names and f"{root}/Lessons/1 Bonds.md" in names
+    assert f"{root}/Projects/Model kit.md" in names and f"{root}/Course map.canvas" in names
+    assert any(n.startswith(f"{root}/Mistakes/") for n in names) and any(n.startswith(f"{root}/attachments/figure-") for n in names)
+    # Two units with the same title get distinct files.
+    assert len([n for n in names if n.startswith(f"{root}/Units/Acids Bases")]) == 2
+
+    for name in names:
+        if not name.endswith(".md"):
+            continue
+        text = z.read(name).decode()
+        assert text.startswith("---\n") and "\ntype: " in text.split("---")[1]
+        for target in re.findall(r"\[\[([^\]|#]+)", text):
+            assert target + ".md" in names or target in names, (name, target)
+
+    unit = z.read(f"{root}/Units/Bonds.md").decode()
+    assert "mastery: 0.0" in unit and 'builds_on: "[[' in unit and "#flashcards" in unit and "How many bonds does carbon form?\n- " in unit and "\n?\n4\n" in unit
+    card = next(n for n in names if "/Cards/" in n and "carbon" in n)
+    text = z.read(card).decode()
+    assert "correct: false" in text and "confident_miss: true" in text and "**Your answer** · 90% sure: 2" in text and "[[" + root + "/Mistakes/" in text
+    lesson = z.read(f"{root}/Lessons/1 Bonds.md").decode()
+    assert lesson.count("![[") >= 4 and "> [!quote]- Tutor" not in lesson and "> [!quote] You\n> ready" in lesson
+    assert f"![[{root}/attachments/plot-" in lesson and "[!success] Unit covered" in lesson
+    canvas = json.loads(z.read(f"{root}/Course map.canvas"))
+    assert {n["type"] for n in canvas["nodes"]} == {"text", "file"} and len(canvas["edges"]) == len(db.concepts(course)) + 1
+    electrons = z.read(f"{root}/Units/Electrons.md").decode()
+    assert "known: true" in electrons and "placed out" in electrons
+
+
+def test_vault_endpoint_serves_a_zip_without_a_browser(monkeypatch):
+    import asyncio
+    import io
+    import zipfile
+
+    from wise_scholar import app
+
+    course, _ = seed_vault("Vault 2")
+    monkeypatch.setattr(app.book, "available", lambda: False)
+    sent = asyncio.run(app.course_vault(course))
+    assert sent.media_type == "application/zip" and zipfile.ZipFile(io.BytesIO(sent.body)).testzip() is None
+    plot = [n for n in zipfile.ZipFile(io.BytesIO(sent.body)).namelist() if "plot-" in n]
+    assert plot == []
