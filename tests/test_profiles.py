@@ -820,3 +820,52 @@ def test_handouts_give_the_teacher_the_solutions_and_the_students_the_tasks(monk
     sent = app.lesson_handout(lesson, "student")
     assert sent.media_type.startswith("text/markdown") and sent.body.decode() == student
     assert app.get_lesson(lesson)["course_id"] == course
+
+
+def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tmp_path, monkeypatch):
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app, tutor
+
+    monkeypatch.setattr(app, "SOURCES", tmp_path / "sources")
+    who = db.conn.execute("INSERT INTO profiles (name, mode) VALUES ('Copier', 'teacher')").lastrowid
+    course = db.create_course("Chemistry to copy", who)["id"]
+    db.conn.execute("UPDATE courses SET details = 'year 10', hours = 20, mechanism = 'concept-map' WHERE id = ?", (course,))
+    db.set_concepts(course, [{"title": "Atoms", "concepts": ["Bonds", "Shells"], "known": []}])
+    bonds, shells = db.concepts(course)
+    db.add_capstone(course, "Atoms", "Model kit", "Build a model.", "kit", [(shells["id"], "a water model")])
+    lesson = db.create_lesson(course, "Bonds", "lesson", bonds["id"])
+    asyncio.run(tutor.pose_quiz(lesson, "Valence of carbon?", "choice", ["4", "2"], "4", "Four."))
+    db.add_message(lesson, "learner", "make it shorter")
+    db.add_fact(course, "class of 28", False)
+    source = db.add_source(course, "syllabus.md", 10)
+    db.finish_source(source["id"], [("part 1", "Atoms first.")])
+    (tmp_path / "sources" / str(course)).mkdir(parents=True)
+    (tmp_path / "sources" / str(course) / f"{source['id']}-syllabus.md").write_text("Atoms first.")
+    (db.workspace(db.course(course)["slug"]) / "demo.py").write_text("print(1)")
+
+    copy = app.duplicate_course(course)
+    assert copy["topic"] == "Chemistry to copy (2)" and copy["mode"] == "teacher" and copy["id"] != course
+    new = db.course(copy["id"])
+    assert (new["details"], new["hours"], new["mechanism"]) == ("year 10", 20, "concept-map")
+    assert [c["title"] for c in db.concepts(copy["id"])] == ["Bonds", "Shells"]
+    assert db.capstones(copy["id"])[0]["milestones"][0]["concept"] == "Shells" and db.capstones(copy["id"])[0]["done"] == 0
+    lessons = db.rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", copy["id"])
+    assert [l["phase"] for l in lessons] == ["interview", "lesson"] and all(l["session_started"] == 0 for l in lessons)
+    quiz = db.blocks(lessons[1]["id"])[-1]
+    card = db.card(quiz["data"]["card_id"])
+    assert card["course_id"] == copy["id"] and card["concept_id"] == db.concepts(copy["id"])[0]["id"] and card["answer_key"] == "4"
+    assert db.rows("SELECT text FROM messages WHERE lesson_id = ?", lessons[1]["id"])[0]["text"] == "make it shorter"
+    assert [f["text"] for f in db.facts(copy["id"])] == ["class of 28"]
+    copied_source = db.sources(copy["id"])[0]
+    assert copied_source["status"] == "ready" and db.search_sources(copy["id"], "Atoms", 1)[0]["title"].endswith("part 1")
+    assert (tmp_path / "sources" / str(copy["id"]) / f"{copied_source['id']}-syllabus.md").read_text() == "Atoms first."
+    assert (db.workspace(new["slug"]) / "demo.py").read_text() == "print(1)"
+    assert db.commands(who) == [] and db.graded_answers(who) == []
+    learner = db.conn.execute("INSERT INTO profiles (name) VALUES ('No copy')").lastrowid
+    with pytest.raises(HTTPException) as refused:
+        app.duplicate_course(db.create_course("Mine", learner)["id"])
+    assert refused.value.status_code == 409

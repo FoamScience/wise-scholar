@@ -316,6 +316,86 @@ def create_course(topic: str, profile_id: int) -> dict:
     return course(course_id)
 
 
+def copy_course(course_id: int, topic: str) -> dict:
+    """A new course with the same plan: scope, map, projects, lessons with their cards, blocks and chat, materials
+    and course facts. Nothing of the record that measures a learner comes along: answers, reviews, mistakes, the
+    command log; and every lesson gets a fresh agent session. Returns the new course with a map of old to new source ids."""
+    old = course(course_id)
+    base = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-") or "course"
+    slug, n = base, 2
+    while row("SELECT 1 FROM courses WHERE slug = ?", slug):
+        slug, n = f"{base}-{n}", n + 1
+    conn.execute("BEGIN")
+    try:
+        new_id = conn.execute(
+            "INSERT INTO courses (topic, slug, profile_id, mechanism, level, lang, ranking, details, hours, started, mode) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (topic, slug, old["profile_id"], old["mechanism"], old["level"], old["lang"], json.dumps(old["ranking"]) if old["ranking"] else None,
+             old["details"], old["hours"], old["started"], old["mode"]),
+        ).lastrowid
+        concept_map = {}
+        for c in concepts(course_id):
+            concept_map[c["id"]] = conn.execute(
+                "INSERT INTO concepts (course_id, module, title, known, position) VALUES (?, ?, ?, ?, ?)",
+                (new_id, c["module"], c["title"], c["known"], c["position"]),
+            ).lastrowid
+        for k in capstones(course_id):
+            capstone_id = conn.execute(
+                "INSERT INTO capstones (course_id, module, title, brief, folder) VALUES (?, ?, ?, ?, ?)",
+                (new_id, k["module"], k["title"], k["brief"], k["folder"]),
+            ).lastrowid
+            conn.executemany(
+                "INSERT INTO milestones (capstone_id, concept_id, deliverable) VALUES (?, ?, ?)",
+                [(capstone_id, concept_map[m["concept_id"]], m["deliverable"]) for m in k["milestones"] if m["concept_id"] in concept_map],
+            )
+        card_map = {}
+        for k in rows("SELECT * FROM cards WHERE course_id = ? ORDER BY id", course_id):
+            card_map[k["id"]] = conn.execute(
+                "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (new_id, concept_map.get(k["concept_id"]), k["question"], k["kind"], k["options"], k["answer_key"], k["explanation"],
+                 k["scheduled"], k["vocab"], k["lemma"], k["lang"]),
+            ).lastrowid
+        for lesson_row in rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", course_id):
+            if lesson_row["concept_id"] and lesson_row["concept_id"] not in concept_map:
+                continue
+            lesson_id = conn.execute(
+                "INSERT INTO lessons (course_id, title, phase, concept_id, session_id) VALUES (?, ?, ?, ?, ?)",
+                (new_id, lesson_row["title"], lesson_row["phase"], concept_map.get(lesson_row["concept_id"]), str(uuid.uuid4())),
+            ).lastrowid
+            for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY id", lesson_row["id"]):
+                data = json.loads(b["data"]) if b["data"] else None
+                if data and data.get("card_id") in card_map:
+                    data = {**data, "card_id": card_map[data["card_id"]]}
+                conn.execute(
+                    "INSERT INTO blocks (lesson_id, kind, markdown, data, created) VALUES (?, ?, ?, ?, ?)",
+                    (lesson_id, b["kind"], b["markdown"], json.dumps(data) if data else None, b["created"]),
+                )
+            conn.executemany(
+                "INSERT INTO messages (lesson_id, role, text, created) VALUES (?, ?, ?, ?)",
+                [(lesson_id, m["role"], m["text"], m["created"]) for m in rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_row["id"])],
+            )
+        conn.executemany(
+            "INSERT INTO facts (course_id, text, profile_id) VALUES (?, ?, ?)",
+            [(new_id, f["text"], f["profile_id"]) for f in rows("SELECT * FROM facts WHERE course_id = ?", course_id)],
+        )
+        source_map = {}
+        for s in rows("SELECT * FROM sources WHERE course_id = ? ORDER BY id", course_id):
+            source_map[s["id"]] = conn.execute(
+                "INSERT INTO sources (course_id, name, size, status, error, sections) VALUES (?, ?, ?, ?, ?, ?)",
+                (new_id, s["name"], s["size"], s["status"], s["error"], s["sections"]),
+            ).lastrowid
+            conn.executemany(
+                "INSERT INTO source_sections (source_id, title, text) VALUES (?, ?, ?)",
+                [(source_map[s["id"]], x["title"], x["text"]) for x in rows("SELECT title, text FROM source_sections WHERE source_id = ? ORDER BY id", s["id"])],
+            )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return {**course(new_id), "sources": source_map}
+
+
 # What the log keeps of a command's output: the tail the tutor is shown.
 COMMAND_OUTPUT = 4000
 

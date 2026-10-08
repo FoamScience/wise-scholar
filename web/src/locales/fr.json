@@ -111,7 +111,9 @@
       "materialsHelp": "Un livre, une documentation ou des notes sur lesquels le cours doit s'appuyer : des fichiers, ou l'adresse d'un PDF, d'un EPUB ou d'une page web.",
       "urlPlaceholder": "https://…/livre.pdf",
       "adding": "Ajout de {{name}}…",
-      "starting": "Démarrage…"
+      "starting": "Démarrage…",
+      "prepared": "préparé",
+      "duplicate": "Dupliquer pour une autre classe"
     },
     "question": {
       "own": "Ou dites-le avec vos propres mots",
@@ -202,7 +204,10 @@
       "hints_other": "{{count}} indices",
       "gaveUp": "abandonné {{n}}×",
       "change": "Modifier le cours",
-      "cleaned": "Fichiers nettoyés le {{date}} : fichiers d'exercices, caches et sessions supprimés ; le dossier reste."
+      "cleaned": "Fichiers nettoyés le {{date}} : fichiers d'exercices, caches et sessions supprimés ; le dossier reste.",
+      "notPlanned": "pas encore de plan",
+      "drafting": "plan en cours",
+      "planned": "planifiée"
     },
     "plan": {
       "heading": "Comment je compte enseigner ce sujet · classé pour vous",
@@ -492,6 +497,7 @@
     "the address took too long to answer": "l'adresse a mis trop de temps à répondre",
     "a prepared course has no placement check": "un cours préparé n'a pas de test de niveau",
     "a prepared course's cards take no answers": "les cartes d'un cours préparé ne prennent pas de réponses",
-    "hand-outs come from a unit of a prepared course": "les documents viennent d'une unité d'un cours préparé"
+    "hand-outs come from a unit of a prepared course": "les documents viennent d'une unité d'un cours préparé",
+    "only a prepared course can be duplicated": "seul un cours préparé peut être dupliqué"
   }
 }
