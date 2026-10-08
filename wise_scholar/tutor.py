@@ -3,6 +3,7 @@ import logging
 import random
 import re
 import sqlite3
+import time
 import unicodedata
 from datetime import datetime, timezone
 from collections import Counter
@@ -81,6 +82,18 @@ class Renamed(BaseModel):
 class Milestone(BaseModel):
     concept: str
     deliverable: str
+
+
+async def _logged(lesson: dict, origin: str, command: str, run, consent: str = "none") -> dict:
+    """Run a command with a log row written before it starts and finished when it ends, however it ends."""
+    row = db.log_command(lesson, origin, command, consent)
+    clock = time.monotonic()
+    result = None
+    try:
+        result = await run
+        return result
+    finally:
+        db.finish_command(row, result, round(time.monotonic() - clock, 3))
 
 
 def _show(lesson: dict, block: dict, event: str = "block.added") -> None:
@@ -433,7 +446,7 @@ async def run_command(lesson_id: int, command: str) -> str:
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    result = await sandbox.run(command, db.workspace(lesson["slug"]))
+    result = await _logged(lesson, "tutor", command, sandbox.run(command, db.workspace(lesson["slug"])))
     code = "stopped at the time limit" if result["exit_code"] is None else f"exit code {result['exit_code']}"
     return f"{code}\n{result['output']}"
 

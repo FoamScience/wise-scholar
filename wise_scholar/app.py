@@ -836,7 +836,8 @@ async def run_exercise(block_id: int) -> dict:
     block, workspace = _exercise(block_id)
     if not sandbox.commands():
         raise HTTPException(409, "running code is turned off on this server")
-    last_run = await sandbox.run(block["data"]["run"], workspace)
+    run = block["data"]["run"]
+    last_run = await tutor._logged(_lesson(block["lesson_id"]), "learner", run, sandbox.run(run, workspace))
     _update_block(db.block(block_id), {"last_run": last_run})
     return last_run
 
@@ -854,6 +855,7 @@ async def decide_network(block_id: int, body: Decision) -> dict:
     command = block["data"]["command"]
     if not body.allow:
         _, block = _update_block(block, {"status": "refused"})
+        db.log_command(lesson, "network", command, consent="refused")
         _start_turn(lesson, f"[event] The learner refused internet for this command: {command}\nGo on without it.")
         return block
     if not sandbox.commands() or not sandbox.networked():
@@ -878,7 +880,8 @@ def _reopen_unrun(lesson: dict, block_id: int, task: asyncio.Task) -> None:
 
 async def _run_allowed(lesson: dict, block_id: int, command: str) -> None:
     try:
-        result = await sandbox.run(command, db.workspace(lesson["slug"]), network=True)
+        run = sandbox.run(command, db.workspace(lesson["slug"]), network=True)
+        result = await tutor._logged(lesson, "network", command, run, consent="allowed")
         _update_block(db.block(block_id), {"status": "allowed", "result": result})
     except BaseException as e:
         # Stopped by the learner, or the command could not be run or recorded: the lesson is free again and the
@@ -963,6 +966,11 @@ async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
 @app.get("/api/errors")
 def list_errors(profile: int) -> list[dict]:
     return db.errors(profile)
+
+
+@app.get("/api/commands")
+def list_commands(profile: int) -> list[dict]:
+    return db.commands(profile)
 
 
 @app.get("/api/courses/{course_id}/book.pdf")

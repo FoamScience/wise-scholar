@@ -510,3 +510,49 @@ def test_unsandboxed_commands_keep_the_real_environment(place, monkeypatch):
     monkeypatch.setattr(sandbox, "SANDBOX", False)
     seen = run("echo $HOME; pwd", place / "courses/mine")["output"].splitlines()
     assert seen == [os.environ["HOME"], str((place / "courses/mine").resolve())]
+
+
+def test_every_command_is_logged_with_its_origin_and_consent(place, monkeypatch):
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Logged')").lastrowid
+    course = db.create_course("Shell", who)["id"]
+    lesson = db.create_lesson(course, "Echo", "lesson")
+    monkeypatch.setattr(sandbox, "SANDBOX", False)
+    assert asyncio.run(tutor.run_command(lesson, "echo tutor")).startswith("exit code 0")
+    assert asyncio.run(tutor.pose_exercise(lesson, "Run it", [tutor.ExerciseFile(path="e/x.sh", content="echo learner")], "sh e/x.sh")).startswith("shown")
+    block = db.blocks(lesson)[-1]
+    asyncio.run(app.run_exercise(block["id"]))
+    ask = db.add_block(lesson, "network", "needs pip", {"command": "pip install x", "status": "asked"})
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    asyncio.run(app.decide_network(ask["id"], app.Decision(allow=False)))
+    assert len(turns) == 1
+
+    async def no_turn(*_):
+        pass
+
+    monkeypatch.setattr(app, "_run_turn", no_turn)
+    allowed = db.add_block(lesson, "network", "needs curl", {"command": "echo online", "status": "running"})
+    asyncio.run(app._run_allowed(db.lesson(lesson), allowed["id"], "echo online"))
+
+    async def broken(*_, **__):
+        raise OSError("bwrap vanished")
+
+    monkeypatch.setattr(sandbox, "run", broken)
+    with pytest.raises(OSError):
+        asyncio.run(tutor.run_command(lesson, "echo never"))
+
+    other = db.conn.execute("INSERT INTO profiles (name) VALUES ('Other')").lastrowid
+    logged = db.commands(who)
+    assert [(c["origin"], c["command"], c["consent"], c["exit_code"], c["output"].strip(), c["topic"], c["lesson"]) for c in logged] == [
+        ("tutor", "echo never", "none", None, "stopped before it ended", "Shell", "Echo"),
+        ("network", "echo online", "allowed", 0, "online", "Shell", "Echo"),
+        ("network", "pip install x", "refused", None, "", "Shell", "Echo"),
+        ("learner", "sh e/x.sh", "none", 0, "learner", "Shell", "Echo"),
+        ("tutor", "echo tutor", "none", 0, "tutor", "Shell", "Echo"),
+    ]
+    assert all(c["started"] for c in logged) and logged[1]["seconds"] is not None and logged[2]["seconds"] is None
+    assert app.list_commands(who) == logged and db.commands(other) == []
+    db.delete_course(course)
+    assert db.commands(who) == []
