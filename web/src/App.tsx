@@ -147,7 +147,7 @@ function Today({ profile }: { profile: number }) {
   )
 }
 
-function Home({ profile }: { profile: number }) {
+function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
   const { t } = useTranslation()
   const [courses, setCourses] = useState<Course[]>([])
   const [topic, setTopic] = useState('')
@@ -257,8 +257,8 @@ function Home({ profile }: { profile: number }) {
         </details>
       </form>
       {error && <div className="error">{error}</div>}
-      <Today profile={profile} />
-      <ReviewPanels profile={profile} />
+      {!teacher && <Today profile={profile} />}
+      {!teacher && <ReviewPanels profile={profile} />}
       {active.length > 0 && (
         <section>
           <div className="label gap-below">{t('home.courses')}</div>
@@ -404,11 +404,11 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   )
 }
 
-function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean; onAct: Act; onError: (m: string) => void }) {
+function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean; authored: boolean; onAct: Act; onError: (m: string) => void }) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const d = props.block.data as ChallengeData
-  const open = !d.solved && d.solution === null
+  const open = !d.solved && d.solution === null && !props.authored
   const player = usePlayer(d.lang ?? '', props.speech)
 
   function submit(e: FormEvent) {
@@ -576,13 +576,13 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
   )
 }
 
-function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolean; onAct: Act }) {
+function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolean; authored: boolean; onAct: Act }) {
   const { t } = useTranslation()
   const d = props.block.data as ExerciseData
   const [files, setFiles] = useState<ExerciseFile[]>([])
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
-  const open = !d.solved && d.solution === null
+  const open = !d.solved && d.solution === null && !props.authored
   const blockId = props.block.id
   const kept = files.length > 0 && files.every((f) => f.kept)
 
@@ -739,6 +739,7 @@ function Plan(props: {
   onChoose: (mechanism: string) => void
   onAccept: () => void
   onPlacement: () => void
+  prepared: boolean
 }) {
   const { t } = useTranslation()
   return (
@@ -776,14 +777,16 @@ function Plan(props: {
       <div className="muted">{t('plan.always')}</div>
       {!props.accepted && (
         <div className="block next-step">
-          <div className="label">{t('plan.next')}</div>
-          <div>{t('plan.placementInfo')}</div>
+          <div className="label">{props.prepared ? t('plan.nextPrepared') : t('plan.next')}</div>
+          <div>{props.prepared ? t('plan.preparedInfo') : t('plan.placementInfo')}</div>
           <div className="row">
-            <button className="btn primary" disabled={props.disabled} onClick={props.onPlacement}>
-              {t('plan.startPlacement')}
-            </button>
-            <button className="btn" disabled={props.disabled} onClick={props.onAccept}>
-              {t('plan.skip')}
+            {!props.prepared && (
+              <button className="btn primary" disabled={props.disabled} onClick={props.onPlacement}>
+                {t('plan.startPlacement')}
+              </button>
+            )}
+            <button className={props.prepared ? 'btn primary' : 'btn'} disabled={props.disabled} onClick={props.onAccept}>
+              {props.prepared ? t('plan.accept') : t('plan.skip')}
             </button>
           </div>
         </div>
@@ -1065,11 +1068,13 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
               <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
                 <span className="concept-title" dir="auto">
                   {c.title}
-                  <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
-                    {[1, 2, 3].map((n) => (
-                      <i key={n} className={n <= squares(c) ? 'on' : ''} />
-                    ))}
-                  </span>
+                  {course.mode !== 'teacher' && (
+                    <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
+                      {[1, 2, 3].map((n) => (
+                        <i key={n} className={n <= squares(c) ? 'on' : ''} />
+                      ))}
+                    </span>
+                  )}
                 </span>
                 <span className="stats">{conceptStats(c, conceptLesson, t)}</span>
               </button>
@@ -1111,6 +1116,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
               question={b.markdown}
               data={b.data as QuizData}
               disabled={lesson.running}
+              authored={course.mode === 'teacher'}
               onUnknown={lesson.phase === 'placement' ? () => post(`/api/blocks/${b.id}/quiz/unknown`, {}) : undefined}
               onSubmit={(answer, confidence) => post(`/api/blocks/${b.id}/quiz`, { answer, confidence })}
             />
@@ -1138,6 +1144,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
               block={b}
               disabled={lesson.running}
               commands={commands}
+              authored={course.mode === 'teacher'}
               onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
             />
           ) : b.kind === 'challenge' ? (
@@ -1146,6 +1153,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
               block={b}
               disabled={lesson.running}
               speech={speech}
+              authored={course.mode === 'teacher'}
               onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
               onError={setError}
             />
@@ -1198,6 +1206,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
             ranking={course.ranking}
             mechanism={course.mechanism}
             accepted={course.concepts.length > 0 || course.lessons.some((l) => l.phase === 'placement')}
+            prepared={course.mode === 'teacher'}
             disabled={lesson.running}
             onChoose={(mechanism) => post(`/api/courses/${course.id}/mechanism`, { mechanism })}
             onAccept={() => post(`/api/courses/${course.id}/plan/accept`, {})}
@@ -1468,7 +1477,7 @@ export default function App() {
     if (hash === '#/commands') return <CommandsPage profile={current.id} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} locale={locale} onSelect={select} onChanged={reload} />
-    return <Home key={current.id} profile={current.id} />
+    return <Home key={current.id} profile={current.id} teacher={current.mode === 'teacher'} />
   }
 
   return (

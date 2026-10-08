@@ -206,7 +206,10 @@
       "next": "Next · placement check",
       "placementInfo": "About 8 questions, harder or easier depending on your answers. It decides where the course starts and what you can skip.",
       "startPlacement": "Start placement check",
-      "skip": "Skip, start from the beginning"
+      "skip": "Skip, start from the beginning",
+      "nextPrepared": "Next · the course map",
+      "preparedInfo": "Accepting builds the course map; opening a unit on it produces that unit's lesson plan.",
+      "accept": "Accept the plan"
     },
     "playbooks": {
       "concept-map": {
@@ -258,7 +261,12 @@
       "noPassword": "No password. Anyone using this browser can switch profiles.",
       "commandsHeading": "Commands run for you",
       "commandsScope": "Every command the tutor ran, every Run you pressed, and every command you allowed or refused internet for, across your courses.",
-      "commands": "Command log"
+      "commands": "Command log",
+      "modeHeading": "How you use wise-scholar",
+      "learner": "I learn",
+      "teacher": "I teach",
+      "learnerHelp": "The tutor interviews you, places you and teaches you unit by unit.",
+      "teacherHelp": "The course designer interviews you about your class and writes a lesson plan per unit: openings, explanations, exercises with solutions, quick checks with keys, misconceptions, timing. Nothing is taught to you; your courses stay yours."
     },
     "quiz": {
       "howSure": "How sure are you?",
@@ -272,7 +280,8 @@
       "confidentMiss": "You were {{percent}} sure. This one comes back first in your reviews.",
       "pretest": "First, a quick check",
       "quickCheck": "Quick check",
-      "dontKnow": "I don't know"
+      "dontKnow": "I don't know",
+      "key": "Key"
     },
     "review": {
       "done": "Review done",

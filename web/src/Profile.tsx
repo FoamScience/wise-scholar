@@ -69,9 +69,26 @@ export function ProfilePage(props: {
     api(`/api/facts/${fact.id}/forget`, {}).then(() => setFacts((all) => all.filter((f) => f.id !== fact.id)), () => {})
   }
 
+  function setMode(mode: Profile['mode']) {
+    if (mode !== current.mode) api(`/api/profiles/${current.id}/mode`, { mode }).then(props.onChanged, () => {})
+  }
+
   return (
     <main className="home">
       <h1>{current.name}</h1>
+
+      <section className="block stack">
+        <div className="label">{t('profile.modeHeading')}</div>
+        <div className="row">
+          <button type="button" className={current.mode === 'learner' ? 'btn primary' : 'btn'} onClick={() => setMode('learner')}>
+            {t('profile.learner')}
+          </button>
+          <button type="button" className={current.mode === 'teacher' ? 'btn primary' : 'btn'} onClick={() => setMode('teacher')}>
+            {t('profile.teacher')}
+          </button>
+        </div>
+        <div className="small">{current.mode === 'teacher' ? t('profile.teacherHelp') : t('profile.learnerHelp')}</div>
+      </section>
 
       <section className="block stack">
         <div className="label">{t('profile.knows')}</div>
