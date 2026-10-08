@@ -115,7 +115,10 @@
     },
     "question": {
       "own": "Or say it in your own words",
-      "answer": "Answer"
+      "answer": "Answer",
+      "several": "Pick all that apply.",
+      "done_one": "Done · {{count}} picked",
+      "done_other": "Done · {{count}} picked"
     },
     "challenge": {
       "transfer": "Transfer: same idea, new ground, no hints",

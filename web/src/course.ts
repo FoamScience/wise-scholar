@@ -10,7 +10,7 @@ export type Course = {
   mode: 'learner' | 'teacher'
 }
 export type Message = { id: number; lesson_id: number; role: 'learner' | 'tutor'; text: string; created: string }
-export type QuestionData = { options: string[]; answer: string | null }
+export type QuestionData = { options: string[]; answer: string | null; multiple?: boolean }
 export type ChallengeData = {
   attempts: string[]
   hints: string[]

@@ -924,3 +924,25 @@ def test_a_teacher_edits_removes_and_reorders_the_cards_of_a_plan():
     with pytest.raises(HTTPException) as refused:
         app.edit_block(block["id"], app.BlockEdit(markdown="Changed"))
     assert refused.value.status_code == 409
+
+
+def test_a_question_card_may_take_several_answers():
+    import asyncio
+
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Many')").lastrowid
+    course = db.create_course("Statistics", who)["id"]
+    interview = db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]
+    assert asyncio.run(tutor.ask(interview, "What do you already use?", ["Excel"])).startswith("error: a question card takes")
+    assert asyncio.run(tutor.ask(interview, "What do you already use?", ["Excel", "Python", "R"], multiple=True)).startswith("shown")
+    block = db.blocks(interview)[-1]
+    assert block["data"]["multiple"] is True and block["data"]["answer"] is None
+    turns = []
+    app_turn = app._start_turn
+    app._start_turn = lambda lesson, line: turns.append(line)
+    try:
+        asyncio.run(app.answer_question(block["id"], app.Answer(answer="Excel; R")))
+    finally:
+        app._start_turn = app_turn
+    assert db.block(block["id"])["data"]["answer"] == "Excel; R" and "Excel; R" in turns[0]

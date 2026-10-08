@@ -117,7 +117,11 @@
     },
     "question": {
       "own": "Ou dites-le avec vos propres mots",
-      "answer": "Répondre"
+      "answer": "Répondre",
+      "several": "Cochez tout ce qui s'applique.",
+      "done_one": "Valider · {{count}} choix",
+      "done_other": "Valider · {{count}} choix",
+      "done_many": "Valider · {{count}} choix"
     },
     "challenge": {
       "transfer": "Transfert : même idée, nouveau terrain, sans indice",

@@ -169,16 +169,20 @@ def pretest_blocker(lesson: dict) -> str | None:
 
 
 @mcp.tool()
-async def ask(lesson_id: int, question: str, options: list[str]) -> str:
+async def ask(lesson_id: int, question: str, options: list[str], multiple: bool = False) -> str:
     """Show the learner one question card with 2 to 5 short answer options.
 
-    The learner can also answer in their own words. This returns at once: end your
+    multiple: more than one option may be true (what they already know, what they want to do,
+    what equipment there is): the learner picks any number and the answer arrives as the picks
+    joined by "; ". The learner can also answer in their own words. This returns at once: end your
     turn after calling it, and the answer arrives as the next turn.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    _show(lesson, db.add_block(lesson_id, "question", question, {"options": options, "answer": None}))
+    if not 2 <= len(options) <= 5:
+        return "error: a question card takes 2 to 5 options"
+    _show(lesson, db.add_block(lesson_id, "question", question, {"options": options, "answer": None, "multiple": multiple}))
     return "shown; end the turn and wait for the answer"
 
 
