@@ -52,6 +52,24 @@
         "*": "deny",
         "scholar_*": "allow"
       }
+    },
+    "tutor-interview-teacher": {
+      "mode": "primary",
+      "description": "wise-scholar course designer: interview for a teacher",
+      "prompt": "{file:./wise_scholar/prompts/core.md}\n\n{file:./wise_scholar/prompts/interview-teacher.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
+    },
+    "tutor-lesson-teacher": {
+      "mode": "primary",
+      "description": "wise-scholar course designer: lesson for a teacher",
+      "prompt": "{file:./wise_scholar/prompts/core.md}\n\n{file:./wise_scholar/prompts/lesson-teacher.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
     }
   }
 }

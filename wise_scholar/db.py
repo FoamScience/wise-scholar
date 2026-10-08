@@ -234,6 +234,10 @@ MIGRATIONS = [
     CREATE INDEX commands_profile ON commands(profile_id, id);
     """,
     "ALTER TABLE courses ADD COLUMN cleaned TEXT;",
+    """
+    ALTER TABLE profiles ADD COLUMN mode TEXT NOT NULL DEFAULT 'learner';
+    ALTER TABLE courses ADD COLUMN mode TEXT NOT NULL DEFAULT 'learner';
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -303,8 +307,10 @@ def create_course(topic: str, profile_id: int) -> dict:
     slug, n = base, 2
     while row("SELECT 1 FROM courses WHERE slug = ?", slug):
         slug, n = f"{base}-{n}", n + 1
+    # A course keeps the mode its profile had when it was made.
+    mode = (profile(profile_id) or {}).get("mode", "learner")
     course_id = conn.execute(
-        "INSERT INTO courses (topic, slug, profile_id, started) VALUES (?, ?, ?, 0)", (topic, slug, profile_id)
+        "INSERT INTO courses (topic, slug, profile_id, started, mode) VALUES (?, ?, ?, 0, ?)", (topic, slug, profile_id, mode)
     ).lastrowid
     create_lesson(course_id, "Interview", "interview")
     return course(course_id)
@@ -483,7 +489,7 @@ def _rehome_capstones(course_id: int) -> list[str]:
 
 def lesson(lesson_id: int) -> dict | None:
     return row(
-        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, c.details, c.hours, c.started, p.name AS profile, p.locale, k.title AS concept, k.module "
+        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, c.details, c.hours, c.started, c.mode, p.name AS profile, p.locale, k.title AS concept, k.module "
         "FROM lessons l JOIN courses c ON c.id = l.course_id JOIN profiles p ON p.id = c.profile_id "
         "LEFT JOIN concepts k ON k.id = l.concept_id "
         "WHERE l.id = ?",

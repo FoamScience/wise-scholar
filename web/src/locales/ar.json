@@ -226,7 +226,10 @@
       "next": "التالي · اختبار تحديد المستوى",
       "placementInfo": "نحو 8 أسئلة، تصعب أو تسهل بحسب إجاباتك. يحدّد الاختبار من أين تبدأ الدورة وما يمكنك تخطّيه.",
       "startPlacement": "ابدأ اختبار تحديد المستوى",
-      "skip": "تخطَّ، وابدأ من البداية"
+      "skip": "تخطَّ، وابدأ من البداية",
+      "nextPrepared": "التالي · خريطة الدورة",
+      "preparedInfo": "القبول يبني خريطة الدورة؛ وفتح وحدة فيها يُنتج خطة درسها.",
+      "accept": "اقبل الخطة"
     },
     "playbooks": {
       "concept-map": {
@@ -282,7 +285,12 @@
       "noPassword": "بلا كلمة مرور. أي شخص يستخدم هذا المتصفّح يمكنه تبديل الملف الشخصي.",
       "commandsHeading": "الأوامر التي نُفّذت لك",
       "commandsScope": "كل أمر نفّذه المعلّم، وكل ضغطة «تشغيل» منك، وكل أمر سمحت له بالإنترنت أو رفضته، في كل دوراتك.",
-      "commands": "سجل الأوامر"
+      "commands": "سجل الأوامر",
+      "modeHeading": "كيف تستخدم wise-scholar",
+      "learner": "أتعلّم",
+      "teacher": "أدرّس",
+      "learnerHelp": "يحاورك المعلّم، ويحدّد مستواك، ويعلّمك وحدة وحدة.",
+      "teacherHelp": "يحاورك مصمّم الدورة عن صفّك ويكتب خطة درس لكل وحدة: افتتاحيات، وشروح، وتمارين بحلولها، وأسئلة سريعة بمفاتيحها، ومفاهيم خاطئة، وتوقيت. لا يُدرَّس لك شيء؛ ودوراتك تبقى لك."
     },
     "quiz": {
       "howSure": "ما مدى ثقتك؟",
@@ -296,7 +304,8 @@
       "confidentMiss": "كانت ثقتك {{percent}}. سيعود هذا السؤال أولًا في مراجعاتك.",
       "pretest": "أولًا، سؤال سريع",
       "quickCheck": "سؤال سريع",
-      "dontKnow": "لا أعرف"
+      "dontKnow": "لا أعرف",
+      "key": "المفتاح"
     },
     "review": {
       "done": "انتهت المراجعة",
@@ -497,6 +506,8 @@
     "the address redirects too many times": "يعيد العنوان التوجيه مرات كثيرة",
     "that address is not a PDF, EPUB, HTML, Markdown or text document": "هذا العنوان ليس مستند PDF أو EPUB أو HTML أو Markdown أو نصًّا",
     "the address could not be fetched": "تعذّر جلب العنوان",
-    "the address took too long to answer": "استغرق العنوان وقتًا طويلًا للإجابة"
+    "the address took too long to answer": "استغرق العنوان وقتًا طويلًا للإجابة",
+    "a prepared course has no placement check": "الدورة المُعدّة لا اختبار تحديد مستوى فيها",
+    "a prepared course's cards take no answers": "بطاقات الدورة المُعدّة لا تقبل إجابات"
   }
 }

@@ -211,7 +211,10 @@
       "next": "Ensuite · test de niveau",
       "placementInfo": "Environ 8 questions, plus difficiles ou plus faciles selon vos réponses. Le test décide où le cours commence et ce que vous pouvez sauter.",
       "startPlacement": "Commencer le test de niveau",
-      "skip": "Passer, commencer au début"
+      "skip": "Passer, commencer au début",
+      "nextPrepared": "Ensuite · le plan du cours",
+      "preparedInfo": "Accepter construit le plan du cours ; ouvrir une unité y produit son plan de leçon.",
+      "accept": "Accepter le plan"
     },
     "playbooks": {
       "concept-map": {
@@ -264,7 +267,12 @@
       "noPassword": "Pas de mot de passe. Toute personne utilisant ce navigateur peut changer de profil.",
       "commandsHeading": "Commandes exécutées pour vous",
       "commandsScope": "Chaque commande lancée par le tuteur, chaque Exécuter que vous avez pressé, et chaque commande pour laquelle vous avez accordé ou refusé internet, dans tous vos cours.",
-      "commands": "Journal des commandes"
+      "commands": "Journal des commandes",
+      "modeHeading": "Votre usage de wise-scholar",
+      "learner": "J'apprends",
+      "teacher": "J'enseigne",
+      "learnerHelp": "Le tuteur vous interroge, vous situe et vous enseigne unité par unité.",
+      "teacherHelp": "Le concepteur de cours vous interroge sur votre classe et rédige un plan de leçon par unité : ouvertures, explications, exercices corrigés, questions rapides avec leur clé, idées fausses, minutage. Rien ne vous est enseigné ; vos cours restent les vôtres."
     },
     "quiz": {
       "howSure": "Quel est votre degré de certitude ?",
@@ -278,7 +286,8 @@
       "confidentMiss": "Votre certitude était de {{percent}}. Cette question reviendra en premier dans vos révisions.",
       "pretest": "D'abord, une question rapide",
       "quickCheck": "Question rapide",
-      "dontKnow": "Je ne sais pas"
+      "dontKnow": "Je ne sais pas",
+      "key": "Clé"
     },
     "review": {
       "done": "Révision terminée",
@@ -473,6 +482,8 @@
     "the address redirects too many times": "l'adresse redirige trop de fois",
     "that address is not a PDF, EPUB, HTML, Markdown or text document": "cette adresse n'est pas un document PDF, EPUB, HTML, Markdown ou texte",
     "the address could not be fetched": "l'adresse n'a pas pu être récupérée",
-    "the address took too long to answer": "l'adresse a mis trop de temps à répondre"
+    "the address took too long to answer": "l'adresse a mis trop de temps à répondre",
+    "a prepared course has no placement check": "un cours préparé n'a pas de test de niveau",
+    "a prepared course's cards take no answers": "les cartes d'un cours préparé ne prennent pas de réponses"
   }
 }

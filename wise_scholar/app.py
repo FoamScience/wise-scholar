@@ -126,6 +126,13 @@ class ProfileLocale(BaseModel):
     locale: Locale
 
 
+Mode = Literal["learner", "teacher"]
+
+
+class ProfileMode(BaseModel):
+    mode: Mode
+
+
 class Turn(BaseModel):
     text: str
 
@@ -212,6 +219,7 @@ def _challenge_block(block_id: int) -> dict:
     block = db.block(block_id)
     if not block or block["kind"] not in challenge.KINDS:
         raise HTTPException(404, "no such challenge")
+    _require_answerable(block)
     _require_idle(block["lesson_id"])
     if not challenge.is_open(block["data"]):
         raise HTTPException(409, "this challenge is closed")
@@ -302,7 +310,7 @@ async def _run_turn(lesson: dict, line: str) -> None:
             resume=resume,
             name=f"wise-scholar · {lesson['profile']} · {lesson['topic']} · {lesson['title']}",
             cwd=db.workspace(lesson["slug"]),
-            phase=lesson["phase"],
+            phase=_phase_prompt(lesson),
         ):
             if event["type"] == "session.started":
                 db.conn.execute(
@@ -328,6 +336,13 @@ async def _run_turn(lesson: dict, line: str) -> None:
     hub.publish(course_id, {**final, "lesson_id": lesson_id, "message": message})
 
 
+def _phase_prompt(lesson: dict) -> str:
+    """Which phase prompt drives the turn: a prepared course gets the teacher's interview and lesson plans."""
+    if lesson["mode"] == "teacher" and lesson["phase"] in ("interview", "lesson"):
+        return f"{lesson['phase']}-teacher"
+    return lesson["phase"]
+
+
 def _start_turn(lesson: dict, line: str) -> None:
     _turns[lesson["id"]] = asyncio.create_task(_run_turn(lesson, line))
     hub.publish(lesson["course_id"], {"type": "turn.started", "lesson_id": lesson["id"]})
@@ -343,6 +358,17 @@ def _require_unplaced(course: dict) -> None:
         raise HTTPException(409, "the course map already exists")
     if any(lesson["phase"] == "placement" for lesson in course["lessons"]):
         raise HTTPException(409, "the placement check already started")
+
+
+def _require_learner(course: dict) -> None:
+    if course["mode"] == "teacher":
+        raise HTTPException(409, "a prepared course has no placement check")
+
+
+def _require_answerable(block: dict) -> None:
+    """Cards of a prepared course are material for the teacher: nobody answers them."""
+    if _lesson(block["lesson_id"])["mode"] == "teacher":
+        raise HTTPException(409, "a prepared course's cards take no answers")
 
 
 @app.get("/api/meta")
@@ -427,6 +453,14 @@ def get_profile(profile_id: int) -> dict:
 def rename_profile(profile_id: int, body: Name) -> dict:
     _profile(profile_id)
     _save_profile("UPDATE profiles SET name = ? WHERE id = ?", body.name.strip(), profile_id)
+    return db.profile(profile_id)
+
+
+@app.post("/api/profiles/{profile_id}/mode")
+def set_mode(profile_id: int, body: ProfileMode) -> dict:
+    """Learner or teacher: a teacher prepares courses for a class instead of being taught."""
+    _profile(profile_id)
+    db.conn.execute("UPDATE profiles SET mode = ? WHERE id = ?", (body.mode, profile_id))
     return db.profile(profile_id)
 
 
@@ -562,16 +596,15 @@ async def accept_plan(course_id: int) -> None:
     _require_unplaced(course)
     interview = _lesson(course["lessons"][0]["id"])
     _require_idle(interview["id"])
-    _start_turn(
-        interview,
-        f"[event] The learner accepted the plan with mechanism {course['mechanism']} and skipped the placement check. "
-        "Build the course map.",
-    )
+    who = "The teacher" if course["mode"] == "teacher" else "The learner"
+    tail = "" if course["mode"] == "teacher" else " and skipped the placement check"
+    _start_turn(interview, f"[event] {who} accepted the plan with mechanism {course['mechanism']}{tail}. Build the course map.")
 
 
 @app.post("/api/courses/{course_id}/placement")
 async def start_placement(course_id: int) -> dict:
     course = _course(course_id)
+    _require_learner(course)
     if not course["mechanism"]:
         raise HTTPException(409, "there is no plan yet")
     _require_unplaced(course)
@@ -589,6 +622,7 @@ async def start_placement(course_id: int) -> dict:
 async def retake_placement(course_id: int) -> dict:
     """A fresh placement check at any time; its result recalibrates the level, the vocabulary tier and the map."""
     course = _course(course_id)
+    _require_learner(course)
     if not course["concepts"]:
         raise HTTPException(409, "there is no course map yet; the first placement comes with the plan")
     earlier = [lesson for lesson in course["lessons"] if lesson["phase"] == "placement"]
@@ -1058,6 +1092,7 @@ def _unanswered_quiz(block_id: int) -> tuple[dict, dict]:
     block = db.block(block_id)
     if not block or block["kind"] != "quiz":
         raise HTTPException(404, "no such quiz")
+    _require_answerable(block)
     _require_idle(block["lesson_id"])
     if block["data"]["answer"] is not None:
         raise HTTPException(409, "already answered")

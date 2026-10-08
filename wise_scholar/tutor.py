@@ -144,10 +144,15 @@ def _pretest_length_error(text: str) -> str | None:
     )
 
 
+def prepared(lesson: dict) -> bool:
+    """A teacher's course: cards are authored for a class, nobody answers them here, so the learner gates are off."""
+    return lesson["mode"] == "teacher"
+
+
 def pretest_blocker(lesson: dict) -> str | None:
     """A concept lesson explains nothing until the learner has tried its opening card (a pretest challenge or quiz,
-    or an exercise); placed-out concepts are exempt."""
-    if lesson["phase"] != "lesson" or not lesson["concept_id"]:
+    or an exercise); placed-out concepts and prepared courses are exempt."""
+    if lesson["phase"] != "lesson" or not lesson["concept_id"] or prepared(lesson):
         return None
     concept = db.row("SELECT known FROM concepts WHERE id = ?", lesson["concept_id"])
     if not concept or concept["known"]:
@@ -435,7 +440,7 @@ async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, m
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    if pretest and (problem := _pretest_length_error(markdown)):
+    if pretest and not prepared(lesson) and (problem := _pretest_length_error(markdown)):
         return problem
     data = {**challenge.new(), "pretest": pretest, "milestone": milestone, "transfer": transfer, "form": form.strip()}
     if transfer:
@@ -963,10 +968,12 @@ async def reveal(challenge_id: int, solution: str) -> str:
     data = _open_challenge(challenge_id)
     if isinstance(data, str):
         return data
-    if problem := challenge.reveal_blocker(data):
+    lesson = db.lesson(db.block(challenge_id)["lesson_id"])
+    if problem := challenge.reveal_blocker(data, locked=not prepared(lesson)):
         return f"refused: {problem}"
     _patch_block(challenge_id, {"solution": solution})
-    _grade_teachback(data, False)
+    if not prepared(lesson):
+        _grade_teachback(data, False)
     if data.get("writing") and data["attempts"] and not data.get("fluency"):
         _note_writing_error(challenge_id, data, solution)
     return "shown"
@@ -1020,12 +1027,12 @@ async def pose_quiz(
         return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
     if lemma and not lesson["lang"]:
         return "error: lemma needs a language course; pose_vocab_check or add_reading sets the language"
-    if pretest and (problem := _pretest_length_error("\n".join([question, *options]))):
+    if pretest and not prepared(lesson) and (problem := _pretest_length_error("\n".join([question, *options]))):
         return problem
     options = _shuffled(options) if kind == "choice" else []
     card_id = db.add_card(
         lesson["course_id"], None if pretest else lesson["concept_id"], question, kind, options, answer_key, explanation,
-        scheduled=lesson["phase"] != "placement" and not pretest,
+        scheduled=lesson["phase"] != "placement" and not pretest and not prepared(lesson),
     )
     if lemma:
         lemma = simplemma.lemmatize(lemma, lang=lesson["lang"]).lower()
@@ -1069,7 +1076,7 @@ async def finish_lesson(lesson_id: int, summary: str) -> str:
     blocks = db.blocks(lesson_id)
     if any(b["kind"] == "done" for b in blocks):
         return "refused: this lesson is already finished"
-    if any(b["kind"] == "quiz" and b["data"].get("correct") is None for b in blocks):
+    if not prepared(lesson) and any(b["kind"] == "quiz" and b["data"].get("correct") is None for b in blocks):
         return "refused: a quick check is still unanswered or ungraded"
     _show(lesson, db.add_block(lesson_id, "done", summary, {}))
     return "finished; end the turn"

@@ -19,11 +19,12 @@ def is_open(data: dict) -> bool:
     return not data["solved"] and data["solution"] is None
 
 
-def reveal_blocker(data: dict) -> str | None:
-    """Why the solution may not be shown yet, or None when the gate is open."""
+def reveal_blocker(data: dict, locked: bool = True) -> str | None:
+    """Why the solution may not be shown yet, or None when the gate is open; locked=False keeps only the
+    already-shown check (a prepared course, where the solution is part of the material)."""
     if data["solution"] is not None:
         return "the solution is already shown"
-    if data["gave_up"] or data["solved"] or len(data["attempts"]) >= data["reveal_after"]:
+    if not locked or data["gave_up"] or data["solved"] or len(data["attempts"]) >= data["reveal_after"]:
         return None
     left = data["reveal_after"] - len(data["attempts"])
     return (

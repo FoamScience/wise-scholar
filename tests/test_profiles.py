@@ -733,3 +733,53 @@ def test_a_material_url_is_fetched_through_checked_hops_and_private_addresses_ar
     db.finish_source(source["id"], [("page 1", "Git stores snapshots.")])
     prompt = app._turn_prompt(db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]), "[event] x")
     assert "Materials the learner gave for this course, to plan and teach from: peepcode.pdf (1 sections)" in prompt
+
+
+def test_a_teacher_profile_prepares_courses_with_the_designer_prompts_and_no_learner_gates(monkeypatch):  # noqa: C901
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Ms Teach')").lastrowid
+    assert db.profile(who)["mode"] == "learner"
+    assert app.set_mode(who, app.ProfileMode(mode="teacher"))["mode"] == "teacher"
+    course = db.create_course("Chemistry for year 10", who)
+    assert course["mode"] == "teacher"
+    interview = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", course["id"])["id"])
+    assert app._phase_prompt(interview) == "interview-teacher"
+    for name in ("interview-teacher", "lesson-teacher"):
+        assert (db.ROOT / "wise_scholar" / "prompts" / f"{name}.md").exists()
+
+    db.set_concepts(course["id"], [{"title": "Atoms", "concepts": ["Bonds"], "known": []}])
+    lesson = db.create_lesson(course["id"], "Bonds", "lesson", db.concepts(course["id"])[0]["id"])
+    assert app._phase_prompt(db.lesson(lesson)) == "lesson-teacher"
+    # No opening gate, no pretest length cap, immediate solutions, unscheduled quizzes, finish without answers.
+    assert asyncio.run(tutor.add_block(lesson, "prose", "Objectives…")) == "shown"
+    assert asyncio.run(tutor.pose_challenge(lesson, "Predict. " * 120, pretest=True, form="prediction")).startswith("shown")
+    opening = db.blocks(lesson)[-1]
+    assert asyncio.run(tutor.give_hint(opening["id"], "Think of shells.")).startswith("shown as hint 1")
+    assert asyncio.run(tutor.reveal(opening["id"], "Two bonds.")) == "shown"
+    assert asyncio.run(tutor.pose_quiz(lesson, "Valence of carbon?", "choice", ["4", "2"], "4", "Four electrons.")).startswith("shown")
+    assert db.card(db.blocks(lesson)[-1]["data"]["card_id"])["scheduled"] == 0
+    assert asyncio.run(tutor.finish_lesson(lesson, "Plan done.")) == "finished; end the turn"
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(app.start_placement(course["id"]))
+    assert refused.value.status_code == 409 and "prepared course" in refused.value.detail
+    # Nobody answers an authored card through the API either.
+    for call in (lambda: app.answer_quiz(db.blocks(lesson)[-2]["id"], app.QuizAnswer(answer="4", confidence=0.5)),
+                 lambda: app.attempt(opening["id"], app.Answer(answer="x"))):
+        with pytest.raises(HTTPException) as closed:
+            asyncio.run(call())
+        assert closed.value.status_code == 409 and "take no answers" in closed.value.detail
+
+    # A learner's course keeps its gates and its placement flow, retake included.
+    learner = db.conn.execute("INSERT INTO profiles (name) VALUES ('Still learning')").lastrowid
+    plain = db.create_course("Chemistry", learner)["id"]
+    assert db.course(plain)["mode"] == "learner" and app._phase_prompt(db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", plain)["id"])) == "interview"
+    db.set_concepts(plain, [{"title": "Atoms", "concepts": ["Bonds"], "known": []}])
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: None)
+    retake = asyncio.run(app.retake_placement(plain))
+    assert retake["phase"] == "placement"

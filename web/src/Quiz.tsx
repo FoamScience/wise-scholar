@@ -149,6 +149,7 @@ export function QuizCard(props: {
   question: string
   data: QuizData
   disabled: boolean
+  authored?: boolean
   onUnknown?: () => void
   onSubmit: (answer: string, confidence: number) => void
 }) {
@@ -158,7 +159,22 @@ export function QuizCard(props: {
     <section id={`block-${props.id}`} className="block quiz">
       <div className="label">{props.data.pretest ? t('quiz.pretest') : t('quiz.quickCheck')}</div>
       <Markdown>{props.question}</Markdown>
-      {d.answer === null ? (
+      {props.authored ? (
+        <div className="solution">
+          {d.options.length > 0 && (
+            <ul className="book-options">
+              {d.options.map((o) => (
+                <li key={o} className={o === d.answer_key ? 'picked' : undefined}>
+                  <Markdown>{o}</Markdown>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="label">{t('quiz.key')}</div>
+          <Markdown>{d.answer_key ?? ''}</Markdown>
+          {d.explanation && <Markdown>{d.explanation}</Markdown>}
+        </div>
+      ) : d.answer === null ? (
         <QuizForm
           id={`quiz-${props.id}`}
           kind={d.kind}
