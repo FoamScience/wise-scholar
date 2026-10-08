@@ -115,7 +115,7 @@
     "challenge": {
       "transfer": "Transfert : même idée, nouveau terrain, sans indice",
       "milestone": "Étape du projet",
-      "pretest": "Avant de commencer : essayez",
+      "pretest": "D'abord, essayez",
       "teachback": "Expliquez-le en 60 secondes",
       "teachbackAloud": "Expliquez-le en 60 secondes, à voix haute",
       "spoken": "Écoutez et répondez à l'oral",
@@ -269,7 +269,7 @@
       "notQuite": "Pas tout à fait",
       "answerKey": "**Réponse :** {{answer}}",
       "confidentMiss": "Votre certitude était de {{percent}}. Cette question reviendra en premier dans vos révisions.",
-      "pretest": "Avant de commencer : qu'en pensez-vous ?",
+      "pretest": "D'abord, une question rapide",
       "quickCheck": "Question rapide",
       "dontKnow": "Je ne sais pas"
     },

@@ -113,7 +113,7 @@
     "challenge": {
       "transfer": "Transfer: same idea, new ground, no hints",
       "milestone": "Capstone milestone",
-      "pretest": "Before we start: try it",
+      "pretest": "First, try this",
       "teachback": "Explain it in 60 seconds",
       "teachbackAloud": "Explain it in 60 seconds, out loud",
       "spoken": "Listen and answer by speaking",
@@ -263,7 +263,7 @@
       "notQuite": "Not quite",
       "answerKey": "**Answer:** {{answer}}",
       "confidentMiss": "You were {{percent}} sure. This one comes back first in your reviews.",
-      "pretest": "Before we start: what do you think?",
+      "pretest": "First, a quick check",
       "quickCheck": "Quick check",
       "dontKnow": "I don't know"
     },

@@ -11,9 +11,9 @@ url = "https://doi.org/10.1080/08993408.2019.1608781"
 
 Teach each concept through one small exercise in the learner's workspace, themed on their project. Keep each concept's files in its own subfolder.
 
-1. Predict. Pose a challenge that shows a short piece of working code and asks what it does before anyone runs it.
-2. Run. Pose an exercise with that code as the starter file. The learner runs it and compares the result with the prediction. A wrong prediction is the lesson: ask what they expected and why.
-3. Investigate. Ask one or two questions about how the code works: trace a value, name the part that causes an effect.
+1. Open. One of the opening forms from the lesson rules, chosen for this concept and not one of the last two lessons' forms: a prediction about a short piece of working code, a bug to find in it, a line to fill in, or a small build from a starter.
+2. Run. Unless the opening was itself an exercise, pose one with that code as the starter file. The learner runs it and compares the result with the opening. A wrong prediction or a missed bug is the lesson: say in one sentence what the output shows and go on.
+3. Investigate. Ask one or two concrete questions about how the code works: trace a value, name the part that causes an effect.
 4. Modify. Ask for a small change with a visible result in the same file.
 5. Make. Ask for something new that uses the concept, in a new file.
 
@@ -23,4 +23,4 @@ When an exercise computes or measures numbers, have it write them to a CSV in th
 
 Keep exercises short enough to finish in one sitting. When a check fails, give the smallest hint that unblocks the next step, never the finished code.
 
-If the `[known]` facts name a language or tool the learner already uses, bridge from it in every step: show the known form next to the new one, and warn where the two look alike but behave differently. Ask the learner to predict those cases before running them.
+If the `[known]` facts name a language or tool the learner already uses, bridge from it in every step: show the known form next to the new one, and warn where the two look alike but behave differently. Those cases make good openings: a prediction or a bug hunt before running them.

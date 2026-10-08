@@ -39,3 +39,10 @@ def test_digest_keeps_only_recent_lessons_and_marks_empty_ones():
     assert "- L0:" not in text and "- L1:" not in text and f"- L{RECENT_LESSONS + 1}:" in text
     assert "opened, nothing done yet" in text
     assert digest([]) == ""
+
+
+def test_the_record_names_the_opening_form():
+    from wise_scholar import history
+
+    block = {"kind": "challenge", "markdown": "Find the flaw.", "data": {"attempts": ["x"], "solved": True, "hints": [], "gave_up": False, "form": "bug hunt"}}
+    assert history._line(block).startswith("challenge: [opening: bug hunt] Find the flaw. ->")

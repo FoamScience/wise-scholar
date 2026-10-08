@@ -140,7 +140,8 @@ def _pretest_length_error(text: str) -> str | None:
 
 
 def pretest_blocker(lesson: dict) -> str | None:
-    """A concept lesson explains nothing until the learner has tried a pretest; placed-out concepts are exempt."""
+    """A concept lesson explains nothing until the learner has tried its opening card (a pretest challenge or quiz,
+    or an exercise); placed-out concepts are exempt."""
     if lesson["phase"] != "lesson" or not lesson["concept_id"]:
         return None
     concept = db.row("SELECT known FROM concepts WHERE id = ?", lesson["concept_id"])
@@ -148,11 +149,12 @@ def pretest_blocker(lesson: dict) -> str | None:
         return None
     for block in db.blocks(lesson["id"]):
         data = block["data"] or {}
-        if data.get("pretest") and (data.get("attempts") or data.get("answer") is not None):
+        opening = data.get("pretest") or block["kind"] == "exercise"
+        if opening and (data.get("attempts") or data.get("answer") is not None or data.get("last_run")):
             return None
     return (
-        "no pretest has been tried yet. Open the lesson with pose_challenge or pose_quiz with pretest set, "
-        "end the turn, and explain only after the learner has attempted it"
+        "the lesson has no attempted opening yet. Open it with pose_challenge or pose_quiz with pretest set, or with "
+        "pose_exercise, end the turn, and explain only after the learner has tried it"
     )
 
 
@@ -413,14 +415,16 @@ async def add_plot(lesson_id: int, title: str, spec: dict, alt: str) -> str:
 
 
 @mcp.tool()
-async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, milestone: bool = False, transfer: bool = False) -> str:
+async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, milestone: bool = False, transfer: bool = False, form: str = "") -> str:
     """Show something the learner must work out themselves: a prediction, a question, a problem.
 
     The card has an answer box, a hint ladder and a locked solution. Attempts, hint
     requests and give-ups arrive as later turns that name the challenge id. End your
     turn after posing it. pretest: the opening attempt of a concept lesson, before anything
     is taught; a wrong answer is expected and teaching starts from it. It asks for something the
-    learner can attempt, as the lesson rules say. milestone: this is the
+    learner can attempt, as the lesson rules say. form: for an opening, which of the lesson rules' forms
+    this is (prediction, bug hunt, missing step, build, pick one, choice check, case, redo); it goes into
+    the record so later lessons open differently. milestone: this is the
     unit's capstone deliverable. transfer: a far-transfer task after the capstone, with no hints.
     """
     lesson = db.lesson(lesson_id)
@@ -428,7 +432,7 @@ async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, m
         return f"error: no lesson with id {lesson_id}"
     if pretest and (problem := _pretest_length_error(markdown)):
         return problem
-    data = {**challenge.new(), "pretest": pretest, "milestone": milestone, "transfer": transfer}
+    data = {**challenge.new(), "pretest": pretest, "milestone": milestone, "transfer": transfer, "form": form.strip()}
     if transfer:
         data["max_hints"] = 0
     block = db.add_block(lesson_id, "challenge", markdown, data)
@@ -501,7 +505,7 @@ async def read_file(lesson_id: int, path: str) -> str:
     return text[: sandbox.OUTPUT_LIMIT]
 
 
-async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile], run: str, milestone: bool = False) -> str:
+async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile], run: str, milestone: bool = False, form: str = "") -> str:
     """Show a hands-on exercise: starter files the learner edits in their own editor, and a command that runs them.
 
     files: paths relative to the course workspace, with the starter
@@ -512,6 +516,7 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
     The card shows the files as they are on disk, the run output, a hint ladder and a locked
     solution, exactly like a challenge; its id works with give_hint, reveal and mark_solved.
     `[learner attempt]` turns for an exercise carry the current files and the last run output.
+    form: when the exercise opens the lesson, which of the lesson rules' forms it is.
     End your turn after posing it.
     """
     lesson = db.lesson(lesson_id)
@@ -524,7 +529,7 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
         return ONLINE_BUSY
     if outside := [f.path for f in files if not course_files.write_text(workspace, f.path, f.content)]:
         return f"error: paths {outside} are not file paths inside the course workspace"
-    data = {**challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone}
+    data = {**challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone, "form": form.strip()}
     block = db.add_block(lesson_id, "exercise", markdown, data)
     _show(lesson, block)
     return f"shown as exercise {block['id']}; end the turn and wait for the learner"
@@ -983,6 +988,7 @@ async def pose_quiz(
     explanation: str,
     lemma: str = "",
     pretest: bool = False,
+    form: str = "",
 ) -> str:
     """Show a quick check that the learner answers together with how sure they are.
 
@@ -997,7 +1003,7 @@ async def pose_quiz(
     lemma: in a language course, the vocabulary word the question tests; the grade sets its ledger state.
     pretest: the opening attempt of a concept lesson; it measures prior knowledge, so it never comes back
     as a review and does not count toward mastery. It asks for something the learner can attempt, as
-    the lesson rules say.
+    the lesson rules say. form: for an opening, which of the lesson rules' forms this is.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
@@ -1017,7 +1023,7 @@ async def pose_quiz(
     if lemma:
         lemma = simplemma.lemmatize(lemma, lang=lesson["lang"]).lower()
         db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lesson["lang"], card_id))
-    block = db.add_block(lesson_id, "quiz", question, {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest})
+    block = db.add_block(lesson_id, "quiz", question, {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest, "form": form.strip()})
     _show(lesson, block)
     return f"shown as quiz {block['id']}; end the turn and wait for the answer"
 
