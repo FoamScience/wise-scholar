@@ -603,3 +603,68 @@ def test_an_exercise_with_a_run_counts_as_the_lesson_opening(monkeypatch):
     block = db.blocks(lesson)[-1]
     db.set_block_data(block["id"], {**block["data"], "last_run": {"exit_code": 0, "output": "3\n"}})
     assert asyncio.run(tutor.add_block(lesson, "prose", "A pipe joins…")) == "shown"
+
+
+def test_vault_folder_is_kept_current_and_never_touches_the_learners_own_notes(tmp_path):
+    import json
+
+    from wise_scholar import obsidian, vault
+
+    course, _ = seed_vault("Vault 3")
+    folder = vault.write(course, tmp_path)
+    manifest = json.loads((folder / vault.MANIFEST).read_text())
+    assert folder == tmp_path / obsidian.Vault(course).root and all((tmp_path / p).exists() for p in manifest)
+    own = folder / "My notes.md"
+    own.write_text("[[Units/Bonds]] matters")
+    unit = next(p for p in manifest if "/Units/Bonds" in p)
+    lesson = db.rows("SELECT id FROM lessons WHERE course_id = ? ORDER BY id DESC", course)[0]["id"]
+    db.add_block(lesson, "prose", "Later addition.", {})
+    db.conn.execute("UPDATE concepts SET title = 'Covalent bonds' WHERE course_id = ? AND title = 'Bonds'", (course,))
+    vault.write(course, tmp_path)
+    after = json.loads((folder / vault.MANIFEST).read_text())
+    assert not (tmp_path / unit).exists() and any("/Units/Covalent bonds" in p for p in after)
+    assert "Later addition." in (tmp_path / next(p for p in after if "/Lessons/" in p)).read_text()
+    assert own.read_text() == "[[Units/Bonds]] matters"
+    # A renamed course moves to a new folder and leaves none behind.
+    db.conn.execute("UPDATE courses SET topic = 'Chemistry renamed' WHERE id = ?", (course,))
+    moved = vault.write(course, tmp_path)
+    assert moved != folder and not (folder / vault.MANIFEST).exists() and not (folder / "Units").exists() and own.exists()
+    vault.remove(course, tmp_path)
+    assert own.exists() and not (moved / vault.MANIFEST).exists() and not (moved / "Units").exists()
+
+
+def test_vault_follows_published_changes_from_any_thread(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+
+    from wise_scholar import hub, obsidian, vault
+
+    course, _ = seed_vault("Vault 4")
+    monkeypatch.setattr(vault, "VAULT", tmp_path)
+    monkeypatch.setattr(vault, "SETTLE", 0.2)
+    monkeypatch.setattr(hub, "_listeners", [])
+    lesson = db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]
+
+    async def scenario():
+        await vault.start()
+        for i in range(3):
+            db.add_block(lesson, "prose", f"change {i}", {})
+            threading.Thread(target=hub.publish, args=(course, {"type": "block.added"})).start()
+            await asyncio.sleep(0.05)
+        for _ in range(50):
+            await asyncio.sleep(0.1)
+            note = tmp_path / obsidian.Vault(course).root / "Interview.md"
+            if note.exists() and "change 2" in note.read_text() and not vault._pending:
+                return True
+        return False
+
+    assert asyncio.run(scenario())
+
+
+def test_two_courses_with_one_title_get_two_vault_folders():
+    from wise_scholar import obsidian
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Twin')").lastrowid
+    first = db.create_course("Chemistry: bonds & shells", who)["id"]
+    second = db.create_course("chemistry bonds & shells", who)["id"]
+    assert obsidian.Vault(first).root != obsidian.Vault(second).root and obsidian.Vault(second).root.endswith(f"({second})")

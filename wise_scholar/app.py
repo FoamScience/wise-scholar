@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 import simplemma
 
-from . import book, challenge, cleanup, course_files, db, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vocab
+from . import book, challenge, cleanup, course_files, db, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -57,10 +57,12 @@ async def lifespan(app: FastAPI):
     async with tutor.mcp.session_manager.run():
         await backend.start()
         sweeper = asyncio.create_task(cleanup.forever(_busy))
+        await vault.start()
         try:
             yield
         finally:
             sweeper.cancel()
+            await vault.stop()
             await backend.stop()
             speech.worker.stop()
 
@@ -439,6 +441,11 @@ def delete_course(course_id: int) -> None:
         raise HTTPException(404, "no such course")
     if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
         raise HTTPException(409, "the tutor is still answering in this course")
+    if vault.enabled():
+        try:
+            vault.remove(course_id)
+        except Exception as e:  # the vault is a mirror: a failure there must not keep the course alive
+            log.warning("vault folder of course %s not removed: %s", course_id, e)
     db.delete_course(course_id)
     shutil.rmtree(db.workspace(course["slug"]), ignore_errors=True)
     shutil.rmtree(SOURCES / str(course_id), ignore_errors=True)

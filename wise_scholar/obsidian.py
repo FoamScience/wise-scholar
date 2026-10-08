@@ -104,6 +104,9 @@ class Vault:
         self.profile = db.profile(self.course["profile_id"])
         self.t = WORDS.get(self.profile["locale"], WORDS["en"])
         self.root = f"{FOLDER}/{_name(self.course['topic'])}"
+        mine = _name(self.course["topic"]).lower()
+        if any(_name(t["topic"]).lower() == mine for t in db.rows("SELECT topic FROM courses WHERE id < ?", course_id)):
+            self.root += f" ({course_id})"
         self.files: dict[str, bytes] = {}
         self.names: dict[tuple, str] = {}
         self.concepts = db.concept_view(course_id)
