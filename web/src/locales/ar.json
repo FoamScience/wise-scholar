@@ -117,7 +117,9 @@
       "materialsHelp": "كتاب أو توثيق أو ملاحظات تُدرَّس الدورة منها: ملفات، أو عنوان ملف PDF أو EPUB أو صفحة ويب.",
       "urlPlaceholder": "https://…/book.pdf",
       "adding": "جارٍ إضافة {{name}}…",
-      "starting": "جارٍ البدء…"
+      "starting": "جارٍ البدء…",
+      "prepared": "مُعدّة",
+      "duplicate": "نسخ لصفّ آخر"
     },
     "question": {
       "own": "أو قلها بكلماتك",
@@ -217,7 +219,10 @@
       "hints_other": "{{count}} تلميح",
       "gaveUp": "استسلام {{n}}×",
       "change": "عدّل الدورة",
-      "cleaned": "نُظّفت الملفات في {{date}}: ذهبت ملفات التمارين والذاكرة المؤقتة والجلسات؛ السجل باقٍ."
+      "cleaned": "نُظّفت الملفات في {{date}}: ذهبت ملفات التمارين والذاكرة المؤقتة والجلسات؛ السجل باقٍ.",
+      "notPlanned": "لا خطة بعد",
+      "drafting": "الخطة قيد الإعداد",
+      "planned": "مخطَّطة"
     },
     "plan": {
       "heading": "كيف أنوي تدريس هذا الموضوع · مرتّبة لك",
@@ -516,6 +521,7 @@
     "the address took too long to answer": "استغرق العنوان وقتًا طويلًا للإجابة",
     "a prepared course has no placement check": "الدورة المُعدّة لا اختبار تحديد مستوى فيها",
     "a prepared course's cards take no answers": "بطاقات الدورة المُعدّة لا تقبل إجابات",
-    "hand-outs come from a unit of a prepared course": "النشرات تأتي من وحدة في دورة مُعدّة"
+    "hand-outs come from a unit of a prepared course": "النشرات تأتي من وحدة في دورة مُعدّة",
+    "only a prepared course can be duplicated": "لا يمكن نسخ إلا دورة مُعدّة"
   }
 }

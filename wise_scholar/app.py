@@ -479,9 +479,29 @@ def forget_fact(fact_id: int) -> None:
 @app.get("/api/courses")
 def list_courses(profile: int) -> list[dict]:
     return db.rows(
-        "SELECT id, topic, slug, mechanism, level, archived FROM courses WHERE profile_id = ? ORDER BY id DESC",
+        "SELECT id, topic, slug, mechanism, level, archived, mode FROM courses WHERE profile_id = ? ORDER BY id DESC",
         profile,
     )
+
+
+@app.post("/api/courses/{course_id}/duplicate")
+def duplicate_course(course_id: int) -> dict:
+    """A prepared course again, for the next class: plan, lessons, materials and exercise files, no record."""
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    if course["mode"] != "teacher":
+        raise HTTPException(409, "only a prepared course can be duplicated")
+    copied = db.copy_course(course_id, f"{course['topic']} (2)" if not course["topic"].endswith(")") else f"{course['topic']} (copy)")
+    for old, new in copied.pop("sources").items():
+        for path in (SOURCES / str(course_id)).glob(f"{old}-*"):
+            target = SOURCES / str(copied["id"]) / f"{new}-{path.name.split('-', 1)[1]}"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+    workspace = db.WORKSPACE / course["slug"]
+    if workspace.exists():
+        shutil.copytree(workspace, db.workspace(copied["slug"]), dirs_exist_ok=True)
+    return {k: copied[k] for k in ("id", "topic", "slug", "mechanism", "level", "archived", "mode")}
 
 
 @app.post("/api/courses/{course_id}/archive")

@@ -7,6 +7,7 @@ export type Course = {
   mechanism: string | null
   level: string | null
   archived: number
+  mode: 'learner' | 'teacher'
 }
 export type Message = { id: number; lesson_id: number; role: 'learner' | 'tutor'; text: string; created: string }
 export type QuestionData = { options: string[]; answer: string | null }

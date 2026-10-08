@@ -109,7 +109,9 @@
       "materialsHelp": "A book, documentation or notes the course should teach from: files, or the address of a PDF, EPUB or web page.",
       "urlPlaceholder": "https://…/book.pdf",
       "adding": "Adding {{name}}…",
-      "starting": "Starting…"
+      "starting": "Starting…",
+      "prepared": "prepared",
+      "duplicate": "Duplicate for another class"
     },
     "question": {
       "own": "Or say it in your own words",
@@ -197,7 +199,10 @@
       "hints_other": "{{count}} hints",
       "gaveUp": "gave up {{n}}×",
       "change": "Change the course",
-      "cleaned": "Files cleaned up on {{date}}: exercise files, caches and sessions are gone; the record stays."
+      "cleaned": "Files cleaned up on {{date}}: exercise files, caches and sessions are gone; the record stays.",
+      "notPlanned": "no plan yet",
+      "drafting": "plan in progress",
+      "planned": "planned"
     },
     "plan": {
       "heading": "How I plan to teach this · ranked for you",

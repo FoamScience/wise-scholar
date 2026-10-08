@@ -206,6 +206,13 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
     )
   }
 
+  function duplicate(course: Course) {
+    api<Course>(`/api/courses/${course.id}/duplicate`, {}).then(
+      (copy) => setCourses((all) => [copy, ...all]),
+      (err: Error) => setError(err.message),
+    )
+  }
+
   const active = courses.filter((c) => !c.archived)
   const archived = courses.filter((c) => c.archived)
 
@@ -265,7 +272,7 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
           <div className="label gap-below">{t('home.courses')}</div>
           <div className="courses">
             {active.map((c) => (
-              <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} />
+              <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} />
             ))}
           </div>
         </section>
@@ -275,7 +282,7 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
           <summary className="label">{t('home.archived', { n: archived.length })}</summary>
           <div className="courses">
             {archived.map((c) => (
-              <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} />
+              <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} />
             ))}
           </div>
         </details>
@@ -288,6 +295,7 @@ function CourseCard(props: {
   course: Course
   onArchive: (course: Course, archived: boolean) => void
   onDelete: (course: Course) => void
+  onDuplicate: (course: Course) => void
 }) {
   const { course } = props
   const { t } = useTranslation()
@@ -302,7 +310,10 @@ function CourseCard(props: {
   return (
     <div className="course-card">
       <a href={`#/course/${course.id}`}>
-        <strong dir="auto">{course.topic}</strong>
+        <strong dir="auto">
+          {course.topic}
+          {course.mode === 'teacher' && <span className="chip">{t('home.prepared')}</span>}
+        </strong>
         <span className="muted">{course.mechanism ? lookup(`playbooks.${course.mechanism}.title`, course.mechanism) : t('home.interviewOpen')}</span>
       </a>
       <details ref={menu} className="menu" name="course-menu" onToggle={() => setConfirming(false)}>
@@ -336,6 +347,18 @@ function CourseCard(props: {
               >
                 {course.archived ? t('home.unarchive') : t('home.archive')}
               </button>
+              {course.mode === 'teacher' && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    close()
+                    props.onDuplicate(course)
+                  }}
+                >
+                  {t('home.duplicate')}
+                </button>
+              )}
               <button type="button" className="btn" onClick={() => setConfirming(true)}>
                 {t('home.delete')}
               </button>
@@ -715,7 +738,8 @@ function squares(concept: Concept): number {
   return Math.round((concept.mastery ?? 0) * 3)
 }
 
-function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction): string {
+function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction, prepared = false): string {
+  if (prepared) return !lesson ? t('map.notPlanned') : lesson.blocks.some((b) => b.kind === 'done') ? t('map.planned') : t('map.drafting')
   if (!lesson) return concept.known ? t('map.placedOut') : t('map.notStarted')
   const cs = lesson.blocks
     .filter((b) => b.kind === 'challenge' || b.kind === 'exercise' || b.kind === 'speaking')
@@ -1077,7 +1101,7 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
                     </span>
                   )}
                 </span>
-                <span className="stats">{conceptStats(c, conceptLesson, t)}</span>
+                <span className="stats">{conceptStats(c, conceptLesson, t, course.mode === 'teacher')}</span>
               </button>
             </div>
           )
