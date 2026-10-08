@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import socket
@@ -131,6 +132,21 @@ Mode = Literal["learner", "teacher"]
 
 class ProfileMode(BaseModel):
     mode: Mode
+
+
+class BlockEdit(BaseModel):
+    """What a teacher may change on a card; fields that do not fit the block's kind are ignored."""
+    markdown: str | None = Field(default=None, max_length=20000)
+    solution: str | None = Field(default=None, max_length=20000)
+    hints: list[str] | None = None
+    run: str | None = Field(default=None, max_length=500)
+    options: list[str] | None = None
+    answer_key: str | None = Field(default=None, max_length=4000)
+    explanation: str | None = Field(default=None, max_length=4000)
+
+
+class Move(BaseModel):
+    direction: Literal["up", "down"]
 
 
 class Turn(BaseModel):
@@ -492,16 +508,33 @@ def duplicate_course(course_id: int) -> dict:
         raise HTTPException(404, "no such course")
     if course["mode"] != "teacher":
         raise HTTPException(409, "only a prepared course can be duplicated")
-    copied = db.copy_course(course_id, f"{course['topic']} (2)" if not course["topic"].endswith(")") else f"{course['topic']} (copy)")
-    for old, new in copied.pop("sources").items():
-        for path in (SOURCES / str(course_id)).glob(f"{old}-*"):
-            target = SOURCES / str(copied["id"]) / f"{new}-{path.name.split('-', 1)[1]}"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, target)
-    workspace = db.WORKSPACE / course["slug"]
-    if workspace.exists():
-        shutil.copytree(workspace, db.workspace(copied["slug"]), dirs_exist_ok=True)
+    if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
+        raise HTTPException(409, "the designer is still answering in this course")
+    copied = db.copy_course(course_id, _copy_name(course))
+    try:
+        for old, new in copied.pop("sources").items():
+            for path in (SOURCES / str(course_id)).glob(f"{old}-*"):
+                target = SOURCES / str(copied["id"]) / f"{new}-{path.name.split('-', 1)[1]}"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, target)
+        workspace = db.WORKSPACE / course["slug"]
+        if workspace.exists():
+            shutil.copytree(workspace, db.workspace(copied["slug"]), dirs_exist_ok=True)
+    except OSError as e:
+        # Half a copy is no copy: the rows go, the files that did land go with them.
+        log.warning("files of the copy of course %s not made: %s", course_id, e)
+        _remove_course(db.course(copied["id"]))
+        raise HTTPException(500, "the copy could not be made") from None
     return {k: copied[k] for k in ("id", "topic", "slug", "mechanism", "level", "archived", "mode")}
+
+
+def _copy_name(course: dict) -> str:
+    """"Topic (2)", "Topic (3)", …: a number after the topic, past any number it already carries."""
+    base = re.sub(r" \(\d+\)$", "", course["topic"])
+    n = 2
+    while db.row("SELECT 1 FROM courses WHERE profile_id = ? AND topic = ?", course["profile_id"], f"{base} ({n})"):
+        n += 1
+    return f"{base} ({n})"
 
 
 @app.post("/api/courses/{course_id}/archive")
@@ -519,14 +552,19 @@ def delete_course(course_id: int) -> None:
         raise HTTPException(404, "no such course")
     if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
         raise HTTPException(409, "the tutor is still answering in this course")
+    _remove_course(course)
+
+
+def _remove_course(course: dict) -> None:
+    """The course's rows and every folder of its own: workspace, materials, command cache, agent sessions, vault mirror."""
     if vault.enabled():
         try:
-            vault.remove(course_id)
+            vault.remove(course["id"])
         except Exception as e:  # the vault is a mirror: a failure there must not keep the course alive
-            log.warning("vault folder of course %s not removed: %s", course_id, e)
-    db.delete_course(course_id)
+            log.warning("vault folder of course %s not removed: %s", course["id"], e)
+    db.delete_course(course["id"])
     shutil.rmtree(db.workspace(course["slug"]), ignore_errors=True)
-    shutil.rmtree(SOURCES / str(course_id), ignore_errors=True)
+    shutil.rmtree(SOURCES / str(course["id"]), ignore_errors=True)
     # A later course may get the same slug: it must not inherit this one's command cache or agent folder.
     for leftover in ("sandbox-cache", "agents"):
         shutil.rmtree(db.DB_PATH.parent / leftover / course["slug"], ignore_errors=True)
@@ -1130,6 +1168,64 @@ async def dont_know_quiz(block_id: int) -> None:
         f"[event] Quiz {block_id} result: the learner chose \"I don't know\"; the right answer is "
         f"{card['answer_key']!r}\nquestion: {card['question']!r}",
     )
+
+
+def _editable_block(block_id: int) -> tuple[dict, dict]:
+    block = db.block(block_id)
+    if not block:
+        raise HTTPException(404, "no such block")
+    lesson = _lesson(block["lesson_id"])
+    if lesson["mode"] != "teacher":
+        raise HTTPException(409, "only the cards of a prepared course can be edited")
+    _require_idle(lesson["id"])
+    return lesson, block
+
+
+@app.post("/api/blocks/{block_id}/edit")
+def edit_block(block_id: int, body: BlockEdit) -> dict:
+    """A teacher's own hand on a card: text, solution, hints, run command, quiz options and key."""
+    lesson, block = _editable_block(block_id)
+    data = dict(block["data"] or {})
+    if block["kind"] in challenge.KINDS:
+        if body.solution is not None:
+            data["solution"] = body.solution.strip() or None
+        if body.hints is not None:
+            data["hints"] = [h.strip() for h in body.hints if h.strip()]
+        if body.run is not None and block["kind"] == "exercise" and body.run.strip():
+            data["run"] = body.run.strip()
+    elif block["kind"] == "quiz":
+        card = db.card(data["card_id"])
+        options = [o.strip() for o in body.options if o.strip()] if body.options is not None else card["options"]
+        key = body.answer_key.strip() if body.answer_key is not None else card["answer_key"]
+        if card["kind"] == "choice" and not (2 <= len(options) <= 5 and key in options):
+            raise HTTPException(422, "a choice quiz needs 2 to 5 options, one of them exactly the key")
+        explanation = body.explanation.strip() if body.explanation is not None else card["explanation"]
+        question = body.markdown.strip() if body.markdown is not None else card["question"]
+        db.conn.execute(
+            "UPDATE cards SET question = ?, options = ?, answer_key = ?, explanation = ? WHERE id = ?",
+            (question, json.dumps(options if card["kind"] == "choice" else []), key, explanation, card["id"]),
+        )
+        data.update({"options": options if card["kind"] == "choice" else [], "answer_key": key, "explanation": explanation})
+    if body.markdown is not None and body.markdown.strip():
+        db.set_block_markdown(block_id, body.markdown.strip())
+    block = db.set_block_data(block_id, data) if data else db.block(block_id)
+    hub.publish(lesson["course_id"], {"type": "block.updated", "lesson_id": lesson["id"], "block": block})
+    return block
+
+
+@app.post("/api/blocks/{block_id}/remove", status_code=204)
+def remove_block(block_id: int) -> None:
+    lesson, _ = _editable_block(block_id)
+    db.delete_block(block_id)
+    hub.publish(lesson["course_id"], {"type": "block.removed", "lesson_id": lesson["id"], "id": block_id})
+
+
+@app.post("/api/blocks/{block_id}/move")
+def move_block(block_id: int, body: Move) -> list[dict]:
+    lesson, _ = _editable_block(block_id)
+    order = db.move_block(block_id, -1 if body.direction == "up" else 1)
+    hub.publish(lesson["course_id"], {"type": "lesson.ordered", "lesson_id": lesson["id"], "blocks": order})
+    return order
 
 
 @app.post("/api/blocks/{block_id}/quiz", status_code=202)

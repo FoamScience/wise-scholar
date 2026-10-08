@@ -238,6 +238,10 @@ MIGRATIONS = [
     ALTER TABLE profiles ADD COLUMN mode TEXT NOT NULL DEFAULT 'learner';
     ALTER TABLE courses ADD COLUMN mode TEXT NOT NULL DEFAULT 'learner';
     """,
+    """
+    ALTER TABLE blocks ADD COLUMN position INTEGER;
+    UPDATE blocks SET position = id;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -302,11 +306,16 @@ def profile(profile_id: int) -> dict | None:
     return row("SELECT * FROM profiles WHERE id = ?", profile_id)
 
 
-def create_course(topic: str, profile_id: int) -> dict:
+def _free_slug(topic: str) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-") or "course"
     slug, n = base, 2
     while row("SELECT 1 FROM courses WHERE slug = ?", slug):
         slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+def create_course(topic: str, profile_id: int) -> dict:
+    slug = _free_slug(topic)
     # A course keeps the mode its profile had when it was made.
     mode = (profile(profile_id) or {}).get("mode", "learner")
     course_id = conn.execute(
@@ -316,22 +325,38 @@ def create_course(topic: str, profile_id: int) -> dict:
     return course(course_id)
 
 
+# What a copied block leaves behind: the record of whoever worked on the original.
+_RECORD = ("attempts", "marks", "gave_up", "solved", "last_run", "files_kept", "answer", "answer_id", "confidence", "correct",
+           "confident_miss", "feedback", "unknown", "scores")
+
+
+def _fresh(data: dict) -> dict:
+    """A block's data without the record made on the original: the material stays, the work on it does not."""
+    kept = {k: v for k, v in data.items() if k not in _RECORD}
+    if "attempts" in data:
+        kept.update({"attempts": [], "gave_up": False, "solved": False})
+    if "answer" in data:
+        kept["answer"] = None
+    if "last_run" in data:
+        kept["last_run"] = None
+    return kept
+
+
 def copy_course(course_id: int, topic: str) -> dict:
     """A new course with the same plan: scope, map, projects, lessons with their cards, blocks and chat, materials
     and course facts. Nothing of the record that measures a learner comes along: answers, reviews, mistakes, the
     command log; and every lesson gets a fresh agent session. Returns the new course with a map of old to new source ids."""
-    old = course(course_id)
-    base = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-") or "course"
-    slug, n = base, 2
-    while row("SELECT 1 FROM courses WHERE slug = ?", slug):
-        slug, n = f"{base}-{n}", n + 1
     conn.execute("BEGIN")
     try:
+        old = course(course_id)
+        if not old:
+            raise ValueError("no such course")
+        slug = _free_slug(topic)
         new_id = conn.execute(
-            "INSERT INTO courses (topic, slug, profile_id, mechanism, level, lang, ranking, details, hours, started, mode) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO courses (topic, slug, profile_id, mechanism, level, lang, ranking, details, hours, started, mode, placement) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (topic, slug, old["profile_id"], old["mechanism"], old["level"], old["lang"], json.dumps(old["ranking"]) if old["ranking"] else None,
-             old["details"], old["hours"], old["started"], old["mode"]),
+             old["details"], old["hours"], old["started"], old["mode"], old["placement"]),
         ).lastrowid
         concept_map = {}
         for c in concepts(course_id):
@@ -363,14 +388,17 @@ def copy_course(course_id: int, topic: str) -> dict:
                 "INSERT INTO lessons (course_id, title, phase, concept_id, session_id) VALUES (?, ?, ?, ?, ?)",
                 (new_id, lesson_row["title"], lesson_row["phase"], concept_map.get(lesson_row["concept_id"]), str(uuid.uuid4())),
             ).lastrowid
-            for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY id", lesson_row["id"]):
-                data = json.loads(b["data"]) if b["data"] else None
+            for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson_row["id"]):
+                if b["kind"] in ("podcast", "network"):
+                    continue  # audio and consent belong to the original
+                data = _fresh(json.loads(b["data"])) if b["data"] else None
                 if data and data.get("card_id") in card_map:
                     data = {**data, "card_id": card_map[data["card_id"]]}
-                conn.execute(
+                copied = conn.execute(
                     "INSERT INTO blocks (lesson_id, kind, markdown, data, created) VALUES (?, ?, ?, ?, ?)",
                     (lesson_id, b["kind"], b["markdown"], json.dumps(data) if data else None, b["created"]),
-                )
+                ).lastrowid
+                conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (copied, copied))
             conn.executemany(
                 "INSERT INTO messages (lesson_id, role, text, created) VALUES (?, ?, ?, ?)",
                 [(lesson_id, m["role"], m["text"], m["created"]) for m in rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_row["id"])],
@@ -380,7 +408,7 @@ def copy_course(course_id: int, topic: str) -> dict:
             [(new_id, f["text"], f["profile_id"]) for f in rows("SELECT * FROM facts WHERE course_id = ?", course_id)],
         )
         source_map = {}
-        for s in rows("SELECT * FROM sources WHERE course_id = ? ORDER BY id", course_id):
+        for s in rows("SELECT * FROM sources WHERE course_id = ? AND status = 'ready' ORDER BY id", course_id):
             source_map[s["id"]] = conn.execute(
                 "INSERT INTO sources (course_id, name, size, status, error, sections) VALUES (?, ?, ?, ?, ?, ?)",
                 (new_id, s["name"], s["size"], s["status"], s["error"], s["sections"]),
@@ -595,7 +623,37 @@ def block(block_id: int) -> dict | None:
 
 
 def blocks(lesson_id: int) -> list[dict]:
-    return [_block(b) for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY id", lesson_id)]
+    return [_block(b) for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson_id)]
+
+
+def set_block_markdown(block_id: int, markdown: str) -> dict:
+    conn.execute("UPDATE blocks SET markdown = ? WHERE id = ?", (markdown, block_id))
+    return block(block_id)
+
+
+def delete_block(block_id: int) -> None:
+    """The block and, for a quiz, its card; answers on that card go with it."""
+    b = block(block_id)
+    if not b:
+        return
+    conn.execute("DELETE FROM blocks WHERE id = ?", (block_id,))
+    if b["kind"] == "quiz" and (card_id := (b["data"] or {}).get("card_id")):
+        conn.execute("DELETE FROM answers WHERE card_id = ?", (card_id,))
+        conn.execute("DELETE FROM errors WHERE card_id = ?", (card_id,))
+        conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+
+
+def move_block(block_id: int, direction: int) -> list[dict]:
+    """Swap the block with its neighbour above (-1) or below (+1); returns the lesson's blocks in their new order."""
+    b = block(block_id)
+    order = blocks(b["lesson_id"])
+    index = next(i for i, x in enumerate(order) if x["id"] == block_id)
+    other = index + direction
+    if 0 <= other < len(order):
+        a, c = order[index], order[other]
+        conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (c["position"], a["id"]))
+        conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (a["position"], c["id"]))
+    return blocks(b["lesson_id"])
 
 
 def add_block(lesson_id: int, kind: str, markdown: str, data: dict | None = None) -> dict:
@@ -603,6 +661,7 @@ def add_block(lesson_id: int, kind: str, markdown: str, data: dict | None = None
         "INSERT INTO blocks (lesson_id, kind, markdown, data) VALUES (?, ?, ?, ?)",
         (lesson_id, kind, markdown, json.dumps(data) if data else None),
     ).lastrowid
+    conn.execute("UPDATE blocks SET position = id WHERE id = ?", (block_id,))
     return block(block_id)
 
 

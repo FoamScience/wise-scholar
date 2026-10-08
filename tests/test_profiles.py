@@ -831,6 +831,7 @@ def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tm
     from wise_scholar import app, tutor
 
     monkeypatch.setattr(app, "SOURCES", tmp_path / "sources")
+    monkeypatch.setattr(db, "WORKSPACE", tmp_path / "workspace")
     who = db.conn.execute("INSERT INTO profiles (name, mode) VALUES ('Copier', 'teacher')").lastrowid
     course = db.create_course("Chemistry to copy", who)["id"]
     db.conn.execute("UPDATE courses SET details = 'year 10', hours = 20, mechanism = 'concept-map' WHERE id = ?", (course,))
@@ -839,6 +840,11 @@ def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tm
     db.add_capstone(course, "Atoms", "Model kit", "Build a model.", "kit", [(shells["id"], "a water model")])
     lesson = db.create_lesson(course, "Bonds", "lesson", bonds["id"])
     asyncio.run(tutor.pose_quiz(lesson, "Valence of carbon?", "choice", ["4", "2"], "4", "Four."))
+    asyncio.run(tutor.pose_challenge(lesson, "Predict the bond.", pretest=True, form="prediction"))
+    trial = db.blocks(lesson)[-1]
+    db.set_block_data(trial["id"], {**trial["data"], "attempts": ["my trial"], "solved": True, "solution": "Covalent."})
+    failed = db.add_source(course, "broken.pdf", 5)
+    db.finish_source(failed["id"], [], "no text could be read from the file")
     db.add_message(lesson, "learner", "make it shorter")
     db.add_fact(course, "class of 28", False)
     source = db.add_source(course, "syllabus.md", 10)
@@ -849,23 +855,72 @@ def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tm
 
     copy = app.duplicate_course(course)
     assert copy["topic"] == "Chemistry to copy (2)" and copy["mode"] == "teacher" and copy["id"] != course
+    assert app.duplicate_course(copy["id"])["topic"] == "Chemistry to copy (3)"
+    # The material comes along, the work done on the original does not.
+    copied_trial = db.blocks(db.rows("SELECT id FROM lessons WHERE course_id = ? AND concept_id IS NOT NULL", copy["id"])[0]["id"])[-1]
+    assert copied_trial["data"]["solution"] == "Covalent." and copied_trial["data"]["attempts"] == [] and copied_trial["data"]["solved"] is False
+    assert db.blocks(lesson)[-1]["data"]["attempts"] == ["my trial"]
     new = db.course(copy["id"])
     assert (new["details"], new["hours"], new["mechanism"]) == ("year 10", 20, "concept-map")
     assert [c["title"] for c in db.concepts(copy["id"])] == ["Bonds", "Shells"]
     assert db.capstones(copy["id"])[0]["milestones"][0]["concept"] == "Shells" and db.capstones(copy["id"])[0]["done"] == 0
     lessons = db.rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", copy["id"])
     assert [l["phase"] for l in lessons] == ["interview", "lesson"] and all(l["session_started"] == 0 for l in lessons)
-    quiz = db.blocks(lessons[1]["id"])[-1]
+    quiz = next(b for b in db.blocks(lessons[1]["id"]) if b["kind"] == "quiz")
     card = db.card(quiz["data"]["card_id"])
     assert card["course_id"] == copy["id"] and card["concept_id"] == db.concepts(copy["id"])[0]["id"] and card["answer_key"] == "4"
     assert db.rows("SELECT text FROM messages WHERE lesson_id = ?", lessons[1]["id"])[0]["text"] == "make it shorter"
     assert [f["text"] for f in db.facts(copy["id"])] == ["class of 28"]
     copied_source = db.sources(copy["id"])[0]
-    assert copied_source["status"] == "ready" and db.search_sources(copy["id"], "Atoms", 1)[0]["title"].endswith("part 1")
+    assert len(db.sources(copy["id"])) == 1 and copied_source["status"] == "ready" and db.search_sources(copy["id"], "Atoms", 1)[0]["title"].endswith("part 1")
+    assert db.search_sources(course, "Atoms", 2)[0]["title"].endswith("part 1") and len(db.sources(course)) == 2
     assert (tmp_path / "sources" / str(copy["id"]) / f"{copied_source['id']}-syllabus.md").read_text() == "Atoms first."
     assert (db.workspace(new["slug"]) / "demo.py").read_text() == "print(1)"
     assert db.commands(who) == [] and db.graded_answers(who) == []
     learner = db.conn.execute("INSERT INTO profiles (name) VALUES ('No copy')").lastrowid
     with pytest.raises(HTTPException) as refused:
         app.duplicate_course(db.create_course("Mine", learner)["id"])
+    assert refused.value.status_code == 409
+
+
+def test_a_teacher_edits_removes_and_reorders_the_cards_of_a_plan():
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name, mode) VALUES ('Editor', 'teacher')").lastrowid
+    course = db.create_course("Chemistry edits", who)["id"]
+    db.set_concepts(course, [{"title": "Atoms", "concepts": ["Bonds"], "known": []}])
+    lesson = db.create_lesson(course, "Bonds", "lesson", db.concepts(course)[0]["id"])
+    asyncio.run(tutor.add_block(lesson, "prose", "## Objectives\n\nCount bonds."))
+    asyncio.run(tutor.pose_challenge(lesson, "How many bonds?", pretest=True, form="prediction"))
+    asyncio.run(tutor.pose_quiz(lesson, "Noble gas?", "choice", ["Helium", "Oxygen"], "Helium", "Full shell."))
+    prose, task, quiz = db.blocks(lesson)
+
+    edited = app.edit_block(task["id"], app.BlockEdit(markdown="How many bonds does carbon form?", solution="Four.", hints=["Count electrons.", " ", "Think shells."]))
+    assert edited["markdown"] == "How many bonds does carbon form?" and edited["data"]["solution"] == "Four." and edited["data"]["hints"] == ["Count electrons.", "Think shells."]
+    with pytest.raises(HTTPException) as bad:
+        app.edit_block(quiz["id"], app.BlockEdit(options=["Helium", "Neon"], answer_key="Argon"))
+    assert bad.value.status_code == 422
+    edited = app.edit_block(quiz["id"], app.BlockEdit(markdown="Which is a noble gas?", options=["Helium", "Neon", "Oxygen"], answer_key="Neon", explanation="Also full."))
+    card = db.card(quiz["data"]["card_id"])
+    assert (card["question"], card["options"], card["answer_key"], card["explanation"]) == ("Which is a noble gas?", ["Helium", "Neon", "Oxygen"], "Neon", "Also full.")
+    assert edited["data"]["answer_key"] == "Neon" and edited["data"]["options"] == ["Helium", "Neon", "Oxygen"]
+
+    order = app.move_block(quiz["id"], app.Move(direction="up"))
+    assert [b["id"] for b in order] == [prose["id"], quiz["id"], task["id"]]
+    order = app.move_block(prose["id"], app.Move(direction="up"))
+    assert [b["id"] for b in order] == [prose["id"], quiz["id"], task["id"]]  # already first
+    app.remove_block(quiz["id"])
+    assert [b["id"] for b in db.blocks(lesson)] == [prose["id"], task["id"]] and db.card(card["id"]) is None
+
+    learner = db.conn.execute("INSERT INTO profiles (name) VALUES ('Reader only')").lastrowid
+    plain = db.create_course("Chemistry plain", learner)["id"]
+    plain_lesson = db.row("SELECT id FROM lessons WHERE course_id = ?", plain)["id"]
+    block = db.add_block(plain_lesson, "prose", "Hello", {})
+    with pytest.raises(HTTPException) as refused:
+        app.edit_block(block["id"], app.BlockEdit(markdown="Changed"))
     assert refused.value.status_code == 409

@@ -478,6 +478,21 @@
       "student": "نسخة الطلاب",
       "markdown": "Markdown",
       "back": "عودة إلى الخطة"
+    },
+    "edit": {
+      "edit": "تعديل",
+      "up": "إلى الأعلى",
+      "down": "إلى الأسفل",
+      "remove": "حذف",
+      "removeConfirm": "احذف هذه البطاقة",
+      "text": "النص",
+      "hints": "التلميحات، واحد في كل سطر",
+      "solution": "الحل",
+      "run": "أمر التشغيل",
+      "options": "الخيارات، واحد في كل سطر",
+      "key": "المفتاح",
+      "explanation": "الشرح",
+      "save": "حفظ"
     }
   },
   "server": {
@@ -522,6 +537,9 @@
     "a prepared course has no placement check": "الدورة المُعدّة لا اختبار تحديد مستوى فيها",
     "a prepared course's cards take no answers": "بطاقات الدورة المُعدّة لا تقبل إجابات",
     "hand-outs come from a unit of a prepared course": "النشرات تأتي من وحدة في دورة مُعدّة",
-    "only a prepared course can be duplicated": "لا يمكن نسخ إلا دورة مُعدّة"
+    "only a prepared course can be duplicated": "لا يمكن نسخ إلا دورة مُعدّة",
+    "only the cards of a prepared course can be edited": "لا يمكن تعديل إلا بطاقات الدورة المُعدّة",
+    "a choice quiz needs 2 to 5 options, one of them exactly the key": "سؤال الاختيار يحتاج من 2 إلى 5 خيارات، أحدها مطابق للمفتاح تمامًا",
+    "the designer is still answering in this course": "ما زال المصمّم يجيب في هذه الدورة"
   }
 }

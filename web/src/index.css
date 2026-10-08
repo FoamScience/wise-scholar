@@ -1241,6 +1241,21 @@ mark {
   min-height: 0;
 }
 
+.edit-bar {
+  margin-top: -10px;
+  gap: 14px;
+  font-size: 13px;
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 20px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+
 /* profiles */
 
 .stack {

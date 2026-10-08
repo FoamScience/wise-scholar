@@ -446,6 +446,21 @@
       "student": "Students' copy",
       "markdown": "Markdown",
       "back": "Back to the plan"
+    },
+    "edit": {
+      "edit": "Edit",
+      "up": "Move up",
+      "down": "Move down",
+      "remove": "Remove",
+      "removeConfirm": "Remove this card",
+      "text": "Text",
+      "hints": "Hints, one per line",
+      "solution": "Solution",
+      "run": "Run command",
+      "options": "Options, one per line",
+      "key": "Key",
+      "explanation": "Explanation",
+      "save": "Save"
     }
   },
   "server": {}
