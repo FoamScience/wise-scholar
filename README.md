@@ -24,7 +24,7 @@ The research behind each teaching behaviour is listed in [docs/science.md](docs/
 > `/home/learner/wise-scholar/workspace/<course>`: paths, tracebacks, `whoami` and the environment name no real user or folder, and
 > the exercise card names files the same way. A command can still read the real folders behind the mounts in `/proc/self/mountinfo`.
 > Without the sandbox (`WISE_SCHOLAR_SANDBOX=0`) commands see and print the real paths.
-> A course has a disk limit of 2 GB for its workspace, and as much again for its command cache. No single file can pass it, and the
+> A course has a disk limit of 4 GB for its workspace, and as much again for its command cache. No single file can pass it, and the
 > server looks about twice a second while a command runs: a command found pushing its course past the limit is stopped, and a cache
 > past it is emptied. That is a watch, not a filesystem quota: a fast disk takes what is written between two looks, and a file
 > deleted while still open is not seen until the command ends. Not covered either: a token you keep inside one of those toolchain
@@ -72,7 +72,7 @@ Other settings, all optional:
 | `WISE_SCHOLAR_WORKSPACE` | root folder of the course workspaces | `workspace/` |
 | `WISE_SCHOLAR_OPENCODE_PORT` | port of the opencode server the app starts | `8322` |
 | `WISE_SCHOLAR_COMMANDS` | `0` serves without command execution: the tutor gets no workspace tools and poses no runnable exercises, and Run is refused. For instances opened to other people | `1` |
-| `WISE_SCHOLAR_WORKSPACE_MB` | what one course may hold on disk, in its workspace and again in its command cache. Watched while a command runs, not a filesystem quota; with the sandbox off only the workspace is watched | `2048` |
+| `WISE_SCHOLAR_WORKSPACE_MB` | what one course may hold on disk, in its workspace and again in its command cache. Watched while a command runs, not a filesystem quota; with the sandbox off only the workspace is watched | `4096` |
 | `WISE_SCHOLAR_SANDBOX` | `0` runs commands without bubblewrap (macOS, containers that forbid it): as the server's user, with network, the whole home directory including the agent's login, no memory or task limits, and processes that can outlive the time limit. Only for a machine and a tutor model you trust fully | `1` |
 | `WISE_SCHOLAR_SANDBOX_PATHS` | extra folders commands may read, separated by `:`, for toolchains that `PATH` does not point into. Everything in them becomes readable to commands; the home directory and folders holding the database or the courses are ignored | none |
 
