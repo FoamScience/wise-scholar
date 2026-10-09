@@ -10,11 +10,17 @@ XLINK_NS = "http://www.w3.org/1999/xlink"
 ELEMENTS = {
     "svg", "g", "defs", "title", "desc", "symbol", "use", "path", "rect", "circle", "ellipse", "line", "polyline",
     "polygon", "text", "tspan", "textPath", "marker", "clipPath", "mask", "pattern", "linearGradient", "radialGradient",
-    "stop",
+    "stop", "animate",
 }
 MAX_CHARS = 60_000
 MAX_DEPTH = 64
 LOCAL_REF = re.compile(r"url\(\s*#[-\w]+\s*\)")
+# A SMIL animation may only move, size, colour or fade a shape, on a fixed clock: no event triggers, no links.
+ANIMATED = {
+    "x", "y", "cx", "cy", "r", "rx", "ry", "x1", "y1", "x2", "y2", "width", "height", "opacity", "fill", "stroke", "fill-opacity",
+    "stroke-opacity", "stroke-width", "stroke-dashoffset", "font-size",
+}
+ANIMATE_ATTRIBUTES = {"attributeName", "values", "keyTimes", "keySplines", "calcMode", "dur", "repeatCount", "from", "to", "by", "fill"}
 
 
 def clean(svg: str, limit: int = MAX_CHARS) -> str:
@@ -68,11 +74,21 @@ def _scrub(element: ET.Element) -> None:
     _scrub_attributes(element)
     for child in list(element):
         ns, name = _split(child.tag)
-        if ns not in ("", SVG_NS) or name not in ELEMENTS:
+        if ns not in ("", SVG_NS) or name not in ELEMENTS or (name == "animate" and not _tame_animation(child)):
             element.remove(child)
             continue
         child.tag = f"{{{SVG_NS}}}{name}"
         _scrub(child)
+
+
+def _tame_animation(element: ET.Element) -> bool:
+    """Keeps an <animate> only with the attributes an honest animation needs; False when it animates anything else."""
+    for attr in list(element.attrib):
+        if _split(attr)[1] not in ANIMATE_ATTRIBUTES:
+            del element.attrib[attr]
+    if element.get("attributeName") not in ANIMATED:
+        return False
+    return not any("url(" in element.get(a, "").lower() for a in ("values", "from", "to", "by"))
 
 
 def _scrub_attributes(element: ET.Element) -> None:

@@ -223,13 +223,19 @@ class Vault:
             return self.embed(("card", block["id"]))
         if kind == "figure":
             credits = _credits(d.get("credits", []))
+            # An animation is printed as its stages, one after the other.
+            drawings = d["frames"] if len(d.get("frames", [])) > 1 else [d["svg"]]
             if self.inline:
-                data = base64.b64encode(d["svg"].encode()).decode()
                 caption = " ".join(block["markdown"].split())
-                return f"![{_alt(d.get('alt', ''))}](data:image/svg+xml;base64,{data})\n" + (f"*{caption}*\n" if caption else "") + credits
-            path = f"{self.root}/attachments/figure-{block['id']}.svg"
-            self.files[path] = d["svg"].encode()
-            return f"![[{path}]]\n" + (f"*{block['markdown']}*\n" if block["markdown"] else "") + credits
+                alt = _alt(d.get("alt", ""))
+                images = "".join(f"![{alt}](data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()})\n" for svg in drawings)
+                return images + (f"*{caption}*\n" if caption else "") + credits
+            embeds = ""
+            for n, svg in enumerate(drawings):
+                path = f"{self.root}/attachments/figure-{block['id']}{f'-{n + 1}' if len(drawings) > 1 else ''}.svg"
+                self.files[path] = svg.encode()
+                embeds += f"![[{path}]]\n"
+            return embeds + (f"*{block['markdown']}*\n" if block["markdown"] else "") + credits
         if kind == "plot":
             png = f"{self.root}/attachments/plot-{block['id']}.png"
             if png in self.files:

@@ -237,7 +237,15 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
     const d = block.data as FigureData
     return (
       <Card label={t('block.figure')} className="figure">
-        <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram} />
+        {d.frames && d.frames.length > 1 ? (
+          <div className="frames">
+            {d.frames.map((frame, i) => (
+              <Drawing key={i} className="figure-box" svg={frame} alt={`${d.alt} · ${t('block.stage', { n: i + 1 })}`} sketched={false} />
+            ))}
+          </div>
+        ) : (
+          <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram} />
+        )}
         {block.markdown && <div className="caption">{block.markdown}</div>}
         <Credits credits={d.credits} />
       </Card>

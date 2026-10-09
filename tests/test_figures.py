@@ -49,3 +49,20 @@ def test_ids_are_prefixed_per_figure_and_label_text_is_untouched():
     out = figures.prefix_ids('<svg><marker id="m"/><use href="#m"/><rect fill="url(#g)"/></svg>', "f7-")
     assert out == '<svg><marker id="f7-m"/><use href="#f7-m"/><rect fill="url(#f7-g)"/></svg>'
     assert "Set on=1 ok" in figures.clean('<svg viewBox="0 0 1 1"><text x="1" y="1">Set on=1 ok</text></svg>')
+
+
+def test_an_animation_may_only_move_size_colour_or_fade_on_a_fixed_clock():
+    kept = figures.clean(
+        '<svg viewBox="0 0 9 9"><rect x="1" width="1" height="1"><animate attributeName="x" values="1;5;1" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" calcMode="spline" keySplines="0 0 1 1;0 0 1 1" begin="click"/></rect></svg>'
+    )
+    with pytest.raises(ValueError, match="event attributes"):
+        figures.clean('<svg viewBox="0 0 1 1"><rect><animate attributeName="x" to="1" onbegin="x"/></rect></svg>')
+    assert '<animate attributeName="x" values="1;5;1" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" calcMode="spline" keySplines="0 0 1 1;0 0 1 1" />' in kept
+    for bad in (
+        '<animate attributeName="href" values="#a;#b" dur="1s"/>',
+        '<animate attributeName="fill" values="url(http://x);red" dur="1s"/>',
+        '<animate attributeName="fill" to="URL(#g)" dur="1s"/>',
+        '<animate attributeName="d" values="M0 0;M1 1" dur="1s"/>',
+        '<animate dur="1s"/>',
+    ):
+        assert "<animate" not in figures.clean(f'<svg viewBox="0 0 1 1"><use href="#m">{bad}</use></svg>')
