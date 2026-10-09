@@ -946,3 +946,71 @@ def test_a_question_card_may_take_several_answers():
     finally:
         app._start_turn = app_turn
     assert db.block(block["id"])["data"]["answer"] == "Excel; R" and "Excel; R" in turns[0]
+
+
+def test_sketch_is_a_profile_choice_on_by_default():
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Sketcher')").lastrowid
+    assert db.profile(who)["sketch"] is True
+    assert app.set_sketch(who, app.ProfileSketch(sketch=False))["sketch"] is False
+    assert next(p for p in db.profiles() if p["id"] == who)["sketch"] is False
+
+
+def test_redraw_sends_the_tutor_back_to_each_figure_and_replace_figure_keeps_the_block(monkeypatch, tmp_path):
+    import asyncio
+    import json
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app, art, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Redraw')").lastrowid
+    course = db.create_course("Cells", who)["id"]
+    db.conn.execute("UPDATE courses SET started = 1 WHERE id = ?", (course,))
+    lesson = db.create_lesson(course, "The cell", "lesson", None)
+    monkeypatch.setattr(art, "ART", tmp_path)
+    art._manifests.clear()
+    with pytest.raises(HTTPException, match="the lesson has no figures"):
+        asyncio.run(app.redraw_figures(lesson))
+    asyncio.run(tutor.add_block(lesson, "prose", "A cell."))
+    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A cell", "a circle"))
+    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><rect width="4" height="4"/></svg>', "A box", "a square"))
+    first, second = [b for b in db.blocks(lesson) if b["kind"] == "figure"]
+    assert first["data"]["credits"] == []
+    with pytest.raises(HTTPException, match="no art pack is installed"):
+        asyncio.run(app.redraw_figures(lesson))
+
+    (tmp_path / "bioicons" / "cc-0" / "Cell_types" / "Me").mkdir(parents=True)
+    (tmp_path / "bioicons" / "cc-0" / "Cell_types" / "Me" / "cell.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 1"><path d="M0 0h1"/></svg>')
+    (tmp_path / "bioicons" / "manifest.json").write_text(json.dumps([{"id": "bioicons/cc-0/Cell_types/Me/cell", "name": "cell", "category": "Cell types", "author": "Me", "licence": "CC0", "ratio": 2.0}]))
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    assert asyncio.run(app.redraw_figures(lesson)) == {"figures": [first["id"], second["id"]]}
+    assert turns[0].startswith(f"[redraw] Draw figures {first['id']}, {second['id']} of this lesson again, one replace_figure call each")
+    assert "find_art" in app._turn_prompt(db.lesson(lesson), turns[0]) and "Art pack installed: Bioicons (1 icons; Cell types)" in app._turn_prompt(db.lesson(lesson), turns[0])
+
+    assert asyncio.run(tutor.find_art("cell")) == "bioicons/cc-0/Cell_types/Me/cell | cell | Cell types | Me | CC0 | 2.0"
+    assert asyncio.run(tutor.find_art("zebra")).startswith("nothing found")
+    redrawn = asyncio.run(
+        tutor.replace_figure(lesson, first["id"], '<svg viewBox="0 0 10 10"><use href="art:bioicons/cc-0/Cell_types/Me/cell" width="4" height="2"/></svg>', "A real cell", "an icon of a cell")
+    )
+    assert redrawn == f"figure {first['id']} redrawn"
+    block = db.block(first["id"])
+    assert block["markdown"] == "A real cell" and block["position"] == first["position"] and [b["id"] for b in db.blocks(lesson)][1:] == [first["id"], second["id"]]
+    assert f'<symbol id="f{first["id"]}-art-1" viewBox="0 0 2 1">' in block["data"]["svg"] and f'href="#f{first["id"]}-art-1"' in block["data"]["svg"]
+    assert block["data"]["credits"] == [{"name": "cell", "author": "Me", "licence": "CC0", "pack": "Bioicons", "url": "https://bioicons.com"}]
+    assert (asyncio.run(tutor.replace_figure(lesson, second["id"], '<svg viewBox="0 0 1 1"><use href="art:bioicons/x"/></svg>', "c", "a"))).startswith("error: no art with id")
+    assert asyncio.run(tutor.replace_figure(lesson, 10**9, "<svg/>", "c", "a")) == "error: no figure with id 1000000000 in this lesson"
+    other = db.create_lesson(course, "Elsewhere", "lesson", None)
+    assert asyncio.run(tutor.replace_figure(other, first["id"], "<svg/>", "c", "a")) == f"error: no figure with id {first['id']} in this lesson"
+    assert asyncio.run(tutor.add_figure(lesson, "<svg viewBox='0 0 1 1'/>", "c", "")) == "error: alt text is required"
+
+    from wise_scholar import obsidian
+
+    assert obsidian._credits(block["data"]["credits"]) == "*Art: cell (Me, CC0) · [Bioicons](https://bioicons.com)*\n"
+    assert obsidian._credits([]) == ""
+    assert obsidian._credits([{"name": "a*b", "author": "[x](y)", "licence": "CC0", "pack": "P_", "url": "u"}]) == "*Art: a\\*b (\\[x\\]\\(y\\), CC0) · [P\\_](u)*\n"
+    note = obsidian.Vault(course).lesson_text(db.lesson(lesson) | {"blocks": db.blocks(lesson), "messages": []}, chat=False, kinds=("figure",))
+    assert "".join(note).count("*Art: cell (Me, CC0)") == 1

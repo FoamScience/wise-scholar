@@ -120,6 +120,16 @@ This creates a separate environment under `speech/` (torch, Chatterbox Multiling
 
 With speech installed, `WISE_SCHOLAR_PODCASTS=1 make serve` lets the tutor turn a two-voice dialogue it writes into a 5 to 8 minute audio cast (`ffmpeg` must be on the path): a recap of the lesson, or a quiz-cast that pauses for a confidence-rated question every couple of minutes. The two voices are Chatterbox and Piper. Rendering runs in the background and takes about a minute per five minutes of audio on a GPU.
 
+## Art packs (optional)
+
+The tutor draws its figures as SVG. With an art pack installed it composes them from professional illustrations instead of drawing a cell or a flask from scratch: it searches the pack, places the icons and adds its own labels and arrows. Each figure then carries the credit the icons' licences ask for, in the app, the book, the hand-outs and the Obsidian notes.
+
+```bash
+make art
+```
+
+downloads [Bioicons](https://bioicons.com), 231 MB, and keeps about 2,300 of its icons under `data/art/`, 110 MB: human physiology, animals, cells and their parts, blood and immunology, microbiology, viruses, lab apparatus, chemistry, nucleic acids, plants. The sets drawn by Servier (CC BY 3.0) and DBCLS (CC BY 4.0) are the bulk of it; the rest is CC0, MIT or BSD. Icons under a share-alike licence, icons over 400 KB and icons that need scripts, raster images or styles the figure allowlist refuses are left out at install. Nothing is fetched while you learn; the tutor sees the pack on its next turn, no restart needed. `uv run python -m wise_scholar.art list` shows what is installed.
+
 ## Develop
 
 ```bash
@@ -130,6 +140,6 @@ make test    # Python and web tests
 
 ## Where things live
 
-- `data/` holds the database, recordings and casts under `data/audio/`, and the files you add to a course under `data/sources/` (PDF, EPUB, HTML, Markdown, text, code; the tutor searches them and reads one section at a time). Before a schema upgrade the database is copied to `data/wise-scholar.db.v<N>.bak`.
+- `data/` holds the database, recordings and casts under `data/audio/`, the art packs under `data/art/`, and the files you add to a course under `data/sources/` (PDF, EPUB, HTML, Markdown, text, code; the tutor searches them and reads one section at a time). Before a schema upgrade the database is copied to `data/wise-scholar.db.v<N>.bak`.
 - `workspace/<course>/` holds each course's exercise files. Deleting a course removes its folder.
 - `.mcp.json` and `opencode.json` declare the tutor's MCP server for this repository only.

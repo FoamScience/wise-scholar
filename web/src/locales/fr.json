@@ -67,6 +67,8 @@
       "prose": "À lire",
       "example": "Exemple",
       "figure": "Figure",
+      "redraw": "Redessiner les figures avec le pack d'illustrations",
+      "art": "Illustrations :",
       "shrinkFigure": "Réduire la figure",
       "enlargeFigure": "Agrandir : {{alt}}",
       "plot": "Graphique",
@@ -476,6 +478,8 @@
     }
   },
   "server": {
+    "the lesson has no figures": "la leçon n'a pas de figure",
+    "no art pack is installed": "aucun pack d'illustrations n'est installé",
     "this challenge is closed": "ce défi est clos",
     "this challenge is already closed": "ce défi est déjà clos",
     "the hint ladder is used up. Ask a guiding question in chat, or wait for another attempt or a give-up": "tous les indices ont été donnés",

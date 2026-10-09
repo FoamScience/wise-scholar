@@ -1556,6 +1556,17 @@ pre:has(> .mermaid) {
   color: var(--muted);
 }
 
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.figure .credits {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .plot {
   display: flex;
   flex-direction: column;

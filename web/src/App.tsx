@@ -963,7 +963,7 @@ function Plan(props: {
   )
 }
 
-function Workspace({ courseId, speech, commands, concept, start }: { courseId: number; speech: boolean; commands: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
+function Workspace({ courseId, speech, commands, art, sketched, concept, start }: { courseId: number; speech: boolean; commands: boolean; art: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
   const { t } = useTranslation()
   const [course, setCourse] = useState<CourseDetail | null>(null)
   const [sources, setSources] = useState<Source[]>([])
@@ -1257,6 +1257,11 @@ function Workspace({ courseId, speech, commands, concept, start }: { courseId: n
 
       <main className="lesson">
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
+        {art && lesson.blocks.some((b) => b.kind === 'figure') && (
+          <button type="button" className="link small" disabled={lesson.running} onClick={() => post(`/api/lessons/${lesson.id}/redraw`, {})}>
+            {t('block.redraw')}
+          </button>
+        )}
         {course.mode === 'teacher' && lesson.concept_id !== null && (
           <div className="small handouts">
             {t('handout.label')}{' '}
@@ -1606,6 +1611,7 @@ export default function App() {
   const [speech, setSpeech] = useState(false)
   const [pdf, setPdf] = useState(false)
   const [commands, setCommands] = useState(true)
+  const [art, setArt] = useState(false)
   const { profiles, current, select, reload } = useProfiles()
   const [chosen, setChosen] = useState<Locale>(browserLocale)
   const [localeError, setLocaleError] = useState('')
@@ -1626,12 +1632,13 @@ export default function App() {
     )
   }
   useEffect(() => {
-    api<{ agent: string; speech: boolean; pdf: boolean; commands: boolean }>('/api/meta').then(
+    api<{ agent: string; speech: boolean; pdf: boolean; commands: boolean; art: boolean }>('/api/meta').then(
       (m) => {
         setAgent(m.agent)
         setSpeech(m.speech)
         setPdf(m.pdf)
         setCommands(m.commands)
+        setArt(m.art)
       },
       () => {},
     )
@@ -1660,11 +1667,13 @@ export default function App() {
           courseId={Number(match[1])}
           speech={speech}
           commands={commands}
+          art={art}
+          sketched={current.sketch}
           concept={match[2] ? Number(match[2]) : null}
           start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
         />
       )
-    if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={pdf} />
+    if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={pdf} sketched={current.sketch} />
     if (handout) return <Handout key={handout[0]} lessonId={Number(handout[1])} version={handout[2] as 'student' | 'teacher'} pdf={pdf} />
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
     if (hash === '#/errors') return <ErrorsPage profile={current.id} />

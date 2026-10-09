@@ -13,7 +13,7 @@ import simplemma
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel
 
-from . import challenge, course_files, db, figures, hub, plots, quiz, sandbox, speech, vocab
+from . import art, challenge, course_files, db, figures, hub, plots, quiz, sandbox, speech, vocab
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
 mcp = MCPServer("scholar")
@@ -378,22 +378,64 @@ async def add_figure(lesson_id: int, svg: str, caption: str, alt: str) -> str:
     #e1f0ee, amber #6b3a00, amber tint #fbebd3, line #8794a1; text and outlines in currentColor so both themes
     read it. No script, style element, image, foreignObject or external links; they are stripped or refused.
     caption: one sentence under the figure. alt: what the figure shows, for a reader who cannot see it.
+
+    Icons from an installed art pack (see the [tools] line) go in as `<use href="art:ID" x="" y="" width="" height=""/>`
+    with an ID from find_art, sized by its ratio; the server inlines the drawing and credits its author under the
+    caption. Place them, then add your own labels, arrows and callouts around them.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    if not alt.strip():
-        return "error: alt text is required"
     if problem := pretest_blocker(lesson):
         return f"refused: {problem}"
     try:
-        drawing = figures.clean(svg)
+        data = _figure_data(svg, alt)
     except ValueError as e:
         return f"error: {e}"
-    block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": alt.strip()})
-    block = db.set_block_data(block["id"], {"svg": figures.prefix_ids(drawing, f"f{block['id']}-"), "alt": alt.strip()})
+    block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
+    block = db.set_block_data(block["id"], {**data, "svg": figures.prefix_ids(data["svg"], f"f{block['id']}-")})
     _show(lesson, block)
     return f"shown as figure {block['id']}"
+
+
+@mcp.tool()
+async def replace_figure(lesson_id: int, block_id: int, svg: str, caption: str, alt: str) -> str:
+    """Draw an existing figure of this lesson again in its place: same block, same position in the lesson. Same
+    rules as add_figure. Use it when asked to redraw figures, or when a figure of yours turned out wrong."""
+    block = db.block(block_id)
+    if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
+        return f"error: no figure with id {block_id} in this lesson"
+    try:
+        data = _figure_data(svg, alt)
+    except ValueError as e:
+        return f"error: {e}"
+    db.set_block_markdown(block_id, caption)
+    block = db.set_block_data(block_id, {**data, "svg": figures.prefix_ids(data["svg"], f"f{block_id}-")})
+    _show(db.lesson(block["lesson_id"]), block, "block.updated")
+    return f"figure {block_id} redrawn"
+
+
+def _figure_data(svg: str, alt: str) -> dict:
+    if not alt.strip():
+        raise ValueError("alt text is required")
+    drawing, credits = art.inline(figures.clean(svg))
+    return {"svg": drawing, "alt": alt.strip(), "credits": credits}
+
+
+@mcp.tool()
+async def find_art(query: str) -> str:
+    """Search the installed art packs for icons to place in a figure: a cell, an organ, an animal, a flask, a virus,
+    a molecule. query: one to three words naming the thing. Returns up to 20 icons as `ID | name | category |
+    author | licence | ratio` (ratio is width over height, to size the <use>). Nothing found: try a broader or
+    English word, or draw the shape yourself.
+    """
+    if not art.installed():
+        return "no art packs are installed: draw the figure yourself"
+    found, more = art.search(query)
+    if not found:
+        return "nothing found: try a broader word, or draw the shape yourself"
+    lines = [f"{i['id']} | {i['name']} | {i['category']} | {i['author']} | {i['licence']} | {i['ratio']}" for i in found]
+    return "\n".join(lines + (["(more matched; add a word to narrow the search)"] if more else []))
 
 
 @mcp.tool()
