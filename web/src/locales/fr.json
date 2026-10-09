@@ -67,6 +67,8 @@
       "prose": "À lire",
       "example": "Exemple",
       "figure": "Figure",
+      "restoreDrawing": "Revenir au dessin précédent",
+      "backToRedrawn": "Revenir à la figure redessinée",
       "redraw": "Redessiner les figures avec le pack d'illustrations",
       "art": "Illustrations :",
       "shrinkFigure": "Réduire la figure",
@@ -481,6 +483,7 @@
     }
   },
   "server": {
+    "nothing to restore": "rien à restaurer",
     "the lesson has no figures": "la leçon n'a pas de figure",
     "no art pack is installed": "aucun pack d'illustrations n'est installé",
     "this challenge is closed": "ce défi est clos",

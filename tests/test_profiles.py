@@ -1001,6 +1001,16 @@ def test_redraw_sends_the_tutor_back_to_each_figure_and_replace_figure_keeps_the
     assert block["markdown"] == "A real cell" and block["position"] == first["position"] and [b["id"] for b in db.blocks(lesson)][1:] == [first["id"], second["id"]]
     assert f'<symbol id="f{first["id"]}-art-1" viewBox="0 0 2 1">' in block["data"]["svg"] and f'href="#f{first["id"]}-art-1"' in block["data"]["svg"]
     assert block["data"]["credits"] == [{"name": "cell", "author": "Me", "licence": "CC0", "pack": "Bioicons", "url": "https://bioicons.com"}]
+    assert block["data"]["previous"] == {**first["data"], "caption": "A cell"} and "restored" not in block["data"]
+    with pytest.raises(HTTPException, match="nothing to restore"):
+        app.restore_figure(second["id"])
+    with pytest.raises(HTTPException, match="no such figure"):
+        app.restore_figure(10**9)
+    back = app.restore_figure(first["id"])
+    assert back["markdown"] == "A cell" and back["data"]["svg"] == first["data"]["svg"] and back["data"]["restored"] is True
+    assert back["data"]["previous"]["caption"] == "A real cell" and "art-1" in back["data"]["previous"]["svg"] and "previous" not in back["data"]["previous"]
+    again = app.restore_figure(first["id"])
+    assert again["markdown"] == "A real cell" and again["data"]["restored"] is False and again["data"]["previous"] == {**first["data"], "caption": "A cell"}
     assert (asyncio.run(tutor.replace_figure(lesson, second["id"], '<svg viewBox="0 0 1 1"><use href="art:bioicons/x"/></svg>', "c", "a"))).startswith("error: no art with id")
     assert asyncio.run(tutor.replace_figure(lesson, 10**9, "<svg/>", "c", "a")) == "error: no figure with id 1000000000 in this lesson"
     other = db.create_lesson(course, "Elsewhere", "lesson", None)
@@ -1014,3 +1024,7 @@ def test_redraw_sends_the_tutor_back_to_each_figure_and_replace_figure_keeps_the
     assert obsidian._credits([{"name": "a*b", "author": "[x](y)", "licence": "CC0", "pack": "P_", "url": "u"}]) == "*Art: a\\*b (\\[x\\]\\(y\\), CC0) · [P\\_](u)*\n"
     note = obsidian.Vault(course).lesson_text(db.lesson(lesson) | {"blocks": db.blocks(lesson), "messages": []}, chat=False, kinds=("figure",))
     assert "".join(note).count("*Art: cell (Me, CC0)") == 1
+    redrawn_twice = asyncio.run(tutor.replace_figure(lesson, first["id"], '<svg viewBox="0 0 1 1"><rect width="1" height="1"/></svg>', "Third", "a square"))
+    assert redrawn_twice == f"figure {first['id']} redrawn"
+    third = db.block(first["id"])
+    assert third["data"]["previous"]["caption"] == "A real cell" and "restored" not in third["data"] and "previous" not in third["data"]["previous"]

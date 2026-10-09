@@ -409,8 +409,9 @@ async def replace_figure(lesson_id: int, block_id: int, svg: str, caption: str, 
         data = _figure_data(svg, alt)
     except ValueError as e:
         return f"error: {e}"
-    db.set_block_markdown(block_id, caption)
-    block = db.set_block_data(block_id, {**data, "svg": figures.prefix_ids(data["svg"], f"f{block_id}-")})
+    # The drawing being replaced is kept, so the learner can go back to it.
+    previous = {k: v for k, v in block["data"].items() if k not in ("previous", "restored")} | {"caption": block["markdown"]}
+    block = db.set_block(block_id, caption, {**data, "svg": figures.prefix_ids(data["svg"], f"f{block_id}-"), "previous": previous})
     _show(db.lesson(block["lesson_id"]), block, "block.updated")
     return f"figure {block_id} redrawn"
 

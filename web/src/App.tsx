@@ -1353,7 +1353,7 @@ function Workspace({ courseId, speech, commands, art, sketched, concept, start }
           ) : b.kind === 'plot' ? (
             <PlotCard key={b.id} id={b.id} title={b.markdown} data={b.data} />
           ) : b.kind === 'figure' ? (
-            <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={sketched} />
+            <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={sketched} disabled={lesson.running} onRestore={() => post(`/api/blocks/${b.id}/restore`, {})} />
           ) : b.kind === 'placement' ? (
             <section key={b.id} className="block">
               <div className="label">
