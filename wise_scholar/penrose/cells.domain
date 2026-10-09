@@ -1,0 +1,13 @@
+-- Cells with their chromosomes, at a phase of mitosis or meiosis. Each Cell subtype carries its own placement rules.
+type Cell
+type MitosisMetaphase <: Cell
+type MeiosisMetaphaseI <: Cell
+type MeiosisAnaphaseI <: Cell
+type MeiosisLateAnaphaseI <: Cell
+type Chromosome
+
+predicate In(Chromosome, Cell)
+symmetric predicate Homologous(Chromosome, Chromosome)
+predicate Paternal(Chromosome)
+predicate Maternal(Chromosome)
+predicate Short(Chromosome)

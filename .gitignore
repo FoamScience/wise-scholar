@@ -5,3 +5,4 @@ data/
 workspace/
 node_modules/
 web/dist/
+diagrams/node_modules/

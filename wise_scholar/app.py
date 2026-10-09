@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 import httpx
 import simplemma
 
-from . import art, book, challenge, cleanup, course_files, db, egress, handout, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
+from . import art, book, challenge, cleanup, course_files, db, diagrams, egress, handout, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -311,6 +311,11 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         "find_art and place icons in add_figure as <use href=\"art:ID\">; draw yourself what it lacks."
         for p in art.installed()
     ]
+    if diagrams.available() and diagrams.domains():
+        tools.append(
+            "[tools] Diagram domains for add_diagram (read diagram_help first): "
+            + "; ".join(f"{d}: {diagrams.summary(d)}" for d in diagrams.domains())
+        )
     if not sandbox.commands():
         tools += [
             "[tools] This server runs no code: there is no run_command, write_file, read_file or pose_exercise, and no "

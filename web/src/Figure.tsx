@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { sketch } from './sketch'
 
 export type Credit = { name: string; author: string; licence: string; pack: string; url: string }
-export type FigureData = { svg: string; alt: string; credits?: Credit[]; previous?: FigureData & { caption: string }; restored?: boolean }
+export type FigureData = { svg: string; alt: string; credits?: Credit[]; diagram?: { domain: string; substance: string }; previous?: FigureData & { caption: string }; restored?: boolean }
 
 /** The attribution a figure owes the art pack: every icon with its author and licence, and the pack it came from. */
 export function Credits({ credits }: { credits?: Credit[] }) {
@@ -54,7 +54,7 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
         aria-label={large ? t('block.shrinkFigure') : t('block.enlargeFigure', { alt: d.alt })}
         onClick={() => setLarge(!large)}
       >
-        <Drawing svg={d.svg} alt={d.alt} sketched={props.sketched} />
+        <Drawing svg={d.svg} alt={d.alt} sketched={props.sketched && !d.diagram} />
       </button>
       {props.caption && <div className="caption">{props.caption}</div>}
       <Credits credits={d.credits} />

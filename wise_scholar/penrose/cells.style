@@ -1,0 +1,155 @@
+canvas {
+  width = 900
+  height = 540
+}
+
+colors {
+  paternal = rgba(0.04, 0.37, 0.35, 1)
+  maternal = rgba(0.42, 0.23, 0.0, 1)
+  ink = rgba(0.1, 0.16, 0.16, 1)
+  line = rgba(0.53, 0.58, 0.63, 1)
+  none = none()
+}
+
+forall Cell k {
+  vec2 k.center = (?, ?)
+  scalar k.r = 195
+  shape k.icon = Circle {
+    center: k.center
+    r: k.r
+    fillColor: colors.none
+    strokeColor: colors.ink
+    strokeWidth: 2
+  }
+  shape k.equator = Line {
+    start: (k.center[0], k.center[1] - k.r)
+    end: (k.center[0], k.center[1] + k.r)
+    strokeColor: colors.line
+    strokeWidth: 2
+    strokeDasharray: "9 7"
+  }
+  shape k.text = Text {
+    string: k.label
+    center: (k.center[0], k.center[1] - k.r - 28)
+    fontSize: "21px"
+    fontFamily: "sans-serif"
+    fillColor: colors.ink
+  }
+  layer k.equator above k.icon
+  ensure equal(k.center[1], 10)
+}
+
+forall Cell a; Cell b {
+  ensure disjoint(a.icon, b.icon, 50)
+}
+
+forall Chromosome c {
+  vec2 c.pos = (?, ?)
+  scalar c.len = 82
+  color c.color = colors.paternal
+  shape c.chromatidA = Rectangle {
+    center: (c.pos[0] - 10, c.pos[1])
+    width: 13
+    height: c.len
+    cornerRadius: 6.5
+    fillColor: c.color
+    strokeWidth: 0
+  }
+  shape c.chromatidB = Rectangle {
+    center: (c.pos[0] + 10, c.pos[1])
+    width: 13
+    height: c.len
+    cornerRadius: 6.5
+    fillColor: c.color
+    strokeWidth: 0
+  }
+  shape c.centromere = Circle {
+    center: c.pos
+    r: 7
+    fillColor: colors.ink
+    strokeWidth: 0
+  }
+  shape c.box = Rectangle {
+    center: c.pos
+    width: 36
+    height: c.len + 6
+    fillColor: colors.none
+    strokeWidth: 0
+  }
+  layer c.centromere above c.chromatidA
+  layer c.centromere above c.chromatidB
+}
+
+forall Chromosome c
+where Short(c) {
+  override c.len = 46
+}
+
+forall Chromosome c
+where Maternal(c) {
+  override c.color = colors.maternal
+}
+
+forall Chromosome c; Cell k
+where In(c, k) {
+  ensure contains(k.icon, c.box, 14)
+  layer c.box above k.equator
+}
+
+forall Chromosome c; Chromosome d {
+  ensure disjoint(c.box, d.box, 16)
+}
+
+-- Mitosis: every chromosome sits alone with its centromere on the equatorial plane, one above the other.
+forall MitosisMetaphase k; Chromosome c
+where In(c, k) {
+  ensure equal(c.pos[0], k.center[0])
+}
+
+forall MitosisMetaphase k; Chromosome c; Chromosome d
+where In(c, k); In(d, k) {
+  ensure greaterThan(abs(c.pos[1] - d.pos[1]), (c.len + d.len) / 2 + 18)
+}
+
+-- Meiosis I: homologous chromosomes face each other across the plane, the paternal one on the left, at the same height, the pairs stacked.
+forall MeiosisMetaphaseI k; Chromosome c; Chromosome d
+where In(c, k); In(d, k); Homologous(c, d); Paternal(c); Maternal(d) {
+  ensure lessThan(c.pos[0] + 42, k.center[0])
+  ensure greaterThan(d.pos[0] - 42, k.center[0])
+  ensure equal(c.pos[1], d.pos[1])
+  ensure equal(c.pos[0] + d.pos[0], 2 * k.center[0])
+  encourage equal(d.pos[0] - c.pos[0], 110)
+}
+
+forall MeiosisMetaphaseI k; Chromosome c; Chromosome d; Chromosome e; Chromosome f
+where In(c, k); In(d, k); In(e, k); In(f, k); Homologous(c, d); Homologous(e, f) {
+  ensure greaterThan(abs(c.pos[1] - e.pos[1]), (c.len + e.len) / 2 + 24)
+}
+
+-- Anaphase I: the homologues move apart.
+forall MeiosisAnaphaseI k; Chromosome c; Chromosome d
+where In(c, k); In(d, k); Homologous(c, d); Paternal(c); Maternal(d) {
+  ensure lessThan(c.pos[0] + 42, k.center[0] - 60)
+  ensure greaterThan(d.pos[0] - 42, k.center[0] + 60)
+  ensure equal(c.pos[1], d.pos[1])
+  ensure equal(c.pos[0] + d.pos[0], 2 * k.center[0])
+}
+
+forall MeiosisAnaphaseI k; Chromosome c; Chromosome d; Chromosome e; Chromosome f
+where In(c, k); In(d, k); In(e, k); In(f, k); Homologous(c, d); Homologous(e, f) {
+  ensure greaterThan(abs(c.pos[1] - e.pos[1]), (c.len + e.len) / 2 + 24)
+}
+
+-- Late anaphase I: each set gathers near its pole.
+forall MeiosisLateAnaphaseI k; Chromosome c; Chromosome d
+where In(c, k); In(d, k); Homologous(c, d); Paternal(c); Maternal(d) {
+  ensure lessThan(c.pos[0] + 42, k.center[0] - 66)
+  ensure greaterThan(d.pos[0] - 42, k.center[0] + 66)
+  ensure equal(c.pos[1], d.pos[1])
+  ensure equal(c.pos[0] + d.pos[0], 2 * k.center[0])
+}
+
+forall MeiosisLateAnaphaseI k; Chromosome c; Chromosome d; Chromosome e; Chromosome f
+where In(c, k); In(d, k); In(e, k); In(f, k); Homologous(c, d); Homologous(e, f) {
+  ensure greaterThan(abs(c.pos[1] - e.pos[1]), (c.len + e.len) / 2 + 20)
+}

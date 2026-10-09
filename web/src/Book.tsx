@@ -237,7 +237,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
     const d = block.data as FigureData
     return (
       <Card label={t('block.figure')} className="figure">
-        <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched} />
+        <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram} />
         {block.markdown && <div className="caption">{block.markdown}</div>}
         <Credits credits={d.credits} />
       </Card>
