@@ -58,6 +58,7 @@ const LESSON_AREA_TOOLS = [
   'add_reading',
   'add_figure',
   'add_diagram',
+  'add_animation',
   'add_plot',
   'pose_writing',
   'pose_vocab_check',

@@ -416,10 +416,10 @@ async def replace_figure(lesson_id: int, block_id: int, svg: str, caption: str, 
     return f"figure {block_id} redrawn"
 
 
-def _figure_data(svg: str, alt: str) -> dict:
+def _figure_data(svg: str, alt: str, limit: int = figures.MAX_CHARS) -> dict:
     if not alt.strip():
         raise ValueError("alt text is required")
-    drawing, credits = art.inline(figures.clean(svg))
+    drawing, credits = art.inline(figures.clean(svg, limit=limit))
     return {"svg": drawing, "alt": alt.strip(), "credits": credits}
 
 
@@ -450,6 +450,37 @@ async def add_diagram(lesson_id: int, domain: str, substance: str, caption: str,
     block = db.set_block_data(block["id"], {**data, "svg": figures.prefix_ids(data["svg"], f"f{block['id']}-")})
     _show(lesson, block)
     return f"shown as figure {block['id']}"
+
+
+@mcp.tool()
+async def add_animation(lesson_id: int, domain: str, stages: list[str], caption: str, alt: str) -> str:
+    """Show a phenomenon unfolding: 2 to 6 stages, each a Substance program of the same domain with the same
+    objects (same names) and what changes between stages changed (a cell's type, a predicate, a label). The server
+    lays the stages out one after the other and plays them as one animation; the book and the hand-outs show the
+    stages side by side. caption and alt as for add_figure; alt tells the whole sequence."""
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if problem := pretest_blocker(lesson):
+        return f"refused: {problem}"
+    if not alt.strip():
+        return "error: alt text is required"
+    try:
+        async with _layouts:
+            svg, frames = await asyncio.to_thread(diagrams.animate, domain.strip(), stages)
+        data = _figure_data(svg, alt, limit=figures.MAX_CHARS * len(stages)) | {
+            "diagram": {"domain": domain.strip(), "stages": stages},
+            "frames": [figures.clean(f) for f in frames],
+        }
+    except ValueError as e:
+        return f"error: {e}"
+    block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
+    prefix = f"f{block['id']}-"
+    block = db.set_block_data(
+        block["id"], {**data, "svg": figures.prefix_ids(data["svg"], prefix), "frames": [figures.prefix_ids(f, f"{prefix}{n}-") for n, f in enumerate(data["frames"])]}
+    )
+    _show(lesson, block)
+    return f"shown as figure {block['id']}, animated over {len(frames)} stages"
 
 
 @mcp.tool()

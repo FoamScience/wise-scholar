@@ -15,6 +15,8 @@ Predicates:
 
 Labels: `Label k "text"` puts a title under a cell, in the learner's language.
 
+Animation: the same cell and chromosomes stated once per stage, only the cell's type and label changing, for instance `MeiosisMetaphaseI K` then `MeiosisAnaphaseI K` then `MeiosisLateAnaphaseI K`.
+
 Example, mitosis beside meiosis I in a 2n = 4 cell:
 
 ```

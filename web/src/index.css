@@ -1562,6 +1562,24 @@ pre:has(> .mermaid) {
   gap: 8px;
 }
 
+.figure .stages {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.frames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.frames .figure-box {
+  flex: 1 1 220px;
+  min-width: 220px;
+}
+
 .figure .credits {
   font-size: 12px;
   color: var(--muted);

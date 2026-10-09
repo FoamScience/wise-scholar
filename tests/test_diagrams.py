@@ -64,7 +64,7 @@ def test_the_example_lays_out_and_becomes_a_figure_block():
         block = db.blocks(lesson)[-1]
         assert reply == f"shown as figure {block['id']}" and block["kind"] == "figure"
         assert block["data"]["diagram"] == {"domain": "cells", "substance": EXAMPLE} and block["data"]["credits"] == []
-        assert block["data"]["svg"].startswith('<svg xmlns="http://www.w3.org/2000/svg"') and 'viewBox="' in block["data"]["svg"] and "<title>" in block["data"]["svg"]
+        assert block["data"]["svg"].startswith('<svg xmlns="http://www.w3.org/2000/svg"') and 'viewBox="' in block["data"]["svg"] and "<title>" not in block["data"]["svg"]
         assert asyncio.run(tutor.add_diagram(lesson, "cells", EXAMPLE, "c", "")) == "error: alt text is required"
     finally:
         db.delete_course(course)
@@ -93,3 +93,54 @@ def test_one_cell_is_cropped_to_its_content_and_pairs_may_be_stated_either_way_r
     svg = diagrams.render("cells", one)
     _, _, width, _ = svg.split('viewBox="')[1].split('"')[0].split()
     assert float(width) < 500 and "الاستوائية I" in svg
+
+
+STAGES = [
+    "MeiosisMetaphaseI K\nChromosome c1, c2, d1, d2\nIn(c1, K)\nIn(c2, K)\nIn(d1, K)\nIn(d2, K)\nPaternal(c1)\nMaternal(c2)\nPaternal(d1)\nMaternal(d2)\n"
+    'Short(d1)\nShort(d2)\nHomologous(c1, c2)\nHomologous(d1, d2)\nLabel K "Metaphase I"',
+]
+STAGES += [STAGES[0].replace("MeiosisMetaphaseI K", "MeiosisAnaphaseI K").replace("Metaphase I", "Anaphase I")]
+STAGES += [STAGES[0].replace("MeiosisMetaphaseI K", "MeiosisLateAnaphaseI K").replace("Metaphase I", "Late anaphase I")]
+
+
+def test_an_animation_needs_two_to_six_stages():
+    with pytest.raises(ValueError, match="2 to 6 stages"):
+        diagrams.animate("cells", STAGES[:1])
+    with pytest.raises(ValueError, match="2 to 6 stages"):
+        diagrams.animate("cells", STAGES * 3)
+
+
+@sidecar
+def test_stages_become_one_animated_figure_with_its_frames_kept_for_print():
+    import re
+
+    from wise_scholar import figures, obsidian
+
+    svg, frames = diagrams.animate("cells", STAGES)
+    assert len(frames) == 3 and all(f.startswith("<svg") and "<title>" not in f and "<animate" not in f for f in frames)
+    assert svg.count("<animate ") >= 10 and 'data-stages="3"' in svg and 'data-seconds="9"' in svg and "<title>" not in svg
+    assert 'attributeName="x"' in svg and 'keyTimes="0.000;0.100;0.333;0.433;0.667;0.767;1"' in svg
+    assert "Metaphase I" in svg and "Anaphase I" in svg and "Late anaphase I" in svg  # the label switches
+    assert "<animate" in figures.clean(svg)  # SMIL passes the allowlist, so the stored figure still moves
+    # The frames glide: every animated x moves by less than half the canvas between consecutive stages.
+    for values in re.findall(r'attributeName="x" values="([^"]+)"', svg):
+        numbers = [float(v) for v in values.split(";")]
+        assert all(abs(a - b) < 450 for a, b in zip(numbers, numbers[1:]))
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Anim')").lastrowid
+    try:
+        course = db.create_course("Meiosis", who)["id"]
+        lesson = db.create_lesson(course, "Anaphase", "lesson", None)
+        reply = asyncio.run(tutor.add_animation(lesson, "cells", STAGES, "Meiosis I unfolds.", "a cell from metaphase I to late anaphase I"))
+        block = db.blocks(lesson)[-1]
+        assert reply == f"shown as figure {block['id']}, animated over 3 stages"
+        assert block["data"]["diagram"] == {"domain": "cells", "stages": STAGES} and len(block["data"]["frames"]) == 3
+        assert "<animate" in block["data"]["svg"] and "<animate" not in block["data"]["frames"][0]
+        vault = obsidian.Vault(course)
+        note = "".join(vault.lesson_text(db.lesson(lesson) | {"blocks": db.blocks(lesson), "messages": []}, chat=False, kinds=("figure",)))
+        assert note.count("![[") == 3 and f"attachments/figure-{block['id']}-3.svg" in note
+        assert sum(1 for p in vault.files if f"figure-{block['id']}-" in p) == 3
+        assert asyncio.run(tutor.add_animation(lesson, "cells", STAGES[:1], "c", "a")) == "error: an animation has 2 to 6 stages"
+    finally:
+        db.delete_course(course)
+        db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
