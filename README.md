@@ -133,6 +133,7 @@ downloads [Bioicons](https://bioicons.com), 231 MB, and keeps about 2,300 of its
 ## Develop
 
 ```bash
+make         # lists the targets
 make build   # once, to install the web dependencies
 make dev     # API with reload on :8321, web dev server on :5173
 make test    # Python and web tests
