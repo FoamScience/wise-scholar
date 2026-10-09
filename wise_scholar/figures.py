@@ -1,4 +1,5 @@
-"""Figures the tutor draws as SVG: an allowlist keeps them to shapes, paths and text before they are shown inline."""
+"""Figures the tutor draws as SVG: an allowlist keeps them to shapes, paths and text before they are shown inline.
+A `<use href="art:...">` names an icon of an installed art pack, inlined by `art.inline` after the scrub."""
 import re
 from xml.etree import ElementTree as ET
 
@@ -16,10 +17,10 @@ MAX_DEPTH = 64
 LOCAL_REF = re.compile(r"url\(\s*#[-\w]+\s*\)")
 
 
-def clean(svg: str) -> str:
+def clean(svg: str, limit: int = MAX_CHARS) -> str:
     """The SVG with everything outside the allowlist removed; raises ValueError when it cannot be shown."""
-    if len(svg) > MAX_CHARS:
-        raise ValueError(f"the SVG is over {MAX_CHARS} characters; simplify the drawing")
+    if len(svg) > limit:
+        raise ValueError(f"the SVG is over {limit} characters; simplify the drawing")
     try:
         root = safe.fromstring(svg.strip(), forbid_dtd=True, forbid_entities=True, forbid_external=True)
     except Exception as e:
@@ -79,7 +80,7 @@ def _scrub_attributes(element: ET.Element) -> None:
         ns, local = _split(attr)
         low = value.lower()
         if local == "href":
-            if ns not in ("", XLINK_NS) or not value.startswith("#"):
+            if ns not in ("", XLINK_NS) or not (value.startswith("#") or (value.startswith("art:") and _split(element.tag)[1] == "use")):
                 del element.attrib[attr]
             elif ns == XLINK_NS:
                 del element.attrib[attr]

@@ -10,6 +10,7 @@ import { challengeLabel, lessonTitle } from './course'
 import type { Block, ChallengeData, Concept, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
 import { Correction } from './Diff'
 import type { Entry } from './Errors'
+import { Credits, Drawing } from './Figure'
 import type { FigureData } from './Figure'
 import { HintList, Ladder } from './Ladder'
 import { day, lookup, percent } from './i18n'
@@ -136,7 +137,7 @@ function ExerciseBlock({ block, files }: { block: Block; files: ExerciseFile[] }
   )
 }
 
-function BookBlock({ block, files }: { block: Block; files: Files }) {
+function BookBlock({ block, files, sketched }: { block: Block; files: Files; sketched: boolean }) {
   const { t } = useTranslation()
   const solvedChip = (d: ChallengeData) => d.solved && <span className="chip">{d.writing ? t('common.done') : t('common.solved')}</span>
 
@@ -236,8 +237,9 @@ function BookBlock({ block, files }: { block: Block; files: Files }) {
     const d = block.data as FigureData
     return (
       <Card label={t('block.figure')} className="figure">
-        <div className="figure-box" role="img" aria-label={d.alt} dangerouslySetInnerHTML={{ __html: d.svg }} />
+        <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched} />
         {block.markdown && <div className="caption">{block.markdown}</div>}
+        <Credits credits={d.credits} />
       </Card>
     )
   }
@@ -287,7 +289,7 @@ function Plan({ course }: { course: CourseDetail }) {
   )
 }
 
-function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files: Files; learner: string }) {
+function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files: Files; learner: string; sketched: boolean }) {
   const { t } = useTranslation()
   const { lesson, course } = props
   const lastPlacement = course.lessons.filter((l) => l.phase === 'placement').at(-1)
@@ -300,7 +302,7 @@ function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files
       {lesson.phase === 'interview' && <ScopeCard course={course} />}
       {timeline(lesson, course.mode === 'teacher').map((item) =>
         'block' in item ? (
-          <BookBlock key={`b${item.block.id}`} block={item.block} files={props.files} />
+          <BookBlock key={`b${item.block.id}`} block={item.block} files={props.files} sketched={props.sketched} />
         ) : (
           <div key={`m${item.message.id}`} className={`book-turn ${item.message.role}`}>
             <span className="label">{item.message.role === 'learner' ? props.learner : t('chat.tutor')}</span>
@@ -378,7 +380,7 @@ function Notebook({ entries }: { entries: Entry[] }) {
 
 /** A whole course laid out as a book. The server prints this same page to a PDF, so the file has the site's theme and type;
  * without the PDF extra the browser's print dialog does it. */
-export function Book({ courseId, learner, pdf }: { courseId: number; learner: string; pdf: boolean }) {
+export function Book({ courseId, learner, pdf, sketched }: { courseId: number; learner: string; pdf: boolean; sketched: boolean }) {
   const { t } = useTranslation()
   const theme = useTheme()
   const [loaded, setLoaded] = useState<{ course: CourseDetail; entries: Entry[]; files: Files } | null>(null)
@@ -539,7 +541,7 @@ export function Book({ courseId, learner, pdf }: { courseId: number; learner: st
             </header>
           )}
           {part.lessons.map((l) => (
-            <Chapter key={l.id} n={numbers.get(l.id)!} lesson={l} course={course} files={files} learner={learner} />
+            <Chapter key={l.id} n={numbers.get(l.id)!} lesson={l} course={course} files={files} learner={learner} sketched={sketched} />
           ))}
         </section>
       ))}

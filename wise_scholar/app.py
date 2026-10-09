@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 import httpx
 import simplemma
 
-from . import book, challenge, cleanup, course_files, db, egress, handout, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
+from . import art, book, challenge, cleanup, course_files, db, egress, handout, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
 from .backends import AGENT, BACKEND, claude, opencode
 from .playbooks import describe
 
@@ -302,9 +302,13 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         "course this is the learner's own language, used for instructions and explanations; texts and tasks in the language "
         "being learned stay in that language."
     )
-    tools = []
+    tools = [
+        f"[tools] Art pack installed: {p['title']} ({p['icons']} icons; {', '.join(p['categories'])}). Search it with "
+        "find_art and place icons in add_figure as <use href=\"art:ID\">; draw yourself what it lacks."
+        for p in art.installed()
+    ]
     if not sandbox.commands():
-        tools = [
+        tools += [
             "[tools] This server runs no code: there is no run_command, write_file, read_file or pose_exercise, and no "
             "workspace. Where a playbook calls for an exercise, use pose_challenge with code the learner runs on their own "
             "machine and pastes back."
@@ -389,7 +393,7 @@ def _require_answerable(block: dict) -> None:
 
 @app.get("/api/meta")
 def meta() -> dict:
-    return {"agent": AGENT, "speech": speech.available(), "pdf": book.available(), "commands": sandbox.commands()}
+    return {"agent": AGENT, "speech": speech.available(), "pdf": book.available(), "commands": sandbox.commands(), "art": bool(art.installed())}
 
 
 @app.get("/api/tts")
@@ -626,6 +630,25 @@ async def post_turn(lesson_id: int, body: Turn) -> dict:
     message = db.add_message(lesson_id, "learner", text)
     _start_turn(lesson, f"[learner] {text}")
     return message
+
+
+@app.post("/api/lessons/{lesson_id}/redraw", status_code=202)
+async def redraw_figures(lesson_id: int) -> dict:
+    """Asks the tutor to draw the lesson's figures again with the art packs; each figure is replaced in place."""
+    lesson = _lesson(lesson_id)
+    _require_idle(lesson_id)
+    figures = [b["id"] for b in db.blocks(lesson_id) if b["kind"] == "figure"]
+    if not figures:
+        raise HTTPException(409, "the lesson has no figures")
+    if not art.installed():
+        raise HTTPException(409, "no art pack is installed")
+    _start_turn(
+        lesson,
+        f"[redraw] Draw figures {', '.join(map(str, figures))} of this lesson again, one replace_figure call each: the same idea and "
+        "the same alt purpose, now composed from art pack icons found with find_art wherever one fits, with your own labels and "
+        "arrows around them; a figure the pack cannot improve is redrawn as it was. Then say in one sentence what changed.",
+    )
+    return {"figures": figures}
 
 
 @app.post("/api/blocks/{block_id}/answer", status_code=202)

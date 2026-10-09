@@ -67,6 +67,8 @@
       "prose": "للقراءة",
       "example": "مثال",
       "figure": "شكل",
+      "redraw": "إعادة رسم الأشكال بحزمة الرسوم",
+      "art": "رسوم:",
       "shrinkFigure": "تصغير الشكل",
       "enlargeFigure": "تكبير: {{alt}}",
       "plot": "مخطّط بياني",
@@ -503,6 +505,8 @@
     }
   },
   "server": {
+    "the lesson has no figures": "لا توجد أشكال في هذا الدرس",
+    "no art pack is installed": "لم يُثبَّت أي حزمة رسوم",
     "this challenge is closed": "هذا التحدّي مغلق",
     "this challenge is already closed": "هذا التحدّي مغلق من قبل",
     "the hint ladder is used up. Ask a guiding question in chat, or wait for another attempt or a give-up": "استُنفدت كل التلميحات",

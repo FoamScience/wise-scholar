@@ -94,6 +94,19 @@ def _callout(kind: str, title: str, body: str, folded: bool = True, plain: bool 
     return f"{head}\n" + "\n".join(f"> {line}" for line in lines) + "\n"
 
 
+def _credits(credits: list[dict]) -> str:
+    """The attribution line under a figure composed from art packs; empty for a figure the tutor drew alone."""
+    if not credits:
+        return ""
+    packs = ", ".join(f"[{_plain(p)}]({u})" for p, u in dict((c["pack"], c["url"]) for c in credits).items())
+    return "*Art: " + ", ".join(f"{_plain(c['name'])} ({_plain(c['author'])}, {c['licence']})" for c in credits) + f" · {packs}*\n"
+
+
+def _plain(text: str) -> str:
+    """Text that stays text inside Markdown emphasis and links."""
+    return re.sub(r"([*_\[\]()`\\])", r"\\\1", text)
+
+
 def _alt(text: str) -> str:
     return " ".join(text.replace("]", ")").replace("[", "(").split())
 
@@ -209,13 +222,14 @@ class Vault:
                 return f"### {self._card_label(block)}\n\n{self._card_body(lesson, block)}\n"
             return self.embed(("card", block["id"]))
         if kind == "figure":
+            credits = _credits(d.get("credits", []))
             if self.inline:
                 data = base64.b64encode(d["svg"].encode()).decode()
                 caption = " ".join(block["markdown"].split())
-                return f"![{_alt(d.get('alt', ''))}](data:image/svg+xml;base64,{data})\n" + (f"*{caption}*\n" if caption else "")
+                return f"![{_alt(d.get('alt', ''))}](data:image/svg+xml;base64,{data})\n" + (f"*{caption}*\n" if caption else "") + credits
             path = f"{self.root}/attachments/figure-{block['id']}.svg"
             self.files[path] = d["svg"].encode()
-            return f"![[{path}]]\n" + (f"*{block['markdown']}*\n" if block["markdown"] else "")
+            return f"![[{path}]]\n" + (f"*{block['markdown']}*\n" if block["markdown"] else "") + credits
         if kind == "plot":
             png = f"{self.root}/attachments/plot-{block['id']}.png"
             if png in self.files:
