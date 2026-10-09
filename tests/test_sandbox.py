@@ -473,7 +473,7 @@ def test_run_is_refused_and_the_lesson_prompt_says_so_when_commands_are_off(tmp_
     assert "[tools] This server runs no code" in app._turn_prompt(db.lesson(lesson), "[event] x")
     monkeypatch.setattr(sandbox, "COMMANDS", True)
     monkeypatch.setattr(sandbox, "SANDBOX", False)
-    assert "[tools]" not in app._turn_prompt(db.lesson(lesson), "[event] x")
+    assert "This server runs no code" not in app._turn_prompt(db.lesson(lesson), "[event] x")
 
 
 def test_a_course_file_is_named_from_the_install_folder_whatever_the_server_layout(tmp_path):

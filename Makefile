@@ -19,7 +19,10 @@ dev-web: ## web dev server alone
 web/node_modules: web/package-lock.json
 	cd web && npm install
 
-build: web/node_modules ## web dependencies and web/dist; a running server serves it at once
+diagrams/node_modules: diagrams/package-lock.json
+	cd diagrams && npm install
+
+build: web/node_modules diagrams/node_modules ## web and diagram dependencies, web/dist; a running server serves it at once
 	cd web && npm run build
 
 serve: build ## build, then serve on :8321 (WISE_SCHOLAR_PORT changes it)

@@ -13,7 +13,7 @@ import simplemma
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel
 
-from . import art, challenge, course_files, db, figures, hub, plots, quiz, sandbox, speech, vocab
+from . import art, challenge, course_files, db, diagrams, figures, hub, plots, quiz, sandbox, speech, vocab
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
 mcp = MCPServer("scholar")
@@ -421,6 +421,43 @@ def _figure_data(svg: str, alt: str) -> dict:
         raise ValueError("alt text is required")
     drawing, credits = art.inline(figures.clean(svg))
     return {"svg": drawing, "alt": alt.strip(), "credits": credits}
+
+
+# A layout holds a core for up to a minute; two at a time, the rest wait.
+_layouts = asyncio.Semaphore(2)
+
+
+@mcp.tool()
+async def add_diagram(lesson_id: int, domain: str, substance: str, caption: str, alt: str) -> str:
+    """Show a diagram the server lays out from what you state, in a domain listed on the [tools] line (read
+    diagram_help first). substance: a Penrose Substance program for that domain: declare the objects, state the
+    predicates, give labels with `Label x "text"`. The layout follows the domain's rules; an error names the rule
+    that cannot be met, then state fewer or smaller things. caption and alt as for add_figure."""
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if problem := pretest_blocker(lesson):
+        return f"refused: {problem}"
+    if not alt.strip():
+        return "error: alt text is required"
+    try:
+        async with _layouts:
+            svg = await asyncio.to_thread(diagrams.render, domain.strip(), substance)
+        data = _figure_data(svg, alt) | {"diagram": {"domain": domain.strip(), "substance": substance}}
+    except ValueError as e:
+        return f"error: {e}"
+    block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
+    block = db.set_block_data(block["id"], {**data, "svg": figures.prefix_ids(data["svg"], f"f{block['id']}-")})
+    _show(lesson, block)
+    return f"shown as figure {block['id']}"
+
+
+@mcp.tool()
+async def diagram_help(domain: str) -> str:
+    """The types, predicates, labels and an example Substance of a diagram domain, to read before add_diagram."""
+    if domain.strip() not in diagrams.domains():
+        return f"error: no diagram domain named {domain!r}; the domains are {', '.join(diagrams.domains()) or 'none'}"
+    return diagrams.help_text(domain.strip())
 
 
 @mcp.tool()

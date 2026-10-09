@@ -1,0 +1,11 @@
+{
+  "name": "wise-scholar-diagrams",
+  "private": true,
+  "type": "module",
+  "description": "Renders the tutor's Penrose diagrams for the server: node render.mjs reads a JSON trio on stdin and writes the SVG or the broken rules.",
+  "dependencies": {
+    "@penrose/core": "3.3.1",
+    "global-jsdom": "30.0.0",
+    "jsdom": "30.1.2"
+  }
+}
