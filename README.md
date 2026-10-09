@@ -128,7 +128,7 @@ The tutor draws its figures as SVG. With an art pack installed it composes them 
 make art
 ```
 
-downloads [Bioicons](https://bioicons.com), 231 MB, and keeps about 2,300 of its icons under `data/art/`, 110 MB: human physiology, animals, cells and their parts, blood and immunology, microbiology, viruses, lab apparatus, chemistry, nucleic acids, plants. The sets drawn by Servier (CC BY 3.0) and DBCLS (CC BY 4.0) are the bulk of it; the rest is CC0, MIT or BSD. Icons under a share-alike licence, icons over 400 KB and icons that need scripts, raster images or styles the figure allowlist refuses are left out at install. Nothing is fetched while you learn; the tutor sees the pack on its next turn, no restart needed. `uv run python -m wise_scholar.art list` shows what is installed.
+downloads [Bioicons](https://bioicons.com), 231 MB, and keeps about 2,300 of its icons under `data/art/`, 110 MB: human physiology, animals, cells and their parts, blood and immunology, microbiology, viruses, lab apparatus, chemistry, nucleic acids, plants. The sets drawn by Servier (CC BY 3.0) and DBCLS (CC BY 4.0) are the bulk of it; the rest is CC0, MIT or BSD. Icons under a share-alike licence, icons over 400 KB and icons that need scripts, raster images or styles the figure allowlist refuses are left out at install. Nothing is fetched while you learn; the tutor sees the pack on its next turn, no restart needed. A lesson drawn before the pack was installed gets "Redraw the figures with the art pack" under its title: one tutor turn draws each figure again in its place, and each figure keeps the drawing it replaced, one step back, until the next redraw. `uv run python -m wise_scholar.art list` shows what is installed.
 
 ## Develop
 

@@ -67,6 +67,8 @@
       "prose": "للقراءة",
       "example": "مثال",
       "figure": "شكل",
+      "restoreDrawing": "استعادة الرسم السابق",
+      "backToRedrawn": "العودة إلى الشكل المعاد رسمه",
       "redraw": "إعادة رسم الأشكال بحزمة الرسوم",
       "art": "رسوم:",
       "shrinkFigure": "تصغير الشكل",
@@ -508,6 +510,7 @@
     }
   },
   "server": {
+    "nothing to restore": "لا شيء لاستعادته",
     "the lesson has no figures": "لا توجد أشكال في هذا الدرس",
     "no art pack is installed": "لم يُثبَّت أي حزمة رسوم",
     "this challenge is closed": "هذا التحدّي مغلق",

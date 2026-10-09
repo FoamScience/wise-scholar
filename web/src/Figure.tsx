@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { sketch } from './sketch'
 
 export type Credit = { name: string; author: string; licence: string; pack: string; url: string }
-export type FigureData = { svg: string; alt: string; credits?: Credit[] }
+export type FigureData = { svg: string; alt: string; credits?: Credit[]; previous?: FigureData & { caption: string }; restored?: boolean }
 
 /** The attribution a figure owes the art pack: every icon with its author and licence, and the pack it came from. */
 export function Credits({ credits }: { credits?: Credit[] }) {
@@ -41,7 +41,7 @@ export function Drawing({ svg, alt, sketched, className }: { svg: string; alt: s
 }
 
 /** A tutor-drawn figure; click to see it large. */
-export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean }) {
+export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void }) {
   const { t } = useTranslation()
   const d = props.data as FigureData
   const [large, setLarge] = useState(false)
@@ -58,6 +58,11 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
       </button>
       {props.caption && <div className="caption">{props.caption}</div>}
       <Credits credits={d.credits} />
+      {d.previous && props.onRestore && (
+        <button type="button" className="link small" disabled={props.disabled} onClick={props.onRestore}>
+          {d.restored ? t('block.backToRedrawn') : t('block.restoreDrawing')}
+        </button>
+      )}
     </section>
   )
 }

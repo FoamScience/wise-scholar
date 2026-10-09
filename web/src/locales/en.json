@@ -67,6 +67,8 @@
       "prose": "Read",
       "example": "Example",
       "figure": "Figure",
+      "restoreDrawing": "Restore the earlier drawing",
+      "backToRedrawn": "Back to the redrawn figure",
       "redraw": "Redraw the figures with the art pack",
       "art": "Art:",
       "shrinkFigure": "Shrink the figure",

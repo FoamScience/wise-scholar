@@ -677,6 +677,12 @@ def set_block_data(block_id: int, data: dict) -> dict:
     return block(block_id)
 
 
+def set_block(block_id: int, markdown: str, data: dict) -> dict:
+    """Text and data in one write, for changes that must not land half-way."""
+    conn.execute("UPDATE blocks SET markdown = ?, data = ? WHERE id = ?", (markdown, json.dumps(data), block_id))
+    return block(block_id)
+
+
 def add_card(course_id: int, concept_id: int | None, question: str, kind: str, options: list[str],
              answer_key: str, explanation: str, scheduled: bool, due: str | None = None, vocab: bool = False) -> int:
     """due makes the card reviewable from that moment without a first answer; vocab marks a vocabulary card."""

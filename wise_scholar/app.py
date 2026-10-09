@@ -663,6 +663,22 @@ async def redraw_figures(lesson_id: int) -> dict:
     return {"figures": figures}
 
 
+@app.post("/api/blocks/{block_id}/restore")
+def restore_figure(block_id: int) -> dict:
+    """Swaps a redrawn figure with the drawing it replaced; a second call swaps back."""
+    block = db.block(block_id)
+    if not block or block["kind"] != "figure":
+        raise HTTPException(404, "no such figure")
+    if not block["data"].get("previous"):
+        raise HTTPException(409, "nothing to restore")
+    _require_idle(block["lesson_id"])
+    data, kept = block["data"], block["data"]["previous"]
+    current = {k: v for k, v in data.items() if k not in ("previous", "restored")} | {"caption": block["markdown"]}
+    block = db.set_block(block_id, kept["caption"], {k: v for k, v in kept.items() if k != "caption"} | {"previous": current, "restored": not data.get("restored", False)})
+    hub.publish(_lesson(block["lesson_id"])["course_id"], {"type": "block.updated", "lesson_id": block["lesson_id"], "block": block})
+    return block
+
+
 @app.post("/api/blocks/{block_id}/answer", status_code=202)
 async def answer_question(block_id: int, body: Answer) -> dict:
     block = db.block(block_id)
