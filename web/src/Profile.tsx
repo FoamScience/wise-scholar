@@ -60,6 +60,7 @@ export function ProfilePage(props: {
   const { current } = props
   const { t } = useTranslation()
   const [facts, setFacts] = useState<Fact[]>([])
+  const [error, setError] = useState('')
 
   useEffect(() => {
     api<{ facts: Fact[] }>(`/api/profiles/${current.id}`).then((p) => setFacts(p.facts), () => {})
@@ -88,6 +89,20 @@ export function ProfilePage(props: {
           </button>
         </div>
         <div className="small">{current.mode === 'teacher' ? t('profile.teacherHelp') : t('profile.learnerHelp')}</div>
+      </section>
+
+      <section className="block stack">
+        <div className="label">{t('profile.sketchHeading')}</div>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={current.sketch}
+            onChange={(e) => api(`/api/profiles/${current.id}/sketch`, { sketch: e.target.checked }).then(props.onChanged, (err: Error) => setError(err.message))}
+          />
+          {t('profile.sketch')}
+        </label>
+        <div className="small">{t('profile.sketchHelp')}</div>
+        {error && <div className="error">{error}</div>}
       </section>
 
       <section className="block stack">

@@ -242,6 +242,7 @@ MIGRATIONS = [
     ALTER TABLE blocks ADD COLUMN position INTEGER;
     UPDATE blocks SET position = id;
     """,
+    "ALTER TABLE profiles ADD COLUMN sketch INTEGER NOT NULL DEFAULT 1;",
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -297,13 +298,19 @@ def row(sql: str, *args) -> dict | None:
 
 
 def profiles() -> list[dict]:
-    return rows(
-        "SELECT p.*, (SELECT COUNT(*) FROM courses c WHERE c.profile_id = p.id) AS courses FROM profiles p ORDER BY p.id"
-    )
+    return [
+        _profile_view(p)
+        for p in rows("SELECT p.*, (SELECT COUNT(*) FROM courses c WHERE c.profile_id = p.id) AS courses FROM profiles p ORDER BY p.id")
+    ]
 
 
 def profile(profile_id: int) -> dict | None:
-    return row("SELECT * FROM profiles WHERE id = ?", profile_id)
+    p = row("SELECT * FROM profiles WHERE id = ?", profile_id)
+    return _profile_view(p) if p else None
+
+
+def _profile_view(p: dict) -> dict:
+    return {**p, "sketch": bool(p["sketch"])}
 
 
 def _free_slug(topic: str) -> str:

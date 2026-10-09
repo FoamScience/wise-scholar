@@ -134,6 +134,10 @@ class ProfileMode(BaseModel):
     mode: Mode
 
 
+class ProfileSketch(BaseModel):
+    sketch: bool
+
+
 class BlockEdit(BaseModel):
     """What a teacher may change on a card; fields that do not fit the block's kind are ignored."""
     markdown: str | None = Field(default=None, max_length=20000)
@@ -481,6 +485,14 @@ def set_mode(profile_id: int, body: ProfileMode) -> dict:
     """Learner or teacher: a teacher prepares courses for a class instead of being taught."""
     _profile(profile_id)
     db.conn.execute("UPDATE profiles SET mode = ? WHERE id = ?", (body.mode, profile_id))
+    return db.profile(profile_id)
+
+
+@app.post("/api/profiles/{profile_id}/sketch")
+def set_sketch(profile_id: int, body: ProfileSketch) -> dict:
+    """Whether the tutor's own figures are shown with a hand-drawn stroke; a display choice, the drawings stay as they are."""
+    _profile(profile_id)
+    db.conn.execute("UPDATE profiles SET sketch = ? WHERE id = ?", (int(body.sketch), profile_id))
     return db.profile(profile_id)
 
 
