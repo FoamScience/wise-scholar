@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import random
 import re
 import sqlite3
@@ -11,9 +12,11 @@ from typing import Literal
 
 import simplemma
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 
 from . import art, challenge, course_files, db, diagrams, figures, hub, plots, quiz, sandbox, speech, vocab
+from .backends import TURN_HEADER
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
 mcp = MCPServer("scholar")
@@ -60,6 +63,9 @@ LINE_CHARS = 300
 PLACEMENT_OPTIONS = 4
 # A pretest is one short question; past this length it has become a lecture with questions attached.
 PRETEST_CHARS = 700
+FACT_CHARS = 300
+# A turn that keeps calling tools is a tutor going in circles, or one talked into it.
+TOOL_CALLS_PER_TURN = int(os.environ.get("WISE_SCHOLAR_TOOL_CALLS", "80"))
 _renders: set[asyncio.Task] = set()
 
 
@@ -196,6 +202,9 @@ async def note_learner(course_id: int, fact: str, scope: Literal["learner", "cou
     """
     if not db.course(course_id):
         return f"error: no course with id {course_id}"
+    fact = " ".join(fact.split())
+    if len(fact) > FACT_CHARS:
+        return f"error: a fact is one sentence, under {FACT_CHARS} characters"
     db.add_fact(course_id, fact, about_learner=scope == "learner")
     return "noted"
 
@@ -1237,3 +1246,78 @@ async def mark_solved(challenge_id: int) -> str:
             hub.publish(lesson["course_id"], {"type": "capstone.set", "capstone": db.capstones(lesson["course_id"], m["capstone_id"])[0]})
             return "marked; milestone done"
     return "marked"
+
+
+# --- Binding tool calls to the turn they belong to ---------------------------------------------------------------
+# Every tool call reaches the server over HTTP. The claude backend sends the turn's token with each call, so a call
+# may only touch that turn's lesson and course; opencode shares one connection, so its calls may touch any lesson
+# whose turn is running. Either way a tutor talked into it cannot reach another course, and a turn gets a bounded
+# number of calls.
+turns: dict[int, dict] = {}  # lesson_id -> {"token", "calls", "course_id"}
+_ID_ARGUMENTS = ("lesson_id", "course_id", "challenge_id", "quiz_id", "block_id")
+
+
+def turn_started(lesson: dict, token: str) -> None:
+    turns[lesson["id"]] = {"token": token, "calls": 0, "course_id": lesson["course_id"]}
+
+
+def turn_ended(lesson_id: int) -> None:
+    turns.pop(lesson_id, None)
+
+
+def _targets(arguments: dict) -> list[tuple[int | None, int | None]]:
+    """(lesson_id, course_id) for every id the call carries; each must belong to the calling turn."""
+    found = []
+    if (lesson_id := arguments.get("lesson_id")) is not None:
+        lesson = db.lesson(lesson_id)
+        found.append((lesson_id, lesson["course_id"] if lesson else None))
+    if (course_id := arguments.get("course_id")) is not None:
+        found.append((None, course_id))
+    for name in ("challenge_id", "quiz_id", "block_id"):
+        if (block_id := arguments.get(name)) is not None:
+            block = db.block(block_id)
+            lesson = db.lesson(block["lesson_id"]) if block else None
+            found.append((block["lesson_id"], lesson["course_id"]) if block and lesson else (-1, None))
+    return found
+
+
+def _token(context) -> str | None:
+    """The turn token that came with the request, if the backend sends one."""
+    try:
+        return context.request_context.request.headers.get(TURN_HEADER) or None
+    except (AttributeError, ValueError):
+        return None
+
+
+def _owns(lesson_id: int, turn: dict, target: tuple[int | None, int | None]) -> bool:
+    target_lesson, target_course = target
+    return target_lesson == lesson_id if target_lesson is not None else target_course == turn["course_id"]
+
+
+def _guard(call_tool):
+    async def guarded(name: str, arguments: dict, context, convert_result: bool = False):
+        targets = _targets(arguments)
+        if token := _token(context):
+            bound = next(((lesson, t) for lesson, t in turns.items() if t["token"] == token), None)
+            if bound is None:
+                raise ToolError("this turn is over; nothing more can be changed")
+            if not all(_owns(bound[0], bound[1], target) for target in targets):
+                raise ToolError("that id belongs to another lesson or course; use the ids of the [state] line")
+            turn = bound[1]
+        else:
+            # Without a token (opencode shares one connection) a call lands on a lesson whose turn is running.
+            running = [(lesson, t) for lesson, t in turns.items() if all(_owns(lesson, t, target) for target in targets)]
+            if targets and not running:
+                raise ToolError("this lesson has no turn running; use the ids of the [state] line")
+            turn = running[0][1] if running else None
+        if turn is not None:
+            turn["calls"] += 1
+            if turn["calls"] > TOOL_CALLS_PER_TURN:
+                raise ToolError(f"over {TOOL_CALLS_PER_TURN} tool calls this turn; end the turn with a short reply")
+        return await call_tool(name, arguments, context, convert_result)
+
+    return guarded
+
+
+# The wrapped method's signature is pinned by the test suite; an mcp upgrade that changes it fails there, not here.
+mcp._tool_manager.call_tool = _guard(mcp._tool_manager.call_tool)

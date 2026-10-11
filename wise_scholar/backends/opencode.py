@@ -1,18 +1,21 @@
 import asyncio
 import json
 import os
+import secrets
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import httpx
 
 from .. import db
-from . import MCP_URL, MODEL
+from . import MCP_HEADERS, MCP_URL, MODEL, environment
 
 ROOT = Path(__file__).resolve().parents[2]
 OPENCODE_PORT = int(os.environ.get("WISE_SCHOLAR_OPENCODE_PORT", "8322"))
 BASE = f"http://127.0.0.1:{OPENCODE_PORT}"
 MCP_PREFIX = "scholar_"
+# opencode serve answers anyone who reaches its port; a password known only to this process keeps it ours.
+AUTH = ("wise-scholar", secrets.token_urlsafe(24))
 
 _server: asyncio.subprocess.Process | None = None
 
@@ -25,15 +28,19 @@ async def start() -> None:
         "opencode", "serve", "--pure", "--port", str(OPENCODE_PORT),
         cwd=ROOT,
         env={
-            **os.environ,
+            # Its own settings and the keys of the model providers it may call; nothing else of the server's.
+            **environment("OPENCODE_*", "ANTHROPIC_*", "OPENAI_*", "OPENROUTER_*", "GEMINI_*", "GOOGLE_*", "GROQ_*",
+                          "MISTRAL_*", "DEEPSEEK_*", "XAI_*", "TOGETHER_*", "FIREWORKS_*", "OLLAMA_*", "AZURE_*", "AWS_*"),
             "OPENCODE_CONFIG": str(ROOT / "opencode.json"),
-            "OPENCODE_CONFIG_CONTENT": json.dumps({"mcp": {"scholar": {"type": "remote", "url": MCP_URL, "enabled": True}}}),
+            "OPENCODE_CONFIG_CONTENT": json.dumps({"mcp": {"scholar": {"type": "remote", "url": MCP_URL, "enabled": True, "headers": MCP_HEADERS}}}),
             "OPENCODE_DISABLE_CLAUDE_CODE": "1",
+            "OPENCODE_SERVER_USERNAME": AUTH[0],
+            "OPENCODE_SERVER_PASSWORD": AUTH[1],
         },
         stdout=log,
         stderr=log,
     )
-    async with httpx.AsyncClient(base_url=BASE) as client:
+    async with httpx.AsyncClient(base_url=BASE, auth=AUTH) as client:
         for _ in range(100):
             if _server.returncode is not None:
                 raise RuntimeError(f"opencode serve exited with code {_server.returncode}; see data/opencode.log")
@@ -87,8 +94,10 @@ class EventParser:
 
 
 async def run_turn(
-    prompt: str, *, session_id: str, resume: bool, name: str, cwd: Path, phase: str
+    prompt: str, *, session_id: str, resume: bool, name: str, cwd: Path, phase: str, token: str
 ) -> AsyncIterator[dict]:
+    # token: unused here; opencode's MCP connection is one for the whole server, so the tools bind its calls to
+    # the lessons whose turns are running instead.
     # Not the course workspace: opencode loads opencode.json and .opencode/ from its directory, and commands can
     # write there. A file planted in the workspace could hand the agent its built-in shell back.
     directory = db.DB_PATH.parent / "agents" / cwd.name
@@ -98,7 +107,7 @@ async def run_turn(
     if MODEL:
         provider, _, model = MODEL.partition("/")
         body["model"] = {"providerID": provider, "modelID": model}
-    async with httpx.AsyncClient(base_url=BASE, timeout=None) as client:
+    async with httpx.AsyncClient(base_url=BASE, timeout=None, auth=AUTH) as client:
         async def create() -> str:
             created = await client.post("/session", params=params, json={"title": name})
             created.raise_for_status()
