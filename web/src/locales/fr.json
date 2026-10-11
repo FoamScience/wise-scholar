@@ -487,6 +487,8 @@
     }
   },
   "server": {
+    "a course holds at most 200 MB of files": "un cours contient au plus 200 Mo de fichiers",
+    "cross-site requests are refused": "les requêtes d'un autre site sont refusées",
     "nothing to restore": "rien à restaurer",
     "the lesson has no figures": "la leçon n'a pas de figure",
     "no art pack is installed": "aucun pack d'illustrations n'est installé",

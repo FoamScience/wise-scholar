@@ -2,7 +2,10 @@
   "mcpServers": {
     "scholar": {
       "type": "http",
-      "url": "http://127.0.0.1:8321/mcp"
+      "url": "http://127.0.0.1:8321/mcp",
+      "headers": {
+        "Authorization": "Bearer ${WISE_SCHOLAR_MCP_SECRET}"
+      }
     }
   }
 }

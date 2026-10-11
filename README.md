@@ -73,6 +73,13 @@ Other settings, all optional:
 | `WISE_SCHOLAR_OPENCODE_PORT` | port of the opencode server the app starts | `8322` |
 | `WISE_SCHOLAR_COMMANDS` | `0` serves without command execution: the tutor gets no workspace tools and poses no runnable exercises, and Run is refused. For instances opened to other people | `1` |
 | `WISE_SCHOLAR_VAULT` | an Obsidian vault folder on this machine (or one synced to it): the server keeps `Wise Scholar/<course>/` inside it current: a few seconds after a course changes its notes are rewritten (an edit you made to one of them is lost; keep your own writing in files of your own, which are never touched) and notes it wrote that the course no longer has, or a folder left by a renamed course, are removed. Plots stay as specs in the synced notes | unset |
+| `WISE_SCHOLAR_HOSTS` | host names the server answers to, comma-separated, ports ignored | `127.0.0.1,localhost,::1` |
+| `WISE_SCHOLAR_MCP_SECRET` | the bearer token on `/mcp`; a fresh one per start when unset | unset |
+| `WISE_SCHOLAR_AGENT_ENV` | extra environment variables the agent processes get, names or prefixes ending in `*`, comma-separated | unset |
+| `WISE_SCHOLAR_TURNS` | tutor turns running at once | `2` |
+| `WISE_SCHOLAR_TURNS_PER_HOUR` | tutor turns that may start in an hour | `200` |
+| `WISE_SCHOLAR_TOOL_CALLS` | tool calls one turn may make | `80` |
+| `WISE_SCHOLAR_MCP_CALLS` | tool calls a minute, all turns together | `600` |
 | `WISE_SCHOLAR_KEEP_DAYS` | set it to clean up the files of courses untouched for that many days: workspace, command cache and agent sessions go, the record stays and each exercise keeps a text copy of its files; checked at start and every 6 hours. Unset, nothing is ever removed on its own. `uv run python -m wise_scholar.cleanup --days N` lists what would go and `--delete` removes it, with the server stopped | unset |
 | `WISE_SCHOLAR_WORKSPACE_MB` | what one course may hold on disk, in its workspace and again in its command cache. Watched while a command runs, not a filesystem quota; with the sandbox off only the workspace is watched | `4096` |
 | `WISE_SCHOLAR_SANDBOX` | `0` runs commands without bubblewrap (macOS, containers that forbid it): as the server's user, with network, the whole home directory including the agent's login, no memory or task limits, and processes that can outlive the time limit. Only for a machine and a tutor model you trust fully | `1` |
@@ -133,6 +140,15 @@ downloads [Bioicons](https://bioicons.com), 231 MB, and keeps about 2,300 of its
 ## Diagrams the server lays out
 
 For subjects with a domain under `wise_scholar/penrose/` (cells in division, to start), the tutor does not draw: it states what is in the picture in [Penrose](https://penrose.cs.cmu.edu)'s Substance language (a cell at metaphase I, four chromosomes, which pairs are homologous) and the server lays the diagram out by the domain's rules, written and tested once per domain. A diagram that cannot satisfy its rules is refused with the rules named, so the tutor restates it rather than showing a wrong picture. `make build` installs the renderer (Node, under `diagrams/`); without it the tutor draws figures itself. These diagrams keep their plain stroke under the hand-drawn look.
+
+## What keeps the tutor in its lane
+
+- The tutor's tools answer only the agent processes this server starts: a secret made at start travels as a bearer token on `/mcp`, and each turn carries its own token, so a tool call may touch only the lesson and course of the turn it belongs to (with opencode, whose tools share one connection, any lesson whose turn is running). A turn gets at most 80 tool calls (`WISE_SCHOLAR_TOOL_CALLS`), the server at most 600 a minute (`WISE_SCHOLAR_MCP_CALLS`). To call the tools from a Claude Code session in this repository, set `WISE_SCHOLAR_MCP_SECRET` to a value of your own before starting the server and the session; `.mcp.json` reads it.
+- Agent processes get a minimal environment: the basics, their own settings and the keys of model providers, plus whatever `WISE_SCHOLAR_AGENT_ENV` names (comma-separated names or prefixes ending in `*`). They run from `data/agents/`, never from a course workspace, and `opencode serve` takes a password only this process knows.
+- Two tutor turns run at a time (`WISE_SCHOLAR_TURNS`) and at most 200 start in an hour (`WISE_SCHOLAR_TURNS_PER_HOUR`); the rest wait. The server answers only to the names in `WISE_SCHOLAR_HOSTS` (`127.0.0.1`, `localhost` and `::1` by default): set it to your domain behind a proxy, and a page on another name that resolves to this machine gets nothing.
+- Everything the learner typed or uploaded reaches the tutor marked as text: a line of it that starts like an app line is escaped, facts are one sentence under 300 characters.
+- A page from another site cannot change anything here: state-changing requests must come from this site's own pages.
+- Uploaded documents are read in a child process with a time limit (2 minutes), a memory limit (2 GB), at most 2,000 pages and 20 million characters per file; a course holds at most 20 files and 200 MB.
 
 ## Develop
 
