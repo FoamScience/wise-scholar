@@ -1,8 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fsrs import Card, Rating, Scheduler
 
 CONFIDENT = 0.75
+# Successive relearning: a card is recalled right on this many separate days before its interval may grow past a day.
+RELEARN_DAYS = 3
 BUCKETS = [(0.0, "0–49%"), (0.5, "50–69%"), (0.7, "70–89%"), (0.9, "90–100%")]
 
 scheduler = Scheduler()
@@ -17,11 +19,21 @@ def rating(correct: bool, confidence: float) -> Rating:
     return Rating.Easy if confidence >= 0.9 else Rating.Good
 
 
-def schedule(fsrs_json: str | None, correct: bool, confidence: float, now: datetime | None = None) -> tuple[str, str]:
-    """Advance a card's FSRS state by one graded answer; return (state json, due as ISO UTC)."""
+def schedule(fsrs_json: str | None, correct: bool, confidence: float, recall_days: int, now: datetime | None = None) -> tuple[str, str]:
+    """Advance a card's FSRS state by one graded answer; return (state json, due as ISO UTC).
+    recall_days: the separate days the card was recalled right since its last miss, this answer included;
+    short of RELEARN_DAYS the card comes back no later than tomorrow."""
+    now = now or datetime.now(timezone.utc)
     card = Card.from_json(fsrs_json) if fsrs_json else Card()
     card, _ = scheduler.review_card(card, rating(correct, confidence), now)
-    return card.to_json(), card.due.isoformat()
+    due = card.due
+    if correct and recall_days < RELEARN_DAYS:
+        due = min(due, now + timedelta(days=1))
+    return card.to_json(), due.isoformat()
+
+
+def relearned(recall_days: int) -> bool:
+    return recall_days >= RELEARN_DAYS
 
 
 def is_confident_miss(correct: bool, confidence: float) -> bool:

@@ -244,6 +244,7 @@ MIGRATIONS = [
     """,
     "ALTER TABLE profiles ADD COLUMN sketch INTEGER NOT NULL DEFAULT 1;",
     "ALTER TABLE cards ADD COLUMN translation TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE cards ADD COLUMN relearn_after INTEGER NOT NULL DEFAULT 0;",
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -733,6 +734,20 @@ def _card(c: dict | None) -> dict | None:
 
 def card(card_id: int) -> dict | None:
     return _card(row("SELECT * FROM cards WHERE id = ?", card_id))
+
+
+def recall_days(card_id: int) -> int:
+    """On how many separate (local) days the card was answered right since its last miss."""
+    return row(
+        "SELECT COUNT(DISTINCT date(created, 'localtime')) AS days FROM answers WHERE card_id = ? AND correct = 1 "
+        "AND id > (SELECT relearn_after FROM cards WHERE id = ?)",
+        card_id, card_id,
+    )["days"]
+
+
+def reset_recall(card_id: int) -> None:
+    """A miss: the card's recall days start over from the answers after this point."""
+    conn.execute("UPDATE cards SET relearn_after = (SELECT COALESCE(MAX(id), 0) FROM answers) WHERE id = ?", (card_id,))
 
 
 def due_cards(profile_id: int, now: str) -> list[dict]:

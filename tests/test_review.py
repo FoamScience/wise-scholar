@@ -17,11 +17,11 @@ def test_rating_follows_correctness_then_confidence():
 
 def test_schedule_round_trips_state_and_spaces_a_sure_correct_answer_further_than_a_miss():
     now = datetime(2026, 10, 2, tzinfo=timezone.utc)
-    state, due_miss = review.schedule(None, False, 0.9, now)
-    _, due_sure = review.schedule(None, True, 0.95, now)
+    state, due_miss = review.schedule(None, False, 0.9, 0, now)
+    _, due_sure = review.schedule(None, True, 0.95, 3, now)
     assert datetime.fromisoformat(due_miss) - now < timedelta(hours=1)
     assert datetime.fromisoformat(due_sure) - now > timedelta(days=1)
-    _, due_next = review.schedule(state, True, 0.7, now + timedelta(minutes=5))
+    _, due_next = review.schedule(state, True, 0.7, 3, now + timedelta(minutes=5))
     assert datetime.fromisoformat(due_next) > now
 
 
@@ -79,3 +79,49 @@ def test_confident_misses_and_corrected_texts_fill_the_error_notebook():
     db.update_error(entries[0]["id"], None, None, True)
     assert db.errors(who, open_only=True) == [writing | {"topic": "German"}] or len(db.errors(who, open_only=True)) == 1
     assert db.update_error(writing["id"], "helfen takes the dative", True, None)["pinned"] == 1
+
+
+def test_a_card_and_its_word_are_relearned_on_three_separate_days():
+    from wise_scholar import db, quiz
+
+    now = datetime(2026, 10, 2, tzinfo=timezone.utc)
+    _, due = review.schedule(None, True, 0.95, 1, now)
+    assert datetime.fromisoformat(due) == now + timedelta(days=1)
+    _, due = review.schedule(None, True, 0.95, 3, now)
+    assert datetime.fromisoformat(due) > now + timedelta(days=1)
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Relearn')").lastrowid
+    course = db.create_course("German", who)["id"]
+    card = db.add_card(course, None, "Hund?", "open", [], "dog", "", scheduled=True)
+    db.conn.execute("UPDATE cards SET lemma = 'hund', lang = 'de' WHERE id = ?", (card,))
+    tomorrow = datetime.now(timezone.utc) + timedelta(days=1, minutes=1)
+
+    def state():
+        return db.row("SELECT state FROM vocab_knowledge WHERE profile_id = ? AND lemma = 'hund'", who)["state"]
+
+    def answer(correct, day):
+        answer_id = quiz.submit(db.card(card), "dog", 0.9)
+        db.conn.execute("UPDATE answers SET created = ? WHERE id = ?", (f"2026-10-{day:02d} 10:00:00", answer_id))
+        return datetime.fromisoformat(quiz.grade(answer_id, correct)["due"])
+
+    try:
+        assert answer(True, 1) <= tomorrow and answer(True, 1) <= tomorrow
+        assert db.recall_days(card) == 1 and state() == "learning"
+        assert answer(True, 2) <= tomorrow and db.recall_days(card) == 2 and state() == "learning"
+        assert answer(True, 3) > tomorrow and db.recall_days(card) == 3 and state() == "known"
+        answer(False, 4)
+        assert db.recall_days(card) == 0 and state() == "learning"
+        assert answer(True, 5) <= tomorrow
+        quiz.dont_know(db.card(card))
+        assert db.recall_days(card) == 0
+        db.set_vocab(who, "de", "hund", "known", "learner")
+        answer(True, 6)
+        assert state() == "known"  # a right answer never takes a known word back
+        once = db.add_card(course, None, "Katze?", "open", [], "cat", "", scheduled=False)
+        db.conn.execute("UPDATE cards SET lemma = 'katze', lang = 'de' WHERE id = ?", (once,))
+        quiz.grade(quiz.submit(db.card(once), "cat", 0.9), True)
+        assert db.row("SELECT state FROM vocab_knowledge WHERE profile_id = ? AND lemma = 'katze'", who)["state"] == "known"
+    finally:
+        db.delete_course(course)
+        db.conn.execute("DELETE FROM vocab_knowledge WHERE profile_id = ?", (who,))
+        db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
