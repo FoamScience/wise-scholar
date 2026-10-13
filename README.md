@@ -7,7 +7,8 @@ A self-hosted AI tutor with a web interface. It interviews you, picks a teaching
 Needs [uv](https://docs.astral.sh/uv/) with Python 3.11 or newer, Node.js, [bubblewrap](https://github.com/containers/bubblewrap) on Linux, and `claude` or `opencode` logged in on your `PATH`.
 
 ```bash
-make serve
+make help # -> on how install special modules, start the server, run tests, etc.
+make serve # -> start the server with Claude Code backend
 ```
 
 Open <http://127.0.0.1:8321> and start a course. `WISE_SCHOLAR_AGENT=opencode make serve` picks the other backend.
