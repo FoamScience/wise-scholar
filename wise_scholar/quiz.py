@@ -33,6 +33,7 @@ def _profile(card: dict) -> int:
 def dont_know(card: dict) -> dict:
     """The learner chose "I don't know": a miss that states no confidence, so no answer row is stored
     and calibration never sees it."""
+    db.reset_recall(card["id"])
     if card.get("lemma"):
         db.set_vocab(_profile(card), card["lang"], card["lemma"], "learning", "review", force=True)
     return {
@@ -51,15 +52,21 @@ def grade(answer_id: int, correct: bool) -> dict:
     miss = review.is_confident_miss(correct, answer["confidence"])
     db.conn.execute("UPDATE answers SET correct = ? WHERE id = ?", (int(correct), answer_id))
     profile = _profile(card)
+    if not correct:
+        db.reset_recall(card["id"])
+    days = db.recall_days(card["id"])
+    # A reviewed word is known once recalled on enough separate days, not after one lucky answer; a placement or
+    # pretest card is answered once and measures, so its one right answer counts.
+    known = correct and (not card["scheduled"] or review.relearned(days))
     if card.get("lemma"):
-        db.set_vocab(profile, card["lang"], card["lemma"], "known" if correct else "learning", "review", force=True)
+        db.set_vocab(profile, card["lang"], card["lemma"], "known" if known else "learning", "review", force=not correct)
     # Pretests and placement cards are unscheduled: their misses measure, they are not errors to fix.
     if miss and card["scheduled"]:
         db.add_error(profile, card["course_id"], "quiz", card["question"], answer["answer"], card["answer_key"],
                      card["explanation"], card_id=card["id"])
     due = None
     if card["scheduled"]:
-        fsrs, due = review.schedule(card["fsrs"], correct, answer["confidence"])
+        fsrs, due = review.schedule(card["fsrs"], correct, answer["confidence"], days)
         db.conn.execute(
             "UPDATE cards SET fsrs = ?, due = ?, confident_miss = ? WHERE id = ?", (fsrs, due, int(miss), card["id"])
         )
