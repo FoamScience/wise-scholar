@@ -190,14 +190,15 @@ export function LevelPanel(props: {
   level: string | null
   strands: Strands
   vocabulary: { total: number; due: number; tier?: number; tier_size?: number; tier_known?: number; tier_words?: number }
-  units: { mastery: number | null }[]
+  units: { mastery: number | null; kind: 'concept' | 'practice' }[]
   disabled: boolean
   story: boolean
   onStart: (kind: 'episode' | 'writing') => void
 }) {
   const { t } = useTranslation()
   const current = CEFR.find((l) => props.level?.toUpperCase().startsWith(l))
-  const done = props.units.filter((u) => (u.mastery ?? 0) >= 2 / 3).length
+  const units = props.units.filter((u) => u.kind === 'concept')
+  const done = units.filter((u) => (u.mastery ?? 0) >= 2 / 3).length
   const most = Math.max(1, ...Object.values(props.strands))
   const total = Object.values(props.strands).reduce((a, b) => a + b, 0)
   const behind = STRANDS.reduce((low, s) => (props.strands[s] < props.strands[low] ? s : low))
@@ -211,9 +212,9 @@ export function LevelPanel(props: {
               <div key={l} className="rung current">
                 <div>
                   <strong>{l}</strong>
-                  <span>{t('level.units', { done, total: props.units.length })}</span>
+                  <span>{t('level.units', { done, total: units.length })}</span>
                 </div>
-                <progress value={done} max={Math.max(1, props.units.length)} />
+                <progress value={done} max={Math.max(1, units.length)} />
               </div>
             ) : (
               <div key={l} className="rung">

@@ -12,18 +12,28 @@ ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("WISE_SCHOLAR_DB", ROOT / "data" / "wise-scholar.db"))
 WORKSPACE = Path(os.environ.get("WISE_SCHOLAR_WORKSPACE", ROOT / "workspace"))
 
+def _rebuild(connection, table: str, create: str, columns: str) -> None:
+    """SQLite cannot widen a CHECK, so the table is rebuilt (the 12-step ALTER of its manual): the columns are named so
+    nothing misaligns, and a rerun after a crash before the version bump is harmless."""
+    connection.executescript(f"""
+    PRAGMA foreign_keys = OFF;
+    DROP TABLE IF EXISTS {table}_new;
+    BEGIN;
+    CREATE TABLE {table}_new {create};
+    INSERT INTO {table}_new ({columns}) SELECT {columns} FROM {table};
+    DROP TABLE {table};
+    ALTER TABLE {table}_new RENAME TO {table};
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+    """)
+
+
 def _rebuild_cards(connection) -> None:
-    """A sort card: SQLite cannot widen a CHECK, so the table is rebuilt (the 12-step ALTER of its manual). A column
-    an earlier upgrade missed is added first, the columns are named so nothing misaligns, and a rerun after a crash
-    before the version bump is harmless."""
+    """A sort card. A lang column an earlier upgrade missed is added first."""
     present = {r["name"] for r in connection.execute("PRAGMA table_info(cards)").fetchall()}
     if "lang" not in present:
         connection.execute("ALTER TABLE cards ADD COLUMN lang TEXT")
-    connection.executescript(f"""
-    PRAGMA foreign_keys = OFF;
-    DROP TABLE IF EXISTS cards_new;
-    BEGIN;
-    CREATE TABLE cards_new (
+    _rebuild(connection, "cards", """(
         id INTEGER PRIMARY KEY,
         course_id INTEGER NOT NULL REFERENCES courses(id),
         concept_id INTEGER REFERENCES concepts(id),
@@ -41,13 +51,26 @@ def _rebuild_cards(connection) -> None:
         lang TEXT,
         translation TEXT NOT NULL DEFAULT '',
         relearn_after INTEGER NOT NULL DEFAULT 0
-    );
-    INSERT INTO cards_new ({CARD_COLUMNS}) SELECT {CARD_COLUMNS} FROM cards;
-    DROP TABLE cards;
-    ALTER TABLE cards_new RENAME TO cards;
-    COMMIT;
-    PRAGMA foreign_keys = ON;
-    """)
+    )""", CARD_COLUMNS)
+
+
+def _rebuild_errors(connection) -> None:
+    """A miss in a practice unit is a notebook entry of its own kind."""
+    _rebuild(connection, "errors", """(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id),
+        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        card_id INTEGER REFERENCES cards(id) ON DELETE SET NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('quiz', 'writing', 'practice')),
+        prompt TEXT NOT NULL,
+        said TEXT NOT NULL,
+        correct TEXT NOT NULL,
+        explanation TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        pinned INTEGER NOT NULL DEFAULT 0,
+        resolved INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )""", "id, profile_id, course_id, card_id, kind, prompt, said, correct, explanation, note, pinned, resolved, created")
 
 
 CARD_COLUMNS = "id, course_id, concept_id, question, kind, options, answer_key, explanation, fsrs, due, confident_miss, scheduled, vocab, lemma, lang, translation, relearn_after"
@@ -285,6 +308,8 @@ MIGRATIONS = [
     "ALTER TABLE cards ADD COLUMN translation TEXT NOT NULL DEFAULT '';",
     "ALTER TABLE cards ADD COLUMN relearn_after INTEGER NOT NULL DEFAULT 0;",
     _rebuild_cards,
+    "ALTER TABLE concepts ADD COLUMN kind TEXT NOT NULL DEFAULT 'concept';",
+    _rebuild_errors,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -413,8 +438,8 @@ def copy_course(course_id: int, topic: str) -> dict:
         concept_map = {}
         for c in concepts(course_id):
             concept_map[c["id"]] = conn.execute(
-                "INSERT INTO concepts (course_id, module, title, known, position) VALUES (?, ?, ?, ?, ?)",
-                (new_id, c["module"], c["title"], c["known"], c["position"]),
+                "INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, ?, ?, ?, ?, ?)",
+                (new_id, c["module"], c["title"], c["known"], c["position"], c["kind"]),
             ).lastrowid
         for k in capstones(course_id):
             capstone_id = conn.execute(
@@ -556,14 +581,22 @@ def concepts(course_id: int) -> list[dict]:
 
 
 def concept_view(course_id: int) -> list[dict]:
-    """Concepts with their mastery: the share of right latest answers, or full for a concept placed out."""
+    """Concepts with their mastery: the share of right latest answers, or full for a concept placed out; a practice
+    unit is full once its lesson is finished."""
     mastery = concept_mastery(course_id)
-    return [{**c, "mastery": mastery.get(c["id"], 1.0 if c["known"] else None)} for c in concepts(course_id)]
+    finished = {r["concept_id"] for r in rows(
+        "SELECT DISTINCT l.concept_id FROM lessons l JOIN blocks b ON b.lesson_id = l.id WHERE l.course_id = ? AND b.kind = 'done'", course_id
+    )}
+    return [
+        {**c, "mastery": (1.0 if c["id"] in finished else None) if c["kind"] == "practice" else mastery.get(c["id"], 1.0 if c["known"] else None)}
+        for c in concepts(course_id)
+    ]
 
 
 def set_known(course_id: int, known: list[str], unknown: list[str]) -> None:
     for flag, titles in ((1, known), (0, unknown)):
-        conn.executemany("UPDATE concepts SET known = ? WHERE course_id = ? AND title = ?", [(flag, course_id, t) for t in titles])
+        conn.executemany("UPDATE concepts SET known = ? WHERE course_id = ? AND title = ? AND kind = 'concept'", [(flag, course_id, t) for t in titles])
+    place_practice(course_id)
 
 
 def set_concepts(course_id: int, modules: list[dict]) -> None:
@@ -572,13 +605,80 @@ def set_concepts(course_id: int, modules: list[dict]) -> None:
         "INSERT INTO concepts (course_id, module, title, known, position) VALUES (?, ?, ?, ?, ?)",
         [(course_id, m["title"], title, int(title in m["known"]), n) for n, (m, title) in enumerate(units, start=1)],
     )
+    place_practice(course_id)
+
+
+# A practice unit follows every PRACTICE_EVERY concept units the learner has to study.
+PRACTICE_EVERY = 3
+
+
+def practice_title(n: int) -> str:
+    return f"Practice {n}"
+
+
+def place_practice(course_id: int) -> None:
+    """Lay the practice units of a learner's course out again: one after every PRACTICE_EVERY units not placed out,
+    in the module of the unit before it. A practice unit that already has a lesson is kept, in map order and
+    renumbered, at the end of the map when the rule no longer places it; one without a lesson is re-made."""
+    if row("SELECT mode FROM courses WHERE id = ?", course_id)["mode"] == "teacher":
+        return
+    conn.execute(
+        "DELETE FROM concepts WHERE course_id = ? AND kind = 'practice' "
+        "AND id NOT IN (SELECT concept_id FROM lessons WHERE concept_id IS NOT NULL)", (course_id,)
+    )
+    kept = [c for c in concepts(course_id) if c["kind"] == "practice"]  # in map order, each with a lesson
+    studied = [c for c in concepts(course_id) if c["kind"] == "concept"]
+    order, to_study, n = [], 0, 0
+
+    def place(n: int, module: str) -> None:
+        if kept:
+            unit = kept.pop(0)
+            conn.execute("UPDATE concepts SET module = ?, title = ? WHERE id = ?", (module, practice_title(n), unit["id"]))
+            conn.execute("UPDATE lessons SET title = ? WHERE concept_id = ?", (practice_title(n), unit["id"]))
+            order.append(unit["id"])
+        else:
+            order.append(conn.execute(
+                "INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, ?, ?, 0, 0, 'practice')",
+                (course_id, module, practice_title(n)),
+            ).lastrowid)
+
+    for c in studied:
+        order.append(c["id"])
+        to_study += not c["known"]
+        if to_study and to_study % PRACTICE_EVERY == 0:
+            n += 1
+            place(n, c["module"])
+    while kept:  # kept units the rule no longer places close the map
+        n += 1
+        place(n, studied[-1]["module"] if studied else kept[0]["module"])
+    conn.executemany("UPDATE concepts SET position = ? WHERE id = ?", [(pos, cid) for pos, cid in enumerate(order, start=1)])
+
+
+def practice_scope(concept_id: int) -> list[dict]:
+    """The concept units a practice unit covers: those between the previous practice unit and this one."""
+    unit = row("SELECT * FROM concepts WHERE id = ?", concept_id)
+    before = row(
+        "SELECT MAX(position) AS position FROM concepts WHERE course_id = ? AND kind = 'practice' AND position < ?",
+        unit["course_id"], unit["position"],
+    )["position"] or 0
+    return rows(
+        "SELECT * FROM concepts WHERE course_id = ? AND kind = 'concept' AND position > ? AND position < ? ORDER BY position",
+        unit["course_id"], before, unit["position"],
+    )
+
+
+def pull_forward(concept_id: int, now: str) -> int:
+    """Make a concept's scheduled cards due now; returns how many moved."""
+    return conn.execute(
+        "UPDATE cards SET due = ? WHERE concept_id = ? AND scheduled = 1 AND (due IS NULL OR due > ?)", (now, concept_id, now)
+    ).rowcount
 
 
 def started_concepts(course_id: int) -> set[str]:
-    """Titles of the units that already have a lesson."""
+    """Titles of the concept units that already have a lesson."""
     return {
         r["title"]
-        for r in rows("SELECT DISTINCT k.title FROM concepts k JOIN lessons l ON l.concept_id = k.id WHERE k.course_id = ?", course_id)
+        for r in rows("SELECT DISTINCT k.title FROM concepts k JOIN lessons l ON l.concept_id = k.id WHERE k.course_id = ? AND k.kind = 'concept'", course_id)
     }
 
 
@@ -595,8 +695,9 @@ def revise_concepts(course_id: int, modules: list[dict], renamed: dict[str, str]
         for old, new in renamed.items():
             conn.execute("UPDATE concepts SET title = ? WHERE id = ?", (new, ids[old]))
             conn.execute("UPDATE lessons SET title = ? WHERE concept_id = ?", (new, ids[old]))
-        existing = {c["title"]: c for c in concepts(course_id)}
-        units = [(m, title) for m in modules for title in m["concepts"]]
+        practice = {c["title"] for c in concepts(course_id) if c["kind"] == "practice"}
+        existing = {c["title"]: c for c in concepts(course_id) if c["kind"] == "concept"}
+        units = [(m, title) for m in modules for title in m["concepts"] if title not in practice]
         for n, (m, title) in enumerate(units, start=1):
             if unit := existing.get(title):
                 known = int(title in m["known"] or unit["known"])
@@ -613,6 +714,7 @@ def revise_concepts(course_id: int, modules: list[dict], renamed: dict[str, str]
             conn.execute("UPDATE cards SET concept_id = NULL WHERE concept_id = ?", (existing[title]["id"],))
             conn.execute("DELETE FROM concepts WHERE id = ?", (existing[title]["id"],))
         removed = _rehome_capstones(course_id)
+        place_practice(course_id)
         if hours:
             conn.execute("UPDATE courses SET hours = ? WHERE id = ?", (hours, course_id))
         conn.execute("COMMIT")

@@ -6,7 +6,7 @@ import Markdown from './Md'
 import { NetworkCard } from './Network'
 import { api, failure } from './api'
 import { parts, timeline } from './chapters'
-import { challengeLabel, lessonTitle, sortItems } from './course'
+import { challengeLabel, lessonTitle, practiceTitle, sortItems } from './course'
 import type { Block, ChallengeData, Concept, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
 import { Correction } from './Diff'
 import type { Entry } from './Errors'
@@ -31,6 +31,7 @@ type Files = Map<number, ExerciseFile[]>
 function conceptStatus(concept: Concept, started: boolean, t: TFunction): string {
   if (concept.known) return t('map.placedOut')
   if (!started) return t('map.notStarted')
+  if (concept.kind === 'practice') return concept.mastery === null ? t('map.started') : t('common.done')
   return concept.mastery === null ? t('map.started') : t('map.mastery', { n: Math.round(concept.mastery * 3) })
 }
 
@@ -542,7 +543,7 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
                   .filter((c) => c.module === module)
                   .map((c) => (
                     <li key={c.id}>
-                      <span dir="auto">{c.title}</span>
+                      <span dir="auto">{c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}</span>
                       <span className="muted">{conceptStatus(c, course.lessons.some((l) => l.concept_id === c.id), t)}</span>
                     </li>
                   ))}

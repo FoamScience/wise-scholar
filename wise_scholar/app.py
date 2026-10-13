@@ -342,8 +342,29 @@ def _map_outline(course_id: int, current: int) -> str:
             module = c["module"]
             lines.append(f"{module}:")
         mark = "this lesson" if c["id"] == current else "already opened" if c["id"] in started else "not started"
-        lines.append(f"  - {c['title']} ({mark})")
+        lines.append(f"  - {c['title']} ({mark}{'; practice unit' if c['kind'] == 'practice' else ''})")
     return "\n".join(lines)
+
+
+PRACTICE_TASK_CHARS = 600
+
+
+def _practice_brief(concept_id: int) -> str:
+    """The solved tasks of the units a practice unit covers, for the tutor to vary."""
+    lines = []
+    scope = db.practice_scope(concept_id)
+    done = tutor.varied(scope[0]["course_id"]) if scope else set()
+    for unit in scope:
+        for lesson_row in db.rows("SELECT id FROM lessons WHERE concept_id = ? ORDER BY id", unit["id"]):
+            for b in db.blocks(lesson_row["id"]):
+                if tutor.variable(b) and b["id"] not in done:
+                    lines.append(f"- {unit['title']}, task {b['id']}: {_untrusted(b['markdown'][:PRACTICE_TASK_CHARS])}")
+    if not lines:
+        return "No task of the units before this one was solved: pose fresh tasks on their concepts instead, without variant_of."
+    return (
+        "Tasks the learner solved in the units since the last practice; pose a variant of each (new numbers or a new "
+        "situation, same idea), mixed across units, with variant_of set to the task id:\n" + "\n".join(lines)
+    )
 
 
 def _plain(name: str) -> str:
@@ -1042,11 +1063,15 @@ async def open_concept(concept_id: int) -> dict:
     existing = db.row("SELECT id FROM lessons WHERE concept_id = ?", concept_id)
     if existing:
         return _lesson_view(existing["id"])
-    lesson_id = db.create_lesson(concept["course_id"], concept["title"], "lesson", concept_id)
+    practice = concept["kind"] == "practice"
+    lesson_id = db.create_lesson(concept["course_id"], concept["title"], "practice" if practice else "lesson", concept_id)
     view = _lesson_view(lesson_id)
     hub.publish(concept["course_id"], {"type": "lesson.created", "lesson": view})
     outline = _map_outline(concept["course_id"], concept_id)
     lesson = _lesson(lesson_id)
+    if practice:
+        _start_turn(lesson, f"[event] The practice begins. Course map:\n{outline}\n{_practice_brief(concept_id)}")
+        return view
     strands = ""
     if lesson["mechanism"] == "leveled-course":
         counts = db.strand_counts(concept["course_id"])
@@ -1537,9 +1562,8 @@ def today(profile: int) -> dict:
     due = len(db.due_cards(profile, _now()))
     units = []
     for course in db.rows("SELECT id, topic, started FROM courses WHERE profile_id = ? AND archived = 0 ORDER BY id", profile):
-        mastery = db.concept_mastery(course["id"])
-        concepts = db.concepts(course["id"])
-        pending = next((c for c in concepts if not c["known"] and mastery.get(c["id"], 0) < 2 / 3), None)
+        concepts = db.concept_view(course["id"])
+        pending = next((c for c in concepts if not c["known"] and (c["mastery"] or 0) < 2 / 3), None)
         if pending:
             units.append({"course_id": course["id"], "topic": course["topic"], "concept_id": pending["id"], "title": pending["title"]})
         elif not concepts:
