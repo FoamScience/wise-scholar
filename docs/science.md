@@ -1,6 +1,6 @@
 # The research behind wise-scholar
 
-This page lists what each teaching behaviour in the app relies on, what the cited source reports, and how far that finding reaches. It was checked on 2026-10-02.
+This page lists what each teaching behaviour in the app relies on, what the cited source reports, and how far that finding reaches. It was checked on 2026-10-02; the practice forms on 2026-10-13.
 
 How each source was checked:
 
@@ -68,6 +68,49 @@ The mapping from correctness and confidence to a review rating (wrong = again, r
 | Pashler, McDaniel, Rohrer & Bjork 2008, *Psychological Science in the Public Interest* 9(3), 105–119. [doi:10.1111/j.1539-6053.2009.01038.x](https://doi.org/10.1111/j.1539-6053.2009.01038.x). Abstract read. | Virtually no evidence that matching instruction to a learner's preferred style improves learning; the evidence does not justify style assessments in education. | "Insufficient evidence", not "disproven": few studies of the required design exist. This is why the interview asks about knowledge, goals and interests and never about a learning style. |
 | Walkington 2013, *Journal of Educational Psychology* 105(4), 932–945. [doi:10.1037/a0031882](https://doi.org/10.1037/a0031882). Record and summary read. | 145 algebra students given story problems matched to their interests performed better, wrote expressions faster and gamed the tutoring system less than students given standard problems. | One study in one tutoring system. The reported gains are performance and process measures; a separate learning gain was not confirmed. |
 | Ausubel 1968, *Educational Psychology: A Cognitive View*. Holt, Rinehart and Winston. Secondary sources only. | The book's epigraph is quoted as: "The most important single factor influencing learning is what the learner already knows. Ascertain this and teach him accordingly." | Quoted from secondary sources; the book itself was not opened. A statement of principle, not a measured effect. |
+
+## Practice forms
+
+Forms added on 2026-10-13, each checked the same way.
+
+### Successive relearning
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Rawson & Dunlosky 2011, *Journal of Experimental Psychology: General* 140(3), 283–302. [doi:10.1037/a0023956](https://doi.org/10.1037/a0023956). Abstract read. | Across 3 experiments, 533 students learned conceptual material by retrieval practice with restudy. Items were practised to 1 to 4 correct recalls in a first session and then relearned to 1 correct recall in 1 to 5 later sessions. Relearning had pronounced effects on long-term retention (tested 1 to 4 months later) at a relatively small cost in extra practice trials. The authors' advice is to practise to 3 correct recalls and then relearn 3 times at widely spaced intervals. | Laboratory work with short-answer recall of concept definitions. The advice is three relearning sessions at wide spacing; the app's rule (right on three separate days, interval held to a day until then) is its own adaptation, not a tested schedule. |
+| Rawson, Dunlosky & Sciartelli 2013, *Educational Psychology Review* 25(4), 523–548. [doi:10.1007/s10648-013-9240-4](https://doi.org/10.1007/s10648-013-9240-4). Record only. | Described as testing successive relearning with introductory psychology students using a flashcard program, comparing it with ordinary study on in-class exam performance and later retention. | The record was confirmed on 2026-10-13 and only the first sentence of the abstract was retrieved (practice tests and spacing across days combined are called successive relearning). The results come from secondary descriptions, so no effect is quoted. One course, one subject. |
+
+Each review card must be recalled correctly on three separate days before its interval may grow past a day, a miss starts the count over, and a vocabulary word tied to a card counts as known only once it has been relearned that way.
+
+### Mixed practice units
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Rohrer & Taylor 2007, *Instructional Science* 35(6), 481–498. [doi:10.1007/s11251-007-9015-8](https://doi.org/10.1007/s11251-007-9015-8). Abstract read. | Two experiments. Practice spread over several sessions beat practice massed into one session on a test a week later. Students who practised a mix of problem types did far better a week later than students who practised one type at a time. | The abstract was read through a repository record that gives it in part and as a summary. Adult students and mathematics problems with a fixed procedure per type. |
+| Taylor & Rohrer 2010, *Applied Cognitive Psychology* 24(6), 837–848 (first published online 2009). [doi:10.1002/acp.1598](https://doi.org/10.1002/acp.1598). Abstract read. | Interleaving practice impaired performance during practice yet doubled scores on a test one day later. Interleaving improved the ability to pair each problem with the right procedure, and the study separates this from the effect of spacing. | The abstract was read in excerpts, so the sample and the exact scores were not confirmed. Short delay (one day); mathematics problems. |
+| Rohrer, Dedrick & Stershic 2015, *Journal of Educational Psychology* 107(3), 900–908. [doi:10.1037/edu0000001](https://doi.org/10.1037/edu0000001). Abstract read. | In a classroom experiment, 126 seventh-grade students had the same practice problems over 3 months, interleaved or blocked. On an unannounced test 1 or 30 days after a review session, interleaving scored higher on both tests (Cohen's d 0.42 after 1 day and 0.79 after 30 days). | One school subject (mathematics), school-age pupils. The app mixes tasks across units in a practice unit that teaches nothing; the study did not test that format. |
+
+After every third unit, a practice unit poses varied versions of the earlier units' solved tasks, mixed across units and with no teaching; a miss brings that unit's review cards forward. The every-third-unit cadence and the card pull-forward are this app's own design. No source above tests them.
+
+### Compare two solutions
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Rittle-Johnson & Star 2009, *Journal of Educational Psychology* 101(3), 529–544. [doi:10.1037/a0014224](https://doi.org/10.1037/a0014224). Abstract read. | 162 seventh- and eighth-grade students learned to solve equations by comparing equivalent problems solved the same way, different problem types solved the same way, or different methods for the same problem. Conceptual knowledge and procedural flexibility were best supported by comparing solution methods, and to a lesser extent by comparing problem types. | One topic (algebra equations) with school pupils. The app applies it to programming and other technical solutions, which is an extrapolation. |
+| Rittle-Johnson & Star 2007, *Journal of Educational Psychology* 99(3), 561–574. [doi:10.1037/0022-0663.99.3.561](https://doi.org/10.1037/0022-0663.99.3.561). Record only. | Described, by papers that cite it, as an experiment in which seventh-graders compared solution methods side by side or studied the same methods one after the other, with comparison giving more procedural flexibility. | Record confirmed on 2026-10-13; the abstract was not retrieved. The description comes from citing papers, and no sample size or effect is quoted here. |
+| Schwartz & Bransford 1998, *Cognition and Instruction* 16(4), 475–522. [doi:10.1207/s1532690xci1604_4](https://doi.org/10.1207/s1532690xci1604_4). Abstract read. | In 3 classroom studies, college students who analysed contrasting cases (simplified experimental designs and data) and then heard a lecture or read a text predicted outcomes of a new experiment more accurately a week later than students who read about the distinctions, summarised a text, or analysed the cases twice without a lecture. The authors say noticing the distinctions creates "a time for telling". | College students and psychology concepts. The study compares cases then telling with other orders; it does not test two correct solutions to one task or a prompt for when each wins. |
+
+In a technical course, after a solved task, the app shows two correct solutions side by side; the learner says what differs and when each one wins. The "when each one wins" prompt is this app's own design.
+
+### Sort into categories
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Kornell & Bjork 2008, *Psychological Science* 19(6), 585–592. [doi:10.1111/j.1467-9280.2008.02127.x](https://doi.org/10.1111/j.1467-9280.2008.02127.x). Abstract read. | Participants studied paintings by several artists, either one artist at a time or interleaved. Later, when asked which artist painted new paintings, they did better after interleaved study, even though they rated the one-at-a-time study as more effective. | Adults learning painting styles, a perceptual category task. Applying it to text or code categories is an extrapolation. |
+| Kang & Pashler 2012, *Applied Cognitive Psychology* 26(1), 97–103 (first published online 2011). [doi:10.1002/acp.1801](https://doi.org/10.1002/acp.1801). Abstract read. | Spacing paintings out in time while keeping them blocked by artist did no better than massed study, and both did worse than interleaving. Showing paintings by different artists at the same time did as well as interleaving. The authors conclude the benefit comes from discriminative contrast between the styles, not from time spacing as such. | Same painting-style task as above. |
+| Chi, Feltovich & Glaser 1981, *Cognitive Science* 5(2), 121–152. [doi:10.1207/s15516709cog0502_2](https://doi.org/10.1207/s15516709cog0502_2). Abstract read. | In four experiments using sorting tasks and protocols, experts and novices began from different problem categories: experts abstracted physics principles, novices relied on the problem's literal features. | A description of how experts and novices sort, not a test of whether sorting practice teaches. Physics problems. |
+
+The learner places 6 to 12 items into 2 to 4 categories. The server grades placement by placement and marks misplaced items without naming their category. The tutor then shows one pair of items that tells the categories apart, the misplaced items are sorted again, and the sort comes back in spaced reviews. No source above tests this exact sequence. Hiding the correct category and the single contrasting pair are this app's own design, and their link to discriminative contrast is an inference.
 
 ## Teaching mechanisms
 
