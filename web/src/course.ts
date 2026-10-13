@@ -27,6 +27,7 @@ export type ChallengeData = {
   pretest?: boolean
   milestone?: boolean
   transfer?: boolean
+  comparison?: { left: string; right: string; question: string }
   lang?: string
   words?: [number, number] | null
   structure?: string
@@ -88,6 +89,7 @@ export function lessonTitle(lesson: Lesson, t: TFunction): string {
 }
 
 export function challengeLabel(d: ChallengeData, speech: boolean, t: TFunction): string {
+  if (d.comparison) return t('challenge.compare')
   if (d.transfer) return t('challenge.transfer')
   if (d.milestone) return t('challenge.milestone')
   if (d.pretest) return t('challenge.pretest')

@@ -42,6 +42,7 @@
       "rank_mechanisms": "classement des approches…",
       "set_course_map": "construction du plan du cours…",
       "pose_challenge": "préparation d'un défi…",
+      "pose_comparison": "comparaison de deux solutions…",
       "pose_exercise": "préparation d'un exercice…",
       "add_reading": "rédaction d'un texte pour vous…",
       "add_figure": "dessin d'une figure…",
@@ -132,6 +133,8 @@
       "done_many": "Valider · {{count}} choix"
     },
     "challenge": {
+      "compare": "Comparez les deux",
+      "solution": "Solution {{n}}",
       "transfer": "Transfert : même idée, nouveau terrain, sans indice",
       "milestone": "Étape du projet",
       "pretest": "D'abord, essayez",

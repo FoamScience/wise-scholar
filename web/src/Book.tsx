@@ -12,7 +12,7 @@ import { Correction } from './Diff'
 import type { Entry } from './Errors'
 import { Credits, Drawing } from './Figure'
 import type { FigureData } from './Figure'
-import { HintList, Ladder } from './Ladder'
+import { Comparison, HintList, Ladder } from './Ladder'
 import { day, lookup, percent } from './i18n'
 import { TIER_WORDS } from './Language'
 import type { ReadingData, VocabData } from './Language'
@@ -175,6 +175,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
         className="challenge"
       >
         <Markdown>{block.markdown}</Markdown>
+        <Comparison data={d} />
         <Ladder data={d} />
       </Card>
     )

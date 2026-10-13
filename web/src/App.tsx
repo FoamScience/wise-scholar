@@ -13,7 +13,7 @@ import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
 import { challengeLabel, lessonTitle } from './course'
-import { HintList, Ladder } from './Ladder'
+import { Comparison, HintList, Ladder } from './Ladder'
 import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
 import { NetworkCard } from './Network'
@@ -53,6 +53,7 @@ const LESSON_AREA_TOOLS = [
   'ask_network',
   'rank_mechanisms',
   'pose_challenge',
+  'pose_comparison',
   'pose_exercise',
   'pose_quiz',
   'add_reading',
@@ -479,6 +480,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
         )}
       </div>
       {!(d.spoken && d.lang) && <Markdown>{props.block.markdown}</Markdown>}
+      <Comparison data={d} />
       {player.error && <div className="error">{player.error}</div>}
 
       <Ladder data={d} />

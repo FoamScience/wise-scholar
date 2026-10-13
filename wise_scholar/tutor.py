@@ -574,6 +574,41 @@ async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, m
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
 
 
+COMPARISON_CHARS = 3000
+
+
+@mcp.tool()
+async def pose_comparison(lesson_id: int, problem: str, left: str, right: str, question: str) -> str:
+    """Show two correct solutions to one problem side by side, and ask what differs and when each one wins.
+
+    For technical subjects only (code, proofs, derivations, designs), where two sound methods exist;
+    never in a language course. The server allows one per lesson, after a challenge the learner solved.
+    problem: the problem both solve, in Markdown. left, right: the two solutions, each complete and
+    correct, in Markdown (code fenced). question: what the learner must answer about them, shown under
+    the two columns (what differs, when each one is the better choice). Attempts, hints and reveal work
+    as on a challenge: say what they missed, and reveal holds the comparison itself.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if lesson["lang"]:
+        return "error: a comparison is for technical subjects, not a language course"
+    problem, left, right, question = problem.strip(), left.strip(), right.strip(), question.strip()
+    if not (problem and left and right and question):
+        return "error: the problem, both solutions and the question are required"
+    if max(len(left), len(right)) > COMPARISON_CHARS:
+        return f"error: each solution is at most {COMPARISON_CHARS} characters"
+    blocks = db.blocks(lesson_id)
+    if any(b["data"].get("comparison") for b in blocks):
+        return "error: this lesson already has its comparison"
+    if not any(b["kind"] == "challenge" and b["data"].get("solved") for b in blocks):
+        return "error: a comparison follows a challenge the learner solved in this lesson"
+    data = {**challenge.new(), "comparison": {"left": left, "right": right, "question": question}}
+    block = db.add_block(lesson_id, "challenge", problem, data)
+    _show(lesson, block)
+    return f"shown as challenge {block['id']}; end the turn and wait for the learner"
+
+
 async def run_command(lesson_id: int, command: str) -> str:
     """Run one shell command in the course workspace and get its exit code and output.
 
