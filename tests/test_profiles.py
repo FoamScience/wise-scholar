@@ -393,7 +393,7 @@ def test_placement_choice_offers_i_dont_know_as_a_miss_that_stays_out_of_calibra
     import pytest
     from fastapi import HTTPException
 
-    from wise_scholar import app, history, tutor
+    from wise_scholar import app, history, quiz as quiz_module, tutor
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
@@ -418,7 +418,10 @@ def test_placement_choice_offers_i_dont_know_as_a_miss_that_stays_out_of_calibra
         asyncio.run(app.dont_know_quiz(quiz["id"]))
     assert twice.value.detail == "already answered"
 
-    asyncio.run(tutor.pose_quiz(placement, "Name a noble gas.", "open", [], "helium", ""))
+    asyncio.run(tutor.pose_quiz(placement, "Nenne ein Edelgas.", "open", [], "Helium", "", translation=" Name a noble gas. "))
+    translated = db.blocks(placement)[-1]
+    assert translated["data"]["translation"] == "Name a noble gas." and "translation" not in quiz["data"]
+    assert quiz_module.public(db.card(translated["data"]["card_id"]))["translation"] == "Name a noble gas."
     lesson = db.create_lesson(course, "Bonds", "lesson")
     assert asyncio.run(tutor.pose_quiz(lesson, "Valence of carbon?", "choice", five, "4", "", pretest=True)).startswith("shown")
     for block in (db.blocks(placement)[-1], db.blocks(lesson)[-1]):
@@ -853,8 +856,10 @@ def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tm
     (tmp_path / "sources" / str(course) / f"{source['id']}-syllabus.md").write_text("Atoms first.")
     (db.workspace(db.course(course)["slug"]) / "demo.py").write_text("print(1)")
 
+    db.add_card(course, None, "Nenne ein Edelgas.", "open", [], "Helium", "", scheduled=False, translation="Name a noble gas.")
     copy = app.duplicate_course(course)
     assert copy["topic"] == "Chemistry to copy (2)" and copy["mode"] == "teacher" and copy["id"] != course
+    assert db.row("SELECT translation FROM cards WHERE course_id = ? AND question = ?", copy["id"], "Nenne ein Edelgas.")["translation"] == "Name a noble gas."
     assert app.duplicate_course(copy["id"])["topic"] == "Chemistry to copy (3)"
     # The material comes along, the work done on the original does not.
     copied_trial = db.blocks(db.rows("SELECT id FROM lessons WHERE course_id = ? AND concept_id IS NOT NULL", copy["id"])[0]["id"])[-1]

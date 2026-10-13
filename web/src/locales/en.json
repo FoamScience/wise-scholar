@@ -300,7 +300,8 @@
       "pretest": "First, a quick check",
       "quickCheck": "Quick check",
       "dontKnow": "I don't know",
-      "key": "Key"
+      "key": "Key",
+      "translation": "Translation"
     },
     "review": {
       "done": "Review done",

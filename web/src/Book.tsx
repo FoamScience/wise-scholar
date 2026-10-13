@@ -19,7 +19,7 @@ import type { ReadingData, VocabData } from './Language'
 import Logo from './Logo'
 import { PlotCard } from './PlotCard'
 import type { PodcastData } from './Podcast'
-import { QuizResult } from './Quiz'
+import { QuizResult, Translation } from './Quiz'
 import { ScopeCard } from './Scope'
 import type { Graded, QuizData } from './Quiz'
 import { textDirection } from './text'
@@ -49,6 +49,7 @@ function QuizBlock({ block }: { block: Block }) {
   return (
     <Card label={d.pretest ? t('quiz.pretest') : t('quiz.quickCheck')} className="quiz">
       <Markdown>{block.markdown}</Markdown>
+      <Translation text={d.translation} open />
       {d.kind === 'choice' && (
         <ul className="book-options" dir={textDirection(d.options.join(' '))}>
           {d.options.map((o) => (

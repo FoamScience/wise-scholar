@@ -307,7 +307,8 @@
       "pretest": "D'abord, une question rapide",
       "quickCheck": "Question rapide",
       "dontKnow": "Je ne sais pas",
-      "key": "Clé"
+      "key": "Clé",
+      "translation": "Traduction"
     },
     "review": {
       "done": "Révision terminée",

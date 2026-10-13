@@ -387,7 +387,7 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         f"[language] Write everything the learner reads in {LOCALE_NAMES[lesson['locale']]}: chat, lesson blocks, questions, "
         "options, hints, feedback, titles, the course map. Code, commands and identifiers stay as they are. In a language "
         "course this is the learner's own language, used for instructions and explanations; texts and tasks in the language "
-        "being learned stay in that language."
+        "being learned stay in that language, and a quick check written in it carries its translation."
     )
     tools = [
         f"[tools] Art pack installed: {p['title']} ({p['icons']} icons; {', '.join(p['categories'])}). Search it with "

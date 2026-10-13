@@ -1389,10 +1389,16 @@ mark {
   gap: 6px;
 }
 
-.podcast details summary {
+.podcast details summary,
+.translation summary {
   cursor: pointer;
   color: var(--muted);
   font-size: 13px;
+}
+
+.translation > :last-child {
+  margin: 6px 0 0;
+  color: var(--muted);
 }
 
 .transcript p {
