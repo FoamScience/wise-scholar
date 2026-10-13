@@ -105,3 +105,9 @@ export type ExerciseData = ChallengeData & {
   last_run: { exit_code: number | null; output: string } | null
 }
 export type ExerciseFile = { path: string; location: string; content: string | null; kept: boolean }
+
+export type SortItem = { text: string; category?: string }
+
+export function sortItems(options: string[] | SortItem[]): SortItem[] {
+  return options.filter((o): o is SortItem => typeof o !== 'string')
+}

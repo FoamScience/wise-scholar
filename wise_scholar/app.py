@@ -1372,9 +1372,13 @@ def edit_block(block_id: int, body: BlockEdit) -> dict:
         question = body.markdown.strip() if body.markdown is not None else card["question"]
         db.conn.execute(
             "UPDATE cards SET question = ?, options = ?, answer_key = ?, explanation = ? WHERE id = ?",
-            (question, json.dumps(options if card["kind"] == "choice" else []), key, explanation, card["id"]),
+            (question, json.dumps(options if card["kind"] == "choice" else card["options"]),
+             card["answer_key"] if card["kind"] == "sort" else key, explanation, card["id"]),
         )
-        data.update({"options": options if card["kind"] == "choice" else [], "answer_key": key, "explanation": explanation})
+        if card["kind"] == "sort":
+            data["explanation"] = explanation
+        else:
+            data.update({"options": options if card["kind"] == "choice" else [], "answer_key": key, "explanation": explanation})
     if body.markdown is not None and body.markdown.strip():
         db.set_block_markdown(block_id, body.markdown.strip())
     block = db.set_block_data(block_id, data) if data else db.block(block_id)
@@ -1402,7 +1406,7 @@ async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
     block, card = _unanswered_quiz(block_id)
     answer_id = quiz.submit(card, body.answer, body.confidence)
     given = {"answer": body.answer, "confidence": body.confidence, "answer_id": answer_id}
-    said = f"question: {card['question']!r}\nlearner answer: {body.answer!r}\nconfidence: {body.confidence:.0%}"
+    said = f"question: {card['question']!r}\nlearner answer: {quiz.said(card, body.answer)!r}\nconfidence: {body.confidence:.0%}"
     correct = quiz.auto_correct(card, body.answer)
     if correct is None:
         lesson, block = _update_block(block, given)
@@ -1410,7 +1414,10 @@ async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
         return
     result = quiz.grade(answer_id, correct)
     lesson, block = _update_block(block, {**given, **result})
-    verdict = "correct" if correct else f"wrong, the right answer is {card['answer_key']!r}"
+    if card["kind"] == "sort":
+        verdict = "correct" if correct else "wrong; misplaced: " + ", ".join(repr(i) for i in result["misplaced"])
+    else:
+        verdict = "correct" if correct else f"wrong, the right answer is {card['answer_key']!r}"
     if result["confident_miss"] and lesson["phase"] != "placement":
         verdict += "; a confident miss: re-teach it now"
     _start_turn(lesson, f"[event] Quiz {block_id} result: {verdict}\n{said}")

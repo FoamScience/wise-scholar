@@ -1,8 +1,12 @@
+import os
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 from fsrs import Rating
 
-from wise_scholar import review
+os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
+
+from wise_scholar import review  # noqa: E402
 
 
 def test_rating_follows_correctness_then_confidence():
@@ -125,3 +129,29 @@ def test_a_card_and_its_word_are_relearned_on_three_separate_days():
         db.delete_course(course)
         db.conn.execute("DELETE FROM vocab_knowledge WHERE profile_id = ?", (who,))
         db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
+
+
+def test_the_cards_table_rebuild_keeps_rows_and_their_answers_and_errors(tmp_path):
+    import sqlite3
+
+    from wise_scholar import db
+
+    raw = sqlite3.connect(tmp_path / "old.db")
+    raw.row_factory = sqlite3.Row
+    for script in db.MIGRATIONS[:-1]:
+        raw.executescript(script)
+    raw.execute("ALTER TABLE cards DROP COLUMN lang")  # as on a database whose earlier upgrade missed it
+    raw.execute("INSERT INTO cards (id, course_id, question, kind, options, answer_key, explanation, lemma, translation) VALUES (7, 1, 'q', 'open', '[]', 'a', 'e', 'hund', 't')")
+    raw.execute("INSERT INTO answers (card_id, answer, confidence, correct) VALUES (7, 'x', 0.5, 1)")
+    raw.execute("INSERT INTO errors (profile_id, course_id, card_id, kind, prompt, said, correct) VALUES (1, 1, 7, 'quiz', 'p', 's', 'c')")
+    raw.commit()
+    db.MIGRATIONS[-1](raw)
+    db.MIGRATIONS[-1](raw)  # a rerun after a crash before the version bump is harmless
+    card = [tuple(r) for r in raw.execute("SELECT id, lemma, lang, translation, relearn_after FROM cards").fetchall()]
+    assert card == [(7, "hund", None, "t", 0)]
+    assert [r[0] for r in raw.execute("SELECT card_id FROM answers")] == [7] and [r[0] for r in raw.execute("SELECT card_id FROM errors")] == [7]
+    broken = [tuple(r) for t in ("answers", "errors") for r in raw.execute(f"PRAGMA foreign_key_check({t})") if r[2] == "cards"]
+    assert broken == []  # the profile and course rows are missing on purpose; only the card links are under test
+    raw.execute("PRAGMA foreign_keys = OFF")
+    raw.execute("INSERT INTO cards (course_id, question, kind, options, answer_key, explanation) VALUES (1, 'q', 'sort', '[]', '[]', 'e')")
+    raw.close()

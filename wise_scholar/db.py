@@ -12,6 +12,45 @@ ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("WISE_SCHOLAR_DB", ROOT / "data" / "wise-scholar.db"))
 WORKSPACE = Path(os.environ.get("WISE_SCHOLAR_WORKSPACE", ROOT / "workspace"))
 
+def _rebuild_cards(connection) -> None:
+    """A sort card: SQLite cannot widen a CHECK, so the table is rebuilt (the 12-step ALTER of its manual). A column
+    an earlier upgrade missed is added first, the columns are named so nothing misaligns, and a rerun after a crash
+    before the version bump is harmless."""
+    present = {r["name"] for r in connection.execute("PRAGMA table_info(cards)").fetchall()}
+    if "lang" not in present:
+        connection.execute("ALTER TABLE cards ADD COLUMN lang TEXT")
+    connection.executescript(f"""
+    PRAGMA foreign_keys = OFF;
+    DROP TABLE IF EXISTS cards_new;
+    BEGIN;
+    CREATE TABLE cards_new (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id),
+        concept_id INTEGER REFERENCES concepts(id),
+        question TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('choice', 'open', 'sort')),
+        options TEXT NOT NULL,
+        answer_key TEXT NOT NULL,
+        explanation TEXT NOT NULL,
+        fsrs TEXT,
+        due TEXT,
+        confident_miss INTEGER NOT NULL DEFAULT 0,
+        scheduled INTEGER NOT NULL DEFAULT 1,
+        vocab INTEGER NOT NULL DEFAULT 0,
+        lemma TEXT,
+        lang TEXT,
+        translation TEXT NOT NULL DEFAULT '',
+        relearn_after INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO cards_new ({CARD_COLUMNS}) SELECT {CARD_COLUMNS} FROM cards;
+    DROP TABLE cards;
+    ALTER TABLE cards_new RENAME TO cards;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+    """)
+
+
+CARD_COLUMNS = "id, course_id, concept_id, question, kind, options, answer_key, explanation, fsrs, due, confident_miss, scheduled, vocab, lemma, lang, translation, relearn_after"
 MIGRATIONS = [
     """
     CREATE TABLE IF NOT EXISTS courses (
@@ -245,6 +284,7 @@ MIGRATIONS = [
     "ALTER TABLE profiles ADD COLUMN sketch INTEGER NOT NULL DEFAULT 1;",
     "ALTER TABLE cards ADD COLUMN translation TEXT NOT NULL DEFAULT '';",
     "ALTER TABLE cards ADD COLUMN relearn_after INTEGER NOT NULL DEFAULT 0;",
+    _rebuild_cards,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -279,7 +319,10 @@ if 0 < _version < len(MIGRATIONS):
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     shutil.copy(DB_PATH, DB_PATH.with_name(f"{DB_PATH.name}.v{_version}.bak"))
 for _n, _script in enumerate(MIGRATIONS[_version:], start=_version + 1):
-    conn.executescript(_script)
+    if callable(_script):
+        _script(conn)
+    else:
+        conn.executescript(_script)
     conn.execute(f"PRAGMA user_version = {_n}")
 
 
