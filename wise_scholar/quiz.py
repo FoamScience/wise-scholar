@@ -9,6 +9,7 @@ def public(card: dict) -> dict:
         "question": card["question"],
         "kind": card["kind"],
         "options": card["options"],
+        "translation": card.get("translation", ""),
         "confident_miss": bool(card["confident_miss"]),
     }
 

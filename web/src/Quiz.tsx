@@ -10,6 +10,7 @@ export type QuizData = {
   kind: 'choice' | 'open'
   options: string[]
   answer: string | null
+  translation?: string
   pretest?: boolean
   unknown?: boolean
   confidence?: number
@@ -27,12 +28,24 @@ type DueCard = {
   question: string
   kind: 'choice' | 'open'
   options: string[]
+  translation: string
   confident_miss: boolean
 }
 type Calibration = {
   n: number
   brier: number | null
   buckets: { label: string; n: number; stated: number | null; actual: number | null }[]
+}
+
+export function Translation({ text, open }: { text?: string; open?: boolean }) {
+  const { t } = useTranslation()
+  if (!text) return null
+  return (
+    <details className="translation" open={open}>
+      <summary>{t('quiz.translation')}</summary>
+      <Markdown>{text}</Markdown>
+    </details>
+  )
 }
 
 function QuizForm(props: {
@@ -159,6 +172,7 @@ export function QuizCard(props: {
     <section id={`block-${props.id}`} className="block quiz">
       <div className="label">{props.data.pretest ? t('quiz.pretest') : t('quiz.quickCheck')}</div>
       <Markdown>{props.question}</Markdown>
+      <Translation text={d.translation} />
       {props.authored ? (
         <div className="solution">
           {d.options.length > 0 && (
@@ -252,6 +266,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
           {card.confident_miss && <span className="chip warn">{t('review.sureAndMissed')}</span>}
         </div>
         <Markdown>{card.question}</Markdown>
+        <Translation text={card.translation} />
         {!given && <QuizForm key={card.id} id={`card-${card.id}`} kind={card.kind} options={card.options} disabled={false} onSubmit={submit} />}
         {given && pending && (
           <div className="quiz-result">

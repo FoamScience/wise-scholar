@@ -243,6 +243,7 @@ MIGRATIONS = [
     UPDATE blocks SET position = id;
     """,
     "ALTER TABLE profiles ADD COLUMN sketch INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE cards ADD COLUMN translation TEXT NOT NULL DEFAULT '';",
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -383,10 +384,10 @@ def copy_course(course_id: int, topic: str) -> dict:
         card_map = {}
         for k in rows("SELECT * FROM cards WHERE course_id = ? ORDER BY id", course_id):
             card_map[k["id"]] = conn.execute(
-                "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (new_id, concept_map.get(k["concept_id"]), k["question"], k["kind"], k["options"], k["answer_key"], k["explanation"],
-                 k["scheduled"], k["vocab"], k["lemma"], k["lang"]),
+                 k["scheduled"], k["vocab"], k["lemma"], k["lang"], k["translation"]),
             ).lastrowid
         for lesson_row in rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", course_id):
             if lesson_row["concept_id"] and lesson_row["concept_id"] not in concept_map:
@@ -684,13 +685,15 @@ def set_block(block_id: int, markdown: str, data: dict) -> dict:
 
 
 def add_card(course_id: int, concept_id: int | None, question: str, kind: str, options: list[str],
-             answer_key: str, explanation: str, scheduled: bool, due: str | None = None, vocab: bool = False) -> int:
-    """due makes the card reviewable from that moment without a first answer; vocab marks a vocabulary card."""
+             answer_key: str, explanation: str, scheduled: bool, due: str | None = None, vocab: bool = False,
+             translation: str = "") -> int:
+    """due makes the card reviewable from that moment without a first answer; vocab marks a vocabulary card;
+    translation is the question in the learner's own language when it is written in the one being learned."""
     return conn.execute(
         "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, "
-        "vocab, due) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "vocab, due, translation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (course_id, concept_id, question, kind, json.dumps(options), answer_key, explanation, int(scheduled),
-         int(vocab), due),
+         int(vocab), due, translation),
     ).lastrowid
 
 

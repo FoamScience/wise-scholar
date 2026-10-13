@@ -1127,6 +1127,7 @@ async def pose_quiz(
     lemma: str = "",
     pretest: bool = False,
     form: str = "",
+    translation: str = "",
 ) -> str:
     """Show a quick check that the learner answers together with how sure they are.
 
@@ -1142,10 +1143,13 @@ async def pose_quiz(
     pretest: the opening attempt of a concept lesson; it measures prior knowledge, so it never comes back
     as a review and does not count toward mastery. It asks for something the learner can attempt, as
     the lesson rules say. form: for an opening, which of the lesson rules' forms this is.
+    translation: when the question is written in the language being learned, what it asks in the learner's
+    own language; the options stay as they are. The learner opens it under the question when they need it.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
+    translation = translation.strip()
     most = PLACEMENT_OPTIONS if lesson["phase"] == "placement" else 5
     if kind == "choice" and not (2 <= len(options) <= most and answer_key in options):
         return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
@@ -1156,12 +1160,14 @@ async def pose_quiz(
     options = _shuffled(options) if kind == "choice" else []
     card_id = db.add_card(
         lesson["course_id"], None if pretest else lesson["concept_id"], question, kind, options, answer_key, explanation,
-        scheduled=lesson["phase"] != "placement" and not pretest and not prepared(lesson),
+        scheduled=lesson["phase"] != "placement" and not pretest and not prepared(lesson), translation=translation,
     )
     if lemma:
         lemma = simplemma.lemmatize(lemma, lang=lesson["lang"]).lower()
         db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lesson["lang"], card_id))
     shown = {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest, "form": form.strip()}
+    if translation:
+        shown["translation"] = translation
     if prepared(lesson):
         # Material for the teacher: the key and the explanation are part of the card from the start.
         shown.update({"answer_key": answer_key, "explanation": explanation})
