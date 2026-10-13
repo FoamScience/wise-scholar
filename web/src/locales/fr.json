@@ -24,6 +24,7 @@
       "toggleTheme": "Changer de thème"
     },
     "lesson": {
+      "practice": "Entraînement {{n}}",
       "interview": "Entretien",
       "placement": "Test de niveau",
       "placementRetake": "Test de niveau · reprise {{n}}",
@@ -376,6 +377,7 @@
       "writing": "Séance d'écriture"
     },
     "notebook": {
+      "practiceMiss": "Manqué à l'entraînement",
       "heading": "Carnet d'erreurs · {{n}} ouvertes",
       "showResolved": "afficher les résolues",
       "empty": "Rien ici. Les erreurs faites avec certitude et les textes corrigés arrivent ici d'eux-mêmes.",

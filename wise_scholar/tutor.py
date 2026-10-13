@@ -252,7 +252,8 @@ async def set_course_map(course_id: int, modules: list[Module]) -> str:
 
     One concept is what one sitting can cover. The learner opens a concept to start its lesson.
     known lists the concept titles of a module that a placement check showed the learner
-    already has; they appear as placed out.
+    already has; they appear as placed out. The server adds a practice unit after every third
+    unit to study: earlier tasks come back varied and mixed, with no teaching.
     """
     if not db.course(course_id):
         return f"error: no course with id {course_id}"
@@ -272,6 +273,7 @@ async def revise_course_map(course_id: int, modules: list[Module], renamed: list
     """Change the course map after it exists, when the learner asks to leave something out, add something,
     reorder, shorten or go deeper. Give the whole new map, in order.
 
+    Give the concept units only: the server lays the practice units out again by itself.
     A unit whose title stays exactly as it is keeps its lesson, its cards and its progress, wherever
     you move it. A title you leave out is dropped; a new title becomes a new unit. To reword a title
     without losing its lesson, list it in renamed and use the new title in modules. A unit that already
@@ -284,12 +286,14 @@ async def revise_course_map(course_id: int, modules: list[Module], renamed: list
     """
     if not db.course(course_id):
         return f"error: no course with id {course_id}"
-    current = {c["title"] for c in db.concepts(course_id)}
+    current = {c["title"] for c in db.concepts(course_id) if c["kind"] == "concept"}
     if not current:
         return "error: this course has no map yet; use set_course_map"
     titles = [title for m in modules for title in m.concepts]
     if not titles:
         return "error: the map has no concepts"
+    if practice := [t for t in titles if t in {c["title"] for c in db.concepts(course_id) if c["kind"] == "practice"}]:
+        return f"error: {practice} are practice units the server places by itself; give the concept units only"
     if repeated := sorted({t for t in titles if titles.count(t) > 1}):
         return f"error: titles {repeated} appear more than once"
     module_titles = [m.title for m in modules]
@@ -328,7 +332,7 @@ async def set_capstone(course_id: int, module: str, title: str, brief: str, mile
     The last one is the integration milestone. Files live in the project's folder under the workspace,
     shared by every lesson of the module.
     """
-    concepts = [c for c in db.concepts(course_id) if c["module"] == module]
+    concepts = [c for c in db.concepts(course_id) if c["module"] == module and c["kind"] == "concept"]
     if not concepts:
         return f"error: no module {module!r} in the map; modules are {sorted({c['module'] for c in db.concepts(course_id)})}"
     if any(c["module"] == module for c in db.capstones(course_id)):
@@ -350,7 +354,7 @@ def capstone_brief(lesson: dict) -> str:
     """What the lesson-begins event says about the unit's milestone, if its module has a capstone."""
     m = db.milestone_for(lesson["concept_id"]) if lesson["concept_id"] else None
     if not m:
-        concepts = db.concepts(lesson["course_id"])
+        concepts = [c for c in db.concepts(lesson["course_id"]) if c["kind"] == "concept"]
         mine = next((c for c in concepts if c["id"] == lesson["concept_id"]), None)
         if mine and [c for c in concepts if c["module"] == mine["module"]][0]["id"] == mine["id"] and lesson["mechanism"] in ("hands-on", "leveled-course"):
             units = [c["title"] for c in concepts if c["module"] == mine["module"]]
@@ -373,7 +377,7 @@ def capstone_brief(lesson: dict) -> str:
 async def set_known(course_id: int, known: list[str], unknown: list[str]) -> str:
     """After a retaken placement check, mark which concepts of the existing map the learner now has (placed out)
     and which they lack (open again). Titles must match the map exactly; other concepts keep their state."""
-    titles = {c["title"] for c in db.concepts(course_id)}
+    titles = {c["title"] for c in db.concepts(course_id) if c["kind"] == "concept"}
     if not titles:
         return "error: this course has no map yet; use set_course_map"
     if stray := [t for t in [*known, *unknown] if t not in titles]:
@@ -555,7 +559,9 @@ async def add_plot(lesson_id: int, title: str, spec: dict, alt: str) -> str:
 
 
 @mcp.tool()
-async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, milestone: bool = False, transfer: bool = False, form: str = "") -> str:
+async def pose_challenge(
+    lesson_id: int, markdown: str, pretest: bool = False, milestone: bool = False, transfer: bool = False, form: str = "", variant_of: int | None = None
+) -> str:
     """Show something the learner must work out themselves: a prediction, a question, a problem.
 
     The card has an answer box, a hint ladder and a locked solution. Attempts, hint
@@ -566,18 +572,54 @@ async def pose_challenge(lesson_id: int, markdown: str, pretest: bool = False, m
     this is (prediction, bug hunt, missing step, build, pick one, choice check, case, redo); it goes into
     the record so later lessons open differently. milestone: this is the
     unit's capstone deliverable. transfer: a far-transfer task after the capstone, with no hints.
+    variant_of: in a practice unit, the id of the earlier task this one varies (new numbers or a new
+    situation, same idea); each task is varied once in a course, and a miss on the variant brings that
+    unit's review cards forward.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     if pretest and not prepared(lesson) and (problem := _pretest_length_error(markdown)):
         return problem
+    if variant_of is not None and (problem := _variant_error(lesson, variant_of)):
+        return problem
     data = {**challenge.new(), "pretest": pretest, "milestone": milestone, "transfer": transfer, "form": form.strip()}
+    if variant_of is not None:
+        data["variant_of"] = variant_of
     if transfer:
         data["max_hints"] = 0
     block = db.add_block(lesson_id, "challenge", markdown, data)
     _show(lesson, block)
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
+
+
+def variable(block: dict) -> bool:
+    """A task a practice unit may vary: solved, and not itself a milestone, a transfer task or a variant."""
+    d = block["data"] or {}
+    return block["kind"] in ("challenge", "exercise") and bool(d.get("solved")) and not (d.get("milestone") or d.get("transfer") or d.get("variant_of"))
+
+
+def varied(course_id: int) -> set[int]:
+    """The ids of the tasks that already have a variant in the course."""
+    return {
+        r["source"] for r in db.rows(
+            "SELECT json_extract(b.data, '$.variant_of') AS source FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+            "WHERE l.course_id = ? AND json_extract(b.data, '$.variant_of') IS NOT NULL", course_id
+        )
+    }
+
+
+def _variant_error(lesson: dict, variant_of: int) -> str | None:
+    if lesson["phase"] != "practice":
+        return "error: variant_of is for the tasks of a practice unit"
+    source = db.block(variant_of)
+    origin = db.lesson(source["lesson_id"]) if source else None
+    covered = {c["id"] for c in db.practice_scope(lesson["concept_id"])}
+    if not source or not origin or origin["concept_id"] not in covered or not variable(source):
+        return f"error: variant_of {variant_of} is not a solved task of the units this practice covers"
+    if variant_of in varied(lesson["course_id"]):
+        return f"error: task {variant_of} already has its variant; vary another task"
+    return None
 
 
 COMPARISON_CHARS = 3000
@@ -1141,7 +1183,20 @@ async def reveal(challenge_id: int, solution: str) -> str:
         _grade_teachback(data, False)
     if data.get("writing") and data["attempts"] and not data.get("fluency"):
         _note_writing_error(challenge_id, data, solution)
+    if data.get("variant_of") and not data["solved"]:
+        _note_practice_miss(challenge_id, data, solution)
     return "shown"
+
+
+def _note_practice_miss(challenge_id: int, data: dict, solution: str) -> None:
+    """A variant revealed unsolved: the unit it came from is not held yet, so its cards come back now and the
+    miss goes into the notebook."""
+    block = db.block(challenge_id)
+    lesson = db.lesson(block["lesson_id"])
+    origin = db.lesson(db.block(data["variant_of"])["lesson_id"])
+    if origin["concept_id"]:
+        db.pull_forward(origin["concept_id"], _now())
+    db.add_error(lesson["profile_id"], lesson["course_id"], "practice", block["markdown"], data["attempts"][-1] if data["attempts"] else "", solution)
 
 
 def _note_writing_error(challenge_id: int, data: dict, solution: str) -> None:

@@ -24,6 +24,7 @@
       "toggleTheme": "Toggle theme"
     },
     "lesson": {
+      "practice": "Practice {{n}}",
       "interview": "Interview",
       "placement": "Placement",
       "placementRetake": "Placement · retake {{n}}",
@@ -369,6 +370,7 @@
       "writing": "Writing session"
     },
     "notebook": {
+      "practiceMiss": "Missed in practice",
       "heading": "Error notebook · {{n}} open",
       "showResolved": "show resolved",
       "empty": "Nothing here. Confident misses and corrected texts land here on their own.",

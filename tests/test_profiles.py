@@ -200,7 +200,7 @@ def test_capstone_milestones_follow_the_module_and_complete_on_mark_solved():
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Cap')").lastrowid
     course = db.create_course("Rust", who)["id"]
     db.set_concepts(course, [{"title": "Basics", "concepts": ["Ownership", "Traits"], "known": []}, {"title": "Async", "concepts": ["Futures"], "known": []}])
-    own, traits, _ = db.concepts(course)
+    own, traits = [c for c in db.concepts(course) if c["kind"] == "concept"][:2]
     ms = tutor.Milestone
     assert "no module" in asyncio.run(tutor.set_capstone(course, "Nope", "t", "b", []))
     assert "every concept" in asyncio.run(tutor.set_capstone(course, "Basics", "t", "b", [ms(concept="Traits", deliverable="x")]))
@@ -346,7 +346,7 @@ def test_a_course_map_is_revised_in_place_and_started_units_keep_their_work():
     assert revise([module(title="Basics", concepts=["a", "c"])]).startswith("error: units ['b'] already have a lesson")
     assert revise([module(title="Basics", concepts=["a", "b", "b"])]).startswith("error: titles ['b'] appear more than once")
     assert revise([module(title="M", concepts=["a", "b"])], renamed=[tutor.Renamed(old="b", new="a")]).startswith("error: new titles")
-    assert [c["title"] for c in db.concepts(course)] == ["a", "b", "c", "d", "e"]
+    assert [c["title"] for c in db.concepts(course)] == ["a", "b", "c", "d", "Practice 1", "e"]
 
     done = revise(
         [module(title="Core", concepts=["new first", "b renamed", "a"], known=["new first"]), module(title="Extra", concepts=["c"])],
@@ -357,7 +357,7 @@ def test_a_course_map_is_revised_in_place_and_started_units_keep_their_work():
     after = db.concepts(course)
     assert [(c["module"], c["title"], c["known"]) for c in after] == [
         ("Core", "new first", 1), ("Core", "b renamed", 0), ("Core", "a", 1), ("Extra", "c", 0),
-    ]  # fmt: skip
+    ]  # fmt: skip  (two units to study: no practice unit is placed)
     kept = {c["title"]: c["id"] for c in after}
     assert kept["b renamed"] == ids["b"] and kept["a"] == ids["a"] and kept["c"] == ids["c"]
     assert db.lesson(lesson)["title"] == "b renamed" and db.lesson(lesson)["concept_id"] == ids["b"]
@@ -1120,3 +1120,84 @@ def test_a_sort_check_is_graded_placement_by_placement(monkeypatch):
     finally:
         db.delete_course(course)
         db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
+
+
+def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, challenge, tutor
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append((lesson, line)))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Mixer')").lastrowid
+    other_who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Other')").lastrowid
+    try:
+        course = db.create_course("Algebra", who)["id"]
+        other = db.create_course("Elsewhere", other_who)["id"]
+        db.set_concepts(other, [{"title": "M", "concepts": ["X"], "known": []}])
+        modules = [{"title": "Lines", "concepts": ["Slope", "Intercept", "Parallel", "Perpendicular"], "known": ["Intercept"]},
+                   {"title": "Curves", "concepts": ["Parabola", "Vertex", "Roots"], "known": []}]
+        db.set_concepts(course, modules)
+        titles = [(c["title"], c["kind"], c["module"]) for c in db.concepts(course)]
+        assert titles == [("Slope", "concept", "Lines"), ("Intercept", "concept", "Lines"), ("Parallel", "concept", "Lines"), ("Perpendicular", "concept", "Lines"),
+                          ("Practice 1", "practice", "Lines"), ("Parabola", "concept", "Curves"), ("Vertex", "concept", "Curves"), ("Roots", "concept", "Curves"),
+                          ("Practice 2", "practice", "Curves")]
+        by_title = {c["title"]: c for c in db.concepts(course)}
+        assert db.started_concepts(course) == set()
+
+        # Two solved tasks in the units before the first practice, one of them a milestone that stays out of it.
+        slope = db.create_lesson(course, "Slope", "lesson", by_title["Slope"]["id"])
+        parallel = db.create_lesson(course, "Parallel", "lesson", by_title["Parallel"]["id"])
+        rise = db.add_block(slope, "challenge", "Slope of the line through (1, 2) and (3, 6)?", {**challenge.new(), "solved": True})
+        db.add_block(slope, "challenge", "Milestone", {**challenge.new(), "solved": True, "milestone": True})
+        db.add_block(parallel, "challenge", "Unsolved", challenge.new())
+        card = db.add_card(course, by_title["Slope"]["id"], "q", "open", [], "a", "", scheduled=True, due="2999-01-01T00:00:00+00:00")
+        assert app.today(who)["units"][0]["title"] == "Slope"
+
+        practice = asyncio.run(app.open_concept(by_title["Practice 1"]["id"]))
+        assert practice["phase"] == "practice" and turns[-1][0]["id"] == practice["id"]
+        brief = turns[-1][1]
+        assert brief.startswith("[event] The practice begins.") and "Practice 1 (this lesson; practice unit)" in brief
+        assert f"- Slope, task {rise['id']}: Slope of the line" in brief and "Milestone" not in brief and "Unsolved" not in brief
+        assert app._practice_brief(by_title["Practice 2"]["id"]).startswith("No task of the units before")
+
+        foreign = db.add_block(db.row("SELECT id FROM lessons WHERE course_id = ?", other)["id"], "challenge", "x", {**challenge.new(), "solved": True})
+        assert asyncio.run(tutor.pose_challenge(practice["id"], "v", variant_of=foreign["id"])).startswith("error: variant_of")
+        assert asyncio.run(tutor.pose_challenge(practice["id"], "v", variant_of=10**9)).startswith("error: variant_of")
+        unsolved = db.blocks(parallel)[-1]
+        assert asyncio.run(tutor.pose_challenge(practice["id"], "v", variant_of=unsolved["id"])).startswith("error: variant_of")
+        assert asyncio.run(tutor.pose_challenge(slope, "v", variant_of=rise["id"])) == "error: variant_of is for the tasks of a practice unit"
+        assert asyncio.run(tutor.pose_challenge(practice["id"], "Slope through (2, 1) and (4, 7)?", variant_of=rise["id"])).startswith("shown")
+        variant = db.blocks(practice["id"])[-1]
+        assert variant["data"]["variant_of"] == rise["id"]
+        assert asyncio.run(tutor.pose_challenge(practice["id"], "again", variant_of=rise["id"])).startswith("error: task")
+        assert f"task {rise['id']}" not in app._practice_brief(by_title["Practice 1"]["id"])  # varied once: not offered again
+
+        # Revealed unsolved: the unit's cards come forward and the notebook gets the miss.
+        db.set_block_data(variant["id"], {**variant["data"], "attempts": ["1"], "gave_up": True, "hints": ["Rise over run."]})
+        assert asyncio.run(tutor.reveal(variant["id"], "3")) == "shown"
+        assert db.card(card)["due"] < "2999"
+        entry = db.errors(who)[-1]
+        assert entry["kind"] == "practice" and entry["said"] == "1" and entry["correct"] == "3" and entry["explanation"] == ""
+
+        assert asyncio.run(tutor.finish_lesson(practice["id"], "Done.")) == "finished; end the turn"
+        view = {c["title"]: c["mastery"] for c in db.concept_view(course)}
+        assert view["Practice 1"] == 1.0 and view["Practice 2"] is None
+        assert app.today(who)["units"][0]["title"] == "Slope"
+
+        # A revision keeps the practice unit that has a lesson and lays the rest out again.
+        revised = asyncio.run(tutor.revise_course_map(course, [tutor.Module(title="Lines", concepts=["Slope", "Parallel"]), tutor.Module(title="Curves", concepts=["Parabola"])], hours=None))
+        assert revised.startswith("shown")
+        after = [(c["title"], c["kind"], c["module"]) for c in db.concepts(course)]
+        assert after == [("Slope", "concept", "Lines"), ("Parallel", "concept", "Lines"), ("Parabola", "concept", "Curves"), ("Practice 1", "practice", "Curves")]
+        assert db.lesson(practice["id"])["title"] == "Practice 1"
+        assert asyncio.run(tutor.revise_course_map(course, [tutor.Module(title="Lines", concepts=["Slope", "Parallel", "Practice 1"])])).startswith("error: ['Practice 1'] are practice units")
+        assert asyncio.run(tutor.set_known(course, ["Practice 1"], [])).startswith("error: ['Practice 1'] are not concepts")
+        # Placing a unit out moves the practice unit: with one unit left to study, none is placed by the rule, the kept one closes the map.
+        assert asyncio.run(tutor.set_known(course, ["Slope", "Parabola"], [])) == "updated"
+        assert [c["title"] for c in db.concepts(course)] == ["Slope", "Parallel", "Parabola", "Practice 1"]
+        assert "no module" not in asyncio.run(tutor.set_capstone(course, "Curves", "Graph it", "b", [tutor.Milestone(concept="Parabola", deliverable="plot")]))
+    finally:
+        db.delete_course(course)
+        db.delete_course(other)
+        db.conn.execute("DELETE FROM profiles WHERE id IN (?, ?)", (who, other_who))

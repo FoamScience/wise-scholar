@@ -138,15 +138,15 @@ def test_the_cards_table_rebuild_keeps_rows_and_their_answers_and_errors(tmp_pat
 
     raw = sqlite3.connect(tmp_path / "old.db")
     raw.row_factory = sqlite3.Row
-    for script in db.MIGRATIONS[:-1]:
+    for script in db.MIGRATIONS[: db.MIGRATIONS.index(db._rebuild_cards)]:
         raw.executescript(script)
     raw.execute("ALTER TABLE cards DROP COLUMN lang")  # as on a database whose earlier upgrade missed it
     raw.execute("INSERT INTO cards (id, course_id, question, kind, options, answer_key, explanation, lemma, translation) VALUES (7, 1, 'q', 'open', '[]', 'a', 'e', 'hund', 't')")
     raw.execute("INSERT INTO answers (card_id, answer, confidence, correct) VALUES (7, 'x', 0.5, 1)")
     raw.execute("INSERT INTO errors (profile_id, course_id, card_id, kind, prompt, said, correct) VALUES (1, 1, 7, 'quiz', 'p', 's', 'c')")
     raw.commit()
-    db.MIGRATIONS[-1](raw)
-    db.MIGRATIONS[-1](raw)  # a rerun after a crash before the version bump is harmless
+    db._rebuild_cards(raw)
+    db._rebuild_cards(raw)  # a rerun after a crash before the version bump is harmless
     card = [tuple(r) for r in raw.execute("SELECT id, lemma, lang, translation, relearn_after FROM cards").fetchall()]
     assert card == [(7, "hund", None, "t", 0)]
     assert [r[0] for r in raw.execute("SELECT card_id FROM answers")] == [7] and [r[0] for r in raw.execute("SELECT card_id FROM errors")] == [7]
@@ -154,4 +154,28 @@ def test_the_cards_table_rebuild_keeps_rows_and_their_answers_and_errors(tmp_pat
     assert broken == []  # the profile and course rows are missing on purpose; only the card links are under test
     raw.execute("PRAGMA foreign_keys = OFF")
     raw.execute("INSERT INTO cards (course_id, question, kind, options, answer_key, explanation) VALUES (1, 'q', 'sort', '[]', '[]', 'e')")
+    raw.close()
+
+
+def test_the_errors_table_rebuild_keeps_quiz_and_writing_rows(tmp_path):
+    import sqlite3
+
+    from wise_scholar import db
+
+    raw = sqlite3.connect(tmp_path / "old.db")
+    raw.row_factory = sqlite3.Row
+    for script in db.MIGRATIONS[: db.MIGRATIONS.index(db._rebuild_errors)]:
+        if callable(script):
+            script(raw)
+        else:
+            raw.executescript(script)
+    raw.execute("PRAGMA foreign_keys = OFF")  # no profile or course rows: only the table copy is under test
+    raw.execute("INSERT INTO errors (id, profile_id, course_id, kind, prompt, said, correct, note, pinned) VALUES (3, 1, 1, 'writing', 'p', 's', 'c', 'n', 1)")
+    raw.execute("INSERT INTO errors (profile_id, course_id, kind, prompt, said, correct) VALUES (1, 1, 'quiz', 'p', 's', 'c')")
+    raw.commit()
+    db._rebuild_errors(raw)
+    db._rebuild_errors(raw)
+    assert [tuple(r) for r in raw.execute("SELECT id, kind, note, pinned FROM errors ORDER BY id")] == [(3, "writing", "n", 1), (4, "quiz", "", 0)]
+    raw.execute("PRAGMA foreign_keys = OFF")
+    raw.execute("INSERT INTO errors (profile_id, course_id, kind, prompt, said, correct) VALUES (1, 1, 'practice', 'p', 's', 'c')")
     raw.close()

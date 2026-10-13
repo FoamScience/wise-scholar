@@ -9,7 +9,7 @@ import { textDirection } from './text'
 export type Entry = {
   id: number
   topic: string
-  kind: 'quiz' | 'writing'
+  kind: 'quiz' | 'writing' | 'practice'
   prompt: string
   said: string
   correct: string
@@ -55,10 +55,10 @@ export function ErrorsPage({ profile }: { profile: number }) {
       {shown.map((e) => (
         <section key={e.id} className={`block entry${e.resolved ? ' resolved' : ''}`}>
           <div className="label">
-            {e.kind === 'writing' ? t('common.correctedText') : t('notebook.confidentMiss')} · {e.topic} · {day(e.created)}
+            {e.kind === 'writing' ? t('common.correctedText') : e.kind === 'practice' ? t('notebook.practiceMiss') : t('notebook.confidentMiss')} · {e.topic} · {day(e.created)}
             {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
           </div>
-          {e.kind === 'quiz' && <Markdown>{e.prompt}</Markdown>}
+          {e.kind !== 'writing' && <Markdown>{e.prompt}</Markdown>}
           <div className="attempt">
             <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
             <span className="said" dir={textDirection(e.said)}>

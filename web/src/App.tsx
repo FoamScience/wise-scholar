@@ -12,7 +12,7 @@ import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
-import { challengeLabel, lessonTitle } from './course'
+import { challengeLabel, lessonTitle, practiceTitle } from './course'
 import { Comparison, HintList, Ladder } from './Ladder'
 import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
@@ -889,6 +889,7 @@ function EditBar(props: { block: Block; first: boolean; last: boolean; disabled:
 function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction, prepared = false): string {
   if (prepared) return !lesson ? t('map.notPlanned') : lesson.blocks.some((b) => b.kind === 'done') ? t('map.planned') : t('map.drafting')
   if (!lesson) return concept.known ? t('map.placedOut') : t('map.notStarted')
+  if (concept.kind === 'practice') return lesson.blocks.some((b) => b.kind === 'done') ? t('common.done') : t('map.started')
   const cs = lesson.blocks
     .filter((b) => b.kind === 'challenge' || b.kind === 'exercise' || b.kind === 'speaking')
     .map((b) => b.data as ChallengeData)
@@ -1244,8 +1245,8 @@ function Workspace({ courseId, speech, commands, art, sketched, concept, start }
               )}
               <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
                 <span className="concept-title" dir="auto">
-                  {c.title}
-                  {course.mode !== 'teacher' && (
+                  {c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}
+                  {course.mode !== 'teacher' && c.kind !== 'practice' && (
                     <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
                       {[1, 2, 3].map((n) => (
                         <i key={n} className={n <= squares(c) ? 'on' : ''} />

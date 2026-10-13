@@ -35,7 +35,7 @@ export type ChallengeData = {
 export type Scored = { word: string; score: number }
 export type SpeakingData = ChallengeData & { speaking: 'read' | 'shadow'; lang: string; scores: { words: Scored[]; heard: string | null; score: number }[] }
 export type Block = { id: number; lesson_id: number; kind: string; markdown: string; data: unknown; created: string; position: number }
-export type Concept = { id: number; module: string; title: string; known: number; mastery: number | null }
+export type Concept = { id: number; module: string; title: string; known: number; mastery: number | null; kind: 'concept' | 'practice' }
 export type Lesson = {
   id: number
   title: string
@@ -78,8 +78,13 @@ export type CourseDetail = Course & {
 }
 
 /** The server names its own lessons in English; a concept's lesson carries the tutor's title. */
+export function practiceTitle(title: string, t: TFunction): string {
+  return t('lesson.practice', { n: title.match(/\d+$/)?.[0] })
+}
+
 export function lessonTitle(lesson: Lesson, t: TFunction): string {
   const n = lesson.title.match(/\d+$/)?.[0]
+  if (lesson.phase === 'practice') return practiceTitle(lesson.title, t)
   if (lesson.concept_id !== null) return lesson.title
   if (lesson.phase === 'interview') return t('lesson.interview')
   if (lesson.phase === 'placement') return n ? t('lesson.placementRetake', { n }) : t('lesson.placement')
