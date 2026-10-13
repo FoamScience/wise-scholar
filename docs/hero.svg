@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="220" viewBox="0 0 880 220" role="img" aria-label="Wise Scholar">
+  <rect width="880" height="220" rx="18" fill="#0b5f5a"/>
+  <g transform="translate(56 46) scale(4)">
+    <path d="M6 11c3.5-1.2 7-1 10 1.4 3-2.4 6.5-2.6 10-1.4v12.2c-3.5-1.2-7-1-10 1.4-3-2.4-6.5-2.6-10-1.4z" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M16 12.4v12.2" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+    <path d="M9.5 16.5l2.4 3.6 2.1-3.6M18 16.5l2.4 3.6 2.1-3.6" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="16" cy="6.5" r="1.8" fill="#f0b35c"/>
+  </g>
+  <text x="220" y="108" fill="#ffffff" font-family="Georgia, 'Times New Roman', serif" font-size="56" font-weight="700">Wise Scholar</text>
+  <text x="222" y="152" fill="#cfe9e6" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="22">A self-hosted AI tutor that interviews you, then teaches.</text>
+  <text x="222" y="184" fill="#f0b35c" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="18">Hints, exercises, confidence-rated checks, spaced reviews. On your own machine.</text>
+</svg>
