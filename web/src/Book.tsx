@@ -6,7 +6,7 @@ import Markdown from './Md'
 import { NetworkCard } from './Network'
 import { api, failure } from './api'
 import { parts, timeline } from './chapters'
-import { challengeLabel, lessonTitle } from './course'
+import { challengeLabel, lessonTitle, sortItems } from './course'
 import type { Block, ChallengeData, Concept, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
 import { Correction } from './Diff'
 import type { Entry } from './Errors'
@@ -47,12 +47,22 @@ function QuizBlock({ block }: { block: Block }) {
   const { t } = useTranslation()
   const d = block.data as QuizData
   return (
-    <Card label={d.pretest ? t('quiz.pretest') : t('quiz.quickCheck')} className="quiz">
+    <Card label={d.pretest ? t('quiz.pretest') : d.kind === 'sort' ? t('quiz.sort') : t('quiz.quickCheck')} className="quiz">
       <Markdown>{block.markdown}</Markdown>
       <Translation text={d.translation} open />
+      {d.kind === 'sort' && d.answer === null && (
+        <ul className="book-options">
+          {sortItems(d.options).map((o) => (
+            <li key={o.text}>
+              <Markdown>{o.text}</Markdown>
+            </li>
+          ))}
+          <li className="muted">{d.categories?.join(' · ')}</li>
+        </ul>
+      )}
       {d.kind === 'choice' && (
-        <ul className="book-options" dir={textDirection(d.options.join(' '))}>
-          {d.options.map((o) => (
+        <ul className="book-options" dir={textDirection((d.options as string[]).join(' '))}>
+          {(d.options as string[]).map((o) => (
             <li key={o} className={o === d.answer ? 'picked' : undefined}>
               <Markdown>{o}</Markdown>
             </li>
@@ -67,7 +77,7 @@ function QuizBlock({ block }: { block: Block }) {
           <span dir={textDirection(d.answer)}>{d.answer}</span>
         </div>
       ) : (
-        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} />
+        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
       )}
     </Card>
   )

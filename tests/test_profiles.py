@@ -1058,3 +1058,65 @@ def test_redraw_sends_the_tutor_back_to_each_figure_and_replace_figure_keeps_the
     assert redrawn_twice == f"figure {first['id']} redrawn"
     third = db.block(first["id"])
     assert third["data"]["previous"]["caption"] == "A real cell" and "restored" not in third["data"] and "previous" not in third["data"]["previous"]
+
+
+def test_a_sort_check_is_graded_placement_by_placement(monkeypatch):
+    import asyncio
+    import json
+
+    from wise_scholar import app, obsidian, quiz, tutor
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Sorter')").lastrowid
+    try:
+        course = db.create_course("Python", who)["id"]
+        db.set_concepts(course, [{"title": "Types", "concepts": ["Mutability"], "known": []}])
+        concept = db.concepts(course)[0]
+        lesson = db.create_lesson(course, "Mutability", "lesson", concept["id"])
+        item = lambda text, category: tutor.SortItem(text=text, category=category)  # noqa: E731
+        items = [item("list", "mutable"), item("dict", "mutable"), item("set", "mutable"), item("tuple", "immutable"), item("str", "immutable"), item("frozenset", "immutable")]
+        pose = lambda cats, its: asyncio.run(tutor.pose_sort(lesson, "Which of these can change in place?", cats, its, "A mutable object changes under the same name."))  # noqa: E731
+        assert pose(["mutable"], items).startswith("error: a sort needs 2 to 4 distinct categories")
+        assert pose(["mutable", "immutable"], items[:5]).startswith("error: a sort needs 6 to 12 distinct items")
+        assert pose(["mutable", "immutable"], [*items[:5], item("bytes", "frozen")]).startswith("error: every item names one of the categories")
+        assert pose(["mutable", "immutable", "callable"], items).startswith("error: every item names one of the categories")
+        assert pose(["mutable", "immutable"], items).startswith("shown as quiz ")
+        block = db.blocks(lesson)[-1]
+        data = block["data"]
+        assert block["kind"] == "quiz" and data["kind"] == "sort" and data["categories"] == ["mutable", "immutable"] and "answer_key" not in data
+        assert sorted(o["text"] for o in data["options"]) == ["dict", "frozenset", "list", "set", "str", "tuple"]
+        assert all(set(o) == {"text"} for o in data["options"])  # no category reaches the browser before grading
+        card = db.card(data["card_id"])
+        assert card["kind"] == "sort" and quiz.public(card)["categories"] == ["mutable", "immutable"] and card["scheduled"] == 1
+        assert quiz.public(card)["options"] == data["options"] and card["options"][0]["category"] in ("mutable", "immutable")
+
+        wrong = json.dumps({o["text"]: ("immutable" if o["text"] in ("tuple", "str", "frozenset", "set") else "mutable") for o in data["options"]})
+        asyncio.run(app.answer_quiz(block["id"], app.QuizAnswer(answer=wrong, confidence=0.9)))
+        graded = db.block(block["id"])["data"]
+        assert graded["correct"] is False and graded["misplaced"] == ["set"] and graded["confident_miss"] is True
+        assert turns[-1].startswith("[event] Quiz") and "misplaced: 'set'" in turns[-1] and "set → immutable" in turns[-1]
+        assert db.errors(who)[-1]["said"] == "set → immutable" and db.errors(who)[-1]["correct"] == "set → mutable"
+        reviewed = app.review_card(card["id"], app.QuizAnswer(answer=wrong, confidence=0.4))
+        assert reviewed["correct"] is False and reviewed["misplaced"] == ["set"]
+        assert quiz.misplaced(card, "not json") == [o["text"] for o in card["options"]]
+
+        note = obsidian.Vault(course)._card_body(db.lesson(lesson), db.block(block["id"]))
+        assert "- set → immutable ✗" in note and "**mutable · immutable**" in note
+        flash = "\n".join(obsidian.Vault(course)._flashcards(concept))
+        assert "- frozenset" in flash and "frozenset → immutable" in flash
+
+        right = json.dumps({o["text"]: o["category"] for o in card["options"]})
+        assert quiz.auto_correct(card, right) is True and quiz.grade(quiz.submit(card, right, 0.5), True)["misplaced"] == []
+
+        db.conn.execute("UPDATE courses SET mode = 'teacher' WHERE id = ?", (course,))
+        plan = db.create_lesson(course, "Mutability plan", "lesson", concept["id"])
+        assert asyncio.run(tutor.pose_sort(plan, "Sort them.", ["mutable", "immutable"], items, "Why.")).startswith("shown")
+        authored = db.blocks(plan)[-1]
+        assert authored["data"]["options"][0]["category"] in ("mutable", "immutable") and authored["data"]["answer_key"] == '["mutable", "immutable"]'
+        edited = app.edit_block(authored["id"], app.BlockEdit(markdown="Sort these.", options=["x"], answer_key="y", explanation="Because."))
+        assert edited["data"]["options"] == authored["data"]["options"] and edited["data"]["answer_key"] == authored["data"]["answer_key"]
+        assert edited["data"]["explanation"] == "Because." and db.card(authored["data"]["card_id"])["question"] == "Sort these."
+    finally:
+        db.delete_course(course)
+        db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))

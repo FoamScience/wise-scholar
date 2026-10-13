@@ -9,7 +9,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import course_files, db
+from . import course_files, db, quiz
 
 # Folder and property names are fixed in English so a re-export lands on the same files; the text inside a note
 # follows the learner's language.
@@ -271,7 +271,18 @@ class Vault:
     def _card_body(self, lesson: dict, block: dict) -> str:
         t, d, kind = self.t, block["data"], block["kind"]
         out = [block["markdown"], ""]
-        if kind == "quiz":
+        if kind == "quiz" and d.get("kind") == "sort":
+            out += [f"- {o['text']}" for o in d["options"]] + ["", "**" + " · ".join(d["categories"]) + "**", ""]
+            if d.get("answer") is not None:
+                placed, wrong = quiz.placements(d["answer"]), set(d.get("misplaced", []))
+                out += [f"- {o['text']} → {placed.get(o['text'], '?')}{' ✗' if o['text'] in wrong else ''}" for o in d["options"]] + [""]
+                if d.get("explanation"):
+                    out.append(f"**{t['explanation']}**: {d['explanation']}")
+            elif self.solutions and not self.inline:
+                out += [f"- {o['text']} → {o['category']}" for o in db.card(d["card_id"])["options"]] + [""]
+            else:
+                out.append(f"*{t['unanswered']}*")
+        elif kind == "quiz":
             if d.get("options"):
                 mark = lambda o: "**" if self.solutions and o == d.get("answer_key") else ""  # noqa: E731
                 out += [f"- {mark(o)}{o}{mark(o)}" for o in d["options"]] + [""]
@@ -475,9 +486,14 @@ class Vault:
         lines = ["", f"## {self.t['flashcards']}", "", "#flashcards"]
         for c in cards:
             question = side(c["question"])
+            answer = c["answer_key"]
             if c["kind"] == "choice":
                 question += "\n" + "\n".join(f"- {o}" for o in json.loads(c["options"]))
-            lines += ["", question, "?", side(c["answer_key"])]
+            elif c["kind"] == "sort":
+                items = json.loads(c["options"])
+                question += "\n" + "\n".join(f"- {o['text']}" for o in items) + "\n" + " · ".join(json.loads(answer))
+                answer = "\n".join(f"{o['text']} → {o['category']}" for o in items)
+            lines += ["", question, "?", side(answer)]
         return lines
 
     def _word_notes(self):

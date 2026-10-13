@@ -885,6 +885,69 @@ pre {
   border-color: var(--teal);
 }
 
+.sort {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sort-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.sort-row > p {
+  margin: 0;
+}
+
+.cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cat {
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cat.picked {
+  background: var(--teal-tint);
+  border-color: var(--teal);
+}
+
+.sort-outcome {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sort-outcome li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sort-outcome li > p {
+  margin: 0;
+}
+
 .quiz-option input,
 .confidence input {
   accent-color: var(--teal);

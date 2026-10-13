@@ -42,6 +42,7 @@
       "rank_mechanisms": "ranking teaching approaches…",
       "set_course_map": "laying out the course…",
       "pose_challenge": "preparing a challenge…",
+      "pose_sort": "preparing a sorting check…",
       "pose_comparison": "comparing two solutions…",
       "pose_exercise": "preparing an exercise…",
       "add_reading": "writing a text for you…",
@@ -291,6 +292,9 @@
       "teacherHelp": "The course designer interviews you about your class and writes a lesson plan per unit: openings, explanations, exercises with solutions, quick checks with keys, misconceptions, timing. Nothing is taught to you; your courses stay yours."
     },
     "quiz": {
+      "placeEach": "Place each item in its category",
+      "misplaced": "Wrongly placed",
+      "sort": "Sort",
       "howSure": "How sure are you?",
       "guessing": "guessing",
       "certain": "certain",

@@ -56,6 +56,7 @@ const LESSON_AREA_TOOLS = [
   'pose_comparison',
   'pose_exercise',
   'pose_quiz',
+  'pose_sort',
   'add_reading',
   'add_figure',
   'add_diagram',
@@ -774,7 +775,7 @@ function draftOf(block: Block): Draft {
     solution: d.solution ?? '',
     hints: (d.hints ?? []).join('\n'),
     run: d.run ?? '',
-    options: (d.options ?? []).join('\n'),
+    options: d.kind === 'choice' ? (d.options as string[]).join('\n') : '',
     answer_key: d.answer_key ?? '',
     explanation: d.explanation ?? '',
   }

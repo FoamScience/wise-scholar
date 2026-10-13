@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import random
@@ -32,6 +33,11 @@ class Gloss(BaseModel):
     meaning: str
 
 
+class SortItem(BaseModel):
+    text: str
+    category: str
+
+
 class Line(BaseModel):
     speaker: str
     text: str
@@ -49,7 +55,7 @@ class CastQuestion(BaseModel):
 log = logging.getLogger(__name__)
 
 
-def _shuffled(options: list[str]) -> list[str]:
+def _shuffled(options: list) -> list:
     """The tutor tends to write the right option first; every choice card stores its options in random order."""
     return random.sample(options, len(options))
 
@@ -1207,6 +1213,49 @@ async def pose_quiz(
         # Material for the teacher: the key and the explanation are part of the card from the start.
         shown.update({"answer_key": answer_key, "explanation": explanation})
     block = db.add_block(lesson_id, "quiz", question, shown)
+    _show(lesson, block)
+    return f"shown as quiz {block['id']}; end the turn and wait for the answer"
+
+
+SORT_CATEGORIES = (2, 4)
+SORT_ITEMS = (6, 12)
+
+
+@mcp.tool()
+async def pose_sort(lesson_id: int, question: str, categories: list[str], items: list[SortItem], explanation: str) -> str:
+    """Show a sorting check: the learner places each item into one of the categories, and the server grades it.
+
+    For concepts that are told apart (kinds, cases, types, rules that apply or not). question: what to
+    sort and what the categories mean, in Markdown. categories: 2 to 4 short names. items: 6 to 12 short
+    texts, each with its right category; every category gets at least one. explanation: shown after
+    grading, what tells the categories apart; it never says where an item goes. The card marks the
+    misplaced items without naming their right category, and the result [event] lists them: show in chat
+    one pair of items that tells the categories apart, then pose the misplaced ones again with pose_sort.
+    The check comes back later in spaced reviews. End the turn after posing it.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if not question.strip() or not explanation.strip():
+        return "error: the question and the explanation are required"
+    categories = [c.strip() for c in categories]
+    placed = [{"text": i.text.strip(), "category": i.category.strip()} for i in items]
+    if not (SORT_CATEGORIES[0] <= len(categories) <= SORT_CATEGORIES[1]) or len(set(categories)) != len(categories) or not all(categories):
+        return f"error: a sort needs {SORT_CATEGORIES[0]} to {SORT_CATEGORIES[1]} distinct categories"
+    if not (SORT_ITEMS[0] <= len(placed) <= SORT_ITEMS[1]) or len({i["text"] for i in placed}) != len(placed) or not all(i["text"] for i in placed):
+        return f"error: a sort needs {SORT_ITEMS[0]} to {SORT_ITEMS[1]} distinct items"
+    if not all(i["category"] in categories for i in placed) or {i["category"] for i in placed} != set(categories):
+        return "error: every item names one of the categories, and every category has at least one item"
+    options = _shuffled(placed)
+    card_id = db.add_card(
+        lesson["course_id"], lesson["concept_id"], question.strip(), "sort", options, json.dumps(categories), explanation.strip(),
+        scheduled=lesson["phase"] != "placement" and not prepared(lesson),
+    )
+    # The learner's copy of the items carries no category; the teacher's does.
+    shown = {"card_id": card_id, "kind": "sort", "options": [{"text": o["text"]} for o in options], "categories": categories, "answer": None}
+    if prepared(lesson):
+        shown.update({"options": options, "answer_key": json.dumps(categories), "explanation": explanation.strip()})
+    block = db.add_block(lesson_id, "quiz", question.strip(), shown)
     _show(lesson, block)
     return f"shown as quiz {block['id']}; end the turn and wait for the answer"
 

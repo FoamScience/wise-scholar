@@ -3,12 +3,18 @@ import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
 import { api } from './api'
+import { sortItems } from './course'
+import type { SortItem } from './course'
 import { percent } from './i18n'
+
+export type QuizKind = 'choice' | 'open' | 'sort'
 
 export type QuizData = {
   card_id: number
-  kind: 'choice' | 'open'
-  options: string[]
+  kind: QuizKind
+  options: string[] | SortItem[]
+  categories?: string[]
+  misplaced?: string[]
   answer: string | null
   translation?: string
   pretest?: boolean
@@ -21,15 +27,72 @@ export type QuizData = {
   feedback?: string
 }
 
-export type Graded = { correct: boolean; confident_miss: boolean; answer_key: string; explanation: string }
+export type Graded = { correct: boolean; confident_miss: boolean; answer_key: string; explanation: string; misplaced?: string[] }
 type DueCard = {
   id: number
   topic: string
   question: string
-  kind: 'choice' | 'open'
-  options: string[]
+  kind: QuizKind
+  options: string[] | SortItem[]
+  categories?: string[]
   translation: string
   confident_miss: boolean
+}
+
+function placements(answer: string): Record<string, string> {
+  try {
+    const placed: unknown = JSON.parse(answer)
+    const ok = placed !== null && typeof placed === 'object' && !Array.isArray(placed) && Object.values(placed).every((v) => typeof v === 'string')
+    return ok ? (placed as Record<string, string>) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Each item with a row of category buttons; the answer is the placement map as JSON. */
+function SortForm(props: { items: SortItem[]; categories: string[]; placed: Record<string, string>; onPlace: (item: string, category: string) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="sort">
+      <div className="small">{t('quiz.placeEach')}</div>
+      {props.items.map((item) => (
+        <div key={item.text} className="sort-row">
+          <Markdown>{item.text}</Markdown>
+          <div className="cats" role="group" aria-label={item.text}>
+            {props.categories.map((c) => (
+              <button
+                type="button"
+                key={c}
+                aria-pressed={props.placed[item.text] === c}
+                className={props.placed[item.text] === c ? 'cat picked' : 'cat'}
+                onClick={() => props.onPlace(item.text, c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** A graded sort: every item with where it went, the misplaced ones marked. */
+export function SortOutcome({ items, answer, misplaced }: { items: SortItem[]; answer: string; misplaced?: string[] }) {
+  const { t } = useTranslation()
+  const placed = placements(answer)
+  const wrong = new Set(misplaced ?? [])
+  return (
+    <ul className="sort-outcome">
+      {items.map((item) => (
+        <li key={item.text} className={wrong.has(item.text) ? 'misplaced' : undefined}>
+          <Markdown>{item.text}</Markdown>
+          <span className={wrong.has(item.text) ? 'chip warn' : 'chip'}>{placed[item.text] ?? '?'}</span>
+          {wrong.has(item.text) && <span className="small">{t('quiz.misplaced')}</span>}
+        </li>
+      ))}
+    </ul>
+  )
 }
 type Calibration = {
   n: number
@@ -50,8 +113,9 @@ export function Translation({ text, open }: { text?: string; open?: boolean }) {
 
 function QuizForm(props: {
   id: string
-  kind: 'choice' | 'open'
-  options: string[]
+  kind: QuizKind
+  options: string[] | SortItem[]
+  categories?: string[]
   disabled: boolean
   onUnknown?: () => void
   onSubmit: (answer: string, confidence: number) => void
@@ -60,10 +124,15 @@ function QuizForm(props: {
   const [answer, setAnswer] = useState('')
   const [unknown, setUnknown] = useState(false)
   const [confidence, setConfidence] = useState(50)
+  const [placed, setPlaced] = useState<Record<string, string>>({})
+  const items = props.kind === 'sort' ? sortItems(props.options) : []
+  const sorted = props.kind === 'sort' && items.length > 0 && items.every((i) => placed[i.text])
+  const ready = unknown || sorted || (props.kind !== 'sort' && answer.trim() !== '')
 
   function submit(e: FormEvent) {
     e.preventDefault()
     if (unknown) props.onUnknown!()
+    else if (sorted) props.onSubmit(JSON.stringify(placed), confidence / 100)
     else if (answer.trim()) props.onSubmit(answer.trim(), confidence / 100)
   }
 
@@ -74,9 +143,11 @@ function QuizForm(props: {
 
   return (
     <form className="quiz-form" onSubmit={submit}>
-      {props.kind === 'choice' ? (
+      {props.kind === 'sort' ? (
+        <SortForm items={items} categories={props.categories ?? []} placed={placed} onPlace={(item, c) => setPlaced({ ...placed, [item]: c })} />
+      ) : props.kind === 'choice' ? (
         <div className="quiz-options">
-          {props.options.map((o) => (
+          {(props.options as string[]).map((o) => (
             <label key={o} className={o === answer ? 'quiz-option picked' : 'quiz-option'}>
               <input type="radio" name={props.id} checked={o === answer} onChange={() => pick(o)} />
               <Markdown>{o}</Markdown>
@@ -126,7 +197,7 @@ function QuizForm(props: {
         />
         <span className="small">{t('quiz.certain')}</span>
         <output>{percent(unknown ? 0 : confidence / 100)}</output>
-        <button className="btn primary" disabled={props.disabled || !(unknown || answer.trim())}>
+        <button className="btn primary" disabled={props.disabled || !ready}>
           {t('common.submit')}
         </button>
       </div>
@@ -134,7 +205,7 @@ function QuizForm(props: {
   )
 }
 
-export function QuizResult(props: { answer: string; confidence: number; result: Graded; feedback?: string; unknown?: boolean }) {
+export function QuizResult(props: { answer: string; confidence: number; result: Graded; feedback?: string; unknown?: boolean; items?: SortItem[] }) {
   const { result } = props
   const { t } = useTranslation()
   return (
@@ -143,11 +214,11 @@ export function QuizResult(props: { answer: string; confidence: number; result: 
         <span className="label">
           {props.unknown ? t('common.yourAnswer') : t('quiz.answerSure', { percent: percent(props.confidence) })}
         </span>
-        {props.unknown ? t('quiz.dontKnow') : props.answer}
+        {props.unknown ? t('quiz.dontKnow') : props.items ? <SortOutcome items={props.items} answer={props.answer} misplaced={result.misplaced} /> : props.answer}
       </div>
       <div className={result.correct ? 'solution' : 'hint'}>
         <div className="label">{result.correct ? t('quiz.correct') : t('quiz.notQuite')}</div>
-        {!result.correct && <Markdown>{t('quiz.answerKey', { answer: result.answer_key })}</Markdown>}
+        {!result.correct && !props.items && <Markdown>{t('quiz.answerKey', { answer: result.answer_key })}</Markdown>}
         <Markdown>{props.feedback || result.explanation}</Markdown>
         {result.confident_miss && (
           <p>{t('quiz.confidentMiss', { percent: percent(props.confidence) })}</p>
@@ -170,22 +241,37 @@ export function QuizCard(props: {
   const { t } = useTranslation()
   return (
     <section id={`block-${props.id}`} className="block quiz">
-      <div className="label">{props.data.pretest ? t('quiz.pretest') : t('quiz.quickCheck')}</div>
+      <div className="label">{props.data.pretest ? t('quiz.pretest') : d.kind === 'sort' ? t('quiz.sort') : t('quiz.quickCheck')}</div>
       <Markdown>{props.question}</Markdown>
       <Translation text={d.translation} />
       {props.authored ? (
         <div className="solution">
-          {d.options.length > 0 && (
-            <ul className="book-options">
-              {d.options.map((o) => (
-                <li key={o} className={o === d.answer_key ? 'picked' : undefined}>
-                  <Markdown>{o}</Markdown>
+          {d.kind === 'sort' ? (
+            <ul className="sort-outcome">
+              {sortItems(d.options).map((o) => (
+                <li key={o.text}>
+                  <Markdown>{o.text}</Markdown>
+                  <span className="chip">{o.category ?? '?'}</span>
                 </li>
               ))}
             </ul>
+          ) : (
+            d.options.length > 0 && (
+              <ul className="book-options">
+                {(d.options as string[]).map((o) => (
+                  <li key={o} className={o === d.answer_key ? 'picked' : undefined}>
+                    <Markdown>{o}</Markdown>
+                  </li>
+                ))}
+              </ul>
+            )
           )}
-          <div className="label">{t('quiz.key')}</div>
-          <Markdown>{d.answer_key ?? ''}</Markdown>
+          {d.kind !== 'sort' && (
+            <>
+              <div className="label">{t('quiz.key')}</div>
+              <Markdown>{d.answer_key ?? ''}</Markdown>
+            </>
+          )}
           {d.explanation && <Markdown>{d.explanation}</Markdown>}
         </div>
       ) : d.answer === null ? (
@@ -193,6 +279,7 @@ export function QuizCard(props: {
           id={`quiz-${props.id}`}
           kind={d.kind}
           options={d.options}
+          categories={d.categories}
           disabled={props.disabled}
           onUnknown={props.onUnknown}
           onSubmit={props.onSubmit}
@@ -203,7 +290,7 @@ export function QuizCard(props: {
           {d.answer}
         </div>
       ) : (
-        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} />
+        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
       )}
     </section>
   )
@@ -267,7 +354,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
         </div>
         <Markdown>{card.question}</Markdown>
         <Translation text={card.translation} />
-        {!given && <QuizForm key={card.id} id={`card-${card.id}`} kind={card.kind} options={card.options} disabled={false} onSubmit={submit} />}
+        {!given && <QuizForm key={card.id} id={`card-${card.id}`} kind={card.kind} options={card.options} categories={card.categories} disabled={false} onSubmit={submit} />}
         {given && pending && (
           <div className="quiz-result">
             <div className="attempt">
@@ -291,7 +378,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
         )}
         {given && result && (
           <>
-            <QuizResult answer={given.answer} confidence={given.confidence} result={result} />
+            <QuizResult answer={given.answer} confidence={given.confidence} result={result} items={card.kind === 'sort' ? sortItems(card.options) : undefined} />
             <div className="row">
               <button className="btn primary" onClick={next}>
                 {index + 1 < cards.length ? t('common.next') : t('common.finish')}
