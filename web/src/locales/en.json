@@ -42,6 +42,7 @@
       "rank_mechanisms": "ranking teaching approaches…",
       "set_course_map": "laying out the course…",
       "pose_challenge": "preparing a challenge…",
+      "pose_comparison": "comparing two solutions…",
       "pose_exercise": "preparing an exercise…",
       "add_reading": "writing a text for you…",
       "add_figure": "drawing a figure…",
@@ -129,6 +130,8 @@
       "done_other": "Done · {{count}} picked"
     },
     "challenge": {
+      "compare": "Compare the two",
+      "solution": "Solution {{n}}",
       "transfer": "Transfer: same idea, new ground, no hints",
       "milestone": "Capstone milestone",
       "pretest": "First, try this",

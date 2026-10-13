@@ -495,6 +495,31 @@ def test_a_long_pretest_is_refused_and_a_short_one_shown():
     assert asyncio.run(tutor.pose_challenge(lesson, "x" * tutor.PRETEST_CHARS, pretest=True)).startswith("shown")
     assert asyncio.run(tutor.pose_challenge(lesson, "x" * (tutor.PRETEST_CHARS + 1), pretest=True)).startswith("error: not shown")
 
+    from wise_scholar import history, obsidian
+
+    sides = ("```py\nn*(n+1)//2\n```", "```py\nsum(range(n+1))\n```")
+    ask = "When is each the better choice?"
+    assert asyncio.run(tutor.pose_comparison(lesson, "Sum 1..n", *sides, ask)) == "error: a comparison follows a challenge the learner solved in this lesson"
+    last = db.blocks(lesson)[-1]
+    db.set_block_data(last["id"], {**last["data"], "solved": True})
+    assert asyncio.run(tutor.pose_comparison(lesson, "Sum 1..n", "", "loop", ask)) == "error: the problem, both solutions and the question are required"
+    assert asyncio.run(tutor.pose_comparison(lesson, "Sum 1..n", *sides, " ")).startswith("error: the problem")
+    assert asyncio.run(tutor.pose_comparison(lesson, "Sum 1..n", "x" * 3001, "loop", ask)).startswith("error: each solution")
+    assert asyncio.run(tutor.pose_comparison(lesson, " Sum 1..n ", sides[0], " " + sides[1] + " ", ask)).startswith("shown as challenge")
+    compared = db.blocks(lesson)[-1]
+    assert compared["kind"] == "challenge" and compared["data"]["comparison"] == {"left": sides[0], "right": sides[1], "question": ask}
+    assert compared["markdown"] == "Sum 1..n" and "form" not in compared["data"] and compared["data"]["max_hints"] == 3
+    assert asyncio.run(tutor.pose_comparison(lesson, "p", "a", "b", ask)) == "error: this lesson already has its comparison"
+    assert asyncio.run(tutor.give_hint(compared["id"], "Count the operations.")) == "shown as hint 1 of 3"
+    db.set_block_data(compared["id"], {**db.block(compared["id"])["data"], "attempts": ["a", "b", "c"]})
+    assert asyncio.run(tutor.reveal(compared["id"], "One is O(1), one is O(n).")) == "shown"
+    assert history._line(db.block(compared["id"])).startswith("comparison: Sum 1..n")
+    note = obsidian.Vault(course)._card_body(db.lesson(lesson), db.block(compared["id"]))
+    assert "**Solution 2**" in note and sides[1] in note and ask in note
+    db.course_lang(course, "de")
+    assert asyncio.run(tutor.pose_comparison(lesson, "p", "a", "b", ask)) == "error: a comparison is for technical subjects, not a language course"
+    db.conn.execute("UPDATE courses SET lang = NULL WHERE id = ?", (course,))
+
 # Obsidian export: seeds profiles, so it lives here with the other profile-creating tests.
 
 

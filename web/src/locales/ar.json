@@ -42,6 +42,7 @@
       "rank_mechanisms": "يرتّب طرق التدريس…",
       "set_course_map": "يضع خريطة الدورة…",
       "pose_challenge": "يحضّر تحدّيًا…",
+      "pose_comparison": "يقارن حلّين…",
       "pose_exercise": "يحضّر تمرينًا…",
       "add_reading": "يكتب نصًّا لك…",
       "add_figure": "يرسم شكلًا…",
@@ -141,6 +142,8 @@
       "done_other": "تم · {{count}} خيار"
     },
     "challenge": {
+      "compare": "قارن بين الحلّين",
+      "solution": "الحل {{n}}",
       "transfer": "نقل: الفكرة نفسها في سياق جديد، بلا تلميحات",
       "milestone": "مرحلة من المشروع",
       "pretest": "جرّب أولًا",

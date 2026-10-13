@@ -49,3 +49,22 @@ export function HintList({ data: d }: { data: ChallengeData }) {
     </>
   )
 }
+
+export function Comparison({ data }: { data: ChallengeData }) {
+  const { t } = useTranslation()
+  const c = data.comparison
+  if (!c) return null
+  return (
+    <>
+      <div className="compare">
+        {([c.left, c.right] as const).map((solution, i) => (
+          <div key={i} className="side">
+            <div className="label">{t('challenge.solution', { n: i + 1 })}</div>
+            <Markdown>{solution}</Markdown>
+          </div>
+        ))}
+      </div>
+      <Markdown>{c.question}</Markdown>
+    </>
+  )
+}

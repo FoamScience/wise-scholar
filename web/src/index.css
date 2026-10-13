@@ -733,6 +733,19 @@ pre {
   text-transform: none;
 }
 
+.compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.compare .side {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .attempt {
   display: flex;
   flex-direction: column;

@@ -26,7 +26,7 @@ WORDS = {
         "correct": "Right answer", "resolved": "resolved", "pinned": "pinned", "unit_covered": "Unit covered", "result": "Result",
         "glossary": "Glossary", "known": "known", "learning": "learning", "seen_in": "Seen in", "flashcards": "Review cards",
         "pretest": "Opening question", "gave_up": "gave up", "solved": "solved", "unanswered": "not answered", "cast": "Cast",
-        "map": "Course map", "quick_check": "Quick check", "exercise": "Exercise", "challenge": "Task", "unknown": "I don't know",
+        "map": "Course map", "quick_check": "Quick check", "exercise": "Exercise", "challenge": "Task", "solution_n": "Solution {}", "unknown": "I don't know",
     },
     "fr": {
         "course": "Cours", "modules": "Modules", "units": "Unités", "lessons": "Leçons", "cards": "Cartes", "mistakes": "Erreurs",
@@ -39,7 +39,7 @@ WORDS = {
         "correct": "Bonne réponse", "resolved": "résolue", "pinned": "épinglée", "unit_covered": "Unité couverte", "result": "Résultat",
         "glossary": "Glossaire", "known": "connu", "learning": "en cours", "seen_in": "Vu dans", "flashcards": "Cartes de révision",
         "pretest": "Question d'ouverture", "gave_up": "abandon", "solved": "résolu", "unanswered": "sans réponse", "cast": "Émission",
-        "map": "Plan du cours", "quick_check": "Question rapide", "exercise": "Exercice", "challenge": "Tâche", "unknown": "Je ne sais pas",
+        "map": "Plan du cours", "quick_check": "Question rapide", "exercise": "Exercice", "challenge": "Tâche", "solution_n": "Solution {}", "unknown": "Je ne sais pas",
     },
     "ar": {
         "course": "الدورة", "modules": "الوحدات الكبرى", "units": "الوحدات", "lessons": "الدروس", "cards": "البطاقات", "mistakes": "الأخطاء",
@@ -52,7 +52,7 @@ WORDS = {
         "correct": "الجواب الصحيح", "resolved": "تم حلّه", "pinned": "مثبّت", "unit_covered": "اكتملت الوحدة", "result": "النتيجة",
         "glossary": "المسرد", "known": "معروف", "learning": "قيد التعلم", "seen_in": "ورد في", "flashcards": "بطاقات المراجعة",
         "pretest": "سؤال البداية", "gave_up": "استسلام", "solved": "محلول", "unanswered": "بلا إجابة", "cast": "حلقة",
-        "map": "خريطة الدورة", "quick_check": "سؤال سريع", "exercise": "تمرين", "challenge": "مهمة", "unknown": "لا أعرف",
+        "map": "خريطة الدورة", "quick_check": "سؤال سريع", "exercise": "تمرين", "challenge": "مهمة", "solution_n": "الحل {}", "unknown": "لا أعرف",
     },
 }
 CARD_KINDS = ("challenge", "exercise", "quiz", "speaking")
@@ -296,6 +296,10 @@ class Vault:
                     elif d.get("explanation"):
                         out.append(f"**{t['explanation']}**: {d['explanation']}")
         else:
+            if d.get("comparison"):
+                for n, side in enumerate(("left", "right"), start=1):
+                    out += [f"**{t['solution_n'].format(n)}**", "", d["comparison"][side], ""]
+                out += [d["comparison"]["question"], ""]
             if kind == "exercise":
                 out.append(f"**{t['run']}**: `{d.get('run', '')}`")
                 out.append(f"**{t['files']}**:")

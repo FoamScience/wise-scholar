@@ -30,7 +30,8 @@ def _line(block: dict) -> str:
     if kind == "exercise":
         return f"exercise ({', '.join(data['files'])}): {text} -> {_outcome(data)}"
     if kind == "challenge":
-        return f"{'writing' if data.get('writing') else 'challenge'}: {text} -> {_outcome(data)}"
+        what = "writing" if data.get("writing") else "comparison" if data.get("comparison") else "challenge"
+        return f"{what}: {text} -> {_outcome(data)}"
     if kind == "reading":
         return f"reading: {data['title']}"
     if kind == "done":
