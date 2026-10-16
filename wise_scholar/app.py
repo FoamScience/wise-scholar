@@ -426,7 +426,7 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         )
     if crafted.available():
         tools.append(
-            "[tools] Crafted figures: add_crafted_figure draws a thing with parts as a shaded isometric object, scripted "
+            "[tools] Crafted figures: add_crafted_figure draws a thing as itself in volume and shade, built or living, scripted "
             "against a kit (read craft_help first); replace_crafted_figure redraws an earlier figure that way in its place."
         )
     if not sandbox.commands():

@@ -501,8 +501,8 @@ async def add_animation(lesson_id: int, domain: str, stages: list[str], caption:
 
 @mcp.tool()
 async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str) -> str:
-    """Show a crafted figure: a thing with parts drawn as a shaded isometric object you could build, such as an
-    apparatus, a machine, a device, a rig, an instrument, or a data structure as a rack of trays. Read craft_help
+    """Show a crafted figure: a thing drawn as itself in volume and shade, from the kit's prisms, tubes, turned
+    bodies and soft bodies: an apparatus, a machine, a chromosome, a cell, an organ, a structure. Read craft_help
     first. script: an ES module that imports the kit from "./kit/iso-kit.mjs" and exports as default the string
     figureSvg returns, or an array of 2 to 6 such strings for an animation: the same object, one state per stage,
     played as one animation and shown stage by stage in the book. The server runs it and shows the SVG; an error
