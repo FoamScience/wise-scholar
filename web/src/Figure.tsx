@@ -9,6 +9,7 @@ export type FigureData = {
   alt: string
   credits?: Credit[]
   diagram?: { domain: string; substance?: string; stages?: string[] }
+  crafted?: { script: string }
   frames?: string[]
   previous?: FigureData & { caption: string }
   restored?: boolean
@@ -98,7 +99,7 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
         onClick={() => setLarge(!large)}
       >
         <div ref={box}>
-          <Drawing svg={d.svg} alt={d.alt} sketched={props.sketched && !d.diagram} />
+          <Drawing svg={d.svg} alt={d.alt} sketched={props.sketched && !d.diagram && !d.crafted} />
         </div>
       </button>
       {d.frames && d.frames.length > 1 && <Stages key={d.svg} box={box} count={d.frames.length} />}

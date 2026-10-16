@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 import httpx
 import simplemma
 
-from . import art, book, challenge, cleanup, course_files, db, diagrams, egress, handout, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
+from . import art, book, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
 from .backends import AGENT, BACKEND, MCP_SECRET, claude, opencode
 from .playbooks import describe
 
@@ -420,6 +420,11 @@ def _turn_prompt(lesson: dict, line: str) -> str:
             "[tools] Diagram domains for add_diagram (read diagram_help first): "
             + "; ".join(f"{d}: {diagrams.summary(d)}" for d in diagrams.domains())
         )
+    if crafted.available():
+        tools.append(
+            "[tools] Crafted figures: add_crafted_figure draws a thing with parts as a shaded isometric object, scripted "
+            "against a kit (read craft_help first)."
+        )
     if not sandbox.commands():
         tools += [
             "[tools] This server runs no code: there is no run_command, write_file, read_file or pose_exercise, and no "
@@ -551,7 +556,8 @@ def figure_svg(block_id: int) -> Response:
     block = db.block(block_id)
     if not block or block["kind"] != "figure":
         raise HTTPException(404, "no such figure")
-    return Response(block["data"]["svg"], media_type="image/svg+xml")
+    svg = block["data"]["svg"]
+    return Response(crafted.standalone(svg) if block["data"].get("crafted") else svg, media_type="image/svg+xml")
 
 
 @app.get("/api/audio/podcasts/{name}")

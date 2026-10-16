@@ -16,7 +16,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 
-from . import art, challenge, course_files, db, diagrams, figures, hub, plots, quiz, sandbox, speech, vocab
+from . import art, challenge, course_files, crafted, db, diagrams, figures, hub, plots, quiz, sandbox, speech, vocab
 from .backends import TURN_HEADER
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
@@ -500,6 +500,39 @@ async def add_animation(lesson_id: int, domain: str, stages: list[str], caption:
     )
     _show(lesson, block)
     return f"shown as figure {block['id']}, animated over {len(frames)} stages"
+
+
+@mcp.tool()
+async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str) -> str:
+    """Show a crafted figure: a thing with parts drawn as a shaded isometric object you could build, such as an
+    apparatus, a machine, a device, a rig, an instrument, or a data structure as a rack of trays. Read craft_help
+    first. script: an ES module that imports the kit from "./kit/iso-kit.mjs" and exports as default the string
+    figureSvg returns; the server runs it and shows the SVG, and an error carries Node's message. The figure is
+    coloured by the site's theme, so it carries no colours of its own. caption and alt as for add_figure."""
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if problem := pretest_blocker(lesson):
+        return f"refused: {problem}"
+    if not alt.strip():
+        return "error: alt text is required"
+    if not crafted.available():
+        return "error: this server cannot run Node, so there are no crafted figures; draw it with add_figure"
+    try:
+        svg = await crafted.render(script, db.workspace(lesson["slug"]))
+        data = _figure_data(svg, alt, limit=crafted.MAX_SVG) | {"crafted": {"script": script}}
+    except ValueError as e:
+        return f"error: {e}"
+    block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
+    block = db.set_block_data(block["id"], {**data, "svg": figures.prefix_ids(data["svg"], f"f{block['id']}-")})
+    _show(lesson, block)
+    return f"shown as figure {block['id']}"
+
+
+@mcp.tool()
+async def craft_help() -> str:
+    """The kit's API, the craft rules and an example script, to read before add_crafted_figure."""
+    return crafted.help_text()
 
 
 @mcp.tool()
