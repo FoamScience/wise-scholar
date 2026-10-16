@@ -22,6 +22,7 @@ RUNNER = (
     'writeFileSync(new URL("./figure.json", import.meta.url), JSON.stringify(Array.isArray(figure) ? figure.map(String) : [String(figure)]));\n'
 )
 ROOT = re.compile(r"^\s*(<svg\b[^>]*>)(.*)</svg>\s*$", re.S)
+DRAWN = ('class="iso-solid', 'class="tb"', 'class="bio-blob"', 'class="bio-membrane"')
 VIEWBOX = re.compile(r'viewBox="([^"]*)"')
 # The light theme's values of the tokens iso.css reads, for an SVG shown outside the web app.
 LIGHT = {
@@ -42,13 +43,14 @@ def help_text() -> str:
 
 async def render(script: str, workspace: Path) -> list[str]:
     """The SVG the script exports, or the stages of its animation, each a whole SVG; raises ValueError with Node's
-    message when it does not run, and when a stage draws no solid or the stages differ in size."""
+    message when it does not run, and when a stage draws nothing from the kit or the stages differ in size."""
     if len(script) > MAX_SCRIPT:
         raise ValueError(f"the script is over {MAX_SCRIPT} characters; build fewer parts")
     with tempfile.TemporaryDirectory(prefix="wise-scholar-figure-") as folder:
         work = Path(folder)
         (work / "kit").mkdir()
-        shutil.copy(KIT / "iso-kit.mjs", work / "kit")
+        for module in KIT.glob("*.mjs"):
+            shutil.copy(module, work / "kit")
         (work / "figure.mjs").write_text(script)
         (work / "run.mjs").write_text(RUNNER)
         where = INSIDE if sandbox.SANDBOX else work
@@ -67,8 +69,8 @@ async def render(script: str, workspace: Path) -> list[str]:
             raise ValueError(f"a figure is over {MAX_SVG} characters; build fewer or simpler parts")
         if not (root := ROOT.match(svg)):
             raise ValueError("a figure is not a whole <svg>; export what figureSvg returns, nothing before or after it")
-        if "iso-solid" not in svg:
-            raise ValueError("a figure has no solid in it; build it from the kit's slabs and cylinders")
+        if not any(mark in svg for mark in DRAWN):
+            raise ValueError("a figure draws nothing from the kit; build it from its prisms, tubes, turned bodies or soft bodies")
         heads.append(root[1])
     if len({(VIEWBOX.search(head) or [None, None])[1] for head in heads}) > 1:
         raise ValueError("the stages differ in size; give every stage the same figureSvg width and height and the same camera")

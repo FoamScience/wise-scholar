@@ -218,6 +218,52 @@
 .iso-face-text[data-tone='faint'] {
   fill: var(--iso-faint);
 }
+/* Tubes (tube.mjs): a bent rod, a pipe, a cable, a chromatid, a neurite. */
+.tb-body {
+  fill: var(--iso-shade-2);
+  stroke: none;
+}
+.tb-shine {
+  fill: var(--iso-top);
+  stroke: none;
+}
+.tb-shade {
+  fill: var(--iso-shade-0);
+  stroke: none;
+}
+.tb-ring {
+  fill: none;
+  stroke: var(--iso-lo);
+  stroke-width: 0.45;
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+}
+.tb-ring[data-tone='mid'] {
+  stroke: var(--iso-mid);
+}
+.tb-ring[data-tone='faint'] {
+  stroke: var(--iso-faint);
+}
+.tb-ring[data-tone='hi'] {
+  stroke: var(--iso-hi);
+}
+/* Soft bodies (blob.mjs): a cell, an organelle, a drop, a membrane. */
+.bio-blob-base,
+.bio-membrane-base {
+  fill: var(--iso-shade-2);
+}
+
+.bio-blob-shade {
+  fill: var(--iso-shade-0);
+  opacity: 0.58;
+}
+.bio-blob-highlight {
+  fill: var(--iso-top);
+  opacity: 0.62;
+}
+.bio-blob-edge {
+  fill: none;
+}
 @keyframes iso-flow {
   to {
     stroke-dashoffset: -32;
