@@ -423,7 +423,7 @@ def _turn_prompt(lesson: dict, line: str) -> str:
     if crafted.available():
         tools.append(
             "[tools] Crafted figures: add_crafted_figure draws a thing with parts as a shaded isometric object, scripted "
-            "against a kit (read craft_help first)."
+            "against a kit (read craft_help first); replace_crafted_figure redraws an earlier figure that way in its place."
         )
     if not sandbox.commands():
         tools += [
@@ -537,7 +537,7 @@ def _require_answerable(block: dict) -> None:
 
 @app.get("/api/meta")
 def meta() -> dict:
-    return {"agent": AGENT, "speech": speech.available(), "pdf": book.available(), "commands": sandbox.commands(), "art": bool(art.installed())}
+    return {"agent": AGENT, "speech": speech.available(), "pdf": book.available(), "commands": sandbox.commands(), "crafted": crafted.available()}
 
 
 @app.get("/api/tts")
@@ -785,23 +785,23 @@ async def post_turn(lesson_id: int, body: Turn) -> dict:
     return message
 
 
-@app.post("/api/lessons/{lesson_id}/redraw", status_code=202)
-async def redraw_figures(lesson_id: int) -> dict:
-    """Asks the tutor to draw the lesson's figures again with the art packs; each figure is replaced in place."""
-    lesson = _lesson(lesson_id)
-    _require_idle(lesson_id)
-    figures = [b["id"] for b in db.blocks(lesson_id) if b["kind"] == "figure"]
-    if not figures:
-        raise HTTPException(409, "the lesson has no figures")
-    if not art.installed():
-        raise HTTPException(409, "no art pack is installed")
+@app.post("/api/blocks/{block_id}/redraw", status_code=202)
+async def redraw_figure(block_id: int) -> dict:
+    """Asks the tutor to craft this figure again in its place."""
+    block = db.block(block_id)
+    if not block or block["kind"] != "figure":
+        raise HTTPException(404, "no such figure")
+    lesson = _lesson(block["lesson_id"])
+    _require_idle(lesson["id"])
+    if not crafted.available():
+        raise HTTPException(409, "this server cannot craft figures")
     _start_turn(
         lesson,
-        f"[redraw] Draw figures {', '.join(map(str, figures))} of this lesson again, one replace_figure call each: the same idea and "
-        "the same alt purpose, now composed from art pack icons found with find_art wherever one fits, with your own labels and "
-        "arrows around them; a figure the pack cannot improve is redrawn as it was. Then say in one sentence what changed.",
+        f"[redraw] Craft figure {block_id} of this lesson again, in its place, with one replace_crafted_figure call: the same idea, "
+        "its caption kept or sharpened, alt text telling what the new drawing shows, now a crafted object as craft_help describes "
+        "(read it first), animated over stages where the idea unfolds. Then say in one sentence what changed.",
     )
-    return {"figures": figures}
+    return {"figure": block_id}
 
 
 @app.post("/api/blocks/{block_id}/restore")
