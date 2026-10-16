@@ -218,6 +218,61 @@
 .iso-face-text[data-tone='faint'] {
   fill: var(--iso-faint);
 }
+/* Paint: data-paint on any group recolours every part inside it from one site colour, tinted or full. The
+   kit's classes read the --iso-* tokens from the nearest ancestor, so a painted group keeps its shading. */
+[data-paint] {
+  --paint-base: var(--panel);
+  --paint-edge: var(--ink);
+  --iso-paper: var(--paint-base);
+  --iso-face: var(--paint-base);
+  --iso-top: color-mix(in srgb, var(--paint-base) 86%, #fff);
+  --iso-lit-top: color-mix(in srgb, var(--paint-base) 70%, #fff);
+  --iso-lit-shade: color-mix(in srgb, var(--paint-base) 94%, #fff);
+  --iso-shade-0: color-mix(in srgb, var(--paint-base) 80%, #000);
+  --iso-shade-1: color-mix(in srgb, var(--paint-base) 86%, #000);
+  --iso-shade-2: color-mix(in srgb, var(--paint-base) 92%, #000);
+  --iso-shade-3: color-mix(in srgb, var(--paint-base) 96%, #000);
+  --iso-hi: var(--paint-edge);
+  --iso-lit: var(--paint-edge);
+  --iso-mid: color-mix(in srgb, var(--paint-edge) 75%, var(--paint-base));
+  --iso-lo: color-mix(in srgb, var(--paint-edge) 50%, var(--paint-base));
+  --iso-faint: color-mix(in srgb, var(--paint-edge) 28%, var(--paint-base));
+  --iso-dot: var(--paint-edge);
+}
+/* A tint takes its edge from the full colour; a full colour takes its edge halfway to the panel, so the outline
+   stands out in both themes. A name the sheet does not know keeps the plain greys. */
+[data-paint='teal'] {
+  --paint-base: var(--teal-tint);
+  --paint-edge: var(--teal);
+}
+[data-paint='teal-full'] {
+  --paint-base: var(--teal);
+  --paint-edge: color-mix(in srgb, var(--teal) 45%, var(--panel));
+}
+[data-paint='amber'] {
+  --paint-base: var(--amber-tint);
+  --paint-edge: var(--amber);
+}
+[data-paint='amber-full'] {
+  --paint-base: var(--amber);
+  --paint-edge: color-mix(in srgb, var(--amber) 45%, var(--panel));
+}
+[data-paint='danger'] {
+  --paint-base: color-mix(in srgb, var(--danger) 18%, var(--panel));
+  --paint-edge: var(--danger);
+}
+[data-paint='danger-full'] {
+  --paint-base: var(--danger);
+  --paint-edge: color-mix(in srgb, var(--danger) 45%, var(--panel));
+}
+[data-paint='dark'] {
+  --paint-base: var(--code-bg);
+  --paint-edge: var(--line-strong);
+}
+[data-paint='muted'] {
+  --paint-base: color-mix(in srgb, var(--muted) 22%, var(--panel));
+  --paint-edge: var(--muted);
+}
 /* Tubes (tube.mjs): a bent rod, a pipe, a cable, a chromatid, a neurite. */
 .tb-body {
   fill: var(--iso-shade-2);

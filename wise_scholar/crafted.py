@@ -26,8 +26,9 @@ DRAWN = ('class="iso-solid', 'class="tb"', 'class="bio-blob"', 'class="bio-membr
 VIEWBOX = re.compile(r'viewBox="([^"]*)"')
 # The light theme's values of the tokens iso.css reads, for an SVG shown outside the web app.
 LIGHT = {
-    "--panel": "#ffffff", "--ink": "#14202b", "--line": "#d5dbe1", "--line-strong": "#8794a1",
-    "--teal": "#0b5f5a", "--amber": "#6b3a00", "--danger": "#8f2d0f", "--mono": "'JetBrains Mono', ui-monospace, monospace",
+    "--panel": "#ffffff", "--ink": "#14202b", "--line": "#d5dbe1", "--line-strong": "#8794a1", "--muted": "#4a5967",
+    "--teal": "#0b5f5a", "--teal-tint": "#e1f0ee", "--amber": "#6b3a00", "--amber-tint": "#fbebd3",
+    "--danger": "#8f2d0f", "--code-bg": "#101a23", "--mono": "'JetBrains Mono', ui-monospace, monospace",
 }  # fmt: skip
 TOKEN = re.compile(r"var\((--[\w-]+)\)")
 

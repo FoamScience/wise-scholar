@@ -1,6 +1,6 @@
 # Crafted figures
 
-A crafted figure draws the thing as itself, in volume, shaded, in the site's own colours: a machine as a machine
+A crafted figure draws the thing as itself, in volume, shaded, painted from the site's own palette: a machine as a machine
 with its feet and rails, a chromosome as two chromatids pinched at the centromere, a cell as a soft body with a
 membrane and what lies inside it, a heart as chambers and vessels, a bridge as deck and cables. You write a small
 script against the kit; the server runs it and shows the SVG it exports as a figure. The reader names the thing at
@@ -190,9 +190,32 @@ cross-section shows the wall, and tubes for anything thread-like.
 
 `fadeLineSvg` loses its gradient here; use `fadedSvg` instead.
 
+## Paint
+
+The kit draws in the site's greys until you paint. `groupSvg(parts, { "data-paint": "teal" })` recolours every
+part inside the group, prism, tube or soft body alike, keeping its shading, and the colour follows the theme.
+The paints are the site's own colours:
+
+| Paint | What it is | Use it for |
+|---|---|---|
+| `teal`, `teal-full` | The site's accent, as a tint or in full | The subject, what the reader follows, water, living tissue |
+| `amber`, `amber-full` | Warm, as a tint or in full | Heat, energy, light, wood, the second thing when two must be told apart |
+| `danger`, `danger-full` | The site's alert colour | Harm, a fault, blood, what must not happen |
+| `dark` | The site's code background, dark in both themes | A dark material: rubber, iron, a shadow cavity, a nucleus |
+| `muted` | A grey from the text palette | Inactive, past, background parts |
+
+Paint carries meaning: one colour per role, the same colour for the same thing in every stage and every figure
+of a lesson. Parts that have no role stay unpainted. Nested paints work: a teal cell with a dark nucleus is
+`groupSvg([body, groupSvg([nucleus], { "data-paint": "dark" })], { "data-paint": "teal" })`. A name that is
+not in the table paints nothing.
+
+```js
+const chromatids = pieces.map(({ piece, n }) => k.groupSvg([tubeSvg(piece)], { "data-paint": n ? "teal" : "amber" }));
+```
+
 ## Tones
 
-Every stroke and fill is a tone, resolved by the site's theme, so a figure reads in light and dark alike.
+Within a paint, or in the plain greys, every stroke is a tone: how much it stands out, resolved by the theme.
 
 | Element | Tone |
 |---|---|
@@ -202,9 +225,7 @@ Every stroke and fill is a tone, resolved by the site's theme, so a figure reads
 | The one part the reader should watch now | `lit` (one only; a solid with `lit: true` gets a bright edge and a lighter top) |
 | Grooves, inset outlines, floor grid, faint texture | `faint` |
 | Small dots: screws, pores, ribosomes | dots `mid` at 0.4 to 0.55 |
-| Meaning carried by colour | `accent` (the site's teal), `warm` (amber), `alert` (danger); lines only, and only when the colour says something |
-
-Keep the figure monochrome otherwise. Colour everywhere is the mark of a poor figure.
+| A line that carries meaning on its own: a flow, a force, a signal | `accent` (the site's teal), `warm` (amber), `alert` (danger) |
 
 ## Painter's order
 
