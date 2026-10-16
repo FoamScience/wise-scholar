@@ -32,6 +32,16 @@ World coordinates are `[x, y, z]`: x and y on the floor, z up, in units of about
 `[sx, sy]` in the viewBox. Every function that draws takes the projection `P` and returns an SVG `d` string or a
 markup string. A plan is a rounded rectangle on the floor: `{ x, y, w, d, r }`.
 
+## Animation
+
+A mechanism that unfolds (a press closing, a valve opening, a drawer sliding out, a packet moving through a
+switch) is the same script exporting an array of 2 to 6 strings, each what `figureSvg` returns for one state of
+the same object, in order. The server plays them as one animation, three seconds a stage, each fading in over the one before, the first
+again after the last; the stage buttons hold any one of them. Build the figure in a function of the
+state and call it once per stage: same size, same camera, same parts, only the moving ones at their new place
+(rebuild them there; `translateAlong` moves a built group by a world offset). Say in the alt text what changes
+from stage to stage.
+
 ## Camera
 
 | Function | What it does |

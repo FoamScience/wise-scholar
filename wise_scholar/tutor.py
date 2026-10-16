@@ -494,10 +494,7 @@ async def add_animation(lesson_id: int, domain: str, stages: list[str], caption:
     except ValueError as e:
         return f"error: {e}"
     block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
-    prefix = f"f{block['id']}-"
-    block = db.set_block_data(
-        block["id"], {**data, "svg": figures.prefix_ids(data["svg"], prefix), "frames": [figures.prefix_ids(f, f"{prefix}{n}-") for n, f in enumerate(data["frames"])]}
-    )
+    block = db.set_block_data(block["id"], _prefixed(block["id"], data))
     _show(lesson, block)
     return f"shown as figure {block['id']}, animated over {len(frames)} stages"
 
@@ -507,8 +504,10 @@ async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str
     """Show a crafted figure: a thing with parts drawn as a shaded isometric object you could build, such as an
     apparatus, a machine, a device, a rig, an instrument, or a data structure as a rack of trays. Read craft_help
     first. script: an ES module that imports the kit from "./kit/iso-kit.mjs" and exports as default the string
-    figureSvg returns; the server runs it and shows the SVG, and an error carries Node's message. The figure is
-    coloured by the site's theme, so it carries no colours of its own. caption and alt as for add_figure."""
+    figureSvg returns, or an array of 2 to 6 such strings for an animation: the same object, one state per stage,
+    played as one animation and shown stage by stage in the book. The server runs it and shows the SVG; an error
+    carries Node's message. The figure is coloured by the site's theme, so it carries no colours of its own.
+    caption and alt as for add_figure; for an animation, alt tells the whole sequence."""
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
@@ -519,14 +518,55 @@ async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str
     if not crafted.available():
         return "error: this server cannot run Node, so there are no crafted figures; draw it with add_figure"
     try:
-        svg = await crafted.render(script, db.workspace(lesson["slug"]))
-        data = _figure_data(svg, alt, limit=crafted.MAX_SVG) | {"crafted": {"script": script}}
+        data = await _crafted_data(lesson, script, alt)
     except ValueError as e:
         return f"error: {e}"
     block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
-    block = db.set_block_data(block["id"], {**data, "svg": figures.prefix_ids(data["svg"], f"f{block['id']}-")})
+    block = db.set_block_data(block["id"], _prefixed(block["id"], data))
     _show(lesson, block)
-    return f"shown as figure {block['id']}"
+    stages = len(data.get("frames", []))
+    return f"shown as figure {block['id']}" + (f", animated over {stages} stages" if stages else "")
+
+
+@mcp.tool()
+async def replace_crafted_figure(lesson_id: int, block_id: int, script: str, caption: str, alt: str) -> str:
+    """Craft an existing figure of this lesson again in its place, whatever it was drawn with: same block, same
+    position in the lesson, and the drawing it replaces kept for the learner to go back to. Same rules as
+    add_crafted_figure. Use it when asked to redraw figures as crafted ones, or when a crafted figure of yours
+    turned out wrong."""
+    block = db.block(block_id)
+    if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
+        return f"error: no figure with id {block_id} in this lesson"
+    if not alt.strip():
+        return "error: alt text is required"
+    if not crafted.available():
+        return "error: this server cannot run Node, so there are no crafted figures; draw it with replace_figure"
+    lesson = db.lesson(lesson_id)
+    try:
+        data = await _crafted_data(lesson, script, alt)
+    except ValueError as e:
+        return f"error: {e}"
+    previous = {k: v for k, v in block["data"].items() if k not in ("previous", "restored")} | {"caption": block["markdown"]}
+    block = db.set_block(block_id, caption, _prefixed(block_id, data) | {"previous": previous})
+    _show(lesson, block, "block.updated")
+    stages = len(data.get("frames", []))
+    return f"figure {block_id} redrawn" + (f", animated over {stages} stages" if stages else "")
+
+
+async def _crafted_data(lesson: dict, script: str, alt: str) -> dict:
+    """The block data of a crafted figure: one drawing, or the stages played as one animation with the frames kept."""
+    stages = await crafted.render(script, db.workspace(lesson["slug"]))
+    if len(stages) == 1:
+        return _figure_data(stages[0], alt, limit=crafted.MAX_SVG) | {"crafted": {"script": script}}
+    data = _figure_data(crafted.animate(stages), alt, limit=crafted.MAX_SVG * len(stages))
+    return data | {"crafted": {"script": script}, "frames": [figures.clean(s, limit=crafted.MAX_SVG) for s in stages]}
+
+
+def _prefixed(block_id: int, data: dict) -> dict:
+    """The data with the ids inside its drawings made unique to the block, so figures on one page stay apart."""
+    prefix = f"f{block_id}-"
+    frames = {"frames": [figures.prefix_ids(f, f"{prefix}{n}-") for n, f in enumerate(data["frames"])]} if "frames" in data else {}
+    return {**data, "svg": figures.prefix_ids(data["svg"], prefix), **frames}
 
 
 @mcp.tool()
