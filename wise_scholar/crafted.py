@@ -15,6 +15,7 @@ MAX_SVG = 120_000
 MIN_STAGES, MAX_STAGES = 2, 6
 SECONDS_PER_STAGE = 3
 FADE = 0.4  # seconds of crossfade from one stage into the next
+CUT = 0.005  # seconds for the stage below to drop once the next is in, under the 10 ms the stage buttons hold at
 INSIDE = Path("/run/figure")
 RUNNER = (
     'import { writeFileSync } from "node:fs";\n'
@@ -83,14 +84,16 @@ def animate(stages: list[str]) -> str:
     the last. The root carries the stage count and the seconds, as the diagram animations do, so the stage buttons
     can hold one. A stage's ids are prefixed with its number, so what two stages define apart stays apart."""
     n, seconds = len(stages), SECONDS_PER_STAGE * len(stages)
-    fade, cut = FADE / seconds, 0.001
+    fade, cut = FADE / seconds, CUT / seconds
     groups = []
     for i, stage in enumerate(stages):
         head, body = ROOT.match(figures.prefix_ids(stage, f"s{i}-")).groups()
         start, end = i / n, (i + 1) / n
-        # The stage above is opaque before this one goes, so the drawing never thins out between two stages.
-        keys = ([(0, 1)] if i == 0 else [(0, 0), (start, 0), (start + fade, 1)]) + ([(1, 1)] if i == n - 1 else [(end + fade, 1), (end + fade + cut, 0), (1, 0)])
-        times, values = ";".join(f"{t:.3f}" for t, _ in keys), ";".join(str(v) for _, v in keys)
+        # The next stage fades in on top before its slot starts and this one drops the moment it has: the drawing
+        # never thins out between two stages (the loop's end cuts back to the first), and holding a stage at the
+        # start of its slot shows that stage, not the one before.
+        keys = ([(0, 1)] if i == 0 else [(0, 0), (start - fade, 0), (start, 1)]) + ([(1, 1)] if i == n - 1 else [(end, 1), (end + cut, 0), (1, 0)])
+        times, values = ";".join(f"{t:.4f}" for t, _ in keys), ";".join(str(v) for _, v in keys)
         groups.append(
             f'<g opacity="{keys[0][1]}"><animate attributeName="opacity" values="{values}" keyTimes="{times}" '
             f'dur="{seconds}s" repeatCount="indefinite"/>{body}</g>'
