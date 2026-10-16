@@ -84,7 +84,7 @@ function Stages({ box, count }: { box: React.RefObject<HTMLDivElement | null>; c
 }
 
 /** A tutor-drawn figure; click to see it large. */
-export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void }) {
+export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void; onRedraw?: () => void }) {
   const { t } = useTranslation()
   const d = props.data as FigureData
   const [large, setLarge] = useState(false)
@@ -105,6 +105,11 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
       {d.frames && d.frames.length > 1 && <Stages key={d.svg} box={box} count={d.frames.length} />}
       {props.caption && <div className="caption">{props.caption}</div>}
       <Credits credits={d.credits} />
+      {props.onRedraw && (
+        <button type="button" className="link small" disabled={props.disabled} onClick={props.onRedraw}>
+          {t('block.redraw')}
+        </button>
+      )}
       {d.previous && props.onRestore && (
         <button type="button" className="link small" disabled={props.disabled} onClick={props.onRestore}>
           {d.restored ? t('block.backToRedrawn') : t('block.restoreDrawing')}

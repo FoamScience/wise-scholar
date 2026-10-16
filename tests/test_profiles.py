@@ -987,14 +987,14 @@ def test_sketch_is_a_profile_choice_on_by_default():
     assert next(p for p in db.profiles() if p["id"] == who)["sketch"] is False
 
 
-def test_redraw_sends_the_tutor_back_to_each_figure_and_replace_figure_keeps_the_block(monkeypatch, tmp_path):
+def test_the_redraw_of_one_figure_asks_for_a_crafted_one_and_replace_figure_keeps_the_block(monkeypatch, tmp_path):
     import asyncio
     import json
 
     import pytest
     from fastapi import HTTPException
 
-    from wise_scholar import app, art, tutor
+    from wise_scholar import app, art, crafted, tutor
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Redraw')").lastrowid
     course = db.create_course("Cells", who)["id"]
@@ -1002,24 +1002,27 @@ def test_redraw_sends_the_tutor_back_to_each_figure_and_replace_figure_keeps_the
     lesson = db.create_lesson(course, "The cell", "lesson", None)
     monkeypatch.setattr(art, "ART", tmp_path)
     art._manifests.clear()
-    with pytest.raises(HTTPException, match="the lesson has no figures"):
-        asyncio.run(app.redraw_figures(lesson))
     asyncio.run(tutor.add_block(lesson, "prose", "A cell."))
     asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A cell", "a circle"))
     asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><rect width="4" height="4"/></svg>', "A box", "a square"))
     first, second = [b for b in db.blocks(lesson) if b["kind"] == "figure"]
     assert first["data"]["credits"] == []
-    with pytest.raises(HTTPException, match="no art pack is installed"):
-        asyncio.run(app.redraw_figures(lesson))
+    for not_a_figure in (10**9, db.blocks(lesson)[0]["id"]):
+        with pytest.raises(HTTPException, match="no such figure"):
+            asyncio.run(app.redraw_figure(not_a_figure))
+    monkeypatch.setattr(crafted, "available", lambda: False)
+    with pytest.raises(HTTPException, match="this server cannot craft figures"):
+        asyncio.run(app.redraw_figure(first["id"]))
+    monkeypatch.setattr(crafted, "available", lambda: True)
 
     (tmp_path / "bioicons" / "cc-0" / "Cell_types" / "Me").mkdir(parents=True)
     (tmp_path / "bioicons" / "cc-0" / "Cell_types" / "Me" / "cell.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 1"><path d="M0 0h1"/></svg>')
     (tmp_path / "bioicons" / "manifest.json").write_text(json.dumps([{"id": "bioicons/cc-0/Cell_types/Me/cell", "name": "cell", "category": "Cell types", "author": "Me", "licence": "CC0", "ratio": 2.0}]))
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
-    assert asyncio.run(app.redraw_figures(lesson)) == {"figures": [first["id"], second["id"]]}
-    assert turns[0].startswith(f"[redraw] Draw figures {first['id']}, {second['id']} of this lesson again, one replace_figure call each")
-    assert "find_art" in app._turn_prompt(db.lesson(lesson), turns[0]) and "Art pack installed: Bioicons (1 icons; Cell types)" in app._turn_prompt(db.lesson(lesson), turns[0])
+    assert asyncio.run(app.redraw_figure(first["id"])) == {"figure": first["id"]}
+    assert turns[0].startswith(f"[redraw] Craft figure {first['id']} of this lesson again, in its place, with one replace_crafted_figure call")
+    assert "Crafted figures: add_crafted_figure" in app._turn_prompt(db.lesson(lesson), turns[0]) and "Art pack installed: Bioicons (1 icons; Cell types)" in app._turn_prompt(db.lesson(lesson), turns[0])
 
     assert asyncio.run(tutor.find_art("cell")) == "bioicons/cc-0/Cell_types/Me/cell | cell | Cell types | Me | CC0 | 2.0"
     assert asyncio.run(tutor.find_art("zebra")).startswith("nothing found")

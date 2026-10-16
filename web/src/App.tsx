@@ -970,7 +970,7 @@ function Plan(props: {
   )
 }
 
-function Workspace({ courseId, speech, commands, art, sketched, concept, start }: { courseId: number; speech: boolean; commands: boolean; art: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
+function Workspace({ courseId, speech, commands, crafted, sketched, concept, start }: { courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
   const { t } = useTranslation()
   const [course, setCourse] = useState<CourseDetail | null>(null)
   const [sources, setSources] = useState<Source[]>([])
@@ -1264,11 +1264,6 @@ function Workspace({ courseId, speech, commands, art, sketched, concept, start }
 
       <main className="lesson">
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
-        {art && lesson.blocks.some((b) => b.kind === 'figure') && (
-          <button type="button" className="link small" disabled={lesson.running} onClick={() => post(`/api/lessons/${lesson.id}/redraw`, {})}>
-            {t('block.redraw')}
-          </button>
-        )}
         {course.mode === 'teacher' && lesson.concept_id !== null && (
           <div className="small handouts">
             {t('handout.label')}{' '}
@@ -1360,7 +1355,7 @@ function Workspace({ courseId, speech, commands, art, sketched, concept, start }
           ) : b.kind === 'plot' ? (
             <PlotCard key={b.id} id={b.id} title={b.markdown} data={b.data} />
           ) : b.kind === 'figure' ? (
-            <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={sketched} disabled={lesson.running} onRestore={() => post(`/api/blocks/${b.id}/restore`, {})} />
+            <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={sketched} disabled={lesson.running} onRestore={() => post(`/api/blocks/${b.id}/restore`, {})} onRedraw={crafted ? () => post(`/api/blocks/${b.id}/redraw`, {}) : undefined} />
           ) : b.kind === 'placement' ? (
             <section key={b.id} className="block">
               <div className="label">
@@ -1618,7 +1613,7 @@ export default function App() {
   const [speech, setSpeech] = useState(false)
   const [pdf, setPdf] = useState(false)
   const [commands, setCommands] = useState(true)
-  const [art, setArt] = useState(false)
+  const [crafted, setCrafted] = useState(false)
   const { profiles, current, select, reload } = useProfiles()
   const [chosen, setChosen] = useState<Locale>(browserLocale)
   const [localeError, setLocaleError] = useState('')
@@ -1639,13 +1634,13 @@ export default function App() {
     )
   }
   useEffect(() => {
-    api<{ agent: string; speech: boolean; pdf: boolean; commands: boolean; art: boolean }>('/api/meta').then(
+    api<{ agent: string; speech: boolean; pdf: boolean; commands: boolean; crafted: boolean }>('/api/meta').then(
       (m) => {
         setAgent(m.agent)
         setSpeech(m.speech)
         setPdf(m.pdf)
         setCommands(m.commands)
-        setArt(m.art)
+        setCrafted(m.crafted)
       },
       () => {},
     )
@@ -1674,7 +1669,7 @@ export default function App() {
           courseId={Number(match[1])}
           speech={speech}
           commands={commands}
-          art={art}
+          crafted={crafted}
           sketched={current.sketch}
           concept={match[2] ? Number(match[2]) : null}
           start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
