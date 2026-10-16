@@ -78,6 +78,8 @@
       "stage": "Stage {{n}}",
       "play": "Play",
       "redraw": "Redraw as a crafted figure",
+      "redrawNotes": "Anything to change? Blank keeps the same idea",
+      "redrawGo": "Redraw",
       "art": "Art:",
       "shrinkFigure": "Shrink the figure",
       "enlargeFigure": "Enlarge: {{alt}}",

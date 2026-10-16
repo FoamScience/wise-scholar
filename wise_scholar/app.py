@@ -173,6 +173,10 @@ class Scope(BaseModel):
     hours: int | None = Field(default=None, ge=1, le=5000)
 
 
+class Redraw(BaseModel):
+    notes: str = Field(default="", max_length=1000)
+
+
 class Archive(BaseModel):
     archived: bool
 
@@ -786,8 +790,8 @@ async def post_turn(lesson_id: int, body: Turn) -> dict:
 
 
 @app.post("/api/blocks/{block_id}/redraw", status_code=202)
-async def redraw_figure(block_id: int) -> dict:
-    """Asks the tutor to craft this figure again in its place."""
+async def redraw_figure(block_id: int, body: Redraw) -> dict:
+    """Asks the tutor to craft this figure again in its place, with what the learner wants changed."""
     block = db.block(block_id)
     if not block or block["kind"] != "figure":
         raise HTTPException(404, "no such figure")
@@ -795,12 +799,16 @@ async def redraw_figure(block_id: int) -> dict:
     _require_idle(lesson["id"])
     if not crafted.available():
         raise HTTPException(409, "this server cannot craft figures")
-    _start_turn(
-        lesson,
+    line = (
         f"[redraw] Craft figure {block_id} of this lesson again, in its place, with one replace_crafted_figure call: the same idea, "
         "its caption kept or sharpened, alt text telling what the new drawing shows, now a crafted object as craft_help describes "
-        "(read it first), animated over stages where the idea unfolds. Then say in one sentence what changed.",
+        "(read it first), animated over stages where the idea unfolds. Then say in one sentence what changed."
     )
+    # The learner's wish is a learner message, in the chat and in the turn, never part of the app's own line.
+    if notes := body.notes.strip():
+        db.add_message(lesson["id"], "learner", notes)
+        line += f"\n[learner] {_untrusted(notes)}"
+    _start_turn(lesson, line)
     return {"figure": block_id}
 
 

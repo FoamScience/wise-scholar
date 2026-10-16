@@ -1617,6 +1617,16 @@ pre:has(> .mermaid) {
   gap: 8px;
 }
 
+.figure .redraw {
+  display: grid;
+  gap: 8px;
+}
+
+.figure .redraw .row {
+  display: flex;
+  gap: 8px;
+}
+
 .figure-box {
   all: unset;
   cursor: zoom-in;

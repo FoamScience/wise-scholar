@@ -78,6 +78,8 @@
       "stage": "Étape {{n}}",
       "play": "Lecture",
       "redraw": "Redessiner en figure façonnée",
+      "redrawNotes": "Quelque chose à changer ? Vide, même idée",
+      "redrawGo": "Redessiner",
       "art": "Illustrations :",
       "shrinkFigure": "Réduire la figure",
       "enlargeFigure": "Agrandir : {{alt}}",
