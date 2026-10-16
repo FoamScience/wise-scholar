@@ -802,7 +802,8 @@ async def redraw_figure(block_id: int, body: Redraw) -> dict:
     line = (
         f"[redraw] Craft figure {block_id} of this lesson again, in its place, with one replace_crafted_figure call: the same idea, "
         "its caption kept or sharpened, alt text telling what the new drawing shows, now a crafted object as craft_help describes "
-        "(read it first), animated over stages where the idea unfolds. Then say in one sentence what changed."
+        "(read it first); as an animation only when the idea itself unfolds in time, else one still figure. Then say in one "
+        "sentence what changed."
     )
     # The learner's wish is a learner message, in the chat and in the turn, never part of the app's own line.
     if notes := body.notes.strip():

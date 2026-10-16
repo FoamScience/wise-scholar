@@ -118,9 +118,23 @@ def test_stages_become_one_crossfaded_animation_with_their_frames_kept(tmp_path)
     assert len(stages) == 3 and all(s.startswith("<svg") and "iso-solid" in s for s in stages)
     svg = figures.clean(crafted.animate(stages), limit=crafted.MAX_SVG * 3)
     assert 'data-stages="3"' in svg and 'data-seconds="9"' in svg and svg.count('<animate attributeName="opacity"') == 3
-    assert 'values="1;1;0;0" keyTimes="0.000;0.378;0.379;1.000" dur="9s" repeatCount="indefinite"' in svg
-    assert 'values="0;0;1;1;0;0" keyTimes="0.000;0.333;0.378;0.711;0.712;1.000"' in svg
-    assert 'values="0;0;1;1" keyTimes="0.000;0.667;0.711;1.000"' in svg and svg.count("<g opacity=") == 3
+    assert 'values="1;1;0;0" keyTimes="0.0000;0.3333;0.3339;1.0000" dur="9s" repeatCount="indefinite"' in svg
+    assert 'values="0;0;1;1;0;0" keyTimes="0.0000;0.2889;0.3333;0.6667;0.6672;1.0000"' in svg
+    assert 'values="0;0;1;1" keyTimes="0.0000;0.6222;0.6667;1.0000"' in svg and svg.count("<g opacity=") == 3
+    for n in range(2, 7):
+        joined = crafted.animate([stages[0]] * n)
+        tracks = [[(float(t), float(v)) for t, v in zip(times.split(";"), values.split(";"))] for values, times in re.findall(r'values="([^"]*)" keyTimes="([^"]*)"', joined)]
+        assert len(tracks) == n and all(t == sorted(t) and len({k for k, _ in t}) == len(t) for t in tracks)
+
+        def opacity(track, at):  # piecewise linear, as SMIL plays it
+            for (t0, v0), (t1, v1) in zip(track, track[1:]):
+                if t0 <= at <= t1:
+                    return v0 + (v1 - v0) * (at - t0) / (t1 - t0)
+
+        seconds = 3 * n
+        for i in range(n):  # held where the stage buttons hold: the stage is whole, the one before it gone
+            held = (i / n * seconds + 0.01) / seconds
+            assert opacity(tracks[i], held) == 1 and all(opacity(tracks[j], held) == 0 for j in range(n) if j != i)
     one = asyncio.run(crafted.render(STAGES.replace("[at(4), at(20), at(30)]", "[at(4)]"), tmp_path))
     assert len(one) == 1
     with pytest.raises(ValueError, match="not a whole <svg>"):
