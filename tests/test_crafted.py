@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import tempfile
 
 import pytest
@@ -27,7 +28,7 @@ const P = k.fitProjection(ring(40, 0), 300, 200, { pad: 20 });
 export default k.figureSvg({ width: 300, height: 200, label: "a cell", body: [
   membraneSvg(membraneOf(ring(40, 0), ring(34, 0), P, { tone: "mid" })),
   blobSvg(blobOf(ring(12, 2), P, { tone: "hi", id: "nucleus" })),
-  k.solidSvg(G.sphereOf([20, 10, 4], 4, P), { tone: "mid" }),
+  k.groupSvg([k.groupSvg([k.solidSvg(G.sphereOf([20, 10, 4], 4, P), { tone: "mid" })], { "data-paint": "dark" })], { "data-paint": "teal" }),
 ] });
 """
 
@@ -38,6 +39,8 @@ def test_the_help_carries_the_kit_contract_and_the_example_imports_the_kit():
     assert all(f"`{tone}`" in text for tone in ("hi", "mid", "lo", "faint", "lit", "accent", "warm", "alert"))
     css = (crafted.KIT / "iso.css").read_text()
     assert all(f"[data-tone='{tone}']" in css for tone in ("accent", "warm", "alert")) and "--anatomy-" not in css
+    paints = ("teal", "teal-full", "amber", "amber-full", "danger", "danger-full", "dark", "muted")
+    assert all(f"[data-paint='{paint}']" in css for paint in paints) and all(f"`{paint}`" in text for paint in paints)
     assert sorted(p.name for p in crafted.KIT.glob("*.mjs")) == ["blob.mjs", "iso-kit.mjs", "lathe.mjs", "tube.mjs"]
     assert not any("--anatomy-" in p.read_text() for p in crafted.KIT.glob("*.mjs"))
     assert "Never give a thing parts it does not have" in text and "import { tubePieces, tubeSvg }" in LIVING
@@ -52,6 +55,8 @@ def test_standalone_inlines_the_style_with_the_light_theme_values():
     out = crafted.standalone('<svg class="iso-svg" viewBox="0 0 1 1"><g class="iso-solid"/></svg>')
     assert out.startswith('<svg class="iso-svg" viewBox="0 0 1 1"><style>') and "</style><g" in out
     assert "var(--panel)" not in out and "#ffffff" in out and "var(--pulse-at, 0ms)" in out
+    site = {m for m in re.findall(r"var\((--[\w-]+)", (crafted.KIT / "iso.css").read_text()) if not m.startswith(("--iso-", "--paint-", "--pulse-"))}
+    assert site <= set(crafted.LIGHT) and not {m for m in re.findall(r"var\((--[\w-]+)", out) if not m.startswith(("--iso-", "--paint-", "--pulse-"))}
 
 
 @node
@@ -65,7 +70,7 @@ def test_the_example_script_renders_a_shaded_figure_that_the_sanitiser_keeps(tmp
     assert 'class="tb-body"' in figures.clean(living, limit=crafted.MAX_SVG)
     (soft,) = asyncio.run(crafted.render(SOFT, tmp_path))
     clean = figures.clean(soft, limit=crafted.MAX_SVG)
-    assert all(mark in clean for mark in ('id="nucleus" class="bio-blob"', 'class="bio-membrane"', 'class="iso-solid" data-seamless', 'class="bio-blob-highlight"'))
+    assert all(mark in clean for mark in ('id="nucleus" class="bio-blob"', 'class="bio-membrane"', 'class="iso-solid" data-seamless', 'class="bio-blob-highlight"', '<g data-paint="teal"><g data-paint="dark">'))
     with pytest.raises(ValueError, match=r"(?s)did not run: .*Error: boom"):
         asyncio.run(crafted.render('throw new Error("boom")', tmp_path))
     with pytest.raises(ValueError, match="draws nothing from the kit"):
