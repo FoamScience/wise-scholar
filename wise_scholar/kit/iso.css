@@ -1,0 +1,243 @@
+/* Crafted figures: the classes of the vendored isometric kit (iso-kit.mjs), coloured by the site's own theme
+   tokens, so one SVG follows the light and dark themes. Lines and faces are greys mixed from the panel and ink
+   colours; the three named tones are the site's teal, amber and danger. */
+.iso-svg {
+  --iso-paper: var(--panel);
+  --iso-face: var(--panel);
+  --iso-top: color-mix(in srgb, var(--panel) 94%, #fff);
+  --iso-shade-0: color-mix(in srgb, var(--panel) 86%, #000);
+  --iso-shade-1: color-mix(in srgb, var(--panel) 90%, #000);
+  --iso-shade-2: color-mix(in srgb, var(--panel) 94%, #000);
+  --iso-shade-3: color-mix(in srgb, var(--panel) 97%, #000);
+  --iso-lit-top: #fff;
+  --iso-lit-shade: color-mix(in srgb, var(--panel) 96%, #fff);
+  --iso-hi: var(--ink);
+  --iso-mid: var(--line-strong);
+  --iso-lo: color-mix(in srgb, var(--line) 70%, var(--line-strong));
+  --iso-faint: var(--line);
+  --iso-lit: #000;
+  --iso-halo: var(--ink);
+  --iso-halo-opacity: 0.18;
+  --iso-dot: var(--ink);
+  --iso-accent: var(--teal);
+  --iso-warm: var(--amber);
+  --iso-alert: var(--danger);
+  --iso-weight: 0.6px;
+  --iso-mono: var(--mono);
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+:root[data-theme='dark'] .iso-svg {
+  --iso-lit-top: color-mix(in srgb, var(--panel) 80%, #fff);
+  --iso-lit: #fff;
+  --iso-halo: #000;
+  --iso-halo-opacity: 0.6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .iso-svg {
+    --iso-lit-top: color-mix(in srgb, var(--panel) 80%, #fff);
+    --iso-lit: #fff;
+    --iso-halo: #000;
+    --iso-halo-opacity: 0.6;
+  }
+}
+.iso-svg path,
+.iso-svg circle {
+  vector-effect: non-scaling-stroke;
+}
+.iso-fill {
+  fill: var(--iso-paper);
+  stroke: none;
+}
+.iso-solid[data-lit] > .iso-fill {
+  fill: var(--iso-face);
+}
+.iso-shade,
+.iso-top {
+  stroke: none;
+}
+.iso-shade[data-shade='0'] {
+  fill: var(--iso-shade-0);
+}
+.iso-shade[data-shade='1'] {
+  fill: var(--iso-shade-1);
+}
+.iso-shade[data-shade='2'] {
+  fill: var(--iso-shade-2);
+}
+.iso-shade[data-shade='3'] {
+  fill: var(--iso-shade-3);
+}
+.iso-top {
+  fill: var(--iso-top);
+}
+.iso-solid[data-lit] > .iso-top {
+  fill: var(--iso-lit-top);
+}
+.iso-solid[data-lit] > .iso-shade {
+  fill: var(--iso-lit-shade);
+}
+.iso-solid[data-seamless] > .iso-shade,
+.iso-solid[data-seamless] > .iso-top {
+  stroke-width: 0.4;
+  stroke-linejoin: round;
+}
+.iso-solid[data-seamless] > .iso-shade[data-shade='0'] {
+  stroke: var(--iso-shade-0);
+}
+.iso-solid[data-seamless] > .iso-shade[data-shade='1'] {
+  stroke: var(--iso-shade-1);
+}
+.iso-solid[data-seamless] > .iso-shade[data-shade='2'] {
+  stroke: var(--iso-shade-2);
+}
+.iso-solid[data-seamless] > .iso-shade[data-shade='3'] {
+  stroke: var(--iso-shade-3);
+}
+.iso-solid[data-seamless] > .iso-top {
+  stroke: var(--iso-top);
+}
+.iso-solid[data-seamless][data-lit] > .iso-top {
+  stroke: var(--iso-lit-top);
+}
+.iso-solid[data-seamless][data-lit] > .iso-shade {
+  stroke: var(--iso-lit-shade);
+}
+.iso-solid[data-lit] > .iso-edge {
+  stroke: var(--iso-lit);
+}
+.iso-halo {
+  fill: var(--iso-halo);
+  stroke: none;
+  filter: blur(9px);
+  opacity: var(--iso-halo-opacity);
+  transform: translateY(3px);
+}
+.iso-line {
+  fill: none;
+  stroke: var(--iso-lo);
+  stroke-width: var(--iso-weight);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.iso-line[data-tone='hi'] {
+  stroke: var(--iso-hi);
+}
+.iso-line[data-tone='mid'] {
+  stroke: var(--iso-mid);
+}
+.iso-line[data-tone='lo'] {
+  stroke: var(--iso-lo);
+}
+.iso-line[data-tone='faint'] {
+  stroke: var(--iso-faint);
+}
+.iso-line[data-tone='lit'] {
+  stroke: var(--iso-lit);
+}
+.iso-line[data-tone='accent'] {
+  stroke: var(--iso-accent);
+}
+.iso-line[data-tone='warm'] {
+  stroke: var(--iso-warm);
+}
+.iso-line[data-tone='alert'] {
+  stroke: var(--iso-alert);
+}
+.iso-line[data-dotted] {
+  stroke-dasharray: 0.01 3.5;
+  stroke-width: 1;
+}
+.iso-line[data-dashed] {
+  stroke-dasharray: 3 3;
+}
+.iso-line[data-flow] {
+  stroke-dasharray: 2 6;
+  animation: iso-flow 1600ms linear infinite;
+}
+.iso-wire-end {
+  fill: var(--iso-paper);
+  stroke: var(--iso-lo);
+  stroke-width: var(--iso-weight);
+}
+.iso-wire[data-tone='hi'] .iso-wire-end {
+  stroke: var(--iso-hi);
+}
+.iso-wire[data-tone='mid'] .iso-wire-end {
+  stroke: var(--iso-mid);
+}
+.iso-wire[data-tone='faint'] .iso-wire-end {
+  stroke: var(--iso-faint);
+}
+.iso-wire[data-tone='lit'] .iso-wire-end {
+  stroke: var(--iso-lit);
+}
+.iso-wire[data-tone='accent'] .iso-wire-end {
+  stroke: var(--iso-accent);
+}
+.iso-wire[data-tone='warm'] .iso-wire-end {
+  stroke: var(--iso-warm);
+}
+.iso-wire[data-tone='alert'] .iso-wire-end {
+  stroke: var(--iso-alert);
+}
+.iso-dots circle {
+  fill: var(--iso-dot);
+  stroke: none;
+  opacity: 0.32;
+}
+.iso-dots[data-tone='hi'] circle {
+  opacity: 0.85;
+}
+.iso-dots[data-tone='mid'] circle {
+  opacity: 0.45;
+}
+.iso-dots[data-tone='lo'] circle {
+  opacity: 0.22;
+}
+.iso-dots[data-tone='faint'] circle {
+  opacity: 0.12;
+}
+.iso-dots circle[data-pulse] {
+  animation: iso-pulse 1600ms steps(1, end) infinite;
+  animation-delay: var(--pulse-at, 0ms);
+}
+.iso-face-text {
+  fill: var(--iso-mid);
+  font-family: var(--iso-mono);
+  letter-spacing: 0.04em;
+}
+.iso-face-text[data-tone='hi'] {
+  fill: var(--iso-hi);
+}
+.iso-face-text[data-tone='lo'] {
+  fill: var(--iso-lo);
+}
+.iso-face-text[data-tone='faint'] {
+  fill: var(--iso-faint);
+}
+@keyframes iso-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+@keyframes iso-pulse {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  12% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.18;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iso-line[data-flow],
+  .iso-dots circle[data-pulse] {
+    animation: none;
+  }
+}

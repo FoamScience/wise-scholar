@@ -257,7 +257,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
             ))}
           </div>
         ) : (
-          <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram} />
+          <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram && !d.crafted} />
         )}
         {block.markdown && <div className="caption">{block.markdown}</div>}
         <Credits credits={d.credits} />

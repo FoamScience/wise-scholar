@@ -9,7 +9,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import course_files, db, quiz
+from . import course_files, crafted, db, quiz
 
 # Folder and property names are fixed in English so a re-export lands on the same files; the text inside a note
 # follows the learner's language.
@@ -225,6 +225,8 @@ class Vault:
             credits = _credits(d.get("credits", []))
             # An animation is printed as its stages, one after the other.
             drawings = d["frames"] if len(d.get("frames", [])) > 1 else [d["svg"]]
+            if d.get("crafted"):
+                drawings = [crafted.standalone(svg) for svg in drawings]
             if self.inline:
                 caption = " ".join(block["markdown"].split())
                 alt = _alt(d.get("alt", ""))

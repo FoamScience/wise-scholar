@@ -285,13 +285,16 @@ def online(workspace: Path) -> bool:
     return workspace.resolve() in _awaiting_internet
 
 
-async def run(command: str, workspace: Path, network: bool = False) -> dict:
+async def run(command: str, workspace: Path, network: bool = False, mounts: tuple[tuple[str, str], ...] = ()) -> dict:
     """Run one shell command in a course workspace. Returns its exit code, None when it was stopped at the time
-    limit, and the tail of its output. network: let it reach the internet; only for a command the learner allowed."""
+    limit, and the tail of its output. network: let it reach the internet; only for a command the learner allowed.
+    mounts: (server folder, path inside) pairs the command may write, for a tool's own files, watched for size
+    with the workspace; not with network."""
     workspace = workspace.resolve()
     if not (network and SANDBOX):
+        binds = [arg for host, where in mounts for arg in ("--bind", host, where)]
         async with _course[workspace], _slots:
-            return await _run(command, workspace, [], [], TIMEOUT)
+            return await _run(command, workspace, [], binds, TIMEOUT, [Path(host) for host, _ in mounts])
     # The sandbox gets no network of its own. A relay inside it offers the command an HTTP proxy on its loopback
     # and passes every connection to the server's proxy socket, which dials public addresses only.
     _awaiting_internet.add(workspace)
@@ -309,10 +312,10 @@ async def run(command: str, workspace: Path, network: bool = False) -> dict:
         _awaiting_internet.discard(workspace)
 
 
-async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[str], limit: int) -> dict:
+async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[str], limit: int, mounted: list[Path] = ()) -> dict:
     megabytes = QUOTA // (1024 * 1024)
     cache = _cache(workspace)
-    folders = [workspace, cache] if SANDBOX else [workspace]
+    folders = [*mounted, workspace, cache] if SANDBOX else [*mounted, workspace]
     # The cache is only a cache: past its limit it is emptied, here too in case the last command could not do it.
     if SANDBOX and await asyncio.to_thread(usage, cache) > QUOTA:
         await asyncio.to_thread(shutil.rmtree, cache, True)
