@@ -208,19 +208,8 @@
     },
     "card": {
       "question": "Question",
-      "pretest": "Pretest",
-      "quickCheck": "Quick check",
       "reading": "Reading",
-      "vocab": "Vocabulary check",
-      "speaking": "Speaking",
-      "cast": "Cast",
-      "milestone": "Milestone",
-      "exercise": "Exercise",
-      "transfer": "Transfer",
-      "teachback": "Teach-back",
-      "writing": "Writing",
-      "challenge": "Challenge",
-      "network": "Internet request"
+      "vocab": "Vocabulary check"
     },
     "map": {
       "summaryDone": "Units {{done}} of {{total}} done",
@@ -284,6 +273,8 @@
       }
     },
     "chat": {
+      "ask": "Ask the tutor",
+      "close": "Close",
       "label": "Tutor chat",
       "tutor": "Tutor",
       "message": "Message the tutor",

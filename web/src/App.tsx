@@ -14,7 +14,7 @@ import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
-import { challengeLabel, lessonTitle, outlineOf, practiceTitle } from './course'
+import { challengeLabel, lessonStream, lessonTitle, outlineOf, practiceTitle } from './course'
 import { OutlineCard } from './Outline'
 import { Comparison, HintList, Ladder } from './Ladder'
 import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
@@ -721,50 +721,18 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
   )
 }
 
-const CARD_KINDS = new Set(['question', 'challenge', 'exercise', 'quiz', 'reading', 'vocab', 'speaking', 'podcast', 'network'])
-
-function cardLabel(b: Block, t: TFunction): string {
-  const d = (b.data ?? {}) as { writing?: boolean; teachback?: boolean; pretest?: boolean; milestone?: boolean; transfer?: boolean; files?: string[]; title?: string }
-  const head = b.markdown.replace(/[*_`#>]/g, '').split('\n')[0].trim()
-  const short = head.length > 48 ? `${head.slice(0, 47)}…` : head
-  if (b.kind === 'question') return `${t('card.question')} · ${short}`
-  if (b.kind === 'quiz') return `${d.pretest ? t('card.pretest') : t('card.quickCheck')} · ${short}`
-  if (b.kind === 'reading') return `${t('card.reading')} · ${d.title ?? short}`
-  if (b.kind === 'vocab') return t('card.vocab')
-  if (b.kind === 'network') return t('card.network')
-  if (b.kind === 'speaking') return `${t('card.speaking')} · ${short}`
-  if (b.kind === 'podcast') return `${t('card.cast')} · ${short}`
-  if (b.kind === 'exercise') return `${d.milestone ? t('card.milestone') : t('card.exercise')} · ${d.files?.[0] ?? short}`
-  const kind = d.transfer ? 'transfer' : d.milestone ? 'milestone' : d.pretest ? 'pretest' : d.teachback ? 'teachback' : d.writing ? 'writing' : 'challenge'
-  return `${t(`card.${kind}`)} · ${short}`
-}
-
-/** Which cards were posed before each message: the chat gets a labelled divider there. Key -1 = after the last message. */
-function cardDividers(lesson: Lesson): Map<number, Block[]> {
-  const cards = lesson.blocks.filter((b) => CARD_KINDS.has(b.kind))
-  const out = new Map<number, Block[]>()
-  let next = 0
-  for (const m of lesson.messages) {
-    // A learner message from the same second came first: the card it triggered belongs after it.
-    while (next < cards.length && (cards[next].created < m.created || (cards[next].created === m.created && m.role === 'tutor'))) {
-      out.set(m.id, [...(out.get(m.id) ?? []), cards[next]])
-      next++
-    }
-  }
-  if (next < cards.length) out.set(-1, cards.slice(next))
-  return out
-}
-
-function CardDivider({ block }: { block: Block }) {
-  const { t } = useTranslation()
+/** A tutor or learner message, inline in the lesson between the cards. */
+function Remark({ message }: { message: Message }) {
+  if (message.role === 'learner')
+    return (
+      <div className="remark learner" dir={textDirection(message.text)}>
+        {message.text}
+      </div>
+    )
   return (
-    <button
-      type="button"
-      className="divider"
-      onClick={() => document.getElementById(`block-${block.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-    >
-      <span>{cardLabel(block, t)}</span>
-    </button>
+    <div className="remark">
+      <Markdown>{message.text}</Markdown>
+    </div>
   )
 }
 
@@ -1003,9 +971,10 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const [sending, setSending] = useState(false)
   const online = useOnline()
   // which column a phone shows; wider screens show all three
-  const [pane, setPane] = useState<'map' | 'lesson' | 'chat'>('lesson')
+  const [pane, setPane] = useState<'map' | 'lesson'>('lesson')
+  // the chat drawer; unset, it follows the lesson: open in the interview, which is a conversation
+  const [asking, setAsking] = useState<boolean | null>(null)
   const [kept, setKept] = useState<{ lesson: number | null; answers: Record<number, Given> }>({ lesson: null, answers: {} })
-  const chatBottom = useRef<HTMLDivElement>(null)
   const lessonBottom = useRef<HTMLDivElement>(null)
 
   const lesson = course?.lessons.find((l) => l.id === lessonId) ?? null
@@ -1044,6 +1013,13 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   function showLesson(id: number) {
     setLessonId(id)
     setPane('lesson')
+    setAsking(null)
+  }
+
+  function closeChat() {
+    setAsking(false)
+    // the drawer hides with the focus in it: hand it back to the button that opens it
+    requestAnimationFrame(() => document.getElementById('ask')?.focus())
   }
 
   function patchLesson(id: number, patch: (l: Lesson) => Lesson) {
@@ -1183,13 +1159,19 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
     return () => clearTimeout(asked)
   }, [lessonId])
 
-  useEffect(() => {
-    chatBottom.current?.scrollIntoView({ block: 'end' })
-  }, [lesson?.messages.length, streaming, pane])
+  // follow new cards and messages only for a learner already at the end; one reading back stays where they are
+  function nearEnd(): boolean {
+    const main = lessonBottom.current?.closest('main')
+    return !main || main.scrollHeight - main.scrollTop - main.clientHeight < 240
+  }
 
   useEffect(() => {
-    lessonBottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
-  }, [lesson?.blocks.length, course?.ranking.length, writing])
+    if (nearEnd()) lessonBottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
+  }, [lesson?.blocks.length, lesson?.messages.length, course?.ranking.length, writing])
+
+  useEffect(() => {
+    if (streaming && nearEnd()) lessonBottom.current?.scrollIntoView({ block: 'end' })
+  }, [streaming])
 
   function post(path: string, body: unknown) {
     api(path, body).catch((err: Error) => setError(err.message))
@@ -1222,7 +1204,9 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const nextUnit = finished
     ? course.concepts.slice(course.concepts.findIndex((c) => c.id === lesson.concept_id) + 1).find((c) => !c.known && (c.mastery ?? 0) < 2 / 3)
     : undefined
-  const dividers = cardDividers(lesson)
+  const stream = lessonStream(lesson.blocks, lesson.messages)
+  const order = new Map(lesson.blocks.map((b, i) => [b.id, i]))
+  const open = asking ?? lesson.phase === 'interview'
   const outline = outlineOf(lesson)
   const units = course.concepts.filter((c) => c.kind === 'concept')
   const unitsDone = units.filter((c) => unitDone(c, course.lessons.find((l) => l.concept_id === c.id))).length
@@ -1281,9 +1265,9 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
                 onClick={() => {
                   // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
                   showLesson(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
-                  setPane('chat')
+                  setAsking(true)
                   setChanging(true)
-                  // after the click's render, when a phone shows the chat
+                  // after the click's render, once the drawer is open
                   requestAnimationFrame(() => document.getElementById('chat')?.focus())
                 }}
               >
@@ -1382,7 +1366,10 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               }
             />
           ))}
-        {lesson.blocks.map((b, i) => {
+        {stream.map((item) => {
+          if ('message' in item) return <Remark key={`m${item.message.id}`} message={item.message} />
+          const b = item.block
+          const i = order.get(b.id)!
           if (b.kind === 'outline') return null
           const card = b.kind === 'question' ? (
             <QuestionCard
@@ -1552,75 +1539,78 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             </button>
           </div>
         )}
+        {streaming && (
+          <div className="remark">
+            <Markdown>{streaming}</Markdown>
+            <span className="caret" />
+          </div>
+        )}
+        {error && <div className="error">{error}</div>}
         <div ref={lessonBottom} />
-      </main>
-
-      <aside className="chat" aria-label={t('chat.label')}>
-        <div className="chat-head">
-          <strong>{t('chat.tutor')}</strong>
-          <span className={lesson.running ? 'status live' : 'status'} role="status">
-            {lesson.running && (activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working'))}
-          </span>
-        </div>
-        <div className="messages">
-          {lesson.messages.map((m) => (
-            <Fragment key={m.id}>
-              {(dividers.get(m.id) ?? []).map((b) => (
-                <CardDivider key={b.id} block={b} />
-              ))}
-              {m.role === 'learner' ? (
-                <div className="bubble learner" dir={textDirection(m.text)}>
-                  {m.text}
-                </div>
-              ) : (
-                <div className="bubble">
-                  <Markdown>{m.text}</Markdown>
-                </div>
-              )}
-            </Fragment>
-          ))}
-          {(dividers.get(-1) ?? []).map((b) => (
-            <CardDivider key={b.id} block={b} />
-          ))}
-          {streaming && (
-            <div className="bubble">
-              <Markdown>{streaming}</Markdown>
-              <span className="caret" />
-            </div>
-          )}
-          {error && <div className="error">{error}</div>}
-          <div ref={chatBottom} />
-        </div>
-        <div className="composer">
-          <label htmlFor="chat">{t('chat.message')}</label>
-          <textarea
-            id="chat"
-            className="field" dir="auto"
-            rows={3}
-            value={draft}
-            placeholder={changing ? t('chat.changeHint') : undefined}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKey}
-          />
-          <div className="row">
-            {speech && <Mic onClip={(clip) => transcribe(clip).then((t) => setDraft((d) => (d ? `${d} ${t}` : t)))} onError={setError} />}
-            {lesson.running && (
-              <button className="btn" onClick={() => post(`/api/lessons/${lesson.id}/stop`, {})}>
-                {t('common.stop')}
-              </button>
-            )}
-            <button className="btn primary" onClick={send} disabled={!online || lesson.running || !course.started || !draft.trim()}>
-              {t('common.send')}
+        {!open && (
+          <button
+            type="button"
+            id="ask"
+            className="btn primary ask"
+            onClick={() => {
+              setAsking(true)
+              requestAnimationFrame(() => document.getElementById('chat')?.focus())
+            }}
+          >
+            {t('chat.ask')}
+            <span className="live" role="status">
+              {lesson.running && ` · ${activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working')}`}
+            </span>
+          </button>
+        )}
+        <aside
+          className={open ? 'chat drawer open' : 'chat drawer'}
+          aria-label={t('chat.label')}
+          hidden={!open}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') closeChat()
+          }}
+        >
+          <div className="chat-head">
+            <strong>{t('chat.tutor')}</strong>
+            <span className={lesson.running ? 'status live' : 'status'} role="status">
+              {lesson.running && (activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working'))}
+            </span>
+            <button type="button" className="link" onClick={closeChat}>
+              {t('chat.close')}
             </button>
           </div>
-        </div>
-      </aside>
+          <div className="composer">
+            <label htmlFor="chat">{t('chat.message')}</label>
+            <textarea
+              id="chat"
+              className="field" dir="auto"
+              rows={3}
+              value={draft}
+              placeholder={changing ? t('chat.changeHint') : undefined}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={onKey}
+            />
+            <div className="row">
+              {speech && <Mic onClip={(clip) => transcribe(clip).then((t) => setDraft((d) => (d ? `${d} ${t}` : t)))} onError={setError} />}
+              {lesson.running && (
+                <button className="btn" onClick={() => post(`/api/lessons/${lesson.id}/stop`, {})}>
+                  {t('common.stop')}
+                </button>
+              )}
+              <button className="btn primary" onClick={send} disabled={!online || lesson.running || !course.started || !draft.trim()}>
+                {t('common.send')}
+              </button>
+            </div>
+          </div>
+        </aside>
+      </main>
+
       <nav className="panes" aria-label={t('panes.label')}>
-        {(['map', 'lesson', 'chat'] as const).map((p) => (
+        {(['map', 'lesson'] as const).map((p) => (
           <button key={p} aria-pressed={pane === p} onClick={() => setPane(p)}>
-            {p === 'map' ? t('map.label') : p === 'lesson' ? t('panes.lesson') : t('chat.tutor')}
-            {/* the tutor writes in the lesson and the chat: the other of the two shows it at work */}
-            {p !== 'map' && p !== pane && lesson.running && <span className="live"> · {t('activity.working')}</span>}
+            {p === 'map' ? t('map.label') : t('panes.lesson')}
+            {p === 'lesson' && p !== pane && lesson.running && <span className="live"> · {t('activity.working')}</span>}
           </button>
         ))}
       </nav>

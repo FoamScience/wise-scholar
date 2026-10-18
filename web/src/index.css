@@ -434,8 +434,7 @@ pre {
 
   /* hidden, not display: none, so each pane keeps its scroll position and can scroll while away */
   .workspace > .map,
-  .workspace > .lesson,
-  .workspace > .chat {
+  .workspace > .lesson {
     position: absolute;
     inset: 0 0 52px;
     width: auto;
@@ -444,9 +443,14 @@ pre {
   }
 
   .workspace[data-pane='map'] > .map,
-  .workspace[data-pane='lesson'] > .lesson,
-  .workspace[data-pane='chat'] > .chat {
+  .workspace[data-pane='lesson'] > .lesson {
     visibility: visible;
+  }
+
+  .lesson > .chat.drawer {
+    align-self: stretch;
+    width: auto;
+    max-width: none;
   }
 
   .workspace > .lesson {
@@ -562,13 +566,60 @@ pre {
   margin-bottom: 8px;
 }
 
-.chat {
+.workspace {
+  position: relative;
+}
+
+/* the chat opens on demand at the end of the lesson, pinned to its bottom edge while the learner scrolls; the
+   conversation itself runs inline in the lesson */
+.chat.drawer {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  flex-shrink: 0;
+  align-self: flex-end;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
   width: 384px;
+  max-width: calc(100% - 32px);
   background: var(--panel);
-  border-inline-start: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
+}
+
+.chat.drawer[hidden] {
+  display: none;
+}
+
+.lesson .ask {
+  position: sticky;
+  bottom: 16px;
+  align-self: flex-end;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.15);
+}
+
+.remark {
+  max-width: 68ch;
+  padding: 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.remark > :first-child {
+  margin-top: 0;
+}
+
+.remark > :last-child {
+  margin-bottom: 0;
+}
+
+.remark.learner {
+  align-self: flex-end;
+  padding: 8px 14px;
+  background: var(--teal);
+  color: var(--on-teal);
+  border-radius: 12px;
+  white-space: pre-wrap;
 }
 
 .chat-head {
@@ -579,15 +630,6 @@ pre {
   height: 52px;
   padding: 0 16px;
   border-bottom: 1px solid var(--line);
-}
-
-.messages {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
-  gap: 12px;
-  padding: 16px;
-  overflow-y: auto;
 }
 
 .bubble {
@@ -1530,45 +1572,6 @@ mark {
   color: var(--on-teal);
 }
 
-/* chat dividers per lesson card */
-
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 32px;
-  margin: 6px 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-align: start;
-  cursor: pointer;
-}
-
-.divider::before,
-.divider::after {
-  content: '';
-  flex-grow: 1;
-  border-top: 1px solid var(--line-strong);
-}
-
-.divider span {
-  flex-shrink: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.divider:hover {
-  color: var(--teal);
-}
-
 .targets {
   display: flex;
   flex-wrap: wrap;
@@ -1814,8 +1817,7 @@ pre:has(> .mermaid) {
 }
 
 :lang(ar) .label,
-:lang(ar) .status,
-:lang(ar) .divider {
+:lang(ar) .status {
   font-family: var(--sans);
 }
 
@@ -2155,7 +2157,6 @@ pre {
   .book .block > * + * {
     margin-top: 10px;
   }
-
 
   .book .book-cover {
     box-sizing: border-box;
