@@ -61,10 +61,15 @@ async function networkFirst(request) {
   return Promise.race([network.catch(() => cached), late])
 }
 
-/** A new build's shell names new hashed assets; the old build's are dropped, and the new ones are fetched on use. */
+/** A new build's shell names its hashed assets; the old build's that it no longer names are dropped, so unchanged
+ * library chunks stay, and the new ones are fetched on use. */
 async function prune(cache, old, fresh) {
   const entry = (html) => html.match(/\/assets\/index-[^"]+\.js/)?.[0]
-  if (!old || entry(await old.text()) === entry(await fresh.text())) return
-  for (const request of await cache.keys())
-    if (new URL(request.url).pathname.startsWith('/assets/')) await cache.delete(request)
+  const html = await fresh.text()
+  if (!old || entry(await old.text()) === entry(html)) return
+  const named = new Set(html.match(/\/assets\/[^"]+/g))
+  for (const request of await cache.keys()) {
+    const { pathname } = new URL(request.url)
+    if (pathname.startsWith('/assets/') && !named.has(pathname)) await cache.delete(request)
+  }
 }
