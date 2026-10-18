@@ -84,6 +84,7 @@ function useHash(): string {
 
 type TodayPlan = {
   due: number
+  warmup: number
   review_minutes: number
   units: { course_id: number; topic: string; concept_id: number | null; title: string; started?: boolean }[]
   cast: { id: number; lesson_id: number; title: string; course_id: number } | null
@@ -109,14 +110,15 @@ function Today({ profile }: { profile: number }) {
   }, [profile])
   if (!plan || (plan.due === 0 && plan.units.length === 0)) return null
   const unit = plan.units[0]
-  const start = plan.due > 0 ? `#/review${unit ? `?then=${encodeURIComponent(unitHash(unit))}` : ''}` : unit ? unitHash(unit) : '#/review'
+  // a review with somewhere to go next is the sitting's warm-up, capped; the review page holds the rest
+  const start = plan.warmup > 0 ? `#/review?then=${encodeURIComponent(unit ? unitHash(unit) : '#/')}` : unit ? unitHash(unit) : '#/review'
   return (
     <section className="block today">
       <div className="label">{t('today.heading')}</div>
       <ol className="plan-steps">
         {plan.due > 0 && (
           <li>
-            {t('today.reviews', { count: plan.due })} <span className="muted">{t('today.reviewMinutes', { minutes: Math.max(1, plan.review_minutes) })}</span>
+            {t('today.reviews', { count: plan.warmup })} <span className="muted">{t('today.reviewMinutes', { minutes: Math.max(1, plan.review_minutes) })}</span>
           </li>
         )}
         {unit && (
@@ -1117,6 +1119,17 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
         if (!ev.ok && ev.error !== 'stopped') setError(ev.error ?? i18n.t('chat.turnFailed'))
       }
     }
+    // a sitting opens with a few due reviews before the lesson
+    const here = location.hash
+    if (!start && navigator.onLine)
+      api<{ due: number }>(`/api/courses/${courseId}/warmup`).then(
+        (w) => {
+          // only from the page that asked: a second answer, or one arriving after the learner moved on, does nothing
+          // replaced, not pushed: going back from the lesson must not land on the warm-up again
+          if (w.due && location.hash === here) location.replace(`#/review?then=${encodeURIComponent(here)}`)
+        },
+        () => {},
+      )
     api<Source[]>(`/api/courses/${courseId}/sources`).then(setSources, () => {})
     api<CourseDetail>(`/api/courses/${courseId}`).then(
       (c) => {

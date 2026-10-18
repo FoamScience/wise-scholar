@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
 import { api } from './api'
@@ -338,8 +338,9 @@ export function Review({ profile, then }: { profile: number; then: string | null
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api<DueCard[]>(`/api/reviews?profile=${profile}`).then(setCards, (e) => setError(e.message))
-  }, [profile])
+    // on the way to a lesson the review is the sitting's warm-up: a few cards, the rest wait here
+    api<DueCard[]>(`/api/reviews?profile=${profile}${then ? '&warmup=true' : ''}`).then(setCards, (e) => setError(e.message))
+  }, [profile, then])
 
   if (!cards) return <main className="home">{error && <div className="error">{error}</div>}</main>
 
@@ -349,7 +350,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
       <main className="home">
         <h1>{cards.length ? t('review.done') : t('review.nothingDue')}</h1>
         {then ? (
-          <a className="btn primary as-link" href={then}>
+          <a className="btn primary as-link" href={then} onClick={goOn}>
             {t('review.onToNext')}
           </a>
         ) : (
@@ -357,6 +358,12 @@ export function Review({ profile, then }: { profile: number; then: string | null
         )}
       </main>
     )
+
+  // the warm-up leaves no history entry: going back from the lesson returns to where the learner came from
+  function goOn(e: MouseEvent) {
+    e.preventDefault()
+    location.replace(then!)
+  }
 
   function submit(answer: string, confidence: number) {
     setGiven({ answer, confidence })
@@ -379,6 +386,11 @@ export function Review({ profile, then }: { profile: number; then: string | null
 
   return (
     <main className="home">
+      {then && (
+        <a className="small" href={then} onClick={goOn}>
+          {t('review.skipWarmup')}
+        </a>
+      )}
       <section className="block quiz">
         <div className="label">
           {t('review.position', { n: index + 1, total: cards.length, topic: card.topic })}

@@ -61,6 +61,14 @@ The mapping from correctness and confidence to a review rating (wrong = again, r
 | Cepeda, Pashler, Vul, Wixted & Rohrer 2006, *Psychological Bulletin* 132(3), 354–380. [doi:10.1037/0033-2909.132.3.354](https://doi.org/10.1037/0033-2909.132.3.354). Abstract read. | A synthesis of 839 assessments from 317 experiments found that the gap between study sessions that gives the best retention grows with the retention interval. | Verbal recall tasks only. |
 | Ye, Su & Cao 2022, KDD '22, 4381–4390. [doi:10.1145/3534678.3539081](https://doi.org/10.1145/3534678.3539081). Abstract read. | A memory model built from the review logs of 220 million learners and a scheduler that minimises review cost, reported as 12.6% better than earlier methods. | This paper is the ancestor of the scheduler, not the scheduler itself. The [FSRS project](https://github.com/open-spaced-repetition/free-spaced-repetition-scheduler) states that FSRS "springs from MaiMemo's DHP model" from this paper, a variant of Wozniak's DSR model. The app uses the `fsrs` library with its default parameters. |
 
+### A warm-up at the start of a sitting
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Pastötter & Frings 2019, *Journal of Cognition* 2(1), 37. [doi:10.5334/joc.82](https://doi.org/10.5334/joc.82). Abstract read. | Participants studied three word lists. Being tested on lists 1 and 2, instead of restudying them, improved immediate recall of list 3, which the authors call the forward testing effect. The effect held on retest between two sessions and did not depend on working-memory capacity. | Word lists recalled within one session. Whether reviews of other courses help a different lesson that follows is an extrapolation. |
+
+After two hours or more with no answer, no run of their own code and no tutor turn, the sitting opens with up to 5 due review cards from all the learner's courses, mixed, with confident misses and open notebook errors first, whether it starts from Today's Start or from opening a course. A skipped warm-up is not offered again within the sitting, and the rest of the due cards wait on the review page. The reviews themselves rest on the spacing and testing sources above. Placing them before the lesson rests on the forward testing effect, which was measured with word lists, not with lessons. The cap of 5 and the two-hour gap are this app's own choices, not taken from any source; they are an experiment to drop if the warm-up turns out to keep learners from starting the lesson.
+
 ### The opening interview
 
 | Source | What it reports | Limits |

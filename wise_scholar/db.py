@@ -909,6 +909,21 @@ def due_cards(profile_id: int, now: str) -> list[dict]:
     return [_card({**c, "confident_miss": c.pop("leads")}) for c in cards]
 
 
+def last_activity(profile_id: int) -> datetime | None:
+    """When the learner last did something in any of their courses: answered a card, ran a command, or got a tutor
+    reply, since every turn follows something the learner did (an attempt, a hint asked, a message, a lesson opened)."""
+    last = row(
+        "SELECT MAX(t) AS t FROM ("
+        "SELECT a.created AS t FROM answers a JOIN cards k ON k.id = a.card_id JOIN courses c ON c.id = k.course_id WHERE c.profile_id = ? "
+        "UNION ALL SELECT m.created FROM messages m JOIN lessons l ON l.id = m.lesson_id JOIN courses c ON c.id = l.course_id "
+        "WHERE c.profile_id = ? "
+        # commands keep an ISO time ('T', offset); cut it to the CURRENT_TIMESTAMP shape so the two compare as text
+        "UNION ALL SELECT replace(substr(started, 1, 19), 'T', ' ') FROM commands WHERE profile_id = ? AND origin = 'learner')",
+        profile_id, profile_id, profile_id,
+    )["t"]
+    return datetime.fromisoformat(last).replace(tzinfo=timezone.utc) if last else None
+
+
 def add_error(profile_id: int, course_id: int, kind: str, prompt: str, said: str, correct: str, explanation: str = "",
               card_id: int | None = None) -> int:
     """One open entry per card: a repeated miss updates what was said instead of adding a row."""

@@ -18,7 +18,8 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return
   const url = new URL(request.url)
-  if (url.origin !== location.origin || url.pathname.startsWith('/mcp')) return
+  // the warm-up check decides from the learner's latest activity; an old copy would offer one that is not due
+  if (url.origin !== location.origin || url.pathname.startsWith('/mcp') || url.pathname.endsWith('/warmup')) return
   // live course events and partial audio responses cannot be stored
   if (request.headers.get('accept')?.includes('text/event-stream') || request.headers.has('range')) return
   // every route lives behind the hash, so the app shell is the one page load to keep

@@ -329,6 +329,7 @@
       "translation": "Translation"
     },
     "review": {
+      "skipWarmup": "Skip the warm-up and go to the lesson",
       "done": "Review done",
       "nothingDue": "Nothing is due",
       "onToNext": "On to the next unit",
