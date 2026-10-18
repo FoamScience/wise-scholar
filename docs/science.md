@@ -81,6 +81,10 @@ Back at an unfinished unit after three days or more, the learner first gets a sh
 
 Each unit opens with 3 to 6 named steps, and a counter shows the step the learner is on. The outline's link to advance organizers is loose, since a list of steps relates little to prior knowledge. The counter, the cap of one added step and the rule that the tutor says why it added one rest on no source: they answer the learner's complaint that units felt long with no visible end, and are an experiment to drop if they do not help learners finish units.
 
+### Progress on the course map
+
+The course map tops its list with the units done and how many units have reviews due, and each unit shows where the learner stands: not started, the step it is on, or done, with its mastery squares and its due reviews. No source above tests a progress display like this; it answers the learner's complaint that they could not see where they stood, and is an experiment to drop if it does not help learners come back to their reviews and finish units.
+
 ### The opening interview
 
 | Source | What it reports | Limits |

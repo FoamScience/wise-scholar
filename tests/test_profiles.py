@@ -1425,3 +1425,14 @@ def test_a_unit_outline_counts_its_steps_and_takes_one_added_step_with_a_reason(
     third = db.create_lesson(course, "Again", "lesson", db.concepts(course)[0]["id"])
     run(tutor.set_outline(third, ["a", "b", "c"]))
     assert run(tutor.finish_lesson(third, "Done.")) == "finished; end the turn" and tutor._outline(third)["data"]["at"] == 3
+
+
+def test_the_course_map_counts_each_units_due_reviews():
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Mapper')").lastrowid
+    course = db.create_course("Elixir", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Pipes", "Pattern matching"], "known": []}])
+    pipes, matching = (c["id"] for c in db.concepts(course) if c["kind"] == "concept")
+    for due in ("2026-01-01T00:00:00+00:00", "2026-01-02T00:00:00+00:00", "2999-01-01T00:00:00+00:00"):
+        db.add_card(course, pipes, "q", "open", [], "a", "e", scheduled=True, due=due)
+    view = {c["id"]: c for c in db.concept_view(course)}
+    assert view[pipes]["due"] == 2 and view[matching]["due"] == 0
