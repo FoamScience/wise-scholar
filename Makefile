@@ -1,6 +1,9 @@
 .PHONY: help dev dev-server dev-web build serve test speech pdf art
 .DEFAULT_GOAL := help
 
+# this machine's own settings (`export NAME=value` lines), kept out of git
+-include .env
+
 WISE_SCHOLAR_PORT ?= 8321
 export WISE_SCHOLAR_PORT
 
@@ -25,7 +28,7 @@ diagrams/node_modules: diagrams/package-lock.json
 build: web/node_modules diagrams/node_modules ## web and diagram dependencies, web/dist; a running server serves it at once
 	cd web && npm run build
 
-serve: build ## build, then serve on :8321 (WISE_SCHOLAR_PORT changes it, WISE_SCHOLAR_LISTEN adds addresses)
+serve: build ## build, then serve on WISE_SCHOLAR_PORT (8321 unless set), WISE_SCHOLAR_LISTEN adds addresses
 	uv run python -m wise_scholar.serve
 
 test: web/node_modules ## Python and web tests
