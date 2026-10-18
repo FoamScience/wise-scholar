@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react'
 import { sortItems } from './course'
 import type { Graded, QuizData } from './Quiz'
 
@@ -50,4 +51,18 @@ export function saveGiven(lesson: number, given: Record<number, Given>) {
   } catch {
     // storage blocked: the answers live until the page closes
   }
+}
+
+function subscribe(changed: () => void) {
+  addEventListener('online', changed)
+  addEventListener('offline', changed)
+  return () => {
+    removeEventListener('online', changed)
+    removeEventListener('offline', changed)
+  }
+}
+
+/** Whether the browser has a connection; offline, the app shows what the device saved. */
+export function useOnline(): boolean {
+  return useSyncExternalStore(subscribe, () => navigator.onLine)
 }

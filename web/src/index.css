@@ -396,6 +396,14 @@ pre {
 
 /* workspace */
 
+.offline-banner {
+  flex-shrink: 0;
+  padding: 6px 20px;
+  background: var(--amber-tint);
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
 .workspace {
   display: flex;
   flex-grow: 1;

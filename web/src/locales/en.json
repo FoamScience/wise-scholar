@@ -37,6 +37,8 @@
       "lesson": "Lesson"
     },
     "offline": {
+      "needsConnection": "This needs a connection.",
+      "banner": "Offline: you see what this device saved. The tutor and sending answers need a connection.",
       "prepare": "Prepare for offline",
       "help": "The tutor writes the rest of this unit at once, with its checks, to read and answer without a connection.",
       "answered": "{{n}} of {{total}} checks answered. The answers stay on this device until you send them.",
