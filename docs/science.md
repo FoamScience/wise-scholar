@@ -69,6 +69,10 @@ The mapping from correctness and confidence to a review rating (wrong = again, r
 
 After two hours or more with no answer, no run of their own code and no tutor turn, the sitting opens with up to 5 due review cards from all the learner's courses, mixed, with confident misses and open notebook errors first, whether it starts from Today's Start or from opening a course. A skipped warm-up is not offered again within the sitting, and the rest of the due cards wait on the review page. The reviews themselves rest on the spacing and testing sources above. Placing them before the lesson rests on the forward testing effect, which was measured with word lists, not with lessons. The cap of 5 and the two-hour gap are this app's own choices, not taken from any source; they are an experiment to drop if the warm-up turns out to keep learners from starting the lesson.
 
+### A recap after a break
+
+Back at an unfinished unit after three days or more, the learner first gets a short "where you were" note, then two recall checks on what came before the break, then the unit goes on. The checks are retrieval practice after a delay, which rests on the testing and spacing sources under "Confidence-rated quick checks" and "Spaced review". The note itself, and the three-day threshold, are this app's own choices with no source behind them: an experiment, to drop if learners skip past the note or the checks keep them from going on.
+
 ### The opening interview
 
 | Source | What it reports | Limits |

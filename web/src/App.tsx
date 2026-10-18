@@ -1161,6 +1161,14 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   }, [courseId, concept, start])
 
   useEffect(() => {
+    // back at an unfinished unit after days away: the server decides whether it opens with a recap. Asked once the
+    // lesson stays open a moment, so one shown on the way to another (a new unit being created) gets none.
+    if (lessonId === null || !navigator.onLine) return
+    const asked = setTimeout(() => api(`/api/lessons/${lessonId}/resume`, {}).catch(() => {}), 1500)
+    return () => clearTimeout(asked)
+  }, [lessonId])
+
+  useEffect(() => {
     chatBottom.current?.scrollIntoView({ block: 'end' })
   }, [lesson?.messages.length, streaming, pane])
 

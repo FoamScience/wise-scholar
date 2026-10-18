@@ -1336,3 +1336,44 @@ def test_a_sitting_after_a_gap_opens_with_a_warm_up_of_at_most_five_due_cards():
     db.conn.execute("INSERT INTO commands (course_id, profile_id, lesson_id, origin, command, consent, started) VALUES (?, ?, ?, 'learner', 'ls', 'none', ?)",
                     (first, who, lesson, app._now()))
     assert app.warmup(first) == {"due": 0}
+
+
+def test_a_learner_back_at_an_unfinished_unit_after_three_days_gets_a_recap(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append((lesson["id"], line)))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Returner')").lastrowid
+    course = db.create_course("Haskell", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Folds"], "known": []}])
+    lesson = db.create_lesson(course, "Folds", "lesson", db.concepts(course)[0]["id"])
+    resume = lambda: asyncio.run(app.resume_lesson(lesson))  # noqa: E731
+    assert resume() == {"recap": False}  # nothing happened in it yet
+    db.conn.execute("INSERT INTO messages (lesson_id, role, text, created) VALUES (?, 'tutor', 'foldr', datetime('now', '-4 days'))", (lesson,))
+    opening = db.add_block(lesson, "quiz", "What does foldr build?", {"card_id": 0, "kind": "open", "options": [], "answer": None, "pretest": True})
+    assert resume() == {"recap": False}  # the opening is not tried yet: it is where the learner picks up
+    db.set_block_data(opening["id"], {**opening["data"], "answer": "a list", "correct": True})
+    db.conn.execute("INSERT INTO messages (lesson_id, role, text, created) VALUES (?, 'learner', 'and foldl?', datetime('now', '-4 days'))", (lesson,))
+    assert resume() == {"recap": False}  # an unanswered learner message comes first
+    db.conn.execute("INSERT INTO messages (lesson_id, role, text, created) VALUES (?, 'tutor', 'left to right', datetime('now', '-2 days'))", (lesson,))
+    assert resume() == {"recap": False}
+    db.conn.execute("UPDATE messages SET created = datetime('now', '-4 days') WHERE lesson_id = ?", (lesson,))
+    monkeypatch.setitem(app._turns, lesson, None)
+    assert resume() == {"recap": False}
+    app._turns.pop(lesson)
+    due = db.add_card(course, None, "q", "open", [], "a", "e", scheduled=True, due="2026-01-01T00:00:00+00:00")
+    assert resume() == {"recap": False}  # the warm-up first
+    app.reviews(who, warmup=True)
+    assert resume() == {"recap": True} and turns == [(lesson, app.RECAP.format(days=4))]
+    db.conn.execute("UPDATE cards SET due = NULL WHERE id = ?", (due,))
+    assert turns[0][1].startswith("[event] The learner is back after 4 days away from this unit.")
+    db.conn.execute("UPDATE lessons SET batch = 1 WHERE id = ?", (lesson,))
+    assert resume() == {"recap": False}  # an offline unit carries on from the device
+    db.conn.execute("UPDATE lessons SET batch = 0 WHERE id = ?", (lesson,))
+    check = db.add_block(lesson, "quiz", "Which fold is lazy?", {"card_id": 0, "kind": "choice", "options": ["foldr", "foldl"], "answer": None})
+    assert resume() == {"recap": False}  # an open check is where the learner picks up
+    db.set_block_data(check["id"], {**check["data"], "answer": "foldr"})
+    db.add_block(lesson, "done", "Finished.", None)
+    assert resume() == {"recap": False} and len(turns) == 1
