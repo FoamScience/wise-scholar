@@ -307,7 +307,10 @@
       "tutor": "Tuteur",
       "message": "Écrire au tuteur",
       "turnFailed": "le tour a échoué",
-      "changeHint": "Dites au tuteur ce qu'il faut changer : retirer un sujet, en ajouter un, réordonner, raccourcir…"
+      "changeHint": "Dites au tuteur ce qu'il faut changer : retirer un sujet, en ajouter un, réordonner, raccourcir…",
+      "unread_one": "{{count}} nouveau message",
+      "unread_other": "{{count}} nouveaux messages",
+      "unread_many": "{{count}} de nouveaux messages"
     },
     "profile": {
       "who": "Qui apprend ?",

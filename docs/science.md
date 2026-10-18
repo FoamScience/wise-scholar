@@ -85,9 +85,9 @@ Each unit opens with 3 to 6 named steps, and a counter shows the step the learne
 
 The course map tops its list with the units done and how many units have reviews due, and each unit shows where the learner stands: not started, the step it is on, or done, with its mastery squares and its due reviews. No source above tests a progress display like this; it answers the learner's complaint that they could not see where they stood, and is an experiment to drop if it does not help learners come back to their reviews and finish units.
 
-### One lesson stream, the chat on demand
+### The lesson holds the cards, the chat sits beside it
 
-The tutor's messages and the learner's run inline in the lesson, between the cards they belong to, and the box to write to the tutor opens as a drawer only when the learner asks (it starts open in the interview, which is a conversation). The aim is to keep what the tutor says next to what it is about instead of in a second column, which is the idea behind the split-attention and spatial-contiguity research; no abstract of that research was read for this, so it is not cited, and the layout is an experiment to drop if learners lose track of the conversation.
+The tutor's messages and the learner's run in a sidebar beside the lesson, closed by default (it starts open in the interview, which is a conversation); the button that opens it counts the tutor's messages that came while it was closed. An earlier experiment put the messages inline between the cards, after the split-attention and spatial-contiguity idea of keeping what the tutor says next to what it is about; in use the messages kept breaking up the cards, so the experiment ended. No abstract of that research was read, so it is not cited.
 
 ### Momentum and speed
 

@@ -1,22 +1,22 @@
 import { useLayoutEffect } from 'react'
 import type { RefObject } from 'react'
 
-const ARRIVING = '.block:not(.skeleton), .remark, .quiz-result'
+const ARRIVING = '.block:not(.skeleton), .bubble, .quiz-result'
 
-/** Cards, remarks and quiz results added to the box rise in once; what is there when the box first shows for this key stays still. */
+/** Cards, chat messages and quiz results added to the box rise in once; what is there when the box first shows for this key stays still. */
 export function useArrivals(box: RefObject<HTMLElement | null>, key: unknown) {
   useLayoutEffect(() => {
     if (!box.current) return
     const watch = new MutationObserver((records) => {
       const removed = new Set(records.flatMap((r) => [...r.removedNodes]))
-      // a finished reply swaps the streamed remark for the saved one the learner has already read
-      const replaced = [...removed].some((n) => n instanceof HTMLElement && n.matches('.remark'))
+      // a finished reply swaps the streamed message for the saved one the learner has already read
+      const replaced = [...removed].some((n) => n instanceof HTMLElement && n.matches('.bubble'))
       const targets = records
         .flatMap((r) => [...r.addedNodes])
         // a reorder removes and adds the same node: a move, not an arrival
         .filter((n): n is HTMLElement => n instanceof HTMLElement && !removed.has(n))
         .map((n) => (n.matches(ARRIVING) ? n : n.querySelector<HTMLElement>(ARRIVING)))
-        .filter((n) => n !== null && !(replaced && n.matches('.remark')))
+        .filter((n) => n !== null && !(replaced && n.matches('.bubble')))
       if (!targets.length) return
       const root = getComputedStyle(document.documentElement)
       const duration = parseFloat(root.getPropertyValue('--motion'))

@@ -115,22 +115,6 @@ export type ExerciseFile = { path: string; location: string; content: string | n
 
 export type SortItem = { text: string; category?: string }
 
-export type StreamItem = { block: Block } | { message: Message }
-
-/** The lesson as one stream: its blocks in their order, each message just before the first block posted after it. */
-export function lessonStream(blocks: Block[], messages: Message[]): StreamItem[] {
-  const out: StreamItem[] = []
-  let next = 0
-  for (const block of blocks) {
-    // a learner message from the same second came first: the block it triggered belongs after it
-    while (next < messages.length && (messages[next].created < block.created || (messages[next].created === block.created && messages[next].role === 'learner')))
-      out.push({ message: messages[next++] })
-    out.push({ block })
-  }
-  while (next < messages.length) out.push({ message: messages[next++] })
-  return out
-}
-
 export type OutlineData = { steps: string[]; at: number; added: { step: string; reason: string } | null }
 
 export function outlineOf(lesson: Lesson): OutlineData | null {

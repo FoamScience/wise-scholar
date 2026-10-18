@@ -524,10 +524,17 @@ pre {
     pointer-events: auto;
   }
 
-  .lesson > .chat.drawer {
-    align-self: stretch;
+  /* the chat covers the lesson pane, above the pane switcher */
+  .workspace > .chat {
+    position: absolute;
+    inset: 0 0 52px;
+    z-index: 5;
     width: auto;
-    max-width: none;
+    border: 0;
+  }
+
+  .workspace[data-pane='map'] > .chat {
+    display: none;
   }
 
   .workspace > .lesson {
@@ -720,40 +727,45 @@ pre {
   position: relative;
 }
 
-/* the chat opens on demand at the end of the lesson, pinned to its bottom edge while the learner scrolls; the
-   conversation itself runs inline in the lesson */
-.chat.drawer {
-  position: sticky;
-  bottom: 16px;
-  z-index: 5;
-  flex-shrink: 0;
-  align-self: flex-end;
+/* the conversation with the tutor, a column beside the lesson opened on demand, so the lesson holds only its cards */
+.chat {
   display: flex;
   flex-direction: column;
-  width: 384px;
-  max-width: calc(100% - 32px);
+  flex-shrink: 0;
+  width: 360px;
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
+  border-inline-start: 1px solid var(--line);
+  transition: opacity var(--motion) var(--ease);
 }
 
-.chat.drawer {
-  transition:
-    opacity var(--motion) var(--ease),
-    translate var(--motion) var(--ease);
-}
-
-/* closing is instant: a fading drawer would sit in the flow beside the returning button */
-.chat.drawer[hidden] {
+.chat[hidden] {
   display: none;
 }
 
 @starting-style {
-  .chat.drawer {
+  .chat {
     opacity: 0;
-    translate: 0 8px;
   }
+}
+
+/* beside the map, a column would leave the lesson too narrow: the chat lies over the lesson's end instead */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .workspace > .chat {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    z-index: 5;
+    box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
+  }
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
 }
 
 @keyframes rise {
@@ -772,27 +784,29 @@ pre {
   animation: rise var(--motion) var(--ease);
 }
 
-.remark {
-  max-width: 68ch;
-  padding: 0 4px;
-  overflow-wrap: anywhere;
-}
-
-.remark > :first-child {
-  margin-top: 0;
-}
-
-.remark > :last-child {
-  margin-bottom: 0;
-}
-
-.remark.learner {
-  align-self: flex-end;
-  padding: 8px 14px;
-  background: var(--teal);
+/* the tutor's messages that came while the chat was closed */
+.ask .badge {
+  position: absolute;
+  top: -8px;
+  inset-inline-end: -8px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--amber);
   color: var(--on-teal);
-  border-radius: 12px;
-  white-space: pre-wrap;
+  border: 2px solid var(--panel);
+  border-radius: 11px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .chat-head {
