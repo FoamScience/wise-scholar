@@ -7,6 +7,7 @@ import { sortItems } from './course'
 import type { SortItem } from './course'
 import { percent } from './i18n'
 import { gradeOffline, placements } from './offline'
+import { SittingSummary } from './Sitting'
 import type { Given } from './offline'
 
 export type QuizKind = 'choice' | 'open' | 'sort'
@@ -386,6 +387,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
 
   return (
     <main className="home">
+      {then && <SittingSummary profile={profile} />}
       {then && (
         <a className="small" href={then} onClick={goOn}>
           {t('review.skipWarmup')}

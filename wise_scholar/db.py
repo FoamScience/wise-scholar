@@ -976,8 +976,8 @@ def update_error(error_id: int, note: str | None, pinned: bool | None, resolved:
 
 def graded_answers(profile_id: int) -> list[dict]:
     return rows(
-        "SELECT a.confidence, a.correct FROM answers a JOIN cards k ON k.id = a.card_id "
-        "JOIN courses c ON c.id = k.course_id WHERE c.profile_id = ? AND a.correct IS NOT NULL",
+        "SELECT a.confidence, a.correct, a.created, k.question FROM answers a JOIN cards k ON k.id = a.card_id "
+        "JOIN courses c ON c.id = k.course_id WHERE c.profile_id = ? AND a.correct IS NOT NULL ORDER BY a.created, a.id",
         profile_id,
     )
 

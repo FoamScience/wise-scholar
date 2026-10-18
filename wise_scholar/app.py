@@ -1839,6 +1839,30 @@ def self_grade(answer_id: int, body: SelfGrade) -> dict:
     return quiz.grade(answer_id, body.correct)
 
 
+@app.get("/api/sitting")
+def sitting(profile: int) -> dict:
+    """The learner's latest sitting, the graded answers back to the last gap of SITTING_GAP or more: how sure they
+    said they were against how often they were right, and the confident misses to look at again. At the start of a
+    sitting, before any answer, that is the sitting before."""
+    answers = db.graded_answers(profile)
+    if not answers:
+        return {"answers": 0}
+    times = [datetime.fromisoformat(a["created"]).replace(tzinfo=timezone.utc) for a in answers]
+    first = len(answers) - 1
+    while first > 0 and times[first] - times[first - 1] < SITTING_GAP:
+        first -= 1
+    group = answers[first:]
+    return {
+        "answers": len(group),
+        "sure": sum(a["confidence"] for a in group) / len(group),
+        "right": sum(a["correct"] for a in group) / len(group),
+        "misses": [a["question"] for a in group if review.is_confident_miss(bool(a["correct"]), a["confidence"])],
+        "ended": group[-1]["created"],
+        # still going: the last answer is within the gap; else it is a sitting already over
+        "current": datetime.now(timezone.utc) - times[-1] < SITTING_GAP,
+    }
+
+
 @app.get("/api/calibration")
 def calibration(profile: int) -> dict:
     return review.calibration([(a["confidence"], bool(a["correct"])) for a in db.graded_answers(profile)])

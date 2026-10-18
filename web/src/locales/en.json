@@ -47,6 +47,15 @@
       "momentumHint": "Short units at a steady pace",
       "speedHint": "Longer units; test out of what you already know"
     },
+    "sitting": {
+      "end": "End sitting",
+      "ended": "Sitting ended",
+      "this": "This sitting",
+      "last": "Your last sitting",
+      "line_one": "{{count}} answer: you were {{sure}} sure on average and right {{right}} of the time.",
+      "line_other": "{{count}} answers: you were {{sure}} sure on average and right {{right}} of the time.",
+      "misses": "You were sure of these and missed them; they come back sooner in reviews:"
+    },
     "panes": {
       "label": "Views",
       "lesson": "Lesson"

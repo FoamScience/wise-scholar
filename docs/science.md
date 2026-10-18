@@ -93,6 +93,10 @@ The tutor's messages and the learner's run inline in the lesson, between the car
 
 Each course runs at the pace the learner picks, momentum by default. Momentum keeps units to about 15 minutes with no step skipped; speed allows longer units and lets the learner test out of a step or a whole unit by answering its checks before its teaching, a check counting as known when right at 70% confidence or more. Testing out rests on the expertise reversal source under "Worked example, then solo" (Kalyuga, Ayres, Chandler & Sweller 2003): guidance that helps novices can hinder learners who already know the material. The unit lengths, the 70% bar and the choice between two paces are this app's own and an experiment, to drop if speed mode skips steps learners later miss in reviews.
 
+### How sure against how right, at the end of a sitting
+
+"End sitting" (and, when the learner just left, the next sitting's warm-up) shows one line for the sitting, how sure the learner said they were on average against how often they were right, and lists the questions they were sure of and missed. It builds on the confidence ratings and the hypercorrection source under "Confidence-rated quick checks", which make the confident misses worth a second look. Whether showing the gap itself makes learners better calibrated is not tested by any source read here; it is an experiment, to drop if the learner's confidence and accuracy do not move closer over sittings.
+
 ### The opening interview
 
 | Source | What it reports | Limits |
