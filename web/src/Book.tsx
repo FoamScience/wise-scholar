@@ -25,6 +25,7 @@ import type { Graded, QuizData } from './Quiz'
 import { textDirection } from './text'
 import { pageStyle } from './print'
 import { useTheme } from './theme'
+import { Swap } from './Swap'
 
 type Files = Map<number, ExerciseFile[]>
 
@@ -468,7 +469,7 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
         <span className="grow small">{!pdf && t('book.saveHint')}</span>
         {pdf ? (
           <button type="button" className="btn primary" disabled={preparing} onClick={() => download(course.topic)}>
-            {preparing ? t('book.preparing') : t('book.download')}
+            <Swap labels={[t('book.download'), t('book.preparing')]} at={preparing ? 1 : 0} />
           </button>
         ) : (
           <button type="button" className="btn primary" onClick={() => window.print()}>

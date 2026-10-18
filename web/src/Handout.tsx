@@ -5,6 +5,7 @@ import { api, failure } from './api'
 import type { Lesson } from './course'
 import { useTheme } from './theme'
 import { pageStyle } from './print'
+import { Swap } from './Swap'
 
 type Version = 'student' | 'teacher'
 type Head = Pick<Lesson, 'id' | 'title' | 'phase' | 'concept_id'> & { course_id: number; topic: string }
@@ -61,7 +62,7 @@ export function Handout({ lessonId, version, pdf }: { lessonId: number; version:
         </a>
         {pdf ? (
           <button type="button" className="btn primary" disabled={preparing} onClick={download}>
-            {preparing ? t('book.preparing') : t('book.download')}
+            <Swap labels={[t('book.download'), t('book.preparing')]} at={preparing ? 1 : 0} />
           </button>
         ) : (
           <button type="button" className="btn primary" onClick={() => window.print()}>
