@@ -228,6 +228,13 @@
       "network": "Demande d'accès à Internet"
     },
     "map": {
+      "summaryDone": "Unités faites : {{done}} sur {{total}}",
+      "summary_one": "Unités faites : {{done}} sur {{total}}, {{count}} à réviser",
+      "summary_other": "Unités faites : {{done}} sur {{total}}, {{count}} à réviser",
+      "summary_many": "Unités faites : {{done}} sur {{total}}, {{count}} à réviser",
+      "reviewDue_one": "{{count}} révision due",
+      "reviewDue_other": "{{count}} révisions dues",
+      "reviewDue_many": "{{count}} de révisions dues",
       "label": "Plan du cours",
       "level": "Niveau",
       "retake": "Repasser le test de niveau",

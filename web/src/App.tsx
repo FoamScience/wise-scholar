@@ -892,20 +892,34 @@ function EditBar(props: { block: Block; first: boolean; last: boolean; disabled:
   )
 }
 
+/** A unit is done once its lesson is finished, or placed out with no lesson begun. */
+function unitDone(concept: Concept, lesson: Lesson | undefined): boolean {
+  return lesson ? lesson.blocks.some((b) => b.kind === 'done') : Boolean(concept.known)
+}
+
 function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction, prepared = false): string {
   if (prepared) return !lesson ? t('map.notPlanned') : lesson.blocks.some((b) => b.kind === 'done') ? t('map.planned') : t('map.drafting')
-  if (!lesson) return concept.known ? t('map.placedOut') : t('map.notStarted')
+  const due = concept.due ? t('map.reviewDue', { count: concept.due }) : ''
+  if (!lesson) return [concept.known ? t('map.placedOut') : t('map.notStarted'), due].filter(Boolean).join(' · ')
   if (concept.kind === 'practice') return lesson.blocks.some((b) => b.kind === 'done') ? t('common.done') : t('map.started')
+  const outline = outlineOf(lesson)
+  const where = unitDone(concept, lesson)
+    ? t('common.done')
+    : outline && outline.at < outline.steps.length
+      ? t('outline.step', { n: outline.at + 1, total: outline.steps.length })
+      : ''
   const cs = lesson.blocks
     .filter((b) => b.kind === 'challenge' || b.kind === 'exercise' || b.kind === 'speaking')
     .map((b) => b.data as ChallengeData)
-  if (cs.length === 0) return t('map.started')
+  if (cs.length === 0) return [where || t('map.started'), due].filter(Boolean).join(' · ')
   const hints = cs.reduce((n, c) => n + c.hints.length, 0)
   const gaveUp = cs.filter((c) => c.gave_up).length
   return [
+    where,
     t('map.solved', { solved: cs.filter((c) => c.solved).length, total: cs.length }),
     hints > 0 && t('map.hints', { count: hints }),
     gaveUp > 0 && t('map.gaveUp', { n: gaveUp }),
+    due,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -1210,6 +1224,9 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
     : undefined
   const dividers = cardDividers(lesson)
   const outline = outlineOf(lesson)
+  const units = course.concepts.filter((c) => c.kind === 'concept')
+  const unitsDone = units.filter((c) => unitDone(c, course.lessons.find((l) => l.concept_id === c.id))).length
+  const reviewDue = units.filter((c) => c.due).length
   const empty = lesson.blocks.length === 0 && !showPlan
   const canPrepare = lesson.phase === 'lesson' && lesson.concept_id !== null && course.mode !== 'teacher' && !lesson.batch && !finished
   const batchCards = lesson.batch ? lesson.blocks.filter((b) => b.kind === 'quiz' && (b.data as QuizData).answer === null) : []
@@ -1219,6 +1236,11 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
     <div className="workspace" data-pane={pane}>
       <nav className="map" aria-label={t('map.label')}>
         <div className="label">{t('map.label')}</div>
+        {course.mode !== 'teacher' && units.length > 0 && (
+          <div className="small">
+            {reviewDue ? t('map.summary', { done: unitsDone, total: units.length, count: reviewDue }) : t('map.summaryDone', { done: unitsDone, total: units.length })}
+          </div>
+        )}
         <a className="small" href={`#/course/${course.id}/book`}>
           {t('book.export')}
         </a>

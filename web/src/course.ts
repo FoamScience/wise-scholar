@@ -35,7 +35,7 @@ export type ChallengeData = {
 export type Scored = { word: string; score: number }
 export type SpeakingData = ChallengeData & { speaking: 'read' | 'shadow'; lang: string; scores: { words: Scored[]; heard: string | null; score: number }[] }
 export type Block = { id: number; lesson_id: number; kind: string; markdown: string; data: unknown; created: string; position: number }
-export type Concept = { id: number; module: string; title: string; known: number; mastery: number | null; kind: 'concept' | 'practice' }
+export type Concept = { id: number; module: string; title: string; known: number; mastery: number | null; kind: 'concept' | 'practice'; due: number }
 export type Lesson = {
   id: number
   title: string

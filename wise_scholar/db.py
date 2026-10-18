@@ -585,13 +585,18 @@ def concepts(course_id: int) -> list[dict]:
 
 def concept_view(course_id: int) -> list[dict]:
     """Concepts with their mastery: the share of right latest answers, or full for a concept placed out; a practice
-    unit is full once its lesson is finished."""
+    unit is full once its lesson is finished. due counts the concept's review cards due now."""
     mastery = concept_mastery(course_id)
+    due = {r["concept_id"]: r["n"] for r in rows(
+        "SELECT concept_id, COUNT(*) AS n FROM cards WHERE course_id = ? AND due <= ? GROUP BY concept_id",
+        course_id, datetime.now(timezone.utc).isoformat(),
+    )}
     finished = {r["concept_id"] for r in rows(
         "SELECT DISTINCT l.concept_id FROM lessons l JOIN blocks b ON b.lesson_id = l.id WHERE l.course_id = ? AND b.kind = 'done'", course_id
     )}
     return [
-        {**c, "mastery": (1.0 if c["id"] in finished else None) if c["kind"] == "practice" else mastery.get(c["id"], 1.0 if c["known"] else None)}
+        {**c, "mastery": (1.0 if c["id"] in finished else None) if c["kind"] == "practice" else mastery.get(c["id"], 1.0 if c["known"] else None),
+         "due": due.get(c["id"], 0)}
         for c in concepts(course_id)
     ]
 

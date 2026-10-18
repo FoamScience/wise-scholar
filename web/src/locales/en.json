@@ -223,6 +223,11 @@
       "network": "Internet request"
     },
     "map": {
+      "summaryDone": "Units {{done}} of {{total}} done",
+      "summary_one": "Units {{done}} of {{total}} done, {{count}} needs review",
+      "summary_other": "Units {{done}} of {{total}} done, {{count}} need review",
+      "reviewDue_one": "{{count}} review due",
+      "reviewDue_other": "{{count}} reviews due",
       "label": "Course map",
       "level": "Level",
       "retake": "Retake placement",
