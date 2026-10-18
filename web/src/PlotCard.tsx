@@ -72,7 +72,7 @@ export function PlotCard(props: { id: number; title: string; data: unknown }) {
     <section id={`block-${props.id}`} className="block plot">
       <div className="label">{t('block.plot')}</div>
       {props.title && <h2>{props.title}</h2>}
-      <div ref={box} className="plot-box" role="img" aria-label={d.alt} />
+      <div ref={box} className="plot-box" role="img" aria-label={d.alt} style={error ? undefined : { minHeight: d.spec.height ?? 320 }} />
       {error && (
         <div className="mermaid-error">
           <pre>{JSON.stringify(d.spec, null, 1).slice(0, 2000)}</pre>

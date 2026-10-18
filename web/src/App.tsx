@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
 import { api, failure } from './api'
+import { useArrivals } from './arrive'
 import i18n, { day, lookup, percent } from './i18n'
 import Logo from './Logo'
 import { QuizCard, Review, ReviewPanels } from './Quiz'
@@ -979,8 +980,10 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const [kept, setKept] = useState<{ lesson: number | null; answers: Record<number, Given> }>({ lesson: null, answers: {} })
   const lessonBottom = useRef<HTMLDivElement>(null)
   const sideMenu = useRef<HTMLDetailsElement>(null)
+  const lessonBox = useRef<HTMLElement>(null)
 
   const lesson = course?.lessons.find((l) => l.id === lessonId) ?? null
+  useArrivals(lessonBox, lesson?.id)
 
   const given = kept.lesson === lessonId ? kept.answers : lessonId ? loadGiven(lessonId) : {}
 
@@ -1384,11 +1387,12 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
         })}
       </nav>
 
-      <main className="lesson">
+      <main ref={lessonBox} className="lesson">
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
         {/* first, wherever the tutor posted it: the plan and the counter belong under the title */}
         {outline && (
           <OutlineCard
+            key={lesson.id}
             data={outline}
             onTestOut={course.pace === 'speed' && !finished && !lesson.running ? (scope) => post(`/api/lessons/${lesson.id}/testout`, { scope }) : undefined}
           />
