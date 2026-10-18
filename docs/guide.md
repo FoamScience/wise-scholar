@@ -72,6 +72,7 @@ Other settings, all optional:
 | `WISE_SCHOLAR_COMMANDS` | `0` serves without command execution: the tutor gets no workspace tools and poses no runnable exercises, and Run is refused. For instances opened to other people | `1` |
 | `WISE_SCHOLAR_VAULT` | an Obsidian vault folder on this machine (or one synced to it): the server keeps `Wise Scholar/<course>/` inside it current: a few seconds after a course changes its notes are rewritten (an edit you made to one of them is lost; keep your own writing in files of your own, which are never touched) and notes it wrote that the course no longer has, or a folder left by a renamed course, are removed. Plots stay as specs in the synced notes | unset |
 | `WISE_SCHOLAR_HOSTS` | host names the server answers to, comma-separated, ports ignored | `127.0.0.1,localhost,::1` |
+| `WISE_SCHOLAR_LISTEN` | extra addresses `make serve` listens on, comma-separated, beside `127.0.0.1` (which the agents call back on): a tailnet address lets a proxy reach the server without opening it to the LAN; add the proxied name to `WISE_SCHOLAR_HOSTS` too. An address that cannot be bound is skipped with a warning | unset |
 | `WISE_SCHOLAR_MCP_SECRET` | the bearer token on `/mcp`; a fresh one per start when unset | unset |
 | `WISE_SCHOLAR_AGENT_ENV` | extra environment variables the agent processes get, names or prefixes ending in `*`, comma-separated | unset |
 | `WISE_SCHOLAR_TURNS` | tutor turns running at once | `2` |
