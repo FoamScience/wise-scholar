@@ -1,4 +1,4 @@
-import { serverMessage } from './i18n'
+import i18n, { serverMessage } from './i18n'
 
 /** The error a failed response carries: the server's detail in the interface language, else the status text. */
 export async function failure(res: Response): Promise<Error> {
@@ -7,6 +7,8 @@ export async function failure(res: Response): Promise<Error> {
 }
 
 export async function api<T>(path: string, body?: unknown): Promise<T> {
+  // every change goes to the server; offline it would fail with the browser's own fetch error
+  if (body !== undefined && !navigator.onLine) throw new Error(i18n.t('offline.needsConnection'))
   const res = await fetch(path, {
     method: body === undefined ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json' },

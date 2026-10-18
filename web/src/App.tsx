@@ -7,7 +7,7 @@ import { api, failure } from './api'
 import i18n, { day, lookup, percent } from './i18n'
 import Logo from './Logo'
 import { QuizCard, Review, ReviewPanels } from './Quiz'
-import { loadGiven, saveGiven } from './offline'
+import { loadGiven, saveGiven, useOnline } from './offline'
 import type { Given } from './offline'
 import type { QuizData } from './Quiz'
 import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
@@ -984,6 +984,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const [changing, setChanging] = useState(false)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
+  const online = useOnline()
   // which column a phone shows; wider screens show all three
   const [pane, setPane] = useState<'map' | 'lesson' | 'chat'>('lesson')
   const [kept, setKept] = useState<{ lesson: number | null; answers: Record<number, Given> }>({ lesson: null, answers: {} })
@@ -1481,7 +1482,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
           <div className="lesson-next batch">
             <span className="small">{t('offline.answered', { n: ready.length, total: batchCards.length })}</span>
             {/* with nothing answered it leaves offline mode, the way out of a prepare that wrote no checks */}
-            <button className={ready.length ? 'btn primary' : 'btn'} disabled={sending} onClick={() => sendBatch(ready)}>
+            <button className={ready.length ? 'btn primary' : 'btn'} disabled={!online || sending} onClick={() => sendBatch(ready)}>
               {ready.length ? t('offline.send') : t('offline.leave')}
             </button>
           </div>
@@ -1490,7 +1491,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
           !lesson.running && (
             <div className="lesson-next batch">
               <span className="small">{t('offline.help')}</span>
-              <button className="btn" onClick={prepareOffline}>
+              <button className="btn" disabled={!online} onClick={prepareOffline}>
                 {t('offline.prepare')}
               </button>
             </div>
@@ -1560,7 +1561,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
                 {t('common.stop')}
               </button>
             )}
-            <button className="btn primary" onClick={send} disabled={lesson.running || !course.started || !draft.trim()}>
+            <button className="btn primary" onClick={send} disabled={!online || lesson.running || !course.started || !draft.trim()}>
               {t('common.send')}
             </button>
           </div>
@@ -1685,6 +1686,7 @@ function ThemeToggle() {
 export default function App() {
   const hash = useHash()
   const { t } = useTranslation()
+  const online = useOnline()
   const [agent, setAgent] = useState('')
   const [speech, setSpeech] = useState(false)
   const [pdf, setPdf] = useState(false)
@@ -1784,6 +1786,11 @@ export default function App() {
           </a>
         )}
       </header>
+      {!online && (
+        <div className="offline-banner" role="status">
+          {t('offline.banner')}
+        </div>
+      )}
       {page()}
     </div>
   )

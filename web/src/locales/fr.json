@@ -37,6 +37,8 @@
       "lesson": "Leçon"
     },
     "offline": {
+      "needsConnection": "Il faut une connexion pour cela.",
+      "banner": "Hors ligne : vous voyez ce que cet appareil a gardé. Le tuteur et l'envoi des réponses demandent une connexion.",
       "prepare": "Préparer hors ligne",
       "help": "Le tuteur écrit d'un coup le reste de cette unité, avec ses vérifications, à lire et à faire sans connexion.",
       "answered": "{{n}} vérifications sur {{total}} faites. Les réponses restent sur cet appareil jusqu'à leur envoi.",
