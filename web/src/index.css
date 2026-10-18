@@ -32,6 +32,7 @@
   --motion: 180ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   color-scheme: light;
+  interpolate-size: allow-keywords;
 }
 
 /* Dark follows the system unless the toggle in the top bar picked a theme. */
@@ -151,6 +152,31 @@ a,
 :focus-visible {
   outline: 2px solid var(--teal);
   outline-offset: 2px;
+}
+
+/* a disclosure fades open; only the short sidebar menu also grows, since growing clips and moves what follows */
+details::details-content {
+  opacity: 0;
+  transition:
+    opacity var(--motion) var(--ease),
+    content-visibility var(--motion) allow-discrete;
+}
+
+details[open]::details-content {
+  opacity: 1;
+}
+
+.side-menu::details-content {
+  block-size: 0;
+  overflow-y: clip;
+  transition:
+    block-size var(--motion) var(--ease),
+    opacity var(--motion) var(--ease),
+    content-visibility var(--motion) allow-discrete;
+}
+
+.side-menu[open]::details-content {
+  block-size: auto;
 }
 
 .swap {
@@ -482,9 +508,20 @@ pre {
     visibility: hidden;
   }
 
+  .workspace > .map,
+  .workspace > .lesson {
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity var(--motion) var(--ease),
+      visibility var(--motion);
+  }
+
   .workspace[data-pane='map'] > .map,
   .workspace[data-pane='lesson'] > .lesson {
     visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .lesson > .chat.drawer {
@@ -700,8 +737,29 @@ pre {
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
 }
 
+.chat.drawer {
+  transition:
+    opacity var(--motion) var(--ease),
+    translate var(--motion) var(--ease);
+}
+
+/* closing is instant: a fading drawer would sit in the flow beside the returning button */
 .chat.drawer[hidden] {
   display: none;
+}
+
+@starting-style {
+  .chat.drawer {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
 }
 
 .lesson .ask {
@@ -709,6 +767,8 @@ pre {
   bottom: 16px;
   align-self: flex-end;
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.15);
+  /* an animation, not a transition, so the button keeps its colour and press transitions */
+  animation: rise var(--motion) var(--ease);
 }
 
 .remark {
