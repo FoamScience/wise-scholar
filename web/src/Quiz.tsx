@@ -6,6 +6,8 @@ import { api } from './api'
 import { sortItems } from './course'
 import type { SortItem } from './course'
 import { percent } from './i18n'
+import { gradeOffline, placements } from './offline'
+import type { Given } from './offline'
 
 export type QuizKind = 'choice' | 'open' | 'sort'
 
@@ -37,16 +39,6 @@ type DueCard = {
   categories?: string[]
   translation: string
   confident_miss: boolean
-}
-
-function placements(answer: string): Record<string, string> {
-  try {
-    const placed: unknown = JSON.parse(answer)
-    const ok = placed !== null && typeof placed === 'object' && !Array.isArray(placed) && Object.values(placed).every((v) => typeof v === 'string')
-    return ok ? (placed as Record<string, string>) : {}
-  } catch {
-    return {}
-  }
 }
 
 /** Each item with a row of category buttons; the answer is the placement map as JSON. */
@@ -228,12 +220,50 @@ export function QuizResult(props: { answer: string; confidence: number; result: 
   )
 }
 
+/** A card of a lesson prepared for offline: answered and graded on the device, sent with the others later. */
+function OfflineAnswer(props: { id: number; data: QuizData; given?: Given; onGive: (given: Given) => void }) {
+  const { t } = useTranslation()
+  const { data: d, given } = props
+  if (!given)
+    return <QuizForm id={`quiz-${props.id}`} kind={d.kind} options={d.options} categories={d.categories} disabled={false} onSubmit={(answer, confidence) => props.onGive({ answer, confidence })} />
+  const result = gradeOffline(d, given)
+  if (!result)
+    return (
+      <div className="quiz-result">
+        <div className="attempt">
+          <span className="label">{t('quiz.answerSure', { percent: percent(given.confidence) })}</span>
+          {given.answer}
+        </div>
+        <div className="solution">
+          <div className="label">{t('review.model')}</div>
+          <Markdown>{d.answer_key ?? ''}</Markdown>
+          <Markdown>{d.explanation ?? ''}</Markdown>
+        </div>
+        <div className="row">
+          <button className="btn" onClick={() => props.onGive({ ...given, self_correct: false })}>
+            {t('review.missed')}
+          </button>
+          <button className="btn primary" onClick={() => props.onGive({ ...given, self_correct: true })}>
+            {t('review.right')}
+          </button>
+        </div>
+      </div>
+    )
+  return (
+    <>
+      <QuizResult answer={given.answer} confidence={given.confidence} result={result} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
+      <div className="small">{t('offline.kept')}</div>
+    </>
+  )
+}
+
 export function QuizCard(props: {
   id: number
   question: string
   data: QuizData
   disabled: boolean
   authored?: boolean
+  offline?: { given?: Given; onGive: (given: Given) => void }
   onUnknown?: () => void
   onSubmit: (answer: string, confidence: number) => void
 }) {
@@ -274,6 +304,8 @@ export function QuizCard(props: {
           )}
           {d.explanation && <Markdown>{d.explanation}</Markdown>}
         </div>
+      ) : d.answer === null && props.offline ? (
+        <OfflineAnswer id={props.id} data={d} given={props.offline.given} onGive={props.offline.onGive} />
       ) : d.answer === null ? (
         <QuizForm
           id={`quiz-${props.id}`}

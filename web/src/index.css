@@ -227,6 +227,12 @@ pre {
   padding: 8px 0 24px;
 }
 
+.lesson-next.batch {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
 .btn {
   min-height: 44px;
   padding: 0 16px;

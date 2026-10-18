@@ -32,6 +32,14 @@
       "writingSession": "Writing session {{n}}",
       "nextUnit": "Next · {{title}}"
     },
+    "offline": {
+      "prepare": "Prepare for offline",
+      "help": "The tutor writes the rest of this unit at once, with its checks, to read and answer without a connection.",
+      "answered": "{{n}} of {{total}} checks answered. The answers stay on this device until you send them.",
+      "send": "Send answers",
+      "leave": "Back to the live lesson",
+      "kept": "Kept on this device; the tutor sees it when you send your answers."
+    },
     "activity": {
       "thinking": "thinking…",
       "working": "working…",

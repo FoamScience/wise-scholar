@@ -161,10 +161,16 @@ def prepared(lesson: dict) -> bool:
     return lesson["mode"] == "teacher"
 
 
+def keyed(lesson: dict) -> bool:
+    """Cards carry their key and explanation from the start: a teacher's material, or a lesson the learner takes
+    offline and answers without the tutor."""
+    return prepared(lesson) or bool(lesson["batch"])
+
+
 def pretest_blocker(lesson: dict) -> str | None:
     """A concept lesson explains nothing until the learner has tried its opening card (a pretest challenge or quiz,
     or an exercise); placed-out concepts and prepared courses are exempt."""
-    if lesson["phase"] != "lesson" or not lesson["concept_id"] or prepared(lesson):
+    if lesson["phase"] != "lesson" or not lesson["concept_id"] or keyed(lesson):
         return None
     concept = db.row("SELECT known FROM concepts WHERE id = ?", lesson["concept_id"])
     if not concept or concept["known"]:
@@ -1337,12 +1343,12 @@ async def pose_quiz(
     shown = {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest, "form": form.strip()}
     if translation:
         shown["translation"] = translation
-    if prepared(lesson):
-        # Material for the teacher: the key and the explanation are part of the card from the start.
+    if keyed(lesson):
+        # Material for the teacher, or a card answered offline: the key and the explanation come with it.
         shown.update({"answer_key": answer_key, "explanation": explanation})
     block = db.add_block(lesson_id, "quiz", question, shown)
     _show(lesson, block)
-    return f"shown as quiz {block['id']}; end the turn and wait for the answer"
+    return f"shown as quiz {block['id']}; {'go on with the unit' if lesson['batch'] else 'end the turn and wait for the answer'}"
 
 
 SORT_CATEGORIES = (2, 4)
@@ -1381,11 +1387,11 @@ async def pose_sort(lesson_id: int, question: str, categories: list[str], items:
     )
     # The learner's copy of the items carries no category; the teacher's does.
     shown = {"card_id": card_id, "kind": "sort", "options": [{"text": o["text"]} for o in options], "categories": categories, "answer": None}
-    if prepared(lesson):
+    if keyed(lesson):
         shown.update({"options": options, "answer_key": json.dumps(categories), "explanation": explanation.strip()})
     block = db.add_block(lesson_id, "quiz", question.strip(), shown)
     _show(lesson, block)
-    return f"shown as quiz {block['id']}; end the turn and wait for the answer"
+    return f"shown as quiz {block['id']}; {'go on with the unit' if lesson['batch'] else 'end the turn and wait for the answer'}"
 
 
 @mcp.tool()

@@ -112,6 +112,14 @@ In a technical course, after a solved task, the app shows two correct solutions 
 
 The learner places 6 to 12 items into 2 to 4 categories. The server grades placement by placement and marks misplaced items without naming their category. The tutor then shows one pair of items that tells the categories apart, the misplaced items are sorted again, and the sort comes back in spaced reviews. No source above tests this exact sequence. Hiding the correct category and the single contrasting pair are this app's own design, and their link to discriminative contrast is an inference.
 
+### Units taken offline
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Butler, Karpicke & Roediger 2007, *Journal of Experimental Psychology: Applied* 13(4), 273–281. [doi:10.1037/1076-898X.13.4.273](https://doi.org/10.1037/1076-898X.13.4.273). Abstract read. | After reading 12 prose passages, participants took a six-option multiple-choice test, with feedback on some items given immediately and on others after a delay. On a delayed cued-recall test, delayed feedback led to better performance than immediate feedback. Showing the right answer and letting the participant answer until correct worked equally well. The authors attribute the benefit to the spaced presentation of the information. | Multiple-choice questions on general-knowledge passages, in a lab session. The tutor's later remediation of open answers was not tested. |
+
+The tutor writes the rest of a unit in one turn, with every check carrying its key. The learner answers on the device and sees the key and explanation right after each answer, which is immediate feedback. The tutor comes back to the misses only when the answers are sent, which is delayed. The source supports the delayed part. It gives no reason to prefer the immediate display, which is kept so that a learner offline is not left without any answer. Losing the tutor's adaptation within a unit is a cost that no source above measures.
+
 ## Teaching mechanisms
 
 Each playbook in `wise_scholar/playbooks/` carries its own evidence entries, and the plan screen shows them with links. This section repeats them with their limits.

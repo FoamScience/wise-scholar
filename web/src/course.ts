@@ -44,6 +44,7 @@ export type Lesson = {
   messages: Message[]
   blocks: Block[]
   running: boolean
+  batch?: number
 }
 export type Ranked = {
   mechanism: string

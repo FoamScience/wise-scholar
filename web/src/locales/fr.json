@@ -32,6 +32,14 @@
       "writingSession": "Séance d'écriture {{n}}",
       "nextUnit": "Suivant · {{title}}"
     },
+    "offline": {
+      "prepare": "Préparer hors ligne",
+      "help": "Le tuteur écrit d'un coup le reste de cette unité, avec ses vérifications, à lire et à faire sans connexion.",
+      "answered": "{{n}} vérifications sur {{total}} faites. Les réponses restent sur cet appareil jusqu'à leur envoi.",
+      "send": "Envoyer les réponses",
+      "leave": "Revenir à la leçon en direct",
+      "kept": "Gardé sur cet appareil ; le tuteur le verra à l'envoi de vos réponses."
+    },
     "activity": {
       "thinking": "réflexion…",
       "working": "en cours…",
@@ -519,6 +527,12 @@
     "message is empty": "le message est vide",
     "answer is empty": "la réponse est vide",
     "already answered": "déjà répondu",
+    "a quiz is answered once": "on répond une seule fois à un quiz",
+    "an open answer carries the learner's own grade": "une réponse ouverte porte la note que l'apprenant s'est donnée",
+    "only a unit of a learner's course is taken offline": "seule une unité d'un cours d'apprenant se prépare hors ligne",
+    "this lesson is already prepared for offline": "cette leçon est déjà prête hors ligne",
+    "this lesson is finished": "cette leçon est terminée",
+    "this lesson is not prepared for offline": "cette leçon n'est pas préparée hors ligne",
     "there is no plan yet": "il n'y a pas encore de plan",
     "there is no course map yet; the first placement comes with the plan": "il n'y a pas encore de plan du cours ; le premier test de niveau vient avec le plan",
     "a course holds at most 20 files": "un cours contient au plus 20 fichiers",

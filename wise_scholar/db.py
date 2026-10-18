@@ -310,6 +310,7 @@ MIGRATIONS = [
     _rebuild_cards,
     "ALTER TABLE concepts ADD COLUMN kind TEXT NOT NULL DEFAULT 'concept';",
     _rebuild_errors,
+    "ALTER TABLE lessons ADD COLUMN batch INTEGER NOT NULL DEFAULT 0;",
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
