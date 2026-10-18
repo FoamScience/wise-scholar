@@ -486,6 +486,16 @@ pre {
     font-weight: 400;
   }
 
+  /* the backend name is for the desk; a phone needs the room */
+  .topbar > .status {
+    display: none;
+  }
+
+  .topbar {
+    gap: 10px;
+    padding: 0 12px;
+  }
+
   .confidence {
     flex-wrap: wrap;
   }

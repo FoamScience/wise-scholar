@@ -47,6 +47,16 @@
       "momentumHint": "Unités courtes à rythme régulier",
       "speedHint": "Unités plus longues ; sautez par un test ce que vous savez déjà"
     },
+    "sitting": {
+      "end": "Terminer la séance",
+      "ended": "Séance terminée",
+      "this": "Cette séance",
+      "last": "Votre dernière séance",
+      "line_one": "{{count}} réponse : vous étiez sûr à {{sure}} en moyenne et juste {{right}} du temps.",
+      "line_many": "{{count}} de réponses : vous étiez sûr à {{sure}} en moyenne et juste {{right}} du temps.",
+      "line_other": "{{count}} réponses : vous étiez sûr à {{sure}} en moyenne et juste {{right}} du temps.",
+      "misses": "Vous en étiez sûr et vous vous êtes trompé ; elles reviennent plus tôt en révision :"
+    },
     "panes": {
       "label": "Vues",
       "lesson": "Leçon"

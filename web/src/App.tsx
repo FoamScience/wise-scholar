@@ -16,6 +16,7 @@ import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
 import { challengeLabel, lessonStream, lessonTitle, outlineOf, practiceTitle } from './course'
 import { OutlineCard } from './Outline'
+import { SittingPage } from './Sitting'
 import { Comparison, HintList, Ladder } from './Ladder'
 import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
@@ -1566,6 +1567,9 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             <button className="btn primary" onClick={() => openConcept(nextUnit)}>
               {t('lesson.nextUnit', { title: nextUnit.title })}
             </button>
+            <a className="btn as-link" href="#/sitting">
+              {t('sitting.end')}
+            </a>
           </div>
         )}
         {streaming && (
@@ -1824,6 +1828,7 @@ export default function App() {
     if (handout) return <Handout key={handout[0]} lessonId={Number(handout[1])} version={handout[2] as 'student' | 'teacher'} pdf={pdf} />
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
     if (hash === '#/errors') return <ErrorsPage profile={current.id} />
+    if (hash === '#/sitting') return <SittingPage profile={current.id} />
     if (hash === '#/commands') return <CommandsPage profile={current.id} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} locale={locale} onSelect={select} onChanged={reload} />
@@ -1847,6 +1852,11 @@ export default function App() {
             </option>
           ))}
         </select>
+        {current && (
+          <a className="small" href="#/sitting">
+            {t('sitting.end')}
+          </a>
+        )}
         {current && (
           <a className="btn as-link" href="#/profile">
             {current.name}

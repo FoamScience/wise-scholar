@@ -1482,3 +1482,23 @@ def test_a_course_runs_at_momentum_until_switched_and_speed_lets_the_learner_tes
     assert app.set_pace(course, app.Pace(pace="momentum")) == {"pace": "momentum"} and db.course(course)["pace"] == "momentum"
     with pytest.raises(ValueError):
         app.Pace(pace="fast")
+
+
+def test_a_sitting_summary_covers_the_answers_back_to_the_last_two_hour_gap():
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Sitter')").lastrowid
+    course = db.create_course("Prolog", who)["id"]
+    assert app.sitting(who) == {"answers": 0}
+    card = lambda q: db.add_card(course, None, q, "open", [], "a", "e", scheduled=True)  # noqa: E731
+    for question, confidence, correct, ago in [("old", 0.9, 0, "-1 day"), ("unify?", 0.9, 0, "-50 minutes"), ("cut?", 0.8, 1, "-40 minutes"), ("fail?", 0.5, 0, "-10 minutes")]:
+        db.conn.execute("INSERT INTO answers (card_id, answer, confidence, correct, created) VALUES (?, 'x', ?, ?, datetime('now', ?))",
+                        (card(question), confidence, correct, ago))
+    summary = app.sitting(who)
+    assert summary["answers"] == 3 and round(summary["sure"], 3) == round((0.9 + 0.8 + 0.5) / 3, 3) and round(summary["right"], 3) == round(1 / 3, 3)
+    assert summary["misses"] == ["unify?"]  # sure and wrong; the unsure miss is not one
+    assert summary["current"] is True
+    db.conn.execute("UPDATE answers SET created = datetime(created, '-1 day') WHERE card_id IN (SELECT id FROM cards WHERE course_id = ?)", (course,))
+    old = app.sitting(who)
+    assert old["answers"] == 3 and old["current"] is False  # the last sitting, over, not this one
+    assert len(app.calibration(who)["buckets"]) > 0  # the calibration panel still reads the same answers
