@@ -25,8 +25,8 @@ diagrams/node_modules: diagrams/package-lock.json
 build: web/node_modules diagrams/node_modules ## web and diagram dependencies, web/dist; a running server serves it at once
 	cd web && npm run build
 
-serve: build ## build, then serve on :8321 (WISE_SCHOLAR_PORT changes it)
-	uv run uvicorn wise_scholar.app:app --port $(WISE_SCHOLAR_PORT)
+serve: build ## build, then serve on :8321 (WISE_SCHOLAR_PORT changes it, WISE_SCHOLAR_LISTEN adds addresses)
+	uv run python -m wise_scholar.serve
 
 test: web/node_modules ## Python and web tests
 	uv run pytest -q
