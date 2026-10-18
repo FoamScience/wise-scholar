@@ -1346,6 +1346,12 @@ mark {
   margin-bottom: 0;
 }
 
+.stack > .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .fact {
   display: flex;
   align-items: center;
