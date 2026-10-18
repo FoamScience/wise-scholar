@@ -11,7 +11,7 @@ import time
 import uuid
 from collections import deque
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 from typing import Literal
@@ -1654,18 +1654,42 @@ def patch_error(error_id: int, body: ErrorPatch) -> dict:
 
 
 @app.get("/api/reviews")
-def reviews(profile: int) -> list[dict]:
-    return [quiz.public(c) for c in review.interleave(db.due_cards(profile, _now()))]
+def reviews(profile: int, warmup: bool = False) -> list[dict]:
+    """The due cards, mixed across courses; a warm-up before a lesson takes the first few, the rest wait for the
+    review page."""
+    cards = review.interleave(db.due_cards(profile, _now()))
+    if warmup:
+        _warmed[profile] = datetime.now(timezone.utc)
+        cards = cards[:WARMUP_CARDS]
+    return [quiz.public(c) for c in cards]
+
+
+WARMUP_CARDS = 5
+SITTING_GAP = timedelta(hours=2)
+# when each profile last got a warm-up, so a skipped one is not offered again within the sitting; a restart forgets
+_warmed: dict[int, datetime] = {}
+
+
+@app.get("/api/courses/{course_id}/warmup")
+def warmup(course_id: int) -> dict:
+    """How many cards open the sitting: a learner back after SITTING_GAP or more starts with a few due reviews."""
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    now, profile = datetime.now(timezone.utc), course["profile_id"]
+    recent = [t for t in (db.last_activity(profile), _warmed.get(profile)) if t and now - t < SITTING_GAP]
+    if recent:
+        return {"due": 0}
+    return {"due": min(len(db.due_cards(profile, _now())), WARMUP_CARDS)}
 
 
 # ponytail: a flat half minute per review; fit it to the answer timestamps if the plan is always off.
 REVIEW_MINUTES = 0.5
-SITTING_MINUTES = 30
 
 
 @app.get("/api/today")
 def today(profile: int) -> dict:
-    """What a sitting of 30 minutes holds: due reviews, then the next unit of each active course, and a ready cast."""
+    """What a sitting holds: a warm-up of due reviews, then the next unit of each active course, and a ready cast."""
     due = len(db.due_cards(profile, _now()))
     units = []
     for course in db.rows("SELECT id, topic, started FROM courses WHERE profile_id = ? AND archived = 0 ORDER BY id", profile):
@@ -1691,7 +1715,9 @@ def today(profile: int) -> dict:
         profile,
     )
     open_errors = len(db.errors(profile, open_only=True))
-    return {"due": due, "review_minutes": min(SITTING_MINUTES, round(due * REVIEW_MINUTES)), "units": units, "cast": cast, "errors": open_errors, "extras": extras}
+    # the sitting opens with a warm-up of a few cards; the rest wait on the review page
+    warmup = min(due, WARMUP_CARDS)
+    return {"due": due, "warmup": warmup, "review_minutes": round(warmup * REVIEW_MINUTES), "units": units, "cast": cast, "errors": open_errors, "extras": extras}
 
 
 @app.post("/api/cards/{card_id}/review")

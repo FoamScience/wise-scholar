@@ -1304,3 +1304,35 @@ def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypa
     asyncio.run(app.prepare_offline(lesson))
     asyncio.run(app.send_batch(lesson, app.Batch(answers=[])))
     assert app._lesson_view(lesson)["batch"] == 0 and turns[-1].startswith("[batch results]\nleft unanswered: ")
+
+
+def test_a_sitting_after_a_gap_opens_with_a_warm_up_of_at_most_five_due_cards():
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Warm')").lastrowid
+    first = db.create_course("Rust", who)["id"]
+    second = db.create_course("Welsh", who)["id"]
+    cards = [db.add_card(course, None, f"q{i}", "open", [], "a", "e", scheduled=True, due="2026-01-01T00:00:00+00:00")
+             for i, course in enumerate([first, second] * 4)]
+    assert db.last_activity(who) is None and app.warmup(first) == {"due": 5}  # never active: a sitting starts
+    db.conn.execute("UPDATE cards SET confident_miss = 1 WHERE id = ?", (cards[5],))
+    assert len(app.reviews(who)) == 8 and app.today(who)["due"] == 8 and app.today(who)["warmup"] == 5
+    warm = app.reviews(who, warmup=True)
+    assert len(warm) == 5 and warm[0]["id"] == cards[5]  # a confident miss leads
+    assert [c["topic"] for c in warm][1:3] == ["Rust", "Welsh"]  # then mixed across courses
+    assert app.warmup(first) == {"due": 0}  # served once: skipping it does not bring it back within the sitting
+    app._warmed[who] -= app.SITTING_GAP
+
+    db.conn.execute("INSERT INTO answers (card_id, answer, confidence, created) VALUES (?, 'x', 0.5, datetime('now', '-30 minutes'))", (cards[0],))
+    assert app.warmup(second) == {"due": 0}  # active half an hour ago: the same sitting
+    db.conn.execute("UPDATE answers SET created = datetime('now', '-3 hours') WHERE card_id = ?", (cards[0],))
+    assert db.last_activity(who) is not None and app.warmup(second) == {"due": 5}
+    lesson = db.create_lesson(first, "Talk", "lesson", None)
+    db.conn.execute("INSERT INTO messages (lesson_id, role, text, created) VALUES (?, 'tutor', 'hi', datetime('now'))", (lesson,))
+    assert app.warmup(first) == {"due": 0}  # a tutor reply answers something the learner just did
+    db.conn.execute("UPDATE messages SET created = datetime('now', '-3 hours') WHERE lesson_id = ?", (lesson,))
+    assert app.warmup(first) == {"due": 5}
+    # a run of their own code counts too, with its ISO time compared against the other tables' format
+    db.conn.execute("INSERT INTO commands (course_id, profile_id, lesson_id, origin, command, consent, started) VALUES (?, ?, ?, 'learner', 'ls', 'none', ?)",
+                    (first, who, lesson, app._now()))
+    assert app.warmup(first) == {"due": 0}

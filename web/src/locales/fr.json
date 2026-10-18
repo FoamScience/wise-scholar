@@ -336,6 +336,7 @@
       "translation": "Traduction"
     },
     "review": {
+      "skipWarmup": "Passer l'échauffement et aller à la leçon",
       "done": "Révision terminée",
       "nothingDue": "Rien à réviser",
       "onToNext": "Passer à l'unité suivante",
