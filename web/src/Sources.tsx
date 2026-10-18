@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, failure } from './api'
 import { fileSize } from './i18n'
+import { Swap } from './Swap'
 
 export const SOURCE_TYPES =
   '.pdf,.epub,.html,.htm,.md,.markdown,.txt,.rst,.py,.rs,.js,.ts,.tsx,.c,.cpp,.h,.hs,.go,.java,.kt,.rb,.sh,.toml,.yaml,.yml,.json,.csv,.tex'
@@ -61,7 +62,7 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
         onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
       />
       <button type="button" className="btn" disabled={busy} onClick={() => input.current?.click()}>
-        {busy ? t('sources.uploading') : t('sources.add')}
+        <Swap labels={[t('sources.add'), t('sources.uploading')]} at={busy ? 1 : 0} />
       </button>
       <div className="small">{t('sources.help')}</div>
     </div>

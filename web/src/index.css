@@ -28,6 +28,9 @@
   --code-failed: #ffc9a3;
   --sans: 'Instrument Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;
   --mono: 'JetBrains Mono', 'IBM Plex Sans Arabic', ui-monospace, monospace;
+  --motion-fast: 120ms;
+  --motion: 180ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
   color-scheme: light;
 }
 
@@ -131,6 +134,39 @@ textarea {
 
 a {
   color: var(--teal);
+}
+
+/* Controls answer the pointer in colour; a .btn also gives a little under a press. */
+button,
+summary,
+a,
+.field {
+  transition:
+    background-color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease);
+}
+
+:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.swap {
+  display: inline-grid;
+}
+
+.swap > * {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--motion) var(--ease),
+    visibility var(--motion);
+}
+
+.swap > :not(.on) {
+  opacity: 0;
+  visibility: hidden;
 }
 
 code,
@@ -249,6 +285,10 @@ pre {
   background: var(--teal);
   border-color: var(--teal);
   color: var(--on-teal);
+}
+
+.btn:not(:disabled):active {
+  transform: scale(0.97);
 }
 
 .btn:disabled {
@@ -783,9 +823,18 @@ pre {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0s;
+    --motion: 0s;
+  }
+
   .skeleton span,
   .status.live::before {
     animation: none;
+  }
+
+  .btn:not(:disabled):active {
+    transform: none;
   }
 }
 

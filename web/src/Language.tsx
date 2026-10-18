@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { usePlayer } from './player'
 import { splitBy, splitSentences } from './text'
+import { Swap } from './Swap'
 
 export type ReadingData = {
   title: string
@@ -107,7 +108,7 @@ export function ReadingCard(props: {
             disabled={d.added.includes(gloss.word)}
             onClick={() => props.onAdd(gloss.word)}
           >
-            {d.added.includes(gloss.word) ? t('reading.inVocabulary') : t('reading.addVocabulary')}
+            <Swap labels={[t('reading.addVocabulary'), t('reading.inVocabulary')]} at={d.added.includes(gloss.word) ? 1 : 0} />
           </button>
           <button
             type="button"
@@ -115,7 +116,7 @@ export function ReadingCard(props: {
             disabled={(d.known ?? []).includes(gloss.word)}
             onClick={() => props.onKnown(gloss.word)}
           >
-            {(d.known ?? []).includes(gloss.word) ? t('reading.known') : t('reading.iKnow')}
+            <Swap labels={[t('reading.iKnow'), t('reading.known')]} at={(d.known ?? []).includes(gloss.word) ? 1 : 0} />
           </button>
         </div>
       )}
