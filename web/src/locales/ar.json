@@ -32,6 +32,14 @@
       "writingSession": "جلسة الكتابة {{n}}",
       "nextUnit": "التالي · {{title}}"
     },
+    "offline": {
+      "prepare": "التحضير للعمل دون اتصال",
+      "help": "يكتب المعلم باقي هذه الوحدة دفعة واحدة مع أسئلتها، لتقرأها وتجيب عنها دون اتصال.",
+      "answered": "أُجيب عن {{n}} من {{total}} أسئلة. تبقى الإجابات على هذا الجهاز حتى ترسلها.",
+      "send": "إرسال الإجابات",
+      "leave": "العودة إلى الدرس المباشر",
+      "kept": "محفوظ على هذا الجهاز؛ يراه المعلم عندما ترسل إجاباتك."
+    },
     "activity": {
       "thinking": "يفكّر…",
       "working": "يعمل…",
@@ -546,6 +554,12 @@
     "message is empty": "الرسالة فارغة",
     "answer is empty": "الإجابة فارغة",
     "already answered": "أُجيب عنه من قبل",
+    "a quiz is answered once": "يُجاب عن الاختبار مرة واحدة",
+    "an open answer carries the learner's own grade": "الإجابة المفتوحة تحمل تقييم المتعلم لنفسه",
+    "only a unit of a learner's course is taken offline": "لا تُحضَّر للعمل دون اتصال إلا وحدة من دورة متعلم",
+    "this lesson is already prepared for offline": "هذا الدرس محضَّر للعمل دون اتصال من قبل",
+    "this lesson is finished": "هذا الدرس منتهٍ",
+    "this lesson is not prepared for offline": "هذا الدرس غير محضَّر للعمل دون اتصال",
     "there is no plan yet": "لا توجد خطة بعد",
     "there is no course map yet; the first placement comes with the plan": "لا توجد خريطة للدورة بعد؛ اختبار تحديد المستوى الأول يأتي مع الخطة",
     "a course holds at most 20 files": "تتّسع الدورة لـ 20 ملفًّا على الأكثر",

@@ -7,6 +7,8 @@ import { api, failure } from './api'
 import i18n, { day, lookup, percent } from './i18n'
 import Logo from './Logo'
 import { QuizCard, Review, ReviewPanels } from './Quiz'
+import { loadGiven, saveGiven } from './offline'
+import type { Given } from './offline'
 import type { QuizData } from './Quiz'
 import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
@@ -981,10 +983,43 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const [draft, setDraft] = useState('')
   const [changing, setChanging] = useState(false)
   const [error, setError] = useState('')
+  const [sending, setSending] = useState(false)
+  const [kept, setKept] = useState<{ lesson: number | null; answers: Record<number, Given> }>({ lesson: null, answers: {} })
   const chatBottom = useRef<HTMLDivElement>(null)
   const lessonBottom = useRef<HTMLDivElement>(null)
 
   const lesson = course?.lessons.find((l) => l.id === lessonId) ?? null
+
+  const given = kept.lesson === lessonId ? kept.answers : lessonId ? loadGiven(lessonId) : {}
+
+  function keep(id: number, answers: Record<number, Given>) {
+    setKept({ lesson: id, answers })
+    saveGiven(id, answers)
+  }
+
+  function give(blockId: number, answer: Given) {
+    keep(lessonId!, { ...given, [blockId]: answer })
+  }
+
+  function prepareOffline() {
+    const id = lessonId!
+    api(`/api/lessons/${id}/prepare`, {}).then(() => patchLesson(id, (l) => ({ ...l, batch: 1 })), (err: Error) => setError(err.message))
+  }
+
+  function sendBatch(blocks: Block[]) {
+    const id = lessonId!
+    const answers = blocks.filter((b) => given[b.id]).map((b) => ({ block_id: b.id, ...given[b.id] }))
+    setSending(true)
+    api(`/api/lessons/${id}/batch`, { answers })
+      .then(
+        () => {
+          patchLesson(id, (l) => ({ ...l, batch: 0 }))
+          keep(id, {})
+        },
+        (err: Error) => setError(err.message),
+      )
+      .finally(() => setSending(false))
+  }
 
   function patchLesson(id: number, patch: (l: Lesson) => Lesson) {
     setCourse((c) => c && { ...c, lessons: c.lessons.map((l) => (l.id === id ? patch(l) : l)) })
@@ -1145,6 +1180,9 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
     : undefined
   const dividers = cardDividers(lesson)
   const empty = lesson.blocks.length === 0 && !showPlan
+  const canPrepare = lesson.phase === 'lesson' && lesson.concept_id !== null && course.mode !== 'teacher' && !lesson.batch && !finished
+  const batchCards = lesson.batch ? lesson.blocks.filter((b) => b.kind === 'quiz' && (b.data as QuizData).answer === null) : []
+  const ready = batchCards.filter((b) => given[b.id] && ((b.data as QuizData).kind !== 'open' || given[b.id].self_correct !== undefined))
 
   return (
     <div className="workspace">
@@ -1303,6 +1341,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               data={b.data as QuizData}
               disabled={lesson.running}
               authored={course.mode === 'teacher'}
+              offline={lesson.batch ? { given: given[b.id], onGive: (answer) => give(b.id, answer) } : undefined}
               onUnknown={lesson.phase === 'placement' ? () => post(`/api/blocks/${b.id}/quiz/unknown`, {}) : undefined}
               onSubmit={(answer, confidence) => post(`/api/blocks/${b.id}/quiz`, { answer, confidence })}
             />
@@ -1429,6 +1468,25 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
           </section>
         )}
         {lesson.running && (empty || writing) && <Skeleton />}
+        {lesson.batch && !lesson.running ? (
+          <div className="lesson-next batch">
+            <span className="small">{t('offline.answered', { n: ready.length, total: batchCards.length })}</span>
+            {/* with nothing answered it leaves offline mode, the way out of a prepare that wrote no checks */}
+            <button className={ready.length ? 'btn primary' : 'btn'} disabled={sending} onClick={() => sendBatch(ready)}>
+              {ready.length ? t('offline.send') : t('offline.leave')}
+            </button>
+          </div>
+        ) : (
+          canPrepare &&
+          !lesson.running && (
+            <div className="lesson-next batch">
+              <span className="small">{t('offline.help')}</span>
+              <button className="btn" onClick={prepareOffline}>
+                {t('offline.prepare')}
+              </button>
+            </div>
+          )
+        )}
         {nextUnit && !lesson.running && (
           <div className="lesson-next">
             <button className="btn primary" onClick={() => openConcept(nextUnit)}>

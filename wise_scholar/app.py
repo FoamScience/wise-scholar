@@ -250,6 +250,15 @@ class SelfGrade(BaseModel):
     correct: bool
 
 
+class BatchAnswer(QuizAnswer):
+    block_id: int
+    self_correct: bool | None = None
+
+
+class Batch(BaseModel):
+    answers: list[BatchAnswer] = Field(max_length=40)
+
+
 class Decision(BaseModel):
     allow: bool
 
@@ -304,7 +313,7 @@ def _tier_view(course: dict) -> dict:
 
 
 def _lesson_view(lesson_id: int) -> dict:
-    lesson = db.row("SELECT id, title, phase, concept_id FROM lessons WHERE id = ?", lesson_id)
+    lesson = db.row("SELECT id, title, phase, concept_id, batch FROM lessons WHERE id = ?", lesson_id)
     lesson["messages"] = db.rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_id)
     lesson["blocks"] = db.blocks(lesson_id)
     lesson["running"] = lesson_id in _turns
@@ -1441,17 +1450,16 @@ def move_block(block_id: int, body: Move) -> list[dict]:
     return order
 
 
-@app.post("/api/blocks/{block_id}/quiz", status_code=202)
-async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
-    block, card = _unanswered_quiz(block_id)
-    answer_id = quiz.submit(card, body.answer, body.confidence)
-    given = {"answer": body.answer, "confidence": body.confidence, "answer_id": answer_id}
-    said = f"question: {card['question']!r}\nlearner answer: {quiz.said(card, body.answer)!r}\nconfidence: {body.confidence:.0%}"
-    correct = quiz.auto_correct(card, body.answer)
+def _record_answer(block: dict, card: dict, answer: str, confidence: float, extra: dict | None = None) -> tuple[dict, str | None, str]:
+    """Store an answer and grade it when the server can. Returns the lesson, the verdict (None when the tutor grades
+    it) and what the learner said, for the tutor's line."""
+    answer_id = quiz.submit(card, answer, confidence)
+    given = {"answer": answer, "confidence": confidence, "answer_id": answer_id, **(extra or {})}
+    said = f"question: {card['question']!r}\nlearner answer: {quiz.said(card, answer)!r}\nconfidence: {confidence:.0%}"
+    correct = quiz.auto_correct(card, answer)
     if correct is None:
         lesson, block = _update_block(block, given)
-        _start_turn(lesson, f"[learner quiz answer] quiz {block_id}\n{said}\nGrade it with grade_quiz.")
-        return
+        return lesson, None, said
     result = quiz.grade(answer_id, correct)
     lesson, block = _update_block(block, {**given, **result})
     if card["kind"] == "sort":
@@ -1460,7 +1468,91 @@ async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
         verdict = "correct" if correct else f"wrong, the right answer is {card['answer_key']!r}"
     if result["confident_miss"] and lesson["phase"] != "placement":
         verdict += "; a confident miss: re-teach it now"
-    _start_turn(lesson, f"[event] Quiz {block_id} result: {verdict}\n{said}")
+    return lesson, verdict, said
+
+
+@app.post("/api/blocks/{block_id}/quiz", status_code=202)
+async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
+    block, card = _unanswered_quiz(block_id)
+    lesson, verdict, said = _record_answer(block, card, body.answer, body.confidence)
+    if verdict is None:
+        _start_turn(lesson, f"[learner quiz answer] quiz {block_id}\n{said}\nGrade it with grade_quiz.")
+    else:
+        _start_turn(lesson, f"[event] Quiz {block_id} result: {verdict}\n{said}")
+
+
+BATCH_PREPARE = (
+    "[batch] The learner takes this unit offline: they read and answer it without you, and the answers come back "
+    "together as one [batch results] event. In this turn, write the rest of the unit in lesson order, without "
+    "waiting for answers: the opening (pose_quiz with pretest set) when the lesson has none yet, then the "
+    "explanations and worked examples with add_block, figures and readings where they help, and the quick checks "
+    "with pose_quiz or pose_sort, each after the part it checks. Use no other card: challenges, exercises, "
+    "questions and the rest need you present. Every check carries its key and an explanation that teaches the "
+    "point, because the learner sees them right after answering; a choice explanation says why each wrong option "
+    "is wrong. Do not call finish_lesson. End with one chat sentence saying the unit is ready to take offline."
+)
+BATCH_RESULTS = (
+    "Grade every open answer above with grade_quiz: the learner saw the model answer and graded themselves; keep "
+    "their grade when the substance holds and overrule it when it does not, saying why in the feedback. Then "
+    "re-teach what the misses show in one short add_block, and the lesson goes on as usual. Checks left unanswered "
+    "stay where they are and the learner answers them online; do not pose them again. Finish the lesson once its "
+    "checks are answered."
+)
+
+
+@app.post("/api/lessons/{lesson_id}/prepare", status_code=202)
+async def prepare_offline(lesson_id: int) -> None:
+    """The tutor writes the rest of a unit at once, its cards carrying their keys, for answering offline."""
+    lesson = _lesson(lesson_id)
+    if lesson["mode"] == "teacher" or lesson["phase"] != "lesson" or lesson["concept_id"] is None:
+        raise HTTPException(409, "only a unit of a learner's course is taken offline")
+    if lesson["batch"]:
+        raise HTTPException(409, "this lesson is already prepared for offline")
+    if any(b["kind"] == "done" for b in db.blocks(lesson_id)):
+        raise HTTPException(409, "this lesson is finished")
+    _require_idle(lesson_id)
+    db.conn.execute("UPDATE lessons SET batch = 1 WHERE id = ?", (lesson_id,))
+    _start_turn(db.lesson(lesson_id), BATCH_PREPARE)
+
+
+@app.post("/api/lessons/{lesson_id}/batch", status_code=202)
+async def send_batch(lesson_id: int, body: Batch) -> None:
+    """The answers given offline, in the order given: the server grades what it can, open answers keep the learner's
+    own grade until the tutor confirms it, and one tutor turn takes them all."""
+    lesson = _lesson(lesson_id)
+    if not lesson["batch"]:
+        raise HTTPException(409, "this lesson is not prepared for offline")
+    _require_idle(lesson_id)
+    if len({g.block_id for g in body.answers}) != len(body.answers):
+        raise HTTPException(422, "a quiz is answered once")
+    # Every answer is checked before any is stored, so a refused batch leaves nothing half-recorded.
+    checked = []
+    for given in body.answers:
+        block, card = _unanswered_quiz(given.block_id)
+        if block["lesson_id"] != lesson_id:
+            raise HTTPException(404, "no such quiz in this lesson")
+        if card["kind"] == "open" and given.self_correct is None:
+            raise HTTPException(422, "an open answer carries the learner's own grade")
+        checked.append((block, card, given))
+    lines = []
+    db.conn.execute("BEGIN")
+    try:
+        for block, card, given in checked:
+            if card["kind"] == "open":
+                _, _, said = _record_answer(block, card, given.answer, given.confidence, {"self_correct": given.self_correct})
+                lines.append(f"quiz {block['id']}, open, self-graded {'right' if given.self_correct else 'wrong'}\n{said}")
+            else:
+                _, verdict, said = _record_answer(block, card, given.answer, given.confidence)
+                lines.append(f"quiz {block['id']}: {verdict}\n{said}")
+        db.conn.execute("UPDATE lessons SET batch = 0 WHERE id = ?", (lesson_id,))
+        db.conn.execute("COMMIT")
+    except BaseException:
+        db.conn.execute("ROLLBACK")
+        raise
+    left = [b["id"] for b in db.blocks(lesson_id) if b["kind"] == "quiz" and b["data"]["answer"] is None]
+    if left:
+        lines.append("left unanswered: " + ", ".join(f"quiz {i}" for i in left))
+    _start_turn(db.lesson(lesson_id), "[batch results]\n" + "\n\n".join(lines or ["no answers"]) + "\n\n" + BATCH_RESULTS)
 
 
 @app.get("/api/errors")

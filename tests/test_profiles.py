@@ -1208,3 +1208,99 @@ def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(
         db.delete_course(course)
         db.delete_course(other)
         db.conn.execute("DELETE FROM profiles WHERE id IN (?, ?)", (who, other_who))
+
+
+def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypatch):
+    import asyncio
+    import json
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app, tutor
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Batcher')").lastrowid
+    course = db.create_course("Chemistry", who)["id"]
+    db.set_concepts(course, [{"title": "Bonds", "concepts": ["Ionic bonds"], "known": []}])
+    lesson = db.create_lesson(course, "Ionic bonds", "lesson", db.concepts(course)[0]["id"])
+    with pytest.raises(HTTPException, match="not prepared for offline"):
+        asyncio.run(app.send_batch(lesson, app.Batch(answers=[])))
+    placement = db.create_lesson(course, "Placement", "placement", None)
+    with pytest.raises(HTTPException, match="only a unit of a learner's course"):
+        asyncio.run(app.prepare_offline(placement))
+    done = db.create_lesson(course, "Done", "lesson", db.concepts(course)[0]["id"])
+    db.add_block(done, "done", "Finished.", None)
+    with pytest.raises(HTTPException, match="this lesson is finished"):
+        asyncio.run(app.prepare_offline(done))
+    db.conn.execute("UPDATE courses SET mode = 'teacher' WHERE id = ?", (course,))
+    with pytest.raises(HTTPException, match="only a unit of a learner's course"):
+        asyncio.run(app.prepare_offline(lesson))
+    db.conn.execute("UPDATE courses SET mode = 'learner' WHERE id = ?", (course,))
+
+    asyncio.run(app.prepare_offline(lesson))
+    assert turns[-1].startswith("[batch] The learner takes this unit offline") and app._lesson_view(lesson)["batch"] == 1
+    with pytest.raises(HTTPException, match="already prepared"):
+        asyncio.run(app.prepare_offline(lesson))
+    # No opening attempt gates the explanations: the whole unit is written in one turn.
+    assert tutor.pretest_blocker(db.lesson(lesson)) is None
+    posed = asyncio.run(tutor.pose_quiz(lesson, "Which gives electrons away?", "choice", ["Na", "Cl"], "Na", "Metals lose electrons.", pretest=True))
+    assert posed.endswith("; go on with the unit")
+    asyncio.run(tutor.pose_quiz(lesson, "Why does NaCl conduct when molten?", "open", [], "Its ions move freely.", "Charge moves with the ions."))
+    item = lambda text, category: tutor.SortItem(text=text, category=category)  # noqa: E731
+    items = [item("NaCl", "ionic"), item("KBr", "ionic"), item("MgO", "ionic"), item("H2O", "covalent"), item("CH4", "covalent"), item("CO2", "covalent")]
+    asyncio.run(tutor.pose_sort(lesson, "Ionic or covalent?", ["ionic", "covalent"], items, "A metal and a non-metal bond ionically."))
+    asyncio.run(tutor.pose_quiz(lesson, "Which ion is larger?", "choice", ["Na+", "Cl-"], "Cl-", "Extra electrons spread the cloud."))
+    pretest, open_, sort, skipped = db.blocks(lesson)
+    assert pretest["data"]["answer_key"] == "Na" and open_["data"]["explanation"] == "Charge moves with the ions."
+    assert all(o["category"] for o in sort["data"]["options"])  # the device grades the sort itself
+
+    given = lambda block_id, answer, **more: app.BatchAnswer(block_id=block_id, answer=answer, confidence=0.9, **more)  # noqa: E731
+    placed = json.dumps({o["text"]: o["category"] for o in sort["data"]["options"]} | {"CO2": "ionic"})
+    with pytest.raises(HTTPException, match="the learner's own grade"):
+        asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(open_["id"], "ions move")])))
+    with pytest.raises(HTTPException, match="answered once"):
+        asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(pretest["id"], "Cl")])))
+    elsewhere = db.create_lesson(course, "Elsewhere", "lesson", None)
+    asyncio.run(tutor.pose_quiz(elsewhere, "Stray?", "choice", ["a", "b"], "a", "e"))
+    with pytest.raises(HTTPException, match="no such quiz in this lesson"):
+        asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(db.blocks(elsewhere)[0]["id"], "a")])))
+    monkeypatch.setitem(app._turns, lesson, None)
+    with pytest.raises(HTTPException, match="still answering"):
+        asyncio.run(app.send_batch(lesson, app.Batch(answers=[])))
+    app._turns.pop(lesson)
+    real_grade, graded = app.quiz.grade, []
+
+    def failing_grade(answer_id, correct):
+        if graded:
+            raise RuntimeError("disk full")
+        graded.append(answer_id)
+        return real_grade(answer_id, correct)
+
+    monkeypatch.setattr(app.quiz, "grade", failing_grade)
+    with pytest.raises(RuntimeError):
+        asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(sort["id"], "{}")])))
+    monkeypatch.setattr(app.quiz, "grade", real_grade)
+    assert all(b["data"]["answer"] is None for b in db.blocks(lesson))  # a refused or failed batch stores nothing
+    assert db.row("SELECT COUNT(*) AS n FROM answers WHERE id = ?", graded[0])["n"] == 0 and app._lesson_view(lesson)["batch"] == 1
+
+    asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(open_["id"], "ions move", self_correct=True), given(sort["id"], placed)])))
+    pretest, open_, sort, skipped = db.blocks(lesson)
+    assert pretest["data"]["correct"] is True and sort["data"]["correct"] is False and sort["data"]["misplaced"] == ["CO2"]
+    assert open_["data"]["answer"] == "ions move" and open_["data"]["self_correct"] is True and "correct" not in open_["data"]
+    assert skipped["data"]["answer"] is None and app._lesson_view(lesson)["batch"] == 0
+    line = turns[-1]
+    assert line.startswith(f"[batch results]\nquiz {pretest['id']}: correct\n") and f"quiz {open_['id']}, open, self-graded right" in line
+    assert f"quiz {sort['id']}: wrong; misplaced: 'CO2'" in line and line.count("a confident miss") == 1
+    assert f"left unanswered: quiz {skipped['id']}" in line and line.endswith("Finish the lesson once its checks are answered.") and "do not pose them again" in line
+    assert asyncio.run(tutor.grade_quiz(open_["id"], False, "Name the ions.")) == "graded; a confident miss: re-teach it now"
+    with pytest.raises(HTTPException, match="not prepared for offline"):
+        asyncio.run(app.send_batch(lesson, app.Batch(answers=[])))
+    # Once sent, the lesson is an ordinary one again: new cards keep their key until graded.
+    assert asyncio.run(tutor.pose_quiz(lesson, "After?", "choice", ["a", "b"], "a", "e")).endswith("end the turn and wait for the answer")
+    assert "answer_key" not in db.blocks(lesson)[-1]["data"]
+    # Sending nothing leaves offline mode, the way out of a prepare that wrote no checks.
+    asyncio.run(app.prepare_offline(lesson))
+    asyncio.run(app.send_batch(lesson, app.Batch(answers=[])))
+    assert app._lesson_view(lesson)["batch"] == 0 and turns[-1].startswith("[batch results]\nleft unanswered: ")
