@@ -228,19 +228,8 @@
     },
     "card": {
       "question": "سؤال",
-      "pretest": "اختبار قبلي",
-      "quickCheck": "سؤال سريع",
       "reading": "قراءة",
-      "vocab": "اختبار المفردات",
-      "speaking": "تحدّث",
-      "cast": "بودكاست",
-      "milestone": "مرحلة",
-      "exercise": "تمرين",
-      "transfer": "نقل",
-      "teachback": "اشرح بنفسك",
-      "writing": "كتابة",
-      "challenge": "تحدٍّ",
-      "network": "طلب استخدام الإنترنت"
+      "vocab": "اختبار المفردات"
     },
     "map": {
       "summaryDone": "الوحدات المنجزة {{done}} من {{total}}",
@@ -316,6 +305,8 @@
       }
     },
     "chat": {
+      "ask": "اسأل المعلم",
+      "close": "إغلاق",
       "label": "المحادثة مع المعلّم",
       "tutor": "المعلّم",
       "message": "راسل المعلّم",

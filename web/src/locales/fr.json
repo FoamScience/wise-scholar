@@ -213,19 +213,8 @@
     },
     "card": {
       "question": "Question",
-      "pretest": "Pré-test",
-      "quickCheck": "Question rapide",
       "reading": "Lecture",
-      "vocab": "Test de vocabulaire",
-      "speaking": "Oral",
-      "cast": "Podcast",
-      "milestone": "Étape",
-      "exercise": "Exercice",
-      "transfer": "Transfert",
-      "teachback": "Explication à rendre",
-      "writing": "Écriture",
-      "challenge": "Défi",
-      "network": "Demande d'accès à Internet"
+      "vocab": "Test de vocabulaire"
     },
     "map": {
       "summaryDone": "Unités faites : {{done}} sur {{total}}",
@@ -292,6 +281,8 @@
       }
     },
     "chat": {
+      "ask": "Demander au tuteur",
+      "close": "Fermer",
       "label": "Discussion avec le tuteur",
       "tutor": "Tuteur",
       "message": "Écrire au tuteur",
