@@ -540,6 +540,22 @@ pre {
   color: var(--muted);
 }
 
+.outline .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.map .pace {
+  display: flex;
+  gap: 6px;
+}
+
+.map .pace button {
+  border-color: var(--line-strong);
+}
+
 .outline li.current {
   color: var(--teal-dark);
   font-weight: 600;

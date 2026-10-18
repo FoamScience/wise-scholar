@@ -42,6 +42,7 @@ type TutorEvent =
   | { type: 'lesson.ordered'; lesson_id: number; blocks: Block[] }
   | { type: 'plan.ranked'; ranking: Ranked[]; mechanism: string }
   | { type: 'plan.chosen'; mechanism: string }
+  | { type: 'course.pace'; pace: 'momentum' | 'speed' }
   | { type: 'placement.set'; level: string; placement: string }
   | { type: 'map.set'; concepts: Concept[]; capstones?: Capstone[] }
   | { type: 'capstone.set'; capstone: Capstone }
@@ -1077,6 +1078,8 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
         setCourse((c) => c && { ...c, ranking: ev.ranking, mechanism: ev.mechanism })
       } else if (ev.type === 'plan.chosen') {
         setCourse((c) => c && { ...c, mechanism: ev.mechanism })
+      } else if (ev.type === 'course.pace') {
+        setCourse((c) => c && { ...c, pace: ev.pace })
       } else if (ev.type === 'placement.set') {
         setCourse((c) => c && { ...c, level: ev.level, placement: ev.placement })
       } else if (ev.type === 'capstone.set') {
@@ -1225,6 +1228,27 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             {reviewDue ? t('map.summary', { done: unitsDone, total: units.length, count: reviewDue }) : t('map.summaryDone', { done: unitsDone, total: units.length })}
           </div>
         )}
+        {course.mode !== 'teacher' && (
+          <div className="pace" role="group" aria-label={t('pace.label')}>
+            {(['momentum', 'speed'] as const).map((pace) => (
+              <button
+                key={pace}
+                type="button"
+                className={course.pace === pace ? 'cat picked' : 'cat'}
+                aria-pressed={course.pace === pace}
+                onClick={() =>
+                  api(`/api/courses/${course.id}/pace`, { pace }).then(
+                    () => setCourse((c) => c && { ...c, pace }),
+                    (err: Error) => setError(err.message),
+                  )
+                }
+              >
+                {t(`pace.${pace}`)}
+              </button>
+            ))}
+          </div>
+        )}
+        {course.mode !== 'teacher' && <div className="small">{t(`pace.${course.pace}Hint`)}</div>}
         <a className="small" href={`#/course/${course.id}/book`}>
           {t('book.export')}
         </a>
@@ -1342,7 +1366,12 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
       <main className="lesson">
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
         {/* first, wherever the tutor posted it: the plan and the counter belong under the title */}
-        {outline && <OutlineCard data={outline} />}
+        {outline && (
+          <OutlineCard
+            data={outline}
+            onTestOut={course.pace === 'speed' && !finished && !lesson.running ? (scope) => post(`/api/lessons/${lesson.id}/testout`, { scope }) : undefined}
+          />
+        )}
         {course.mode === 'teacher' && lesson.concept_id !== null && (
           <div className="small handouts">
             {t('handout.label')}{' '}

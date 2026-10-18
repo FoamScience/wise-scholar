@@ -205,6 +205,25 @@ async def ask(lesson_id: int, question: str, options: list[str], multiple: bool 
 
 
 @mcp.tool()
+async def set_pace(course_id: int, pace: Literal["momentum", "speed"]) -> str:
+    """Record how the learner wants to move through this course, from their answer in the interview.
+
+    momentum: short units of about 15 minutes at a steady pace, the outline followed as set. speed: longer units,
+    and the learner may test out of a step or a whole unit by answering its checks first. The learner can switch
+    any time on the course map; the default is momentum.
+    """
+    if not db.course(course_id):
+        return f"error: no course with id {course_id}"
+    save_pace(course_id, pace)
+    return f"pace set to {pace}"
+
+
+def save_pace(course_id: int, pace: str) -> None:
+    db.conn.execute("UPDATE courses SET pace = ? WHERE id = ?", (pace, course_id))
+    hub.publish(course_id, {"type": "course.pace", "pace": pace})
+
+
+@mcp.tool()
 async def note_learner(course_id: int, fact: str, scope: Literal["learner", "course"]) -> str:
     """Record one fact you learned about the learner, as a full sentence.
 
@@ -1414,6 +1433,7 @@ async def grade_quiz(quiz_id: int, correct: bool, feedback: str) -> str:
 
 
 OUTLINE_STEPS = (3, 6)
+MOMENTUM_STEPS = 4
 
 
 def _outline(lesson_id: int) -> dict | None:
@@ -1429,7 +1449,7 @@ def _write_outline(block: dict, data: dict) -> dict:
 
 @mcp.tool()
 async def set_outline(lesson_id: int, steps: list[str], reason: str = "") -> str:
-    """Show the unit's plan: 3 to 6 short steps, each one thing the learner does or gets ("Predict what foldr
+    """Show the unit's plan: 3 to 6 short steps (at most 4 when the course's pace is momentum), each one thing the learner does or gets ("Predict what foldr
     returns", "See the pattern behind it", "Practise on lists", "Check yourself"). The learner sees them as a
     numbered list with a step counter. Call it once in the unit's first turn, together with the opening.
 
@@ -1450,8 +1470,10 @@ async def set_outline(lesson_id: int, steps: list[str], reason: str = "") -> str
         return "error: each step is named differently"
     block = _outline(lesson_id)
     if not block:
-        if len(steps) > OUTLINE_STEPS[1] or reason.strip():
-            return f"error: a first outline has {OUTLINE_STEPS[0]} to {OUTLINE_STEPS[1]} steps and no reason"
+        # a momentum unit stays short; speed allows the full range
+        most = MOMENTUM_STEPS if lesson["pace"] == "momentum" else OUTLINE_STEPS[1]
+        if len(steps) > most or reason.strip():
+            return f"error: a first outline here has {OUTLINE_STEPS[0]} to {most} steps and no reason"
         block = db.add_block(lesson_id, "outline", "", {"steps": steps, "at": 0, "added": None})
         _show(lesson, _write_outline(block, block["data"]))
         return f"outline shown: step 1 of {len(steps)}"

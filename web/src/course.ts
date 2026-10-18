@@ -64,6 +64,7 @@ export type Capstone = {
 }
 export type CourseDetail = Course & {
   mode: 'learner' | 'teacher'
+  pace: 'momentum' | 'speed'
   cleaned: string | null
   details: string
   hours: number | null

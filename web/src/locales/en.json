@@ -33,10 +33,19 @@
       "nextUnit": "Next · {{title}}"
     },
     "outline": {
+      "testStep": "Test out of this step",
+      "testUnit": "Test out of the unit",
       "label": "This unit",
       "step": "Step {{n}} of {{total}}",
       "allDone": "Every step done",
       "added": "Added: {{step}}. {{reason}}"
+    },
+    "pace": {
+      "label": "Pace",
+      "momentum": "Momentum",
+      "speed": "Speed",
+      "momentumHint": "Short units at a steady pace",
+      "speedHint": "Longer units; test out of what you already know"
     },
     "panes": {
       "label": "Views",
