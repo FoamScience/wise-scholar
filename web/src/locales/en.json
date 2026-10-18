@@ -298,7 +298,9 @@
       "tutor": "Tutor",
       "message": "Message the tutor",
       "turnFailed": "the turn failed",
-      "changeHint": "Tell the tutor what to change: leave a topic out, add one, reorder, make it shorter…"
+      "changeHint": "Tell the tutor what to change: leave a topic out, add one, reorder, make it shorter…",
+      "unread_one": "{{count}} new message",
+      "unread_other": "{{count}} new messages"
     },
     "profile": {
       "who": "Who is learning?",
