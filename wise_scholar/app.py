@@ -1500,6 +1500,43 @@ BATCH_RESULTS = (
 )
 
 
+RECAP_GAP = timedelta(days=3)
+RECAP = (
+    "[event] The learner is back after {days} days away from this unit. Before going on, add one short add_block "
+    "headed 'Where you were': what the unit has covered so far, the last thing the learner worked out, and what "
+    "comes next. Then pose one recall check with pose_quiz, a choice where it fits, on the main idea of the last "
+    "sitting, and end the turn; after its result pose a second one on another idea from before the break, then go "
+    "on with the unit where it stopped. The two checks count toward the lesson's quick checks."
+)
+
+
+@app.post("/api/lessons/{lesson_id}/resume")
+async def resume_lesson(lesson_id: int) -> dict:
+    """A learner back at an unfinished unit after RECAP_GAP or more gets a recap and two recall checks first."""
+    lesson = _lesson(lesson_id)
+    last = db.row("SELECT created, role FROM messages WHERE lesson_id = ? ORDER BY id DESC LIMIT 1", lesson_id)
+    blocks = db.blocks(lesson_id)
+    if (
+        not last or lesson["phase"] != "lesson" or lesson["concept_id"] is None or lesson["mode"] == "teacher"
+        or lesson["batch"] or lesson_id in _turns
+        # the learner's last message never got its answer (a failed turn); answering it comes first
+        or last["role"] == "learner"
+        # nothing worked out yet to recall, and the server holds explanations until the opening is tried
+        or tutor.pretest_blocker(lesson)
+        or any(b["kind"] == "done" for b in blocks)
+        # an open card is where the learner picks up; a recap on top of it would leave two things waiting
+        or any(b["kind"] == "quiz" and b["data"]["answer"] is None for b in blocks)
+        or any(b["kind"] in challenge.KINDS and challenge.is_open(b["data"]) for b in blocks)
+    ):
+        return {"recap": False}
+    away = datetime.now(timezone.utc) - datetime.fromisoformat(last["created"]).replace(tzinfo=timezone.utc)
+    # the sitting's warm-up comes first; the recap starts when the learner is back from it
+    if away < RECAP_GAP or warmup(lesson["course_id"])["due"]:
+        return {"recap": False}
+    _start_turn(lesson, RECAP.format(days=away.days))
+    return {"recap": True}
+
+
 @app.post("/api/lessons/{lesson_id}/prepare", status_code=202)
 async def prepare_offline(lesson_id: int) -> None:
     """The tutor writes the rest of a unit at once, its cards carrying their keys, for answering offline."""
