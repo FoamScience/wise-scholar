@@ -1430,8 +1430,18 @@ pre {
   line-height: 1;
 }
 
+/* transitions never run on first render, so marks move only when they change in view; the check only
+   grows in, since it loses its ✓ the moment it goes */
+.done-mark:not(.empty) {
+  transition:
+    opacity var(--motion) var(--ease),
+    scale var(--motion) var(--ease);
+}
+
 .done-mark.empty {
   visibility: hidden;
+  opacity: 0;
+  scale: 0.6;
 }
 
 .mastery {
@@ -1444,6 +1454,7 @@ pre {
   width: 10px;
   height: 10px;
   background: var(--mastery-off);
+  transition: background-color var(--motion) var(--ease);
 }
 
 .mastery i.on {
