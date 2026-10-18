@@ -1355,14 +1355,17 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
                 </>
               )}
               <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
-                <span className="concept-title" dir="auto">
-                  {c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}
+                <span className="concept-title">
+                  <span className="concept-name" dir="auto">{c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}</span>
                   {course.mode !== 'teacher' && (
                     <span className="marks">
-                      {unitDone(c, conceptLesson) && (
-                        <span className="check" role="img" aria-label={t('common.done')}>
+                      {/* the slot stays when empty, so every unit's squares sit on the same line */}
+                      {unitDone(c, conceptLesson) ? (
+                        <span className="done-mark" role="img" aria-label={t('common.done')}>
                           ✓
                         </span>
+                      ) : (
+                        <span className="done-mark empty" />
                       )}
                       {c.kind !== 'practice' && (
                         <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
