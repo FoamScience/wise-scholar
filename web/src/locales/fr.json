@@ -236,6 +236,7 @@
       "vocab": "Test de vocabulaire"
     },
     "map": {
+      "menu": "Options du cours",
       "summaryDone": "Unités faites : {{done}} sur {{total}}",
       "summary_one": "Unités faites : {{done}} sur {{total}}, {{count}} à réviser",
       "summary_other": "Unités faites : {{done}} sur {{total}}, {{count}} à réviser",

@@ -505,7 +505,9 @@ pre {
   }
 }
 
-.map button {
+/* the lessons and units in the list; buttons in the course menu keep their own look */
+.map > button,
+.map .concept > button {
   min-height: 44px;
   padding: 0 10px;
   background: transparent;
@@ -515,7 +517,8 @@ pre {
   cursor: pointer;
 }
 
-.map button[aria-current='true'] {
+.map > button[aria-current='true'],
+.map .concept > button[aria-current='true'] {
   background: var(--teal-tint);
   border-color: var(--teal);
   color: var(--teal-dark);
@@ -562,8 +565,51 @@ pre {
   gap: 6px;
 }
 
-.map .pace button {
-  border-color: var(--line-strong);
+.side-menu summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  list-style: none;
+  cursor: pointer;
+}
+
+.side-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.side-menu summary::after {
+  content: '▾' / '';
+}
+
+.side-menu[open] summary::after {
+  content: '▴' / '';
+}
+
+.side-menu-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 4px;
+}
+
+/* every action in the menu reads the same, whether it is a link or a button */
+.side-menu-panel > .btn,
+.side-menu-panel .sources > .btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.side-menu-panel .btn:disabled {
+  color: var(--muted);
+}
+
+.side-menu .pace .cat {
+  min-height: 44px;
 }
 
 .outline li.current {
@@ -1240,6 +1286,29 @@ pre {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+/* a unit gone through gets a round check, stacked above its mastery squares */
+.marks {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: var(--teal);
+  color: var(--on-teal);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .mastery {
