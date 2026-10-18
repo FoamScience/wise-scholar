@@ -152,6 +152,8 @@ pre {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* a phone's address bar would hide the bottom of 100vh */
+  height: 100dvh;
 }
 
 .topbar {
@@ -410,6 +412,75 @@ pre {
   overflow-y: auto;
   background: var(--panel);
   border-inline-end: 1px solid var(--line);
+}
+
+.panes {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .workspace {
+    position: relative;
+    flex-direction: column;
+  }
+
+  /* hidden, not display: none, so each pane keeps its scroll position and can scroll while away */
+  .workspace > .map,
+  .workspace > .lesson,
+  .workspace > .chat {
+    position: absolute;
+    inset: 0 0 52px;
+    width: auto;
+    border: 0;
+    visibility: hidden;
+  }
+
+  .workspace[data-pane='map'] > .map,
+  .workspace[data-pane='lesson'] > .lesson,
+  .workspace[data-pane='chat'] > .chat {
+    visibility: visible;
+  }
+
+  .workspace > .lesson {
+    padding: 16px;
+  }
+
+  .panes {
+    display: flex;
+    flex-shrink: 0;
+    margin-top: auto;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+  }
+
+  .panes button {
+    flex: 1;
+    min-height: 52px;
+    background: transparent;
+    border: 0;
+    border-top: 3px solid transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .panes button[aria-pressed='true'] {
+    border-top-color: var(--teal);
+    color: var(--teal-dark);
+    font-weight: 600;
+  }
+
+  .panes .live {
+    color: var(--teal);
+    font-weight: 400;
+  }
+
+  .confidence {
+    flex-wrap: wrap;
+  }
+
+  .confidence label {
+    flex-basis: 100%;
+  }
 }
 
 .map button {

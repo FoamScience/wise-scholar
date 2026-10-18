@@ -32,6 +32,10 @@
       "writingSession": "Séance d'écriture {{n}}",
       "nextUnit": "Suivant · {{title}}"
     },
+    "panes": {
+      "label": "Vues",
+      "lesson": "Leçon"
+    },
     "offline": {
       "prepare": "Préparer hors ligne",
       "help": "Le tuteur écrit d'un coup le reste de cette unité, avec ses vérifications, à lire et à faire sans connexion.",
