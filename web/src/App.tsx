@@ -978,6 +978,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const [asking, setAsking] = useState<boolean | null>(null)
   const [kept, setKept] = useState<{ lesson: number | null; answers: Record<number, Given> }>({ lesson: null, answers: {} })
   const lessonBottom = useRef<HTMLDivElement>(null)
+  const sideMenu = useRef<HTMLDetailsElement>(null)
 
   const lesson = course?.lessons.find((l) => l.id === lessonId) ?? null
 
@@ -1229,76 +1230,11 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             {reviewDue ? t('map.summary', { done: unitsDone, total: units.length, count: reviewDue }) : t('map.summaryDone', { done: unitsDone, total: units.length })}
           </div>
         )}
-        {course.mode !== 'teacher' && (
-          <div className="pace" role="group" aria-label={t('pace.label')}>
-            {(['momentum', 'speed'] as const).map((pace) => (
-              <button
-                key={pace}
-                type="button"
-                className={course.pace === pace ? 'cat picked' : 'cat'}
-                aria-pressed={course.pace === pace}
-                onClick={() =>
-                  api(`/api/courses/${course.id}/pace`, { pace }).then(
-                    () => setCourse((c) => c && { ...c, pace }),
-                    (err: Error) => setError(err.message),
-                  )
-                }
-              >
-                {t(`pace.${pace}`)}
-              </button>
-            ))}
-          </div>
-        )}
-        {course.mode !== 'teacher' && <div className="small">{t(`pace.${course.pace}Hint`)}</div>}
-        <a className="small" href={`#/course/${course.id}/book`}>
-          {t('book.export')}
-        </a>
-        <a className="small" href={`/api/courses/${course.id}/obsidian.zip`} download>
-          {t('book.obsidian')}
-        </a>
-        {course.cleaned && <div className="small muted">{t('map.cleaned', { date: day(course.cleaned) })}</div>}
-        {(course.level || course.concepts.length > 0) && (
+        {course.level && (
           <div className="level-row">
-            {course.level && (
-              <span>
-                {t('map.level')} <span className="chip">{course.level}</span>
-              </span>
-            )}
-            {course.concepts.length > 0 && (
-              <button
-                type="button"
-                className="link"
-                disabled={lesson.running}
-                onClick={() =>
-                  api<Lesson>(`/api/courses/${course.id}/placement/retake`, {}).then(
-                    (created) => {
-                      addLesson(created)
-                      showLesson(created.id)
-                    },
-                    (err: Error) => setError(err.message),
-                  )
-                }
-              >
-                {course.level ? t('map.retake') : t('map.take')}
-              </button>
-            )}
-            {course.concepts.length > 0 && (
-              <button
-                type="button"
-                className="link"
-                disabled={lesson.running}
-                onClick={() => {
-                  // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
-                  showLesson(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
-                  setAsking(true)
-                  setChanging(true)
-                  // after the click's render, once the drawer is open
-                  requestAnimationFrame(() => document.getElementById('chat')?.focus())
-                }}
-              >
-                {t('map.change')}
-              </button>
-            )}
+            <span>
+              {t('map.level')} <span className="chip">{course.level}</span>
+            </span>
           </div>
         )}
         {course.strands && course.concepts.length > 0 && (
@@ -1320,7 +1256,79 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             story={course.lang !== null}
           />
         )}
-        {course.concepts.length > 0 && <SourcesPanel courseId={course.id} sources={sources} onChange={setSources} onError={setError} />}
+        <details ref={sideMenu} className="side-menu">
+          <summary className="btn">{t('map.menu')}</summary>
+          <div className="side-menu-panel">
+            <a className="btn as-link" href={`#/course/${course.id}/book`}>
+              {t('book.export')}
+            </a>
+            <a className="btn as-link" href={`/api/courses/${course.id}/obsidian.zip`} download>
+              {t('book.obsidian')}
+            </a>
+            {course.concepts.length > 0 && (
+              <button
+                type="button"
+                className="btn"
+                disabled={lesson.running}
+                onClick={() =>
+                  api<Lesson>(`/api/courses/${course.id}/placement/retake`, {}).then(
+                    (created) => {
+                      addLesson(created)
+                      showLesson(created.id)
+                      sideMenu.current!.open = false
+                    },
+                    (err: Error) => setError(err.message),
+                  )
+                }
+              >
+                {course.level ? t('map.retake') : t('map.take')}
+              </button>
+            )}
+            {course.concepts.length > 0 && (
+              <button
+                type="button"
+                className="btn"
+                disabled={lesson.running}
+                onClick={() => {
+                  // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
+                  showLesson(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
+                  sideMenu.current!.open = false
+                  setAsking(true)
+                  setChanging(true)
+                  // after the click's render, once the drawer is open
+                  requestAnimationFrame(() => document.getElementById('chat')?.focus())
+                }}
+              >
+                {t('map.change')}
+              </button>
+            )}
+            {course.mode !== 'teacher' && (
+              <>
+                <div className="pace" role="group" aria-label={t('pace.label')}>
+                  {(['momentum', 'speed'] as const).map((pace) => (
+                    <button
+                      key={pace}
+                      type="button"
+                      className={course.pace === pace ? 'cat picked' : 'cat'}
+                      aria-pressed={course.pace === pace}
+                      onClick={() =>
+                        api(`/api/courses/${course.id}/pace`, { pace }).then(
+                          () => setCourse((c) => c && { ...c, pace }),
+                          (err: Error) => setError(err.message),
+                        )
+                      }
+                    >
+                      {t(`pace.${pace}`)}
+                    </button>
+                  ))}
+                </div>
+                <div className="small">{t(`pace.${course.pace}Hint`)}</div>
+              </>
+            )}
+            {course.cleaned && <div className="small muted">{t('map.cleaned', { date: day(course.cleaned) })}</div>}
+            {course.concepts.length > 0 && <SourcesPanel courseId={course.id} sources={sources} onChange={setSources} onError={setError} />}
+          </div>
+        </details>
         {course.lessons
           .filter((l) => l.concept_id === null)
           .map((l) => (
@@ -1349,11 +1357,20 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
                 <span className="concept-title" dir="auto">
                   {c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}
-                  {course.mode !== 'teacher' && c.kind !== 'practice' && (
-                    <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
-                      {[1, 2, 3].map((n) => (
-                        <i key={n} className={n <= squares(c) ? 'on' : ''} />
-                      ))}
+                  {course.mode !== 'teacher' && (
+                    <span className="marks">
+                      {unitDone(c, conceptLesson) && (
+                        <span className="check" role="img" aria-label={t('common.done')}>
+                          ✓
+                        </span>
+                      )}
+                      {c.kind !== 'practice' && (
+                        <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
+                          {[1, 2, 3].map((n) => (
+                            <i key={n} className={n <= squares(c) ? 'on' : ''} />
+                          ))}
+                        </span>
+                      )}
                     </span>
                   )}
                 </span>

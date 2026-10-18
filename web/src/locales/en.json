@@ -230,6 +230,7 @@
       "vocab": "Vocabulary check"
     },
     "map": {
+      "menu": "Course options",
       "summaryDone": "Units {{done}} of {{total}} done",
       "summary_one": "Units {{done}} of {{total}} done, {{count}} needs review",
       "summary_other": "Units {{done}} of {{total}} done, {{count}} need review",
