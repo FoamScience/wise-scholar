@@ -14,7 +14,8 @@ import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
-import { challengeLabel, lessonTitle, practiceTitle } from './course'
+import { challengeLabel, lessonTitle, outlineOf, practiceTitle } from './course'
+import { OutlineCard } from './Outline'
 import { Comparison, HintList, Ladder } from './Ladder'
 import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
@@ -1208,6 +1209,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
     ? course.concepts.slice(course.concepts.findIndex((c) => c.id === lesson.concept_id) + 1).find((c) => !c.known && (c.mastery ?? 0) < 2 / 3)
     : undefined
   const dividers = cardDividers(lesson)
+  const outline = outlineOf(lesson)
   const empty = lesson.blocks.length === 0 && !showPlan
   const canPrepare = lesson.phase === 'lesson' && lesson.concept_id !== null && course.mode !== 'teacher' && !lesson.batch && !finished
   const batchCards = lesson.batch ? lesson.blocks.filter((b) => b.kind === 'quiz' && (b.data as QuizData).answer === null) : []
@@ -1333,6 +1335,8 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
 
       <main className="lesson">
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
+        {/* first, wherever the tutor posted it: the plan and the counter belong under the title */}
+        {outline && <OutlineCard data={outline} />}
         {course.mode === 'teacher' && lesson.concept_id !== null && (
           <div className="small handouts">
             {t('handout.label')}{' '}
@@ -1357,6 +1361,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             />
           ))}
         {lesson.blocks.map((b, i) => {
+          if (b.kind === 'outline') return null
           const card = b.kind === 'question' ? (
             <QuestionCard
               key={b.id}

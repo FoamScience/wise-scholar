@@ -32,6 +32,12 @@
       "writingSession": "جلسة الكتابة {{n}}",
       "nextUnit": "التالي · {{title}}"
     },
+    "outline": {
+      "label": "هذه الوحدة",
+      "step": "الخطوة {{n}} من {{total}}",
+      "allDone": "اكتملت كل الخطوات",
+      "added": "أُضيفت: {{step}}. {{reason}}"
+    },
     "panes": {
       "label": "العروض",
       "lesson": "الدرس"
@@ -84,6 +90,7 @@
       "revise_course_map": "يراجع خريطة الدورة…"
     },
     "block": {
+      "outline": "خطة الوحدة",
       "prose": "للقراءة",
       "example": "مثال",
       "figure": "شكل",

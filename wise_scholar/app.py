@@ -400,6 +400,10 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         state += f" level={lesson['level']!r}"
     if lesson["concept"]:
         state += f" module={lesson['module']!r} concept={lesson['concept']!r}"
+    if outline := tutor._outline(lesson["id"]):
+        # every turn carries where the unit's counter stands, so step_done keeps up with the lesson
+        steps, at = outline["data"]["steps"], outline["data"]["at"]
+        state += f" outline=step {at + 1} of {len(steps)}: {steps[at]!r}" if at < len(steps) else f" outline=all {len(steps)} steps done"
     known = [
         f"[known] ({'this course' if f['course_id'] else 'learner'}) {_untrusted(' '.join(f['text'].split()))}" for f in db.facts(lesson["course_id"])
     ]
@@ -1483,7 +1487,8 @@ async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
 
 BATCH_PREPARE = (
     "[batch] The learner takes this unit offline: they read and answer it without you, and the answers come back "
-    "together as one [batch results] event. In this turn, write the rest of the unit in lesson order, without "
+    "together as one [batch results] event. In this turn, write the rest of the unit in lesson order, following its "
+    "outline (set one first if it has none), without "
     "waiting for answers: the opening (pose_quiz with pretest set) when the lesson has none yet, then the "
     "explanations and worked examples with add_block, figures and readings where they help, and the quick checks "
     "with pose_quiz or pose_sort, each after the part it checks. Use no other card: challenges, exercises, "
@@ -1494,7 +1499,8 @@ BATCH_PREPARE = (
 BATCH_RESULTS = (
     "Grade every open answer above with grade_quiz: the learner saw the model answer and graded themselves; keep "
     "their grade when the substance holds and overrule it when it does not, saying why in the feedback. Then "
-    "re-teach what the misses show in one short add_block, and the lesson goes on as usual. Checks left unanswered "
+    "re-teach what the misses show in one short add_block, mark with step_done the outline steps the answers "
+    "completed, and the lesson goes on as usual. Checks left unanswered "
     "stay where they are and the learner answers them online; do not pose them again. Finish the lesson once its "
     "checks are answered."
 )
@@ -1503,8 +1509,8 @@ BATCH_RESULTS = (
 RECAP_GAP = timedelta(days=3)
 RECAP = (
     "[event] The learner is back after {days} days away from this unit. Before going on, add one short add_block "
-    "headed 'Where you were': what the unit has covered so far, the last thing the learner worked out, and what "
-    "comes next. Then pose one recall check with pose_quiz, a choice where it fits, on the main idea of the last "
+    "headed 'Where you were': what the unit has covered so far, the last thing the learner worked out, and the "
+    "outline step that comes next. Then pose one recall check with pose_quiz, a choice where it fits, on the main idea of the last "
     "sitting, and end the turn; after its result pose a second one on another idea from before the break, then go "
     "on with the unit where it stopped. The two checks count toward the lesson's quick checks."
 )
