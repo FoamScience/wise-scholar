@@ -1283,9 +1283,15 @@ pre {
 
 .concept-title {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
+}
+
+/* long identifiers in a title (BRepBuilderAPI_Transform) break instead of pushing the marks out */
+.concept-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* a unit gone through gets a round check, stacked above its mastery squares */
@@ -1293,11 +1299,14 @@ pre {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  align-items: flex-end;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 5px;
+  /* one width for every unit, so the checks and squares line up down the list */
+  width: 36px;
+  padding-top: 3px;
 }
 
-.check {
+.done-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1309,6 +1318,10 @@ pre {
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
+}
+
+.done-mark.empty {
+  visibility: hidden;
 }
 
 .mastery {
