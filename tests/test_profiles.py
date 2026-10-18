@@ -1377,3 +1377,51 @@ def test_a_learner_back_at_an_unfinished_unit_after_three_days_gets_a_recap(monk
     db.set_block_data(check["id"], {**check["data"], "answer": "foldr"})
     db.add_block(lesson, "done", "Finished.", None)
     assert resume() == {"recap": False} and len(turns) == 1
+
+
+def test_a_unit_outline_counts_its_steps_and_takes_one_added_step_with_a_reason():
+    import asyncio
+    import json
+
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Outliner')").lastrowid
+    course = db.create_course("OCaml", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Variants"], "known": []}])
+    lesson = db.create_lesson(course, "Variants", "lesson", db.concepts(course)[0]["id"])
+    run = asyncio.run
+    assert run(tutor.step_done(lesson)).startswith("error: this lesson has no outline")
+    assert run(tutor.set_outline(lesson, ["a", "b"])).startswith("error: an outline has 3 to 6")
+    assert run(tutor.set_outline(lesson, ["Predict", "See", "Practise"], reason="why")).startswith("error: a first outline")
+    assert run(tutor.set_outline(lesson, ["Predict", " See  the  pattern ", "Practise"])) == "outline shown: step 1 of 3"
+    block = tutor._outline(lesson)
+    assert block["markdown"] == "1. Predict\n2. See the pattern\n3. Practise" and block["data"]["at"] == 0
+    assert run(tutor.step_done(lesson)) == "step 1 of 3 done" and tutor._outline(lesson)["markdown"].startswith("1. Predict ✓\n2. See")
+    assert "outline=step 2 of 3: 'See the pattern'" in app._turn_prompt(db.lesson(lesson), "[event] x")
+    assert run(tutor.set_outline(lesson, ["Predict", "See the pattern", "Practise", "Check"])) == "error: reason is required when adding a step"
+    assert run(tutor.set_outline(lesson, ["Predict", "Practise", "Check", "See the pattern"], "r")).startswith("error: keep every earlier step")
+    assert run(tutor.set_outline(lesson, ["Recap", "Predict", "See the pattern", "Practise"], "r")) == "error: a step goes after the step the learner is on, not before"
+    assert run(tutor.set_outline(lesson, ["Predict", "See the pattern.", "Practise", "Check"], "r")) == "error: keep every earlier step word for word; missing: 'See the pattern'"
+    assert run(tutor.set_outline(lesson, ["Predict", "See the pattern", "Practise", "Practise"], "r")) == "error: each step is named differently"
+    added = run(tutor.set_outline(lesson, ["Predict", "Match on a variant", "See the pattern", "Practise"], " You confused the  two cases. "))
+    assert added == "step added: now step 2 of 4"
+    data = tutor._outline(lesson)["data"]
+    assert data["added"] == {"step": "Match on a variant", "reason": "You confused the two cases."} and data["at"] == 1
+    assert run(tutor.set_outline(lesson, ["Predict", "Match on a variant", "See the pattern", "Practise", "More"], "r")) == "refused: the outline already took its one added step"
+    while tutor._outline(lesson)["data"]["at"] < 4:
+        run(tutor.step_done(lesson))
+    assert run(tutor.step_done(lesson)) == "refused: every step is already done"
+    assert "outline=all 4 steps done" in app._turn_prompt(db.lesson(lesson), "[event] x")
+    fourth = db.create_lesson(course, "Full", "lesson", db.concepts(course)[0]["id"])
+    run(tutor.set_outline(fourth, ["a", "b", "c"]))
+    for _ in range(3):
+        run(tutor.step_done(fourth))
+    assert run(tutor.set_outline(fourth, ["a", "b", "c", "d"], "r")) == "refused: every step is already done"
+    copy = db.copy_course(course, "OCaml again")["id"]
+    copied = [b for b in db.rows("SELECT b.data FROM blocks b JOIN lessons l ON l.id = b.lesson_id WHERE l.course_id = ? AND b.kind = 'outline'", copy)]
+    assert copied and all(json.loads(b["data"])["at"] == 0 for b in copied)  # the copy starts the steps afresh
+    other = db.create_lesson(course, "Plan", "interview", None)
+    assert run(tutor.set_outline(other, ["a", "b", "c"])) == "error: only a unit lesson has an outline"
+    third = db.create_lesson(course, "Again", "lesson", db.concepts(course)[0]["id"])
+    run(tutor.set_outline(third, ["a", "b", "c"]))
+    assert run(tutor.finish_lesson(third, "Done.")) == "finished; end the turn" and tutor._outline(third)["data"]["at"] == 3

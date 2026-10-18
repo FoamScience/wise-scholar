@@ -32,6 +32,12 @@
       "writingSession": "Writing session {{n}}",
       "nextUnit": "Next · {{title}}"
     },
+    "outline": {
+      "label": "This unit",
+      "step": "Step {{n}} of {{total}}",
+      "allDone": "Every step done",
+      "added": "Added: {{step}}. {{reason}}"
+    },
     "panes": {
       "label": "Views",
       "lesson": "Lesson"
@@ -84,6 +90,7 @@
       "revise_course_map": "revising the course map…"
     },
     "block": {
+      "outline": "Unit plan",
       "prose": "Read",
       "example": "Example",
       "figure": "Figure",

@@ -417,6 +417,8 @@ def _fresh(data: dict) -> dict:
         kept["answer"] = None
     if "last_run" in data:
         kept["last_run"] = None
+    if "steps" in data:
+        kept["at"] = 0
     return kept
 
 

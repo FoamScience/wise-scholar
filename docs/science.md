@@ -73,6 +73,14 @@ After two hours or more with no answer, no run of their own code and no tutor tu
 
 Back at an unfinished unit after three days or more, the learner first gets a short "where you were" note, then two recall checks on what came before the break, then the unit goes on. The checks are retrieval practice after a delay, which rests on the testing and spacing sources under "Confidence-rated quick checks" and "Spaced review". The note itself, and the three-day threshold, are this app's own choices with no source behind them: an experiment, to drop if learners skip past the note or the checks keep them from going on.
 
+### A unit's outline and step counter
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Luiten, Ames & Ackerson 1980, *American Educational Research Journal* 17(2), 211–218. [doi:10.3102/00028312017002211](https://doi.org/10.3102/00028312017002211). Abstract read. | Across 135 published and unpublished studies, advance organizers (an overview given before the material) helped both learning and retention; grade level, subject, how the organizer was presented and ability level were examined as influences. | Advance organizers as studied are introductory material that relates the new content to what learners know, which is more than a list of steps. The abstract gives no effect size here. |
+
+Each unit opens with 3 to 6 named steps, and a counter shows the step the learner is on. The outline's link to advance organizers is loose, since a list of steps relates little to prior knowledge. The counter, the cap of one added step and the rule that the tutor says why it added one rest on no source: they answer the learner's complaint that units felt long with no visible end, and are an experiment to drop if they do not help learners finish units.
+
 ### The opening interview
 
 | Source | What it reports | Limits |

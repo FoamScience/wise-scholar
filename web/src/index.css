@@ -523,6 +523,24 @@ pre {
   font-size: 26px;
 }
 
+.outline ol {
+  margin: 0;
+  padding-inline-start: 22px;
+}
+
+.outline li {
+  padding: 2px 0;
+}
+
+.outline li.done {
+  color: var(--muted);
+}
+
+.outline li.current {
+  color: var(--teal-dark);
+  font-weight: 600;
+}
+
 .block {
   padding: 18px 20px;
   background: var(--panel);

@@ -32,6 +32,12 @@
       "writingSession": "Séance d'écriture {{n}}",
       "nextUnit": "Suivant · {{title}}"
     },
+    "outline": {
+      "label": "Cette unité",
+      "step": "Étape {{n}} sur {{total}}",
+      "allDone": "Toutes les étapes faites",
+      "added": "Ajoutée : {{step}}. {{reason}}"
+    },
     "panes": {
       "label": "Vues",
       "lesson": "Leçon"
@@ -84,6 +90,7 @@
       "revise_course_map": "révision du plan du cours…"
     },
     "block": {
+      "outline": "Plan de l'unité",
       "prose": "À lire",
       "example": "Exemple",
       "figure": "Figure",
