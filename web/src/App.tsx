@@ -984,6 +984,8 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const [changing, setChanging] = useState(false)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
+  // which column a phone shows; wider screens show all three
+  const [pane, setPane] = useState<'map' | 'lesson' | 'chat'>('lesson')
   const [kept, setKept] = useState<{ lesson: number | null; answers: Record<number, Given> }>({ lesson: null, answers: {} })
   const chatBottom = useRef<HTMLDivElement>(null)
   const lessonBottom = useRef<HTMLDivElement>(null)
@@ -1021,6 +1023,11 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
       .finally(() => setSending(false))
   }
 
+  function showLesson(id: number) {
+    setLessonId(id)
+    setPane('lesson')
+  }
+
   function patchLesson(id: number, patch: (l: Lesson) => Lesson) {
     setCourse((c) => c && { ...c, lessons: c.lessons.map((l) => (l.id === id ? patch(l) : l)) })
   }
@@ -1031,11 +1038,11 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
 
   function openConcept(concept: Concept) {
     const existing = course?.lessons.find((l) => l.concept_id === concept.id)
-    if (existing) return setLessonId(existing.id)
+    if (existing) return showLesson(existing.id)
     api<Lesson>(`/api/concepts/${concept.id}/lesson`, {}).then(
       (created) => {
         addLesson(created)
-        setLessonId(created.id)
+        showLesson(created.id)
       },
       (err: Error) => setError(err.message),
     )
@@ -1141,7 +1148,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
 
   useEffect(() => {
     chatBottom.current?.scrollIntoView({ block: 'end' })
-  }, [lesson?.messages.length, streaming])
+  }, [lesson?.messages.length, streaming, pane])
 
   useEffect(() => {
     lessonBottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
@@ -1185,7 +1192,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const ready = batchCards.filter((b) => given[b.id] && ((b.data as QuizData).kind !== 'open' || given[b.id].self_correct !== undefined))
 
   return (
-    <div className="workspace">
+    <div className="workspace" data-pane={pane}>
       <nav className="map" aria-label={t('map.label')}>
         <div className="label">{t('map.label')}</div>
         <a className="small" href={`#/course/${course.id}/book`}>
@@ -1211,7 +1218,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
                   api<Lesson>(`/api/courses/${course.id}/placement/retake`, {}).then(
                     (created) => {
                       addLesson(created)
-                      setLessonId(created.id)
+                      showLesson(created.id)
                     },
                     (err: Error) => setError(err.message),
                   )
@@ -1227,9 +1234,11 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
                 disabled={lesson.running}
                 onClick={() => {
                   // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
-                  setLessonId(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
+                  showLesson(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
+                  setPane('chat')
                   setChanging(true)
-                  document.getElementById('chat')?.focus()
+                  // after the click's render, when a phone shows the chat
+                  requestAnimationFrame(() => document.getElementById('chat')?.focus())
                 }}
               >
                 {t('map.change')}
@@ -1248,7 +1257,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               api<Lesson>(`/api/courses/${course.id}/${kind}`, {}).then(
                 (created) => {
                   addLesson(created)
-                  setLessonId(created.id)
+                  showLesson(created.id)
                 },
                 (err: Error) => setError(err.message),
               )
@@ -1260,7 +1269,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
         {course.lessons
           .filter((l) => l.concept_id === null)
           .map((l) => (
-            <button key={l.id} aria-current={l.id === lesson.id} onClick={() => setLessonId(l.id)}>
+            <button key={l.id} aria-current={l.id === lesson.id} onClick={() => showLesson(l.id)}>
               {lessonTitle(l, t)}
             </button>
           ))}
@@ -1452,7 +1461,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               api<Lesson>(`/api/courses/${course.id}/placement`, {}).then(
                 (created) => {
                   addLesson(created)
-                  setLessonId(created.id)
+                  showLesson(created.id)
                 },
                 (err: Error) => setError(err.message),
               )
@@ -1557,6 +1566,15 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
           </div>
         </div>
       </aside>
+      <nav className="panes" aria-label={t('panes.label')}>
+        {(['map', 'lesson', 'chat'] as const).map((p) => (
+          <button key={p} aria-pressed={pane === p} onClick={() => setPane(p)}>
+            {p === 'map' ? t('map.label') : p === 'lesson' ? t('panes.lesson') : t('chat.tutor')}
+            {/* the tutor writes in the lesson and the chat: the other of the two shows it at work */}
+            {p !== 'map' && p !== pane && lesson.running && <span className="live"> · {t('activity.working')}</span>}
+          </button>
+        ))}
+      </nav>
     </div>
   )
 }

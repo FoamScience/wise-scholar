@@ -32,6 +32,10 @@
       "writingSession": "Writing session {{n}}",
       "nextUnit": "Next · {{title}}"
     },
+    "panes": {
+      "label": "Views",
+      "lesson": "Lesson"
+    },
     "offline": {
       "prepare": "Prepare for offline",
       "help": "The tutor writes the rest of this unit at once, with its checks, to read and answer without a connection.",
