@@ -624,6 +624,7 @@ pre {
 
 .outline li {
   padding: 2px 0;
+  transition: color var(--motion) var(--ease);
 }
 
 .outline li.done {

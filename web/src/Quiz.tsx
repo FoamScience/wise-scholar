@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
 import { api } from './api'
+import { useArrivals } from './arrive'
 import { sortItems } from './course'
 import type { SortItem } from './course'
 import { percent } from './i18n'
@@ -337,6 +338,8 @@ export function Review({ profile, then }: { profile: number; then: string | null
   const [pending, setPending] = useState<{ answer_id: number; answer_key: string; explanation: string } | null>(null)
   const [result, setResult] = useState<Graded | null>(null)
   const [error, setError] = useState('')
+  const box = useRef<HTMLElement>(null)
+  useArrivals(box, cards !== null)
 
   useEffect(() => {
     // on the way to a lesson the review is the sitting's warm-up: a few cards, the rest wait here
@@ -386,21 +389,21 @@ export function Review({ profile, then }: { profile: number; then: string | null
   }
 
   return (
-    <main className="home">
+    <main ref={box} className="home">
       {then && <SittingSummary profile={profile} />}
       {then && (
         <a className="small" href={then} onClick={goOn}>
           {t('review.skipWarmup')}
         </a>
       )}
-      <section className="block quiz">
+      <section key={card.id} className="block quiz">
         <div className="label">
           {t('review.position', { n: index + 1, total: cards.length, topic: card.topic })}
           {card.confident_miss && <span className="chip warn">{t('review.sureAndMissed')}</span>}
         </div>
         <Markdown>{card.question}</Markdown>
         <Translation text={card.translation} />
-        {!given && <QuizForm key={card.id} id={`card-${card.id}`} kind={card.kind} options={card.options} categories={card.categories} disabled={false} onSubmit={submit} />}
+        {!given && <QuizForm id={`card-${card.id}`} kind={card.kind} options={card.options} categories={card.categories} disabled={false} onSubmit={submit} />}
         {given && pending && (
           <div className="quiz-result">
             <div className="attempt">
