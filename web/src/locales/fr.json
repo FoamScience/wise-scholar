@@ -33,10 +33,19 @@
       "nextUnit": "Suivant · {{title}}"
     },
     "outline": {
+      "testStep": "Sauter cette étape par un test",
+      "testUnit": "Sauter l'unité par un test",
       "label": "Cette unité",
       "step": "Étape {{n}} sur {{total}}",
       "allDone": "Toutes les étapes faites",
       "added": "Ajoutée : {{step}}. {{reason}}"
+    },
+    "pace": {
+      "label": "Rythme",
+      "momentum": "Régulier",
+      "speed": "Rapide",
+      "momentumHint": "Unités courtes à rythme régulier",
+      "speedHint": "Unités plus longues ; sautez par un test ce que vous savez déjà"
     },
     "panes": {
       "label": "Vues",
@@ -539,6 +548,10 @@
     "message is empty": "le message est vide",
     "answer is empty": "la réponse est vide",
     "already answered": "déjà répondu",
+    "try the unit's opening first": "essayez d'abord l'ouverture de l'unité",
+    "a prepared course has no pace": "un cours préparé n'a pas de rythme",
+    "testing out is for a unit of a course in speed mode": "le test de sortie concerne une unité d'un cours en mode rapide",
+    "this unit has no step left to test out of": "cette unité n'a plus d'étape à tester",
     "a quiz is answered once": "on répond une seule fois à un quiz",
     "an open answer carries the learner's own grade": "une réponse ouverte porte la note que l'apprenant s'est donnée",
     "only a unit of a learner's course is taken offline": "seule une unité d'un cours d'apprenant se prépare hors ligne",

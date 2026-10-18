@@ -394,7 +394,7 @@ def _untrusted(text: str) -> str:
 def _turn_prompt(lesson: dict, line: str) -> str:
     state = (
         f"[state] course_id={lesson['course_id']} topic={lesson['topic']!r} lesson_id={lesson['id']} "
-        f"lesson={lesson['title']!r} phase={lesson['phase']} mechanism={lesson['mechanism'] or 'not chosen'}"
+        f"lesson={lesson['title']!r} phase={lesson['phase']} mechanism={lesson['mechanism'] or 'not chosen'} pace={lesson['pace']}"
     )
     if lesson["level"]:
         state += f" level={lesson['level']!r}"
@@ -776,6 +776,59 @@ def get_course(course_id: int) -> dict:
 async def events(course_id: int):
     async for event in hub.subscribe(course_id):
         yield ServerSentEvent(data=event)
+
+
+class Pace(BaseModel):
+    pace: Literal["momentum", "speed"]
+
+
+@app.post("/api/courses/{course_id}/pace")
+def set_pace(course_id: int, body: Pace) -> dict:
+    """momentum: short units at a steady pace; speed: longer units the learner can test out of. Changeable any time."""
+    if _course(course_id)["mode"] == "teacher":
+        raise HTTPException(409, "a prepared course has no pace")
+    tutor.save_pace(course_id, body.pace)
+    return {"pace": body.pace}
+
+
+TEST_OUT = {
+    "step": (
+        "[event] The learner tests out of the current outline step ({step}). Before teaching it, pose its checks: two "
+        "or three pose_quiz cards, choice where it fits, one per turn, covering what the step teaches. If every "
+        "answer is right at 70% confidence or more, call step_done, say in one sentence that the step is skipped, "
+        "and go on with the next step. At the first miss, teach the step starting from what that miss shows."
+    ),
+    "unit": (
+        "[event] The learner tests out of the whole unit. Before teaching more, pose checks across what the unit "
+        "covers: three to five pose_quiz cards, choice where it fits, one per turn, each on a different idea. If "
+        "every answer is right at 70% confidence or more, call finish_lesson saying the unit was tested out. At the "
+        "first miss, teach from the step that miss belongs to and go on with the unit from there."
+    ),
+}
+
+
+class TestOut(BaseModel):
+    scope: Literal["step", "unit"]
+
+
+@app.post("/api/lessons/{lesson_id}/testout", status_code=202)
+async def test_out(lesson_id: int, body: TestOut) -> None:
+    """In speed mode, a learner who thinks they know a step or the whole unit answers its checks before its teaching."""
+    lesson = _lesson(lesson_id)
+    if lesson["pace"] != "speed" or lesson["mode"] == "teacher" or lesson["phase"] != "lesson" or lesson["concept_id"] is None:
+        raise HTTPException(409, "testing out is for a unit of a course in speed mode")
+    if any(b["kind"] == "done" for b in db.blocks(lesson_id)):
+        raise HTTPException(409, "this lesson is finished")
+    if tutor.pretest_blocker(lesson):
+        raise HTTPException(409, "try the unit's opening first")
+    _require_idle(lesson_id)
+    outline = tutor._outline(lesson_id)
+    step = ""
+    if body.scope == "step":
+        if not outline or outline["data"]["at"] >= len(outline["data"]["steps"]):
+            raise HTTPException(409, "this unit has no step left to test out of")
+        step = f"step {outline['data']['at'] + 1}: {outline['data']['steps'][outline['data']['at']]!r}"
+    _start_turn(lesson, TEST_OUT[body.scope].format(step=step))
 
 
 @app.post("/api/courses/{course_id}/mechanism")

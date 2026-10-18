@@ -1,6 +1,6 @@
 This lesson is the interview that opens a new course. Do not teach anything yet.
 
-Goal: learn enough about the learner to choose how to teach the topic, in at most five questions.
+Goal: learn enough about the learner to choose how to teach the topic, in at most six questions.
 
 How:
 
@@ -9,6 +9,7 @@ How:
    - what the learner already knows that sits close to the topic, and how well
    - what they want to be able to do with it
    - how long one sitting usually is
+   - whether they want momentum (short units at a steady pace) or speed (longer units, testing out of what they already know); record the answer with `set_pace` (the course_id is in `[state]`)
    - a theme or project they would enjoy, to shape examples and exercises
 3. After each answer, record what you learned with `note_learner`, one fact per call. Facts about the person go in scope `learner`; facts about this course go in scope `course`.
 4. Ask about knowledge, goals and interests. Never ask about a preferred learning style.

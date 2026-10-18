@@ -33,10 +33,19 @@
       "nextUnit": "التالي · {{title}}"
     },
     "outline": {
+      "testStep": "تخطَّ هذه الخطوة باختبار",
+      "testUnit": "تخطَّ الوحدة باختبار",
       "label": "هذه الوحدة",
       "step": "الخطوة {{n}} من {{total}}",
       "allDone": "اكتملت كل الخطوات",
       "added": "أُضيفت: {{step}}. {{reason}}"
+    },
+    "pace": {
+      "label": "الوتيرة",
+      "momentum": "منتظمة",
+      "speed": "سريعة",
+      "momentumHint": "وحدات قصيرة بوتيرة منتظمة",
+      "speedHint": "وحدات أطول؛ تخطَّ باختبار ما تعرفه"
     },
     "panes": {
       "label": "العروض",
@@ -572,6 +581,10 @@
     "message is empty": "الرسالة فارغة",
     "answer is empty": "الإجابة فارغة",
     "already answered": "أُجيب عنه من قبل",
+    "try the unit's opening first": "جرّب افتتاحية الوحدة أولًا",
+    "a prepared course has no pace": "الدورة المحضَّرة ليس لها وتيرة",
+    "testing out is for a unit of a course in speed mode": "اختبار التخطي خاص بوحدة في دورة بوضع السرعة",
+    "this unit has no step left to test out of": "لم تبقَ في هذه الوحدة خطوة لاختبار تخطيها",
     "a quiz is answered once": "يُجاب عن الاختبار مرة واحدة",
     "an open answer carries the learner's own grade": "الإجابة المفتوحة تحمل تقييم المتعلم لنفسه",
     "only a unit of a learner's course is taken offline": "لا تُحضَّر للعمل دون اتصال إلا وحدة من دورة متعلم",

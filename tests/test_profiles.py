@@ -1436,3 +1436,49 @@ def test_the_course_map_counts_each_units_due_reviews():
         db.add_card(course, pipes, "q", "open", [], "a", "e", scheduled=True, due=due)
     view = {c["id"]: c for c in db.concept_view(course)}
     assert view[pipes]["due"] == 2 and view[matching]["due"] == 0
+
+
+def test_a_course_runs_at_momentum_until_switched_and_speed_lets_the_learner_test_out(monkeypatch):
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app, tutor
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Pacer')").lastrowid
+    course = db.create_course("Zig", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Comptime"], "known": []}])
+    lesson = db.create_lesson(course, "Comptime", "lesson", db.concepts(course)[0]["id"])
+    assert db.course(course)["pace"] == "momentum" and " pace=momentum" in app._turn_prompt(db.lesson(lesson), "x")
+    with pytest.raises(HTTPException, match="speed mode"):
+        asyncio.run(app.test_out(lesson, app.TestOut(scope="unit")))
+
+    assert asyncio.run(tutor.set_pace(course, "speed")) == "pace set to speed"
+    assert " pace=speed" in app._turn_prompt(db.lesson(lesson), "x")
+    with pytest.raises(HTTPException, match="opening first"):
+        asyncio.run(app.test_out(lesson, app.TestOut(scope="unit")))
+    db.add_block(lesson, "quiz", "What runs at compile time?", {"card_id": 0, "kind": "open", "options": [], "answer": "comptime", "pretest": True})
+    with pytest.raises(HTTPException, match="no step left"):
+        asyncio.run(app.test_out(lesson, app.TestOut(scope="step")))
+    assert asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it", "Check", "More"])) == "outline shown: step 1 of 5"
+    db.conn.execute("DELETE FROM blocks WHERE lesson_id = ? AND kind = 'outline'", (lesson,))
+    asyncio.run(tutor.set_pace(course, "momentum"))
+    assert asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it", "Check", "More"])).startswith("error: a first outline here has 3 to 4 steps")
+    asyncio.run(tutor.set_pace(course, "speed"))
+    asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it"]))
+    asyncio.run(tutor.step_done(lesson))
+    asyncio.run(app.test_out(lesson, app.TestOut(scope="step")))
+    assert turns[-1].startswith("[event] The learner tests out of the current outline step (step 2: 'See comptime').")
+    asyncio.run(app.test_out(lesson, app.TestOut(scope="unit")))
+    assert turns[-1].startswith("[event] The learner tests out of the whole unit.") and "70% confidence" in turns[-1]
+    monkeypatch.setitem(app._turns, lesson, None)
+    with pytest.raises(HTTPException, match="still answering"):
+        asyncio.run(app.test_out(lesson, app.TestOut(scope="unit")))
+    app._turns.pop(lesson)
+
+    assert app.set_pace(course, app.Pace(pace="momentum")) == {"pace": "momentum"} and db.course(course)["pace"] == "momentum"
+    with pytest.raises(ValueError):
+        app.Pace(pace="fast")
