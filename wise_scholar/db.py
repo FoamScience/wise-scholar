@@ -312,6 +312,24 @@ MIGRATIONS = [
     _rebuild_errors,
     "ALTER TABLE lessons ADD COLUMN batch INTEGER NOT NULL DEFAULT 0;",
     "ALTER TABLE courses ADD COLUMN pace TEXT NOT NULL DEFAULT 'momentum';",
+    """
+    CREATE TABLE placement_areas (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        holds TEXT NOT NULL,
+        lacks TEXT NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE concept_needs (
+        concept_id INTEGER NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+        needs_id INTEGER NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+        PRIMARY KEY (concept_id, needs_id)
+    );
+    ALTER TABLE courses ADD COLUMN prerequisites INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -434,17 +452,25 @@ def copy_course(course_id: int, topic: str) -> dict:
             raise ValueError("no such course")
         slug = _free_slug(topic)
         new_id = conn.execute(
-            "INSERT INTO courses (topic, slug, profile_id, mechanism, level, lang, ranking, details, hours, started, mode, placement) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO courses (topic, slug, profile_id, mechanism, level, lang, ranking, details, hours, started, mode, placement, prerequisites) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (topic, slug, old["profile_id"], old["mechanism"], old["level"], old["lang"], json.dumps(old["ranking"]) if old["ranking"] else None,
-             old["details"], old["hours"], old["started"], old["mode"], old["placement"]),
+             old["details"], old["hours"], old["started"], old["mode"], old["placement"], old["prerequisites"]),
         ).lastrowid
+        conn.execute(
+            "INSERT INTO placement_areas (course_id, position, title, holds, lacks) "
+            "SELECT ?, position, title, holds, lacks FROM placement_areas WHERE course_id = ?", (new_id, course_id),
+        )
         concept_map = {}
         for c in concepts(course_id):
             concept_map[c["id"]] = conn.execute(
                 "INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, ?, ?, ?, ?, ?)",
                 (new_id, c["module"], c["title"], c["known"], c["position"], c["kind"]),
             ).lastrowid
+        conn.executemany(
+            "INSERT INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
+            [(concept_map[c], concept_map[n]) for c, ids in needs(course_id).items() for n in ids],
+        )
         for k in capstones(course_id):
             capstone_id = conn.execute(
                 "INSERT INTO capstones (course_id, module, title, brief, folder) VALUES (?, ?, ?, ?, ?)",
@@ -566,6 +592,26 @@ def course(course_id: int) -> dict | None:
     return c
 
 
+def placement_areas(course_id: int) -> list[dict]:
+    return rows("SELECT title, holds, lacks FROM placement_areas WHERE course_id = ? ORDER BY position", course_id)
+
+
+def set_placement(course_id: int, level: str, summary: str, areas: list[dict]) -> None:
+    """A placement result replaces the one before it, areas and all."""
+    conn.execute("BEGIN")
+    try:
+        conn.execute("UPDATE courses SET level = ?, placement = ? WHERE id = ?", (level, summary, course_id))
+        conn.execute("DELETE FROM placement_areas WHERE course_id = ?", (course_id,))
+        conn.executemany(
+            "INSERT INTO placement_areas (course_id, position, title, holds, lacks) VALUES (?, ?, ?, ?, ?)",
+            [(course_id, n, a["title"], a["holds"], a["lacks"]) for n, a in enumerate(areas, start=1)],
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+
 def set_ranking(course_id: int, ranking: list[dict]) -> None:
     conn.execute(
         "UPDATE courses SET ranking = ?, mechanism = ? WHERE id = ?",
@@ -595,11 +641,52 @@ def concept_view(course_id: int) -> list[dict]:
     finished = {r["concept_id"] for r in rows(
         "SELECT DISTINCT l.concept_id FROM lessons l JOIN blocks b ON b.lesson_id = l.id WHERE l.course_id = ? AND b.kind = 'done'", course_id
     )}
+    edges = needs(course_id)
     return [
         {**c, "mastery": (1.0 if c["id"] in finished else None) if c["kind"] == "practice" else mastery.get(c["id"], 1.0 if c["known"] else None),
-         "due": due.get(c["id"], 0)}
+         "due": due.get(c["id"], 0), "needs": edges.get(c["id"], [])}
         for c in concepts(course_id)
     ]
+
+
+def needs(course_id: int) -> dict[int, list[int]]:
+    """Each unit's prerequisites, as unit ids in map order."""
+    edges: dict[int, list[int]] = {}
+    for r in rows(
+        "SELECT n.concept_id, n.needs_id FROM concept_needs n JOIN concepts k ON k.id = n.needs_id "
+        "WHERE k.course_id = ? ORDER BY k.position, k.id", course_id,
+    ):
+        edges.setdefault(r["concept_id"], []).append(r["needs_id"])
+    return edges
+
+
+def set_needs(course_id: int, given: dict[str, list[str]], replace: bool, linked: bool) -> None:
+    """Record prerequisites by unit title. replace drops every edge first; otherwise only the units given get new
+    lists, and an edge the map's order no longer allows (a unit needing one placed after it) is dropped.
+    linked marks the map as having its prerequisites worked out."""
+    ids = {c["title"]: c["id"] for c in concepts(course_id) if c["kind"] == "concept"}
+    course_units = "SELECT id FROM concepts WHERE course_id = ?"
+    conn.execute("BEGIN")
+    try:
+        if replace:
+            conn.execute(f"DELETE FROM concept_needs WHERE concept_id IN ({course_units})", (course_id,))
+        else:
+            conn.executemany("DELETE FROM concept_needs WHERE concept_id = ?", [(ids[t],) for t in given])
+            conn.execute(
+                f"DELETE FROM concept_needs WHERE concept_id IN ({course_units}) "
+                "AND (SELECT position FROM concepts WHERE id = needs_id) >= (SELECT position FROM concepts WHERE id = concept_id)",
+                (course_id,),
+            )
+        conn.executemany(
+            "INSERT OR IGNORE INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
+            [(ids[t], ids[n]) for t, ns in given.items() for n in ns],
+        )
+        if linked:
+            conn.execute("UPDATE courses SET prerequisites = 1 WHERE id = ?", (course_id,))
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
 
 
 def set_known(course_id: int, known: list[str], unknown: list[str]) -> None:

@@ -7,7 +7,8 @@ import { NetworkCard } from './Network'
 import { api, failure } from './api'
 import { parts, timeline } from './chapters'
 import { challengeLabel, lessonTitle, practiceTitle, sortItems } from './course'
-import type { Block, ChallengeData, Concept, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
+import { PlacementAreas } from './Areas'
+import type { Area, Block, ChallengeData, Concept, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
 import { Correction } from './Diff'
 import type { Entry } from './Errors'
 import { Credits, Drawing } from './Figure'
@@ -275,6 +276,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
         }
       >
         <Markdown>{block.markdown}</Markdown>
+        <PlacementAreas areas={(block.data as { areas?: Area[] }).areas} />
       </Card>
     )
   return (
@@ -350,6 +352,7 @@ function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files
           }
         >
           <Markdown>{course.placement}</Markdown>
+          <PlacementAreas areas={course.areas} />
         </Card>
       )}
     </article>

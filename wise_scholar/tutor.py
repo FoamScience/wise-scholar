@@ -70,6 +70,8 @@ PLACEMENT_OPTIONS = 4
 # A pretest is one short question; past this length it has become a lecture with questions attached.
 PRETEST_CHARS = 700
 FACT_CHARS = 300
+PLACEMENT_AREAS = (2, 8)
+AREA_CHARS = 300
 # A turn that keeps calling tools is a tutor going in circles, or one talked into it.
 TOOL_CALLS_PER_TURN = int(os.environ.get("WISE_SCHOLAR_TOOL_CALLS", "80"))
 _renders: set[asyncio.Task] = set()
@@ -84,6 +86,13 @@ class Module(BaseModel):
     title: str
     concepts: list[str]
     known: list[str] = []
+    needs: dict[str, list[str]] = {}
+
+
+class Area(BaseModel):
+    title: str
+    holds: str
+    lacks: str
 
 
 class Renamed(BaseModel):
@@ -271,6 +280,22 @@ async def rank_mechanisms(course_id: int, ranking: list[Ranked]) -> str:
     return "shown"
 
 
+def _needs_problem(order: list[str], needs: dict[str, list[str]]) -> str | None:
+    """Why prerequisites do not fit a map whose concept units come in this order, or None when they do."""
+    at = {title: n for n, title in enumerate(order)}
+    if stray := sorted({t for unit, ns in needs.items() for t in (unit, *ns)} - at.keys()):
+        return f"error: needs names {stray}, which are not concept units of the map"
+    if forward := [f"{unit} needs {n}" for unit, ns in needs.items() for n in ns if at[n] >= at[unit]]:
+        return f"error: a unit needs only units before it in the map, not {forward}; reorder the map first"
+    return None
+
+
+def _module_needs(modules: list[Module]) -> tuple[dict[str, list[str]], str | None]:
+    if stray := [k for m in modules for k in m.needs if k not in m.concepts]:
+        return {}, f"error: needs keys {stray} are not concepts of their module"
+    return {unit: ns for m in modules for unit, ns in m.needs.items()}, None
+
+
 @mcp.tool()
 async def set_course_map(course_id: int, modules: list[Module]) -> str:
     """Lay out the course as ordered modules, each a list of concept titles, and show it as the course map.
@@ -279,6 +304,9 @@ async def set_course_map(course_id: int, modules: list[Module]) -> str:
     known lists the concept titles of a module that a placement check showed the learner
     already has; they appear as placed out. The server adds a practice unit after every third
     unit to study: earlier tasks come back varied and mixed, with no teaching.
+    needs: for units of the module, the earlier units of the map they build on directly (not what
+    those build on in turn); a unit that builds on nothing in the map is left out. A unit can
+    only need units placed before it.
     """
     if not db.course(course_id):
         return f"error: no course with id {course_id}"
@@ -288,7 +316,11 @@ async def set_course_map(course_id: int, modules: list[Module]) -> str:
         return "error: the map has no concepts"
     if stray := [k for m in modules for k in m.known if k not in m.concepts]:
         return f"error: known titles {stray} are not concepts of their module"
+    needs, problem = _module_needs(modules)
+    if problem or (problem := _needs_problem([t for m in modules for t in m.concepts], needs)):
+        return problem
     db.set_concepts(course_id, [m.model_dump() for m in modules])
+    db.set_needs(course_id, needs, replace=True, linked=bool(needs))
     hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id)})
     return "shown"
 
@@ -304,6 +336,8 @@ async def revise_course_map(course_id: int, modules: list[Module], renamed: list
     without losing its lesson, list it in renamed and use the new title in modules. A unit that already
     has a lesson cannot be dropped: keep it, and list it in known if the learner is done with it.
     known: titles to mark as already mastered; units marked before stay marked (set_known unmarks one).
+    needs: as in set_course_map, by the new titles; a unit you give needs for gets exactly that list,
+    the others keep theirs unless the new order puts what they need after them.
     hours: set it only when the learner changes the teaching time planned for the whole course.
     Each module appears once. A capstone keeps the milestones of the units that remain and moves to the
     module that holds most of them; one whose units are all gone, or whose module another capstone holds,
@@ -328,6 +362,9 @@ async def revise_course_map(course_id: int, modules: list[Module], renamed: list
         return "error: hours must be between 1 and 5000"
     if stray := [k for m in modules for k in m.known if k not in m.concepts]:
         return f"error: known titles {stray} are not concepts of their module"
+    needs, problem = _module_needs(modules)
+    if problem or (problem := _needs_problem(titles, needs)):
+        return problem
     names = {r.old: r.new for r in renamed}
     if unknown := sorted(set(names) - current):
         return f"error: renamed titles {unknown} are not in the current map"
@@ -340,11 +377,32 @@ async def revise_course_map(course_id: int, modules: list[Module], renamed: list
         removed = db.revise_concepts(course_id, [m.model_dump() for m in modules], names, hours)
     except ValueError as started:
         return f"error: units {started} already have a lesson and cannot be dropped"
+    db.set_needs(course_id, needs, replace=False, linked=bool(needs))
     hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id), "capstones": db.capstones(course_id)})
     dropped = sorted(current - set(names) - set(titles))
     note = f"; dropped {dropped}" if dropped else ""
     note += f"; capstones removed with their units: {removed}" if removed else ""
     return f"shown{note}"
+
+
+@mcp.tool()
+async def set_prerequisites(course_id: int, needs: dict[str, list[str]]) -> str:
+    """Record which units of the existing course map build on which, replacing what was recorded before.
+
+    needs: for each concept unit, the earlier units it builds on directly (not what those build on
+    in turn), by their exact titles; a unit that builds on nothing in the map is left out. A unit
+    can only need units placed before it.
+    """
+    order = [c["title"] for c in db.concepts(course_id) if c["kind"] == "concept"]
+    if not order:
+        return "error: this course has no map yet; use set_course_map"
+    if not any(needs.values()):
+        return "error: no unit needs another; give, for each unit that builds on earlier ones, those units"
+    if problem := _needs_problem(order, needs):
+        return problem
+    db.set_needs(course_id, needs, replace=True, linked=True)
+    hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id)})
+    return "linked"
 
 
 @mcp.tool()
@@ -1537,21 +1595,35 @@ async def finish_lesson(lesson_id: int, summary: str) -> str:
 
 
 @mcp.tool()
-async def set_placement(course_id: int, level: str, summary: str) -> str:
+async def set_placement(course_id: int, level: str, summary: str, areas: list[Area]) -> str:
     """Record the result of the placement check.
 
     level: a short label of where the learner starts. For a natural language use the
     CEFR level (A1, A2, B1, B2, C1, C2). summary: two or three sentences to the learner
     on what the check showed they have and what it showed they lack.
+    areas: one per part of the topic the check bracketed, in the order the course builds them:
+    title names the part, holds says in one sentence what the learner has in it (empty when
+    nothing), lacks says where their understanding of it ends (empty when it does not end
+    within the course).
     """
     if not db.course(course_id):
         return f"error: no course with id {course_id}"
-    db.conn.execute("UPDATE courses SET level = ?, placement = ? WHERE id = ?", (level, summary, course_id))
-    hub.publish(course_id, {"type": "placement.set", "level": level, "placement": summary})
+    low, high = PLACEMENT_AREAS
+    if not low <= len(areas) <= high:
+        return f"error: give {low} to {high} areas"
+    entries = [{k: " ".join(v.split()) for k, v in a.model_dump().items()} for a in areas]
+    if not all(e["title"] for e in entries):
+        return "error: every area needs a title"
+    if twice := sorted(t for t, n in Counter(e["title"] for e in entries).items() if n > 1):
+        return f"error: areas {twice} appear more than once"
+    if long := [e["title"] for e in entries if max(len(v) for v in e.values()) > AREA_CHARS]:
+        return f"error: areas {long} are too long; one sentence each, under {AREA_CHARS} characters"
+    db.set_placement(course_id, level, summary, entries)
+    hub.publish(course_id, {"type": "placement.set", "level": level, "placement": summary, "areas": entries})
     # Each check keeps its own result card, so a retake leaves the earlier ones readable.
     lesson = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'placement' ORDER BY id DESC LIMIT 1", course_id)
     if lesson:
-        _show(db.lesson(lesson["id"]), db.add_block(lesson["id"], "placement", summary, {"level": level}))
+        _show(db.lesson(lesson["id"]), db.add_block(lesson["id"], "placement", summary, {"level": level, "areas": entries}))
     return "recorded"
 
 

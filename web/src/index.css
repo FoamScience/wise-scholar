@@ -624,6 +624,17 @@ pre {
   font-size: 26px;
 }
 
+.areas {
+  margin: 0.75rem 0 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.areas dt {
+  font-weight: 600;
+}
+.areas dd {
+  margin: 0;
+}
 .outline ol {
   margin: 0;
   padding-inline-start: 22px;
@@ -1045,6 +1056,16 @@ pre {
   padding: 6px 10px;
 }
 
+.held {
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.5rem;
+  background: var(--amber-tint);
+  color: var(--amber-ink);
+  border-inline-start: 2px solid var(--amber-line);
+}
+.held .row {
+  margin-top: 0.4rem;
+}
 .stats {
   font-size: 12px;
   font-weight: 400;
