@@ -887,9 +887,11 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
     run: one shell command, executed in the workspace when the learner presses Run.
     Run is always offline; what an exercise needs from the internet is fetched once with ask_network.
     The Python file that run executes is a standalone uv script; the lesson rules say how.
-    The card shows the files as they are on disk, the run output, a hint ladder and a locked
-    solution, exactly like a challenge; its id works with give_hint, reveal and mark_solved.
-    `[learner attempt]` turns for an exercise carry the current files and the last run output.
+    The card shows the files as they are on disk, the run output, a box for a written answer,
+    a hint ladder and a locked solution, exactly like a challenge; its id works with give_hint,
+    reveal and mark_solved. Questions the learner answers in words go in that box, not in a file.
+    `[learner attempt]` turns for an exercise carry the current files, the last run output and
+    the written answer, when there is one.
     form: when the exercise opens the lesson, which of the lesson rules' forms it is.
     End your turn after posing it.
     """

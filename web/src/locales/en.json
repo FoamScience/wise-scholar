@@ -255,6 +255,7 @@
       "running": "Running…",
       "run": "Run",
       "check": "Check with tutor",
+      "answer": "Your answer, sent when you check with the tutor (optional)",
       "outputStopped": "Output: stopped",
       "outputExit": "Output: exit code {{code}}",
       "noOutput": "(no output)",
