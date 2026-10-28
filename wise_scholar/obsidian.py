@@ -26,6 +26,7 @@ WORDS = {
         "correct": "Right answer", "resolved": "resolved", "pinned": "pinned", "unit_covered": "Unit covered", "result": "Result",
         "glossary": "Glossary", "known": "known", "learning": "learning", "seen_in": "Seen in", "flashcards": "Review cards",
         "pretest": "Opening question", "gave_up": "gave up", "solved": "solved", "unanswered": "not answered", "cast": "Cast",
+        "claims": "Claims", "follows_from": "Follows from", "leads_to": "Leads to", "grounded_by": "Grounded by", "grounds": "Grounds", "contrasts": "Looks like but differs from", "taught_in": "Taught in", "checked_by": "Checked by", "held": "held", "fading": "fading", "shaky": "shaky", "unseen": "not checked yet",
         "map": "Course map", "quick_check": "Quick check", "exercise": "Exercise", "challenge": "Task", "solution_n": "Solution {}", "unknown": "I don't know",
     },
     "fr": {
@@ -39,6 +40,7 @@ WORDS = {
         "correct": "Bonne réponse", "resolved": "résolue", "pinned": "épinglée", "unit_covered": "Unité couverte", "result": "Résultat",
         "glossary": "Glossaire", "known": "connu", "learning": "en cours", "seen_in": "Vu dans", "flashcards": "Cartes de révision",
         "pretest": "Question d'ouverture", "gave_up": "abandon", "solved": "résolu", "unanswered": "sans réponse", "cast": "Émission",
+        "claims": "Notions", "follows_from": "Découle de", "leads_to": "Mène à", "grounded_by": "Appuyée par", "grounds": "Appuie", "contrasts": "Ressemble à mais diffère de", "taught_in": "Vue dans", "checked_by": "Vérifiée par", "held": "acquise", "fading": "à revoir", "shaky": "fragile", "unseen": "pas encore vérifiée",
         "map": "Plan du cours", "quick_check": "Question rapide", "exercise": "Exercice", "challenge": "Tâche", "solution_n": "Solution {}", "unknown": "Je ne sais pas",
     },
     "ar": {
@@ -52,6 +54,7 @@ WORDS = {
         "correct": "الجواب الصحيح", "resolved": "تم حلّه", "pinned": "مثبّت", "unit_covered": "اكتملت الوحدة", "result": "النتيجة",
         "glossary": "المسرد", "known": "معروف", "learning": "قيد التعلم", "seen_in": "ورد في", "flashcards": "بطاقات المراجعة",
         "pretest": "سؤال البداية", "gave_up": "استسلام", "solved": "محلول", "unanswered": "بلا إجابة", "cast": "حلقة",
+        "claims": "المعارف", "follows_from": "تُستنتج من", "leads_to": "تؤدي إلى", "grounded_by": "تدعمها", "grounds": "تدعم", "contrasts": "تشبه لكنها تختلف عن", "taught_in": "دُرِّست في", "checked_by": "تحقق منها", "held": "مكتسبة", "fading": "تحتاج مراجعة", "shaky": "هشّة", "unseen": "لم تُختبر بعد",
         "map": "خريطة الدورة", "quick_check": "سؤال سريع", "exercise": "تمرين", "challenge": "مهمة", "solution_n": "الحل {}", "unknown": "لا أعرف",
     },
 }
@@ -141,6 +144,11 @@ class Vault:
         self.errors = db.errors(self.course["profile_id"], course_id)
         self.workspace = db.WORKSPACE / self.course["slug"]
         self.cards = {e["card_id"]: db.card(e["card_id"]) for e in self.errors if e.get("card_id")}
+        # Claims taught in this course; the graph's links to claims of other courses are named, not linked.
+        graph = {"claims": [], "edges": []} if inline or self.course["mode"] == "teacher" else db.graph(self.course["profile_id"], datetime.now(timezone.utc).isoformat())
+        self.claims = [c for c in graph["claims"] if any(src["course_id"] == course_id for src in c["sources"])]
+        self.claim_text = {c["id"]: (c["text"], c["sources"][0]["topic"] if c["sources"] else "") for c in graph["claims"]}
+        self.claim_edges = graph["edges"]
         self.by_card = {}
         for lesson in self.lessons:
             for block in lesson["blocks"]:
@@ -183,6 +191,8 @@ class Vault:
             claim(("mistake", e["id"]), "Mistakes", e["prompt"].splitlines()[0] if e["prompt"].strip() else e["kind"], e["id"])
         for k in self.capstones:
             claim(("project", k["id"]), "Projects", k["title"])
+        for c in self.claims:
+            claim(("claim", c["id"]), "Claims", c["text"])
         if self.course["lang"]:
             for word in self._words():
                 claim(("word", word["lemma"]), "Vocabulary", word["lemma"])
@@ -440,6 +450,9 @@ class Vault:
                 lines += ["", f"## {t['cards']}"] + [f"- {self.link(('card', b['id']))} · {self._outcome(b)}" for b in cards]
             if mistakes:
                 lines += ["", f"## {t['mistakes']}"] + [f"- {self.link(('mistake', e['id']))}" for e in mistakes]
+            taught = [k for k in self.claims if any(src["concept_id"] == c["id"] for src in k["sources"])]
+            if taught:
+                lines += ["", f"## {t['claims']}"] + [f"- {self.link(('claim', k['id']))} · {t[k['state']]}" for k in taught]
             lines += self._flashcards(c)
             self.put(("unit", c["id"]), props, "\n".join(lines))
 
@@ -455,6 +468,7 @@ class Vault:
         if self.course["lang"]:
             self._word_notes()
 
+        self._claim_notes()
         self._course_note()
         self._canvas()
         return self.files
@@ -513,6 +527,44 @@ class Vault:
                 lines += ["", f"## {t['seen_in']}"] + [f"- {self.link(('lesson', l['id']))} · {b['data'].get('title', '')}" for l, b in seen]
             self.put(("word", w["lemma"]), props, "\n".join(lines))
 
+    def _claim_ref(self, claim_id: int) -> str:
+        if ("claim", claim_id) in self.names:
+            return self.link(("claim", claim_id))
+        text, topic = self.claim_text[claim_id]
+        return f"{text} ({topic})"
+
+    def _claim_notes(self):
+        t = self.t
+        for c in self.claims:
+            mine = [e for e in self.claim_edges if c["id"] in (e["from_id"], e["to_id"])]
+            props = {
+                "type": "claim", "id": c["id"], "state": c["state"], "course": self.link(("course",)),
+                "lessons": [self.link(("lesson", src["id"])) for src in c["sources"] if ("lesson", src["id"]) in self.names],
+                "tags": ["wise-scholar/claim", f"wise-scholar/{c['state']}"],
+            }
+            lines = [c["text"], "", f"*{t[c['state']]}*"]
+            for heading, kind, side in (
+                ("follows_from", "follows", "to_id"), ("leads_to", "follows", "from_id"),
+                ("grounded_by", "supports", "to_id"), ("grounds", "supports", "from_id"),
+            ):
+                other = "from_id" if side == "to_id" else "to_id"
+                found = [e[other] for e in mine if e["kind"] == kind and e[side] == c["id"]]
+                if found:
+                    lines += ["", f"**{t[heading]}**"] + [f"- {self._claim_ref(i)}" for i in found]
+            contrasts = [e["to_id"] if e["from_id"] == c["id"] else e["from_id"] for e in mine if e["kind"] == "contrasts"]
+            if contrasts:
+                lines += ["", f"**{t['contrasts']}**"] + [f"- {self._claim_ref(i)}" for i in contrasts]
+            taught = [src for src in c["sources"] if ("lesson", src["id"]) in self.names]
+            if taught:
+                lines += ["", f"**{t['taught_in']}**"] + [f"- {self.link(('lesson', src['id']))}" for src in taught]
+            checked = [e for e in c["evidence"] if ("card", e["block_id"]) in self.names]
+            if checked:
+                lines += ["", f"**{t['checked_by']}**"] + [
+                    f"- {self.link(('card', e['block_id']))} · {t['right'] if e['verdict'] == 'held' else t['wrong'] if e['verdict'] else t['open']}"
+                    for e in checked
+                ]
+            self.put(("claim", c["id"]), props, "\n".join(lines))
+
     def _course_note(self):
         t, c = self.t, self.course
         props = {
@@ -538,6 +590,8 @@ class Vault:
             lines += ["", f"## {t['projects']}"] + [f"- {self.link(('project', k['id']))}" for k in self.capstones]
         if self.errors:
             lines += ["", f"## {t['mistakes']}"] + [f"- {self.link(('mistake', e['id']))}" for e in self.errors]
+        if self.claims:
+            lines += ["", f"## {t['claims']}"] + [f"- {self.link(('claim', k['id']))} · {t[k['state']]}" for k in self.claims]
         extras = [l for l in self.lessons if l["concept_id"] is None and l["phase"] not in ("interview", "placement")]
         if extras:
             lines += ["", f"## {t['lessons']}"] + [f"- {self.link(('lesson', l['id']))}" for l in extras]
