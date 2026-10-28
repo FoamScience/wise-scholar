@@ -656,6 +656,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
   const [files, setFiles] = useState<ExerciseFile[]>([])
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
+  const [answer, setAnswer] = useState('')
   const open = !d.solved && d.solution === null && !props.authored
   const blockId = props.block.id
   const kept = files.length > 0 && files.every((f) => f.kept)
@@ -704,6 +705,13 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       ))}
       <div className="small">{kept ? t('exercise.cleaned') : t('exercise.follows')}</div>
 
+      {open && (
+        <form onSubmit={(e) => e.preventDefault()}>
+          <label htmlFor={`answer-${blockId}`}>{t('exercise.answer')}</label>
+          <textarea id={`answer-${blockId}`} className="field" dir="auto" rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} />
+        </form>
+      )}
+
       <div className="row">
         <code className="grow">$ {d.run}</code>
         {open && <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />}
@@ -713,7 +721,15 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
           </button>
         )}
         {open && (
-          <button type="button" className="btn primary" disabled={props.disabled} onClick={() => props.onAct('check')}>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={props.disabled}
+            onClick={() => {
+              props.onAct('check', { answer: answer.trim() })
+              setAnswer('')
+            }}
+          >
             {t('exercise.check')}
           </button>
         )}

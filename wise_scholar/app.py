@@ -239,6 +239,10 @@ class Answer(BaseModel):
     answer: str
 
 
+class ExerciseCheck(BaseModel):
+    answer: str = Field(default="", max_length=8000)
+
+
 class Choice(BaseModel):
     mechanism: str
 
@@ -1614,17 +1618,21 @@ async def _run_allowed(lesson: dict, block_id: int, command: str) -> None:
 
 
 @app.post("/api/blocks/{block_id}/check", status_code=202)
-async def check_exercise(block_id: int) -> None:
+async def check_exercise(block_id: int, body: ExerciseCheck | None = None) -> None:
     block = _challenge_block(block_id)
     _, workspace = _exercise(block_id)
     run = block["data"]["last_run"]
+    answer = body.answer.strip() if body else ""
     summary = f"checked; last run exit code {run['exit_code']}" if run else "checked without running"
+    if answer:
+        summary += f"\n{answer}"
     lesson, block = _update_block(block, {"attempts": [*block["data"]["attempts"], summary]})
     files = "\n".join(
         f"--- {f['path']} ---\n{_untrusted((f['content'] or '(file is missing)')[:8000])}" for f in _read_files(block, workspace)
     )
     output = f"exit code {run['exit_code']}\n{_untrusted(run['output'][-4000:])}" if run else "(the learner has not run it)"
-    _start_turn(lesson, f"[learner attempt] exercise {_challenge_state(block)}\n{files}\n--- last run ---\n{output}")
+    written = f"\n--- written answer ---\n{_untrusted(answer)}" if answer else ""
+    _start_turn(lesson, f"[learner attempt] exercise {_challenge_state(block)}\n{files}\n--- last run ---\n{output}{written}")
 
 
 def _unanswered_quiz(block_id: int) -> tuple[dict, dict]:

@@ -600,3 +600,20 @@ def test_cleanup_removes_an_old_courses_folders_and_keeps_its_record(place, monk
     assert db.course(old)["cleaned"] is None
     assert asyncio.run(app.run_exercise(db.blocks(lessons[old])[-1]["id"]))["output"].strip() == "back"
     assert cleanup.stale() == []
+
+
+def test_an_exercise_check_carries_the_written_answer_to_the_tutor(place, monkeypatch):
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Writer')").lastrowid
+    lesson = db.create_lesson(db.create_course("Shell", who)["id"], "Echo", "lesson")
+    monkeypatch.setattr(sandbox, "SANDBOX", False)
+    assert asyncio.run(tutor.pose_exercise(lesson, "Run it, then say why", [tutor.ExerciseFile(path="e/x.sh", content="echo hi")], "sh e/x.sh")).startswith("shown")
+    block = db.blocks(lesson)[-1]
+    asyncio.run(app.run_exercise(block["id"]))
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    asyncio.run(app.check_exercise(block["id"], app.ExerciseCheck(answer="  it prints hi  ")))
+    asyncio.run(app.check_exercise(block["id"], app.ExerciseCheck()))
+    assert turns[0].endswith("--- written answer ---\nit prints hi") and "written answer" not in turns[1]
+    assert db.block(block["id"])["data"]["attempts"] == ["checked; last run exit code 0\nit prints hi", "checked; last run exit code 0"]

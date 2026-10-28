@@ -261,6 +261,7 @@
       "running": "Exécution…",
       "run": "Exécuter",
       "check": "Vérifier avec le tuteur",
+      "answer": "Votre réponse, envoyée quand vous vérifiez avec le tuteur (facultatif)",
       "outputStopped": "Sortie : arrêté",
       "outputExit": "Sortie : code de retour {{code}}",
       "noOutput": "(aucune sortie)",
