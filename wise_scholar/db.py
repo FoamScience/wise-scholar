@@ -1412,3 +1412,34 @@ def unextracted(course_id: int) -> list[int]:
 
 def mark_extracted(lesson_id: int) -> None:
     conn.execute("UPDATE lessons SET extracted = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), lesson_id))
+
+
+def unit_claims(concept_ids: list[int]) -> list[dict]:
+    """The claims taken out of the lessons of these units, each once, in the order they were first recorded."""
+    if not concept_ids:
+        return []
+    marks = ", ".join("?" * len(concept_ids))
+    return rows(
+        "SELECT DISTINCT c.id, c.profile_id, c.text FROM claims c JOIN claim_sources s ON s.claim_id = c.id JOIN lessons l ON l.id = s.lesson_id "
+        f"WHERE l.concept_id IN ({marks}) AND c.wrong = 0 ORDER BY c.id",
+        *concept_ids,
+    )
+
+
+def bridges(profile_id: int, course_id: int, query: str, limit: int) -> list[dict]:
+    """Claims from the learner's other courses that match query, none taken from this course; each with the course it
+    came from and what it contrasts with."""
+    found = []
+    for c in search_claims(profile_id, query, limit * 4):
+        if c["wrong"] or row(
+            "SELECT 1 FROM claim_sources s JOIN lessons l ON l.id = s.lesson_id WHERE s.claim_id = ? AND l.course_id = ?", c["id"], course_id
+        ):
+            continue
+        c["contrasts"] = [r["text"] for r in rows(
+            "SELECT k.text FROM claim_edges e JOIN claims k ON k.id = CASE WHEN e.from_id = ? THEN e.to_id ELSE e.from_id END "
+            "WHERE e.kind = 'contrasts' AND ? IN (e.from_id, e.to_id) AND k.wrong = 0", c["id"], c["id"],
+        )]
+        found.append(c)
+        if len(found) == limit:
+            break
+    return found

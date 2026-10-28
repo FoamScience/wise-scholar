@@ -310,6 +310,49 @@ def test_a_finished_lesson_yields_claims_whose_state_follows_their_latest_eviden
     assert db.unextracted(course) == []
 
 
+def test_a_lesson_and_a_practice_start_from_the_claims_they_build_on(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Bridged')").lastrowid
+    git = db.create_course("Git", who)["id"]
+    db.set_concepts(git, [{"title": "Objects", "concepts": ["Objects"], "known": []}])
+    git_lesson = db.create_lesson(git, "Objects", "lesson", db.concepts(git)[0]["id"])
+    occt = db.create_course("OCCT", who)["id"]
+    asyncio.run(tutor.set_course_map(occt, [tutor.Module(
+        title="Shapes", concepts=["Faces", "Edges", "Shapes and hashes"], needs={"Edges": ["Faces"], "Shapes and hashes": ["Faces"]},
+    )]))  # fmt: skip
+    units = {c["title"]: c["id"] for c in db.concepts(occt)}
+    faces = db.create_lesson(occt, "Faces", "lesson", units["Faces"])
+    asyncio.run(tutor.pose_challenge(faces, "Walk the faces."))
+    task = db.blocks(faces)[-1]
+    db.set_block_data(task["id"], {**task["data"], "attempts": ["x"], "gave_up": True})
+    ids = db.record_claims(who, faces, [
+        {"key": "a", "text": "A face holds a surface.", "evidence": []},
+        {"key": "b", "text": "Explorers visit faces once per use.", "evidence": [task["id"]]},
+    ], [])  # fmt: skip
+    db.record_claims(who, git_lesson, [
+        {"key": "h", "text": "Git hashes an object's content to name it.", "evidence": []},
+        {"key": "s", "text": "Two shapes are the same when their hashes match.", "evidence": []},
+    ], [("h", "s", "contrasts")])  # fmt: skip
+
+    brief = app._claims_brief(db.lesson(db.create_lesson(occt, "Edges", "lesson", units["Edges"])))
+    assert brief.index("[shaky] Explorers visit faces once per use.") < brief.index("[unseen] A face holds a surface.")
+    assert "other courses" not in brief
+    bridged = app._claims_brief(db.lesson(db.create_lesson(occt, "Shapes and hashes", "lesson", units["Shapes and hashes"])))
+    assert "- [unseen] Two shapes are the same when their hashes match. (from Git); looks like but differs from: Git hashes an object's content to name it." in bridged
+    assert app._claims_brief(db.lesson(db.create_lesson(git, "Objects again", "lesson", db.concepts(git)[0]["id"]))) == ""
+
+    # A practice unit lists the shaky claims of the units it covers.
+    monkeypatch.setattr(db, "practice_scope", lambda concept_id: [{"id": units["Faces"], "course_id": occt}])
+    assert app._practice_claims(units["Faces"], who) == (
+        "\nClaims of these units the learner is shaky on or due to review; aim tasks at them first:\n- [shaky] Explorers visit faces once per use."
+    )
+    db.conn.execute("UPDATE claims SET wrong = 1 WHERE id = ?", (ids["b"],))
+    assert app._practice_claims(units["Faces"], who) == ""
+
+
 def test_pretest_gates_explanations_and_stays_out_of_reviews_and_mastery():
     import asyncio
 
