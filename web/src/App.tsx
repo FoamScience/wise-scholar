@@ -223,6 +223,13 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
     )
   }
 
+  function rename(course: Course, topic: string) {
+    return api<Course>(`/api/courses/${course.id}/rename`, { topic }).then(
+      (renamed) => setCourses((all) => all.map((c) => (c.id === course.id ? { ...c, topic: renamed.topic } : c))),
+      (err: Error) => setError(err.message),
+    )
+  }
+
   function duplicate(course: Course) {
     api<Course>(`/api/courses/${course.id}/duplicate`, {}).then(
       (copy) => setCourses((all) => [copy, ...all]),
@@ -293,7 +300,7 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
             <h2>{t('home.courses')}</h2>
             <div className="courses">
               {active.map((c) => (
-                <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} />
+                <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} onRename={rename} />
               ))}
             </div>
           </section>
@@ -304,7 +311,7 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
             <summary className="label">{t('home.archived', { n: archived.length })}</summary>
             <div className="courses">
               {archived.map((c) => (
-                <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} />
+                <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} onRename={rename} />
               ))}
             </div>
           </details>
@@ -324,15 +331,23 @@ function CourseCard(props: {
   onArchive: (course: Course, archived: boolean) => void
   onDelete: (course: Course) => void
   onDuplicate: (course: Course) => void
+  onRename: (course: Course, topic: string) => Promise<void>
 }) {
   const { course } = props
   const { t } = useTranslation()
   const [confirming, setConfirming] = useState(false)
+  const [naming, setNaming] = useState<string | null>(null)
   const menu = useRef<HTMLDetailsElement>(null)
 
   function close() {
     setConfirming(false)
+    setNaming(null)
     if (menu.current) menu.current.open = false
+  }
+
+  function rename(e: FormEvent) {
+    e.preventDefault()
+    if (naming?.trim()) props.onRename(course, naming.trim()).then(close)
   }
 
   return (
@@ -344,7 +359,10 @@ function CourseCard(props: {
         </strong>
         <span className="muted">{course.mechanism ? lookup(`playbooks.${course.mechanism}.title`, course.mechanism) : t('home.interviewOpen')}</span>
       </a>
-      <details ref={menu} className="menu" name="course-menu" onToggle={() => setConfirming(false)}>
+      <details ref={menu} className="menu" name="course-menu" onToggle={() => {
+          setConfirming(false)
+          setNaming(null)
+        }}>
         <summary aria-label={t('home.options', { topic: course.topic })}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <circle cx="12" cy="5" r="2" />
@@ -353,7 +371,20 @@ function CourseCard(props: {
           </svg>
         </summary>
         <div className="menu-panel">
-          {confirming ? (
+          {naming !== null ? (
+            <form className="name-form" onSubmit={rename}>
+              <label htmlFor={`rename-${course.id}`}>{t('home.renameLabel', { topic: course.topic })}</label>
+              <input id={`rename-${course.id}`} className="field" dir="auto" maxLength={200} value={naming} onChange={(e) => setNaming(e.target.value)} autoFocus />
+              <div className="row">
+                <button className="btn primary" disabled={!naming.trim() || naming.trim() === course.topic}>
+                  {t('home.save')}
+                </button>
+                <button type="button" className="btn" onClick={close}>
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </form>
+          ) : confirming ? (
             <>
               <div>{t('home.deleteConfirm', { topic: course.topic })}</div>
               <button type="button" className="btn danger" onClick={() => props.onDelete(course)}>
@@ -365,6 +396,9 @@ function CourseCard(props: {
             </>
           ) : (
             <>
+              <button type="button" className="btn" onClick={() => setNaming(course.topic)}>
+                {t('home.rename')}
+              </button>
               <button
                 type="button"
                 className="btn"

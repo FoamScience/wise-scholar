@@ -183,6 +183,10 @@ class Archive(BaseModel):
     archived: bool
 
 
+class Topic(BaseModel):
+    topic: str = Field(min_length=1, max_length=200)
+
+
 class Name(BaseModel):
     name: str = Field(min_length=1, max_length=60)
 
@@ -896,6 +900,18 @@ def archive_course(course_id: int, body: Archive) -> dict:
         raise HTTPException(404, "no such course")
     db.conn.execute("UPDATE courses SET archived = ? WHERE id = ?", (int(body.archived), course_id))
     return {"archived": body.archived}
+
+
+@app.post("/api/courses/{course_id}/rename")
+def rename_course(course_id: int, body: Topic) -> dict:
+    """Only the name changes: the course's workspace folder keeps the name it was made with."""
+    if not db.course(course_id):
+        raise HTTPException(404, "no such course")
+    topic = body.topic.strip()
+    if not topic:
+        raise HTTPException(422, "a course needs a name")
+    db.conn.execute("UPDATE courses SET topic = ? WHERE id = ?", (topic, course_id))
+    return db.course(course_id)
 
 
 @app.post("/api/courses/{course_id}/delete", status_code=204)

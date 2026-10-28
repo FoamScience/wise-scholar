@@ -195,6 +195,9 @@
       "deleteConfirm": "Supprimer « {{topic}} » avec ses leçons, ses révisions et ses fichiers d'exercice ? Cette action est irréversible.",
       "deleteCourse": "Supprimer le cours",
       "archive": "Archiver",
+      "rename": "Renommer",
+      "renameLabel": "Nouveau nom pour « {{topic}} »",
+      "save": "Enregistrer",
       "unarchive": "Désarchiver",
       "delete": "Supprimer…",
       "materials": "Supports pour ce cours (facultatif)",
@@ -585,6 +588,7 @@
   },
   "server": {
     "a claim needs words": "une notion a besoin de mots",
+    "a course needs a name": "un cours a besoin d'un nom",
     "another claim says this already; merge the two instead": "une autre notion dit déjà cela ; fusionnez plutôt les deux",
     "a course holds at most 200 MB of files": "un cours contient au plus 200 Mo de fichiers",
     "cross-site requests are refused": "les requêtes d'un autre site sont refusées",

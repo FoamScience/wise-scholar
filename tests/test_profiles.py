@@ -1789,3 +1789,18 @@ def test_a_sitting_summary_covers_the_answers_back_to_the_last_two_hour_gap():
     old = app.sitting(who)
     assert old["answers"] == 3 and old["current"] is False  # the last sitting, over, not this one
     assert len(app.calibration(who)["buckets"]) > 0  # the calibration panel still reads the same answers
+
+
+def test_renaming_a_course_changes_its_name_and_keeps_its_workspace():
+    import pytest
+    from fastapi import HTTPException
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Renamer')").lastrowid
+    course = db.create_course("Rust", who)
+    renamed = app.rename_course(course["id"], app.Topic(topic="  Rust ownership  "))
+    assert renamed["topic"] == "Rust ownership" and renamed["slug"] == course["slug"]
+    with pytest.raises(HTTPException, match="a course needs a name"):
+        app.rename_course(course["id"], app.Topic(topic="   "))
+    with pytest.raises(HTTPException, match="no such course"):
+        app.rename_course(course["id"] + 1000, app.Topic(topic="x"))

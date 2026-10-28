@@ -204,6 +204,9 @@
       "deleteConfirm": "هل تريد حذف «{{topic}}» مع دروسها ومراجعاتها وملفات تمارينها؟ لا يمكن التراجع عن ذلك.",
       "deleteCourse": "حذف الدورة",
       "archive": "أرشفة",
+      "rename": "إعادة التسمية",
+      "renameLabel": "اسم جديد لـ«{{topic}}»",
+      "save": "حفظ",
       "unarchive": "إلغاء الأرشفة",
       "delete": "حذف…",
       "materials": "مواد لهذه الدورة (اختياري)",
@@ -624,6 +627,7 @@
   },
   "server": {
     "a claim needs words": "المعرفة تحتاج إلى كلمات",
+    "a course needs a name": "الدورة تحتاج إلى اسم",
     "another claim says this already; merge the two instead": "معرفة أخرى تقول هذا بالفعل؛ ادمج الاثنتين بدلًا من ذلك",
     "a course holds at most 200 MB of files": "تحتوي الدورة على 200 ميغابايت من الملفات على الأكثر",
     "cross-site requests are refused": "تُرفض الطلبات القادمة من موقع آخر",
