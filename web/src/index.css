@@ -1056,6 +1056,71 @@ pre {
   padding: 6px 10px;
 }
 
+.graph-page {
+  max-width: none;
+}
+.graph-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  gap: 1rem;
+  align-items: start;
+}
+.graph-canvas {
+  height: 70vh;
+  min-height: 24rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground);
+}
+.graph-layout:not(:has(.claim-panel)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.claim-panel {
+  display: grid;
+  gap: 0.5rem;
+}
+.claim-panel ul {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+.merge-choice {
+  text-align: start;
+}
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+}
+.legend-dot::before {
+  content: '';
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  margin-inline-end: 0.3rem;
+  vertical-align: -0.05rem;
+}
+.legend-dot.state-held::before {
+  background: var(--teal);
+}
+.legend-dot.state-fading::before {
+  background: var(--amber-line);
+}
+.legend-dot.state-shaky::before {
+  background: var(--danger);
+}
+.legend-dot.state-unseen::before {
+  background: var(--mastery-off);
+}
+@media (max-width: 760px) {
+  .graph-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .graph-canvas {
+    height: 55vh;
+  }
+}
 .held {
   margin: 0.25rem 0 0.5rem;
   padding: 0.5rem;

@@ -18,6 +18,7 @@ import { CommandsPage } from './Commands'
 import { challengeLabel, lessonTitle, outlineOf, practiceTitle } from './course'
 import { OutlineCard } from './Outline'
 import { PlacementAreas } from './Areas'
+import { GraphPage } from './Graph'
 import { SittingPage } from './Sitting'
 import { Comparison, HintList, Ladder } from './Ladder'
 import type { Area, Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
@@ -1319,6 +1320,11 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             <a className="btn as-link" href={`/api/courses/${course.id}/obsidian.zip`} download>
               {t('book.obsidian')}
             </a>
+            {course.mode === 'learner' && (
+              <a className="btn as-link" href={`#/graph?course=${course.id}`}>
+                {t('graph.courseLink')}
+              </a>
+            )}
             {course.concepts.length > 0 && (
               <button
                 type="button"
@@ -1906,6 +1912,7 @@ export default function App() {
   const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing))?$/)
   const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
   const book = hash.match(/^#\/course\/(\d+)\/book$/)
+  const graph = hash.match(/^#\/graph(?:\?course=(\d+))?$/)
   const handout = hash.match(/^#\/lesson\/(\d+)\/handout\/(student|teacher)$/)
 
   function page() {
@@ -1937,6 +1944,7 @@ export default function App() {
     if (handout) return <Handout key={handout[0]} lessonId={Number(handout[1])} version={handout[2] as 'student' | 'teacher'} pdf={pdf} />
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
     if (hash === '#/errors') return <ErrorsPage profile={current.id} />
+    if (graph) return <GraphPage key={hash} profile={current.id} course={graph[1] ? Number(graph[1]) : null} />
     if (hash === '#/sitting') return <SittingPage profile={current.id} />
     if (hash === '#/commands') return <CommandsPage profile={current.id} />
     if (hash === '#/profile')
@@ -1961,6 +1969,11 @@ export default function App() {
             </option>
           ))}
         </select>
+        {current && (
+          <a className="small" href="#/graph">
+            {t('graph.link')}
+          </a>
+        )}
         {current && (
           <a className="small" href="#/sitting">
             {t('sitting.end')}

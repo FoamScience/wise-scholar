@@ -353,6 +353,44 @@ def test_a_lesson_and_a_practice_start_from_the_claims_they_build_on(monkeypatch
     assert app._practice_claims(units["Faces"], who) == ""
 
 
+def test_the_graph_page_lists_claims_and_the_learner_rewords_rejects_and_merges_them():
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Curator')").lastrowid
+    course = db.create_course("OCCT", who)["id"]
+    db.set_concepts(course, [{"title": "Faces", "concepts": ["Faces"], "known": []}])
+    unit = db.concepts(course)[0]["id"]
+    first, second = db.create_lesson(course, "Faces", "lesson", unit), db.create_lesson(course, "Faces again", "practice", unit)
+    a = db.record_claims(who, first, [{"key": "a", "text": "A face holds a surface.", "evidence": []}, {"key": "b", "text": "Faces have wires.", "evidence": []}], [("a", "b", "supports")])
+    c = db.record_claims(who, second, [{"key": "c", "text": "A face carries one surface.", "evidence": []}], [])
+    a, b, c = a["a"], a["b"], c["c"]
+    db.conn.execute("INSERT INTO claim_edges (from_id, to_id, kind) VALUES (?, ?, 'follows')", (c, b))
+
+    view = app.list_claims(who)
+    assert [x["text"] for x in view["claims"]] == ["A face holds a surface.", "Faces have wires.", "A face carries one surface."]
+    assert view["claims"][0]["sources"] == [{"id": first, "title": "Faces", "concept_id": unit, "course_id": course, "topic": "OCCT"}]
+    assert {(e["from_id"], e["to_id"], e["kind"]) for e in view["edges"]} == {(a, b, "supports"), (c, b, "follows")}
+
+    assert app.patch_claim(a, app.ClaimPatch(text="A  face holds one surface."))["text"] == "A face holds one surface."
+    with pytest.raises(HTTPException) as taken:
+        app.patch_claim(c, app.ClaimPatch(text="faces have wires."))
+    assert taken.value.status_code == 409
+    for bad in (lambda: app.merge_claim(c, app.ClaimMerge(into=c)), lambda: app.merge_claim(c, app.ClaimMerge(into=10**9))):
+        with pytest.raises(HTTPException):
+            bad()
+
+    merged = app.merge_claim(c, app.ClaimMerge(into=a))
+    assert [x["id"] for x in merged["claims"]] == [a, b] and db.claim(c) is None
+    assert {s["id"] for s in merged["claims"][0]["sources"]} == {first, second}
+    assert {(e["from_id"], e["to_id"], e["kind"]) for e in merged["edges"]} == {(a, b, "supports"), (a, b, "follows")}
+
+    app.patch_claim(b, app.ClaimPatch(wrong=True))
+    assert [x["id"] for x in app.list_claims(who)["claims"]] == [a] and app.list_claims(who)["edges"] == []
+
+
 def test_pretest_gates_explanations_and_stays_out_of_reviews_and_mastery():
     import asyncio
 

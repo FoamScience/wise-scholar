@@ -32,6 +32,35 @@
       "writingSession": "Séance d'écriture {{n}}",
       "nextUnit": "Suivant · {{title}}"
     },
+    "graph": {
+      "close": "Fermer",
+      "link": "Graphe",
+      "courseLink": "Graphe des notions",
+      "heading": "Ce que vous avez appris : {{n}} notions",
+      "course": "Cours",
+      "allCourses": "Tous les cours",
+      "empty": "Pas encore de notions : elles sont tirées de chaque leçon une fois terminée.",
+      "edges": "Flèche : découle · tirets : appuie · pointillés : se ressemblent mais diffèrent",
+      "canvas": "Réseau de vos notions",
+      "reword": "Enregistrer la formulation",
+      "wrong": "C'est faux",
+      "wrongConfirm": "La retirer définitivement",
+      "from": "Vue dans",
+      "evidence": "Vérifiée par",
+      "mergeInto": "Même chose qu'une autre notion ? Fusionner",
+      "mergeFind": "Chercher l'autre notion",
+      "state": {
+        "held": "Acquise",
+        "fading": "À revoir",
+        "shaky": "Fragile",
+        "unseen": "Pas encore vérifiée"
+      },
+      "verdict": {
+        "held": "juste",
+        "shaky": "manqué",
+        "open": "en cours"
+      }
+    },
     "areas": {
       "holds": "Acquis :",
       "lacks": "S'arrête à :",
@@ -554,6 +583,8 @@
     }
   },
   "server": {
+    "a claim needs words": "une notion a besoin de mots",
+    "another claim says this already; merge the two instead": "une autre notion dit déjà cela ; fusionnez plutôt les deux",
     "a course holds at most 200 MB of files": "un cours contient au plus 200 Mo de fichiers",
     "cross-site requests are refused": "les requêtes d'un autre site sont refusées",
     "nothing to restore": "rien à restaurer",
