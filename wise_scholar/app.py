@@ -386,6 +386,53 @@ def _practice_brief(concept_id: int) -> str:
     )
 
 
+NEEDED_CLAIMS = 10
+BRIDGES = 5
+PRACTICE_CLAIMS = 10
+STATE_ORDER = {"shaky": 0, "fading": 1, "held": 2, "unseen": 3}
+
+
+def _claim_line(claim: dict, state: str) -> str:
+    return f"- [{state}] {_untrusted(claim['text'])}"
+
+
+def _claims_brief(lesson: dict) -> str:
+    """What the learner's graph says about the units this one builds on, shaky first, and claims from their other
+    courses that may bridge to it."""
+    states = db.claim_states(lesson["profile_id"], _now())
+    needed = db.needs(lesson["course_id"]).get(lesson["concept_id"], [])
+    held = sorted(
+        (c for c in db.unit_claims(needed) if c["id"] in states), key=lambda c: (STATE_ORDER[states[c["id"]]], c["id"])
+    )[:NEEDED_CLAIMS]
+    lines = []
+    if held:
+        lines.append("Claims from the units this one builds on, with where the learner stands on each (shaky first):")
+        lines += [_claim_line(c, states[c["id"]]) for c in held]
+    bridges = db.bridges(lesson["profile_id"], lesson["course_id"], lesson["concept"], BRIDGES)
+    if bridges:
+        lines.append("Claims from the learner's other courses that may bridge to this unit; build on the held ones, and warn where one looks alike but differs:")
+        lines += [
+            f"{_claim_line(c, states.get(c['id'], 'unseen'))} (from {', '.join(c['courses'])})"
+            + (f"; looks like but differs from: {'; '.join(c['contrasts'])}" if c["contrasts"] else "")
+            for c in bridges
+        ]
+    return "\n" + "\n".join(lines) if lines else ""
+
+
+def _practice_claims(concept_id: int, profile_id: int) -> str:
+    """The shaky and fading claims of the units a practice unit covers."""
+    states = db.claim_states(profile_id, _now())
+    weak = sorted(
+        (c for c in db.unit_claims([u["id"] for u in db.practice_scope(concept_id)]) if states.get(c["id"]) in ("shaky", "fading")),
+        key=lambda c: (STATE_ORDER[states[c["id"]]], c["id"]),
+    )[:PRACTICE_CLAIMS]
+    if not weak:
+        return ""
+    return "\nClaims of these units the learner is shaky on or due to review; aim tasks at them first:\n" + "\n".join(
+        _claim_line(c, states[c["id"]]) for c in weak
+    )
+
+
 def _plain(name: str) -> str:
     """A file name as one line of plain text."""
     return " ".join(name.replace("[", "(").replace("]", ")").split())
@@ -1310,7 +1357,7 @@ async def open_concept(concept_id: int) -> dict:
     outline = _map_outline(concept["course_id"], concept_id)
     lesson = _lesson(lesson_id)
     if practice:
-        _start_turn(lesson, f"[event] The practice begins. Course map:\n{outline}\n{_practice_brief(concept_id)}")
+        _start_turn(lesson, f"[event] The practice begins. Course map:\n{outline}\n{_practice_brief(concept_id)}{_practice_claims(concept_id, lesson['profile_id'])}")
         return view
     strands = ""
     if lesson["mechanism"] == "leveled-course":
@@ -1340,7 +1387,7 @@ async def open_concept(concept_id: int) -> dict:
     ])
     if earlier:
         earlier = f"\nEarlier lessons, with what the learner did in each:\n{earlier}"
-    _start_turn(lesson, f"[event] The lesson begins. Course map:\n{outline}{strands}{earlier}")
+    _start_turn(lesson, f"[event] The lesson begins. Course map:\n{outline}{strands}{earlier}{_claims_brief(lesson)}")
     return view
 
 
