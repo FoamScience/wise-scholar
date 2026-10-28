@@ -10,7 +10,7 @@ import sqlite3
 import time
 import uuid
 from collections import deque
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -76,11 +76,13 @@ async def lifespan(app: FastAPI):
     async with tutor.mcp.session_manager.run():
         await backend.start()
         sweeper = asyncio.create_task(cleanup.forever(_busy))
+        extractor = asyncio.create_task(_extract_forever())
         await vault.start()
         try:
             yield
         finally:
             sweeper.cancel()
+            extractor.cancel()
             await vault.stop()
             await backend.stop()
             speech.worker.stop()
@@ -507,6 +509,114 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
         return
     message = db.add_message(lesson_id, "tutor", reply) if reply.strip() else None
     hub.publish(course_id, {**final, "lesson_id": lesson_id, "message": message})
+    if lesson["phase"] in ("lesson", "practice"):
+        _queue_claims(db.unextracted(course_id))
+
+
+# --- Claims: a finished lesson is read once more, in a session of its own, for what it taught -----------------------
+RECORD_BLOCK_CHARS = 2000
+RECORD_MESSAGE_CHARS = 1000
+RECORD_CHARS = 40000
+_claims_queue: asyncio.Queue[int] = asyncio.Queue()
+_claims_waiting: set[int] = set()
+_claims_failed: set[int] = set()  # tried in this process and failed: not tried again until a restart
+
+
+def _queue_claims(lesson_ids: list[int]) -> int:
+    fresh = [i for i in lesson_ids if i not in _claims_waiting and i not in _claims_failed]
+    for lesson_id in fresh:
+        _claims_waiting.add(lesson_id)
+        _claims_queue.put_nowait(lesson_id)
+    return len(fresh)
+
+
+def _cut(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _record_line(block: dict) -> str:
+    d, text = block["data"] or {}, _cut(block["markdown"], RECORD_BLOCK_CHARS)
+    head = f"[block {block['id']}, {block['kind']}{', pretest' if d.get('pretest') else ''}]"
+    if block["kind"] == "quiz":
+        options = f" | options: {'; '.join(map(str, d['options']))}" if d.get("options") else ""
+        given = (
+            "not answered" if d.get("correct") is None
+            else "did not know" if d.get("unknown")
+            else f"{_untrusted(_cut(str(d.get('answer')), 400))!r} at {d.get('confidence', 0):.0%} sure: {'right' if d['correct'] else 'wrong'}"
+        )
+        return f"{head} {text}{options} | key: {d.get('answer_key', '')} | {d.get('explanation', '')} | learner: {given}"
+    if block["kind"] in ("challenge", "exercise"):
+        last = f", last: {_untrusted(_cut(d['attempts'][-1], 400))!r}" if d.get("attempts") else ""
+        outcome = "solved" if d.get("solved") else "gave up" if d.get("gave_up") else "left open"
+        shown = f" | solution shown: {_cut(d['solution'], 600)}" if d.get("solution") is not None else ""
+        return f"{head} {text} | attempts: {len(d.get('attempts', []))}{last} | {outcome}{shown}"
+    return f"{head} {text}"
+
+
+def _lesson_record(lesson_id: int) -> str:
+    """A finished lesson in order, its cards with their ids and outcomes, and the chat."""
+    items = [(b["created"], 0, _record_line(b)) for b in db.blocks(lesson_id)]
+    items += [
+        (m["created"], 1, f"[{m['role']}] {_untrusted(_cut(m['text'], RECORD_MESSAGE_CHARS)) if m['role'] == 'learner' else _cut(m['text'], RECORD_MESSAGE_CHARS)}")
+        for m in db.rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_id)
+    ]
+    return _cut("\n".join(line for _, _, line in sorted(items, key=lambda i: (i[0], i[1]))), RECORD_CHARS)
+
+
+def _claims_prompt(lesson: dict) -> str:
+    return "\n".join([
+        f"[state] lesson_id={lesson['id']} course={lesson['topic']!r} lesson={lesson['title']!r}",
+        f"[language] Write the claims in {LOCALE_NAMES[lesson['locale']]}; code, commands and identifiers stay as they are.",
+        _lesson_record(lesson["id"]),
+    ])
+
+
+async def _extract(lesson: dict) -> bool:
+    """One quiet turn in a fresh session that records the lesson's claims; True when it ended well."""
+    token = secrets.token_urlsafe(16)
+    tutor.turn_started(lesson, token, graph=True)
+    final = {"ok": False, "error": "stopped"}
+    try:
+        if wait := _allowance(_turn_clock, TURNS_PER_HOUR, 3600):
+            await asyncio.sleep(wait)
+        async with _turn_slots:
+            async with aclosing(backend.run_turn(
+                _claims_prompt(lesson),
+                session_id=str(uuid.uuid4()),
+                resume=False,
+                name=f"wise-scholar · {lesson['profile']} · {lesson['topic']} · claims of {lesson['title']}",
+                cwd=db.workspace(lesson["slug"]),
+                phase="graph",
+                token=token,
+            )) as events:
+                async for event in events:
+                    if event["type"] == "turn.done":
+                        final = event
+                        break
+    finally:
+        tutor.turn_ended(("graph", lesson["id"]))
+    if not final["ok"]:
+        log.warning("claims of lesson %s: %s", lesson["id"], final["error"])
+    return final["ok"]
+
+
+async def _extract_forever() -> None:
+    """Takes finished lessons one at a time, so two never add the same claim at once."""
+    while True:
+        lesson_id = await _claims_queue.get()
+        try:
+            lesson = db.lesson(lesson_id)
+            if lesson and lesson["extracted"] is None:
+                if await _extract(lesson):
+                    db.mark_extracted(lesson_id)
+                    hub.publish(lesson["course_id"], {"type": "claims.updated"})
+                else:
+                    _claims_failed.add(lesson_id)
+        except Exception:
+            log.exception("claims of lesson %s", lesson_id)
+            _claims_failed.add(lesson_id)
+        finally:
+            _claims_waiting.discard(lesson_id)
 
 
 async def _events(events, lesson_id: int, session_id: str, course_id: int):
@@ -963,6 +1073,14 @@ async def link_map(course_id: int) -> dict:
         return {"started": False}
     _start_turn(_lesson(interview["id"]), LINK_MAP + _map_outline(course_id, None), quiet=True)
     return {"started": True}
+
+
+@app.post("/api/courses/{course_id}/claims")
+async def extract_claims(course_id: int) -> dict:
+    """The finished lessons of a learner's course whose claims were not taken out yet go to the extractor."""
+    if not db.course(course_id):
+        raise HTTPException(404, "no such course")
+    return {"queued": _queue_claims(db.unextracted(course_id))}
 
 
 @app.post("/api/courses/{course_id}/placement")

@@ -5,7 +5,7 @@ import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from . import MCP_HEADERS, MCP_URL, MODEL, PORT, TURN_HEADER, environment
+from . import ALONE, MCP_HEADERS, MCP_URL, MODEL, PORT, TURN_HEADER, environment
 
 ROOT = Path(__file__).resolve().parents[2]
 PROMPTS = ROOT / "wise_scholar" / "prompts"
@@ -61,7 +61,7 @@ async def run_turn(
     prompt: str, *, session_id: str, resume: bool, name: str, cwd: Path, phase: str, token: str
 ) -> AsyncIterator[dict]:
     session = ["--resume", session_id] if resume else ["--session-id", session_id, "--name", name]
-    system_prompt = "\n\n".join((PROMPTS / f"{part}.md").read_text() for part in ("core", phase))
+    system_prompt = "\n\n".join((PROMPTS / f"{part}.md").read_text() for part in ((phase,) if phase in ALONE else ("core", phase)))
     home = AGENT_HOMES / cwd.name
     home.mkdir(parents=True, exist_ok=True)
     config = mcp_config(token)

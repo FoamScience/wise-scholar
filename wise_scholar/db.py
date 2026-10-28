@@ -330,6 +330,43 @@ MIGRATIONS = [
     );
     ALTER TABLE courses ADD COLUMN prerequisites INTEGER NOT NULL DEFAULT 0;
     """,
+    """
+    CREATE TABLE claims (
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        text TEXT NOT NULL,
+        wrong INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE VIRTUAL TABLE claim_fts USING fts5(text, content='claims', content_rowid='id');
+    CREATE TRIGGER claims_ai AFTER INSERT ON claims BEGIN
+        INSERT INTO claim_fts(rowid, text) VALUES (new.id, new.text);
+    END;
+    CREATE TRIGGER claims_ad AFTER DELETE ON claims BEGIN
+        INSERT INTO claim_fts(claim_fts, rowid, text) VALUES ('delete', old.id, old.text);
+    END;
+    CREATE TRIGGER claims_au AFTER UPDATE OF text ON claims BEGIN
+        INSERT INTO claim_fts(claim_fts, rowid, text) VALUES ('delete', old.id, old.text);
+        INSERT INTO claim_fts(rowid, text) VALUES (new.id, new.text);
+    END;
+    CREATE TABLE claim_edges (
+        from_id INTEGER NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+        to_id INTEGER NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('follows', 'supports', 'contrasts')),
+        PRIMARY KEY (from_id, to_id, kind)
+    );
+    CREATE TABLE claim_sources (
+        claim_id INTEGER NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+        lesson_id INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+        PRIMARY KEY (claim_id, lesson_id)
+    );
+    CREATE TABLE claim_evidence (
+        claim_id INTEGER NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+        block_id INTEGER NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+        PRIMARY KEY (claim_id, block_id)
+    );
+    ALTER TABLE lessons ADD COLUMN extracted TEXT;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -1266,3 +1303,112 @@ def milestone_for(concept_id: int) -> dict | None:
 
 def finish_milestone(milestone_id: int) -> None:
     conn.execute("UPDATE milestones SET done = 1 WHERE id = ?", (milestone_id,))
+
+
+# --- Claims: what the learner was taught, as true statements, with links and the evidence of how they did ---------
+CLAIM_KINDS = ("follows", "supports", "contrasts")
+EVIDENCE_KINDS = ("quiz", "challenge", "exercise")
+
+
+def _match(query: str) -> str:
+    """A full-text query that matches any of the words, with nothing in it read as FTS syntax."""
+    return " OR ".join(f'"{w}"' for w in re.findall(r"\w+", query.lower()))
+
+
+def search_claims(profile_id: int, query: str, limit: int) -> list[dict]:
+    """The profile's claims best matching the words of query, with the courses they came from."""
+    if not (match := _match(query)):
+        return []
+    return [
+        {**c, "courses": [r["topic"] for r in rows(
+            "SELECT DISTINCT k.topic FROM claim_sources s JOIN lessons l ON l.id = s.lesson_id JOIN courses k ON k.id = l.course_id "
+            "WHERE s.claim_id = ? ORDER BY k.id", c["id"],
+        )]}
+        for c in rows(
+            "SELECT c.id, c.text, c.wrong FROM claim_fts f JOIN claims c ON c.id = f.rowid "
+            "WHERE claim_fts MATCH ? AND c.profile_id = ? ORDER BY bm25(claim_fts) LIMIT ?",
+            match, profile_id, limit,
+        )
+    ]
+
+
+def claim(claim_id: int) -> dict | None:
+    return row("SELECT * FROM claims WHERE id = ?", claim_id)
+
+
+def same_claim(profile_id: int, text: str) -> dict | None:
+    """A claim of the profile worded the same, ignoring case and spacing."""
+    return row("SELECT * FROM claims WHERE profile_id = ? AND lower(text) = ?", profile_id, " ".join(text.split()).lower())
+
+
+def record_claims(profile_id: int, lesson_id: int, claims: list[dict], edges: list[tuple[str, str, str]]) -> dict[str, int]:
+    """Write one lesson's claims at once. Each entry has a key, then either an existing id or a new text, and the
+    evidence block ids; edges join keys. Returns each key's claim id."""
+    conn.execute("BEGIN")
+    try:
+        ids = {}
+        for c in claims:
+            ids[c["key"]] = c["id"] if c.get("id") else conn.execute(
+                "INSERT INTO claims (profile_id, text) VALUES (?, ?)", (profile_id, " ".join(c["text"].split()))
+            ).lastrowid
+            conn.execute("INSERT OR IGNORE INTO claim_sources (claim_id, lesson_id) VALUES (?, ?)", (ids[c["key"]], lesson_id))
+            conn.executemany(
+                "INSERT OR IGNORE INTO claim_evidence (claim_id, block_id) VALUES (?, ?)", [(ids[c["key"]], b) for b in c["evidence"]]
+            )
+        conn.executemany(
+            "INSERT OR IGNORE INTO claim_edges (from_id, to_id, kind) VALUES (?, ?, ?)", [(ids[a], ids[b], kind) for a, b, kind in edges]
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return ids
+
+
+def _verdict(block: dict) -> str | None:
+    """What one piece of evidence says: held, shaky, or nothing yet."""
+    d = block["data"] or {}
+    if block["kind"] == "quiz":
+        if d.get("correct") is None:
+            return None
+        return "held" if d["correct"] and not d.get("unknown") and d.get("confidence", 0) >= 0.5 else "shaky"
+    if d.get("solved") and d.get("solution") is None:
+        return "held"
+    if d.get("solved") or d.get("gave_up") or d.get("solution") is not None:
+        return "shaky"
+    return None
+
+
+def claim_states(profile_id: int, now: str) -> dict[int, str]:
+    """Each claim's state from its latest evidence: held (fading once a linked review card is due), shaky, or unseen."""
+    states = {c["id"]: "unseen" for c in rows("SELECT id FROM claims WHERE profile_id = ? AND wrong = 0", profile_id)}
+    latest: dict[int, str] = {}
+    due: set[int] = set()
+    for e in rows(
+        "SELECT e.claim_id, b.* FROM claim_evidence e JOIN blocks b ON b.id = e.block_id JOIN claims c ON c.id = e.claim_id "
+        "WHERE c.profile_id = ? AND c.wrong = 0 ORDER BY b.id", profile_id,
+    ):
+        block = _block({k: v for k, v in e.items() if k != "claim_id"})
+        if verdict := _verdict(block):
+            latest[e["claim_id"]] = verdict
+        card_id = (block["data"] or {}).get("card_id")
+        card = row("SELECT due FROM cards WHERE id = ?", card_id) if card_id else None
+        if card and card["due"] and card["due"] <= now:
+            due.add(e["claim_id"])
+    for claim_id, verdict in latest.items():
+        states[claim_id] = "fading" if verdict == "held" and claim_id in due else verdict
+    return states
+
+
+def unextracted(course_id: int) -> list[int]:
+    """The course's finished unit and practice lessons whose claims were not taken out yet, oldest first."""
+    return [r["id"] for r in rows(
+        "SELECT l.id FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.course_id = ? AND c.mode = 'learner' "
+        "AND l.phase IN ('lesson', 'practice') AND l.extracted IS NULL "
+        "AND EXISTS (SELECT 1 FROM blocks b WHERE b.lesson_id = l.id AND b.kind = 'done') ORDER BY l.id",
+        course_id,
+    )]
+
+
+def mark_extracted(lesson_id: int) -> None:
+    conn.execute("UPDATE lessons SET extracted = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), lesson_id))

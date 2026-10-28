@@ -1196,6 +1196,8 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
         if (c.lessons.some((l) => l.running)) setActivity('thinking')
         // a map made before units had prerequisites gets them worked out once, out of sight
         if (c.concepts.length > 0 && !c.prerequisites) api(`/api/courses/${courseId}/prerequisites`, {}).catch(() => {})
+        // finished lessons whose claims were not taken out yet, older ones included, go to the extractor
+        if (c.mode === 'learner') api(`/api/courses/${courseId}/claims`, {}).catch(() => {})
       },
       (e) => setError(e.message),
     )

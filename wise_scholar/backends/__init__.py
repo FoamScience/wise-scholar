@@ -15,6 +15,8 @@ MCP_URL = f"http://127.0.0.1:{PORT}/mcp"
 MCP_SECRET = os.environ.get("WISE_SCHOLAR_MCP_SECRET") or secrets.token_urlsafe(32)
 MCP_HEADERS = {"Authorization": f"Bearer {MCP_SECRET}"}
 TURN_HEADER = "X-Scholar-Turn"
+# Phases whose prompt stands alone, without the tutor rules of core.md.
+ALONE = ("graph",)
 
 # What an agent process gets from the server's environment: the basics, its own settings and keys, and whatever the
 # owner lists in WISE_SCHOLAR_AGENT_ENV (names or prefixes ending in *), never the server's other secrets.
