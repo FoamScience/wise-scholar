@@ -42,14 +42,14 @@ export function CommandsPage({ profile }: { profile: number }) {
       {entries.map((e) => (
         <section key={e.id} className="block entry">
           <div className="label">
-            {moment(e.started)} · <span dir="auto">{e.topic}</span> · <span dir="auto">{e.lesson}</span> · {t(`commands.${e.origin}`)}
+            {moment(e.started)}, <span dir="auto">{e.topic}</span>, <span dir="auto">{e.lesson}</span>, {t(`commands.${e.origin}`)}
             {e.consent === 'allowed' && <span className="chip">{t('commands.allowed')}</span>}
             {e.consent === 'refused' && <span className="chip warn">{t('commands.refused')}</span>}
           </div>
           <pre dir="ltr">{e.command}</pre>
           <div className="small">
             {outcome(e)}
-            {e.seconds !== null && ` · ${t('commands.seconds', { n: number(e.seconds) })}`}
+            {e.seconds !== null && `, ${t('commands.seconds', { n: number(e.seconds) })}`}
           </div>
           {e.output && (
             <details>

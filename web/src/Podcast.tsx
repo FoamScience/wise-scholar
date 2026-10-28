@@ -42,11 +42,10 @@ export function PodcastCard(props: { id: number; title: string; data: unknown; a
 
   return (
     <section id={`block-${props.id}`} className="block podcast">
-      <div className="label">
-        {d.cues.length ? t('cast.quiz') : t('cast.recap')} · {t('cast.experimental')}
-        {d.duration !== null && <span className="small"> · {clock(d.duration)}</span>}
-      </div>
       <h2>{props.title}</h2>
+      <div className="small">
+        {d.cues.length ? t('cast.quiz') : t('cast.recap')} ({t('cast.experimental')}){d.duration !== null && <>, {clock(d.duration)}</>}
+      </div>
       {d.status === 'rendering' && (
         <div className="small">{t('cast.rendering', { done: d.done, total: d.lines.length })}</div>
       )}

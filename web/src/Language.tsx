@@ -95,7 +95,7 @@ export function ReadingCard(props: {
         <div className="hint gloss-panel">
           <span className="grow">
             <strong lang={d.lang} dir="auto">{gloss.word}</strong>
-            {shown ? ` · ${gloss.meaning}` : ` ${t('reading.guess')}`}
+            {shown ? `: ${gloss.meaning}` : ` ${t('reading.guess')}`}
           </span>
           {!shown && (
             <button type="button" className="btn" onClick={() => setShown(true)}>

@@ -7,13 +7,13 @@ export function OutlineCard({ data, onTestOut }: { data: OutlineData; onTestOut?
   return (
     <section className="block outline">
       <div className="label">
-        {t('outline.label')} · {data.at >= data.steps.length ? t('outline.allDone') : t('outline.step', { n: data.at + 1, total: data.steps.length })}
+        {t('outline.label')}: {data.at >= data.steps.length ? t('outline.allDone') : t('outline.step', { n: data.at + 1, total: data.steps.length })}
       </div>
       <ol>
         {data.steps.map((step, i) => (
           <li key={step} className={i < data.at ? 'done' : i === data.at ? 'current' : undefined} aria-current={i === data.at ? 'step' : undefined}>
             {step}
-            {i < data.at && <span className="small"> · {t('common.done')}</span>}
+            {i < data.at && <span className="small"> ({t('common.done')})</span>}
           </li>
         ))}
       </ol>

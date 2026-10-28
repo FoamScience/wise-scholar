@@ -119,8 +119,8 @@ function Today({ profile }: { profile: number }) {
   // a review with somewhere to go next is the sitting's warm-up, capped; the review page holds the rest
   const start = plan.warmup > 0 ? `#/review?then=${encodeURIComponent(unit ? unitHash(unit) : '#/')}` : unit ? unitHash(unit) : '#/review'
   return (
-    <section className="block today">
-      <div className="label">{t('today.heading')}</div>
+    <section className="today">
+      <h2>{t('today.heading')}</h2>
       <ol className="plan-steps">
         {plan.due > 0 && (
           <li>
@@ -233,8 +233,7 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
   const active = courses.filter((c) => !c.archived)
   const archived = courses.filter((c) => c.archived)
 
-  return (
-    <main className="home">
+  const form = (
       <form className="topic-form" onSubmit={start}>
         <label htmlFor="topic">{t('home.topicLabel')}</label>
         <div className="row">
@@ -258,7 +257,7 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
               <button type="button" className="btn" onClick={() => picker.current?.click()}>
                 {t('sources.add')}
               </button>
-              <span className="small grow">{materials.map((f) => f.name).join(' · ')}</span>
+              <span className="small grow">{materials.map((f) => f.name).join(', ')}</span>
             </div>
             <input
               ref={picker}
@@ -281,28 +280,40 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
           </div>
         </details>
       </form>
-      {error && <div className="error">{error}</div>}
-      {!teacher && <Today profile={profile} />}
-      {!teacher && <ReviewPanels profile={profile} />}
-      {active.length > 0 && (
-        <section>
-          <div className="label gap-below">{t('home.courses')}</div>
-          <div className="courses">
-            {active.map((c) => (
-              <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} />
-            ))}
-          </div>
-        </section>
-      )}
-      {archived.length > 0 && (
-        <details className="archived">
-          <summary className="label">{t('home.archived', { n: archived.length })}</summary>
-          <div className="courses">
-            {archived.map((c) => (
-              <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} />
-            ))}
-          </div>
-        </details>
+  )
+
+  return (
+    <main className={teacher ? 'home' : 'home desk'}>
+      <div className="desk-main">
+        {error && <div className="error">{error}</div>}
+        {!teacher && <Today profile={profile} />}
+        {(teacher || active.length === 0) && form}
+        {active.length > 0 && (
+          <section className="stack">
+            <h2>{t('home.courses')}</h2>
+            <div className="courses">
+              {active.map((c) => (
+                <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} />
+              ))}
+            </div>
+          </section>
+        )}
+        {!teacher && active.length > 0 && form}
+        {archived.length > 0 && (
+          <details className="archived">
+            <summary className="label">{t('home.archived', { n: archived.length })}</summary>
+            <div className="courses">
+              {archived.map((c) => (
+                <CourseCard key={c.id} course={c} onArchive={archive} onDelete={remove} onDuplicate={duplicate} />
+              ))}
+            </div>
+          </details>
+        )}
+      </div>
+      {!teacher && (
+        <aside className="desk-side">
+          <ReviewPanels profile={profile} />
+        </aside>
       )}
     </main>
   )
@@ -892,7 +903,7 @@ function unitDone(concept: Concept, lesson: Lesson | undefined): boolean {
 function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction, prepared = false): string {
   if (prepared) return !lesson ? t('map.notPlanned') : lesson.blocks.some((b) => b.kind === 'done') ? t('map.planned') : t('map.drafting')
   const due = concept.due ? t('map.reviewDue', { count: concept.due }) : ''
-  if (!lesson) return [concept.known ? t('map.placedOut') : t('map.notStarted'), due].filter(Boolean).join(' · ')
+  if (!lesson) return [concept.known ? t('map.placedOut') : t('map.notStarted'), due].filter(Boolean).join(', ')
   if (concept.kind === 'practice') return lesson.blocks.some((b) => b.kind === 'done') ? t('common.done') : t('map.started')
   const outline = outlineOf(lesson)
   const where = unitDone(concept, lesson)
@@ -903,7 +914,7 @@ function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction
   const cs = lesson.blocks
     .filter((b) => b.kind === 'challenge' || b.kind === 'exercise' || b.kind === 'speaking')
     .map((b) => b.data as ChallengeData)
-  if (cs.length === 0) return [where || t('map.started'), due].filter(Boolean).join(' · ')
+  if (cs.length === 0) return [where || t('map.started'), due].filter(Boolean).join(', ')
   const hints = cs.reduce((n, c) => n + c.hints.length, 0)
   const gaveUp = cs.filter((c) => c.gave_up).length
   return [
@@ -914,7 +925,7 @@ function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction
     due,
   ]
     .filter(Boolean)
-    .join(' · ')
+    .join(', ')
 }
 
 function Plan(props: {
@@ -942,7 +953,7 @@ function Plan(props: {
           />
           <span>
             <strong>
-              {i + 1} · {lookup(`playbooks.${r.mechanism}.title`, r.title)}
+              {i + 1}. {lookup(`playbooks.${r.mechanism}.title`, r.title)}
             </strong>
             <span dir="auto">{r.rationale}</span>
             <span className="muted">{lookup(`playbooks.${r.mechanism}.summary`, r.summary)}</span>
@@ -1480,7 +1491,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
         {course.mode === 'teacher' && lesson.concept_id !== null && (
           <div className="small handouts">
             {t('handout.label')}{' '}
-            <a href={`#/lesson/${lesson.id}/handout/teacher`}>{t('handout.teacher')}</a> ·{' '}
+            <a href={`#/lesson/${lesson.id}/handout/teacher`}>{t('handout.teacher')}</a>,{' '}
             <a href={`#/lesson/${lesson.id}/handout/student`}>{t('handout.student')}</a>
           </div>
         )}
@@ -1695,7 +1706,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               </span>
             )}
             <span className="live" role="status">
-              {lesson.running && ` · ${activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working')}`}
+              {lesson.running && ` (${activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working')})`}
             </span>
           </button>
         )}
@@ -1758,7 +1769,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
         {(['map', 'lesson'] as const).map((p) => (
           <button key={p} aria-pressed={pane === p} onClick={() => setPane(p)}>
             {p === 'map' ? t('map.label') : t('panes.lesson')}
-            {p === 'lesson' && p !== pane && lesson.running && <span className="live"> · {t('activity.working')}</span>}
+            {p === 'lesson' && p !== pane && lesson.running && <span className="live"> ({t('activity.working')})</span>}
           </button>
         ))}
       </nav>
@@ -1958,10 +1969,16 @@ export default function App() {
         <a className="wordmark" href="#/" title="wise-scholar">
           <Logo />
         </a>
+        {current && (
+          <nav className="topnav">
+            <a href="#/graph">{t('graph.link')}</a>
+            <a href="#/sitting">{t('sitting.end')}</a>
+          </nav>
+        )}
         <span className="grow" />
         <span className="status">{t('header.agent', { agent })}</span>
-        <ThemeToggle />
         {localeError && <span className="error">{localeError}</span>}
+        <ThemeToggle />
         <select className="btn locale" aria-label={t('header.language')} value={locale} onChange={(e) => switchLocale(e.target.value as Locale)}>
           {Object.entries(LOCALES).map(([code, name]) => (
             <option key={code} value={code} lang={code}>
@@ -1969,16 +1986,6 @@ export default function App() {
             </option>
           ))}
         </select>
-        {current && (
-          <a className="small" href="#/graph">
-            {t('graph.link')}
-          </a>
-        )}
-        {current && (
-          <a className="small" href="#/sitting">
-            {t('sitting.end')}
-          </a>
-        )}
         {current && (
           <a className="btn as-link" href="#/profile">
             {current.name}

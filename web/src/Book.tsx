@@ -60,7 +60,7 @@ function QuizBlock({ block }: { block: Block }) {
               <Markdown>{o.text}</Markdown>
             </li>
           ))}
-          <li className="muted">{d.categories?.join(' · ')}</li>
+          <li className="muted">{d.categories?.join(', ')}</li>
         </ul>
       )}
       {d.kind === 'choice' && (
@@ -236,7 +236,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
   if (block.kind === 'podcast') {
     const d = block.data as PodcastData
     return (
-      <Card label={`${d.cues.length ? t('cast.quiz') : t('cast.recap')} · ${t('cast.transcript')}`}>
+      <Card label={`${d.cues.length ? t('cast.quiz') : t('cast.recap')}: ${t('cast.transcript')}`}>
         <h3 dir="auto">{block.markdown}</h3>
         <div lang={d.lang} dir="auto">
           {d.lines.map((l, i) => (
@@ -255,7 +255,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
         {d.frames && d.frames.length > 1 ? (
           <div className="frames">
             {d.frames.map((frame, i) => (
-              <Drawing key={i} className="figure-box" svg={frame} alt={`${d.alt} · ${t('block.stage', { n: i + 1 })}`} sketched={false} />
+              <Drawing key={i} className="figure-box" svg={frame} alt={`${d.alt}, ${t('block.stage', { n: i + 1 })}`} sketched={false} />
             ))}
           </div>
         ) : (
@@ -372,7 +372,7 @@ function Notebook({ entries }: { entries: Entry[] }) {
           key={e.id}
           label={
             <>
-              {e.kind === 'writing' ? t('common.correctedText') : t('notebook.confidentMiss')} · {day(e.created)}
+              {e.kind === 'writing' ? t('common.correctedText') : t('notebook.confidentMiss')}, {day(e.created)}
               {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
               {e.resolved ? <span className="chip">{t('notebook.resolve')}</span> : null}
             </>
@@ -491,7 +491,7 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
         <div className="grow" />
         <div>
           {learner}
-          {course.level && ` · ${t('map.level')} ${course.level}`}
+          {course.level && `, ${t('map.level')} ${course.level}`}
         </div>
         <div className="book-number">{t('book.exported', { date: day(exported) })}</div>
       </header>
