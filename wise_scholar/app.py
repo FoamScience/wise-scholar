@@ -1862,6 +1862,43 @@ def list_errors(profile: int) -> list[dict]:
     return db.errors(profile)
 
 
+@app.get("/api/claims")
+def list_claims(profile: int) -> dict:
+    return db.graph(profile, _now())
+
+
+class ClaimPatch(BaseModel):
+    text: str | None = Field(default=None, min_length=1, max_length=tutor.CLAIM_CHARS)
+    wrong: bool | None = None
+
+
+@app.post("/api/claims/{claim_id}")
+def patch_claim(claim_id: int, body: ClaimPatch) -> dict:
+    """Reword a claim, or mark it wrong: it leaves the graph and the extractor never records it again."""
+    claim = db.claim(claim_id)
+    if not claim:
+        raise HTTPException(404, "no such claim")
+    if body.text is not None and not body.text.strip():
+        raise HTTPException(422, "a claim needs words")
+    if body.text is not None and (same := db.same_claim(claim["profile_id"], body.text)) and same["id"] != claim_id:
+        raise HTTPException(409, "another claim says this already; merge the two instead")
+    db.update_claim(claim_id, body.text, body.wrong)
+    return db.claim(claim_id)
+
+
+class ClaimMerge(BaseModel):
+    into: int
+
+
+@app.post("/api/claims/{claim_id}/merge")
+def merge_claim(claim_id: int, body: ClaimMerge) -> dict:
+    claim, into = db.claim(claim_id), db.claim(body.into)
+    if not claim or not into or claim["profile_id"] != into["profile_id"] or claim_id == body.into:
+        raise HTTPException(404, "pick two different claims of the same learner")
+    db.merge_claims(claim_id, body.into)
+    return db.graph(into["profile_id"], _now())
+
+
 @app.get("/api/commands")
 def list_commands(profile: int) -> list[dict]:
     return db.commands(profile)

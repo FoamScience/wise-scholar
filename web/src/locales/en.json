@@ -32,6 +32,35 @@
       "writingSession": "Writing session {{n}}",
       "nextUnit": "Next · {{title}}"
     },
+    "graph": {
+      "close": "Close",
+      "link": "Graph",
+      "courseLink": "Claims graph",
+      "heading": "What you have learned: {{n}} claims",
+      "course": "Course",
+      "allCourses": "All courses",
+      "empty": "No claims yet: they are taken out of each lesson once it is finished.",
+      "edges": "Arrow: follows · dashed: supports · dotted: looks alike but differs",
+      "canvas": "Network of your claims",
+      "reword": "Save wording",
+      "wrong": "This is wrong",
+      "wrongConfirm": "Remove it for good",
+      "from": "Taught in",
+      "evidence": "Checked by",
+      "mergeInto": "Same as another claim? Merge into it",
+      "mergeFind": "Find the other claim",
+      "state": {
+        "held": "Held",
+        "fading": "Fading",
+        "shaky": "Shaky",
+        "unseen": "Not checked yet"
+      },
+      "verdict": {
+        "held": "right",
+        "shaky": "missed",
+        "open": "open"
+      }
+    },
     "areas": {
       "holds": "Has:",
       "lacks": "Ends at:",

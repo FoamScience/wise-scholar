@@ -32,6 +32,35 @@
       "writingSession": "جلسة الكتابة {{n}}",
       "nextUnit": "التالي · {{title}}"
     },
+    "graph": {
+      "close": "إغلاق",
+      "link": "الشبكة",
+      "courseLink": "شبكة المعارف",
+      "heading": "ما تعلّمته: {{n}} معرفة",
+      "course": "المقرر",
+      "allCourses": "كل المقررات",
+      "empty": "لا معارف بعد: تُستخرج من كل درس بعد انتهائه.",
+      "edges": "سهم: يُستنتج · متقطع: يدعم · منقّط: يتشابهان ويختلفان",
+      "canvas": "شبكة معارفك",
+      "reword": "حفظ الصياغة",
+      "wrong": "هذا خطأ",
+      "wrongConfirm": "احذفها نهائيًا",
+      "from": "دُرِّست في",
+      "evidence": "تحقق منها",
+      "mergeInto": "هي نفس معرفة أخرى؟ ادمجها",
+      "mergeFind": "ابحث عن المعرفة الأخرى",
+      "state": {
+        "held": "مكتسبة",
+        "fading": "تحتاج مراجعة",
+        "shaky": "هشّة",
+        "unseen": "لم تُختبر بعد"
+      },
+      "verdict": {
+        "held": "صحيح",
+        "shaky": "خطأ",
+        "open": "مفتوح"
+      }
+    },
     "areas": {
       "holds": "المكتسب:",
       "lacks": "يتوقف عند:",
@@ -593,6 +622,8 @@
     }
   },
   "server": {
+    "a claim needs words": "المعرفة تحتاج إلى كلمات",
+    "another claim says this already; merge the two instead": "معرفة أخرى تقول هذا بالفعل؛ ادمج الاثنتين بدلًا من ذلك",
     "a course holds at most 200 MB of files": "تحتوي الدورة على 200 ميغابايت من الملفات على الأكثر",
     "cross-site requests are refused": "تُرفض الطلبات القادمة من موقع آخر",
     "nothing to restore": "لا شيء لاستعادته",

@@ -1443,3 +1443,55 @@ def bridges(profile_id: int, course_id: int, query: str, limit: int) -> list[dic
         if len(found) == limit:
             break
     return found
+
+
+def graph(profile_id: int, now: str) -> dict:
+    """The profile's claims for the graph page: each with its state, courses, source lessons and evidence; and the
+    links between them. Claims the learner marked wrong are left out."""
+    states = claim_states(profile_id, now)
+    sources: dict[int, list[dict]] = {}
+    for r in rows(
+        "SELECT s.claim_id, l.id, l.title, l.concept_id, k.id AS course_id, k.topic FROM claim_sources s JOIN lessons l ON l.id = s.lesson_id "
+        "JOIN courses k ON k.id = l.course_id JOIN claims c ON c.id = s.claim_id WHERE c.profile_id = ? ORDER BY l.id", profile_id,
+    ):
+        sources.setdefault(r.pop("claim_id"), []).append(r)
+    evidence: dict[int, list[dict]] = {}
+    for r in rows(
+        "SELECT e.claim_id, b.* FROM claim_evidence e JOIN blocks b ON b.id = e.block_id JOIN claims c ON c.id = e.claim_id "
+        "WHERE c.profile_id = ? ORDER BY b.id", profile_id,
+    ):
+        claim_id = r.pop("claim_id")
+        block = _block(r)
+        evidence.setdefault(claim_id, []).append(
+            {"block_id": block["id"], "lesson_id": block["lesson_id"], "kind": block["kind"], "markdown": block["markdown"][:300], "verdict": _verdict(block)}
+        )
+    claims = [
+        {**c, "state": states[c["id"]], "sources": sources.get(c["id"], []), "evidence": evidence.get(c["id"], [])}
+        for c in rows("SELECT id, text, created FROM claims WHERE profile_id = ? AND wrong = 0 ORDER BY id", profile_id)
+    ]
+    edges = rows(
+        "SELECT e.from_id, e.to_id, e.kind FROM claim_edges e JOIN claims a ON a.id = e.from_id JOIN claims b ON b.id = e.to_id "
+        "WHERE a.profile_id = ? AND a.wrong = 0 AND b.wrong = 0", profile_id,
+    )
+    return {"claims": claims, "edges": edges}
+
+
+def update_claim(claim_id: int, text: str | None, wrong: bool | None) -> None:
+    if text is not None:
+        conn.execute("UPDATE claims SET text = ? WHERE id = ?", (" ".join(text.split()), claim_id))
+    if wrong is not None:
+        conn.execute("UPDATE claims SET wrong = ? WHERE id = ?", (int(wrong), claim_id))
+
+
+def merge_claims(claim_id: int, into: int) -> None:
+    """Fold a duplicate into another claim: its sources, evidence and links move over, then it is gone."""
+    conn.execute("BEGIN")
+    try:
+        for table, column in (("claim_sources", "claim_id"), ("claim_evidence", "claim_id"), ("claim_edges", "from_id"), ("claim_edges", "to_id")):
+            conn.execute(f"UPDATE OR IGNORE {table} SET {column} = ? WHERE {column} = ?", (into, claim_id))
+        conn.execute("DELETE FROM claim_edges WHERE from_id = to_id")
+        conn.execute("DELETE FROM claims WHERE id = ?", (claim_id,))
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
