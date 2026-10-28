@@ -144,7 +144,7 @@ export function ProfilePage(props: {
         {props.profiles.map((p) => (
           <div key={p.id} className="fact">
             <span>
-              <strong>{p.name}</strong> · {t('profile.courses', { count: p.courses })}
+              <strong>{p.name}</strong>, {t('profile.courses', { count: p.courses })}
             </span>
             {p.id === current.id ? (
               <span className="chip">{t('profile.current')}</span>

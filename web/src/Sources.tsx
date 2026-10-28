@@ -44,7 +44,7 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
       {props.sources.map((s) => (
         <div key={s.id} className="source-row" title={s.error ?? undefined}>
           <span className="grow">
-            {s.name} <span className="muted">· {fileSize(s.size)}</span>
+            {s.name} <span className="muted">({fileSize(s.size)})</span>
           </span>
           <span className={`chip${s.status === 'failed' ? ' warn' : ''}`}>
             {s.status === 'ready' ? t('sources.sections', { count: s.sections }) : s.status === 'failed' ? t('sources.failed') : t('sources.processing')}

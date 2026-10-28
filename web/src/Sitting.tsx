@@ -18,7 +18,7 @@ export function SittingSummary({ profile }: { profile: number }) {
   if (!summary.answers) return null
   return (
     <section className="block sitting">
-      <div className="label">{summary.current ? t('sitting.this') : `${t('sitting.last')} · ${day(summary.ended!)}`}</div>
+      <div className="label">{summary.current ? t('sitting.this') : `${t('sitting.last')}, ${day(summary.ended!)}`}</div>
       <p>{t('sitting.line', { count: summary.answers, sure: percent(summary.sure!), right: percent(summary.right!) })}</p>
       {summary.misses!.length > 0 && (
         <>

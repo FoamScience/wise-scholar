@@ -1,0 +1,70 @@
+:root {
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-md: 1rem; --text-lg: 1.2rem; --text-xl: 1.44rem; --text-2xl: 1.728rem; --text-3xl: 2.074rem;
+  --text-display-s: 1.44rem; --text-display: 1.728rem; --text-section: 1.2rem; --text-title: 1rem; --text-lead: 1.125rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
+  --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
+  --measure: 40rem; --page: 72rem; --bar-height: 56px;
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
+
+  /* Hex, not OKLCH: Mermaid, cytoscape and the print header read these through getComputedStyle and parse only hex or rgb. */
+  --color-paper: #f7f9f8; --color-paper-2: #eef2f1; --color-paper-3: #e2e8e6; --color-raised: #fcfdfd;
+  --color-ink: #16201f; --color-ink-2: #2f3b3a; --color-muted: #52605e;
+  --color-rule: #d8dfdd; --color-rule-strong: #7d8a88;
+  --color-accent: #0b5f5a; --color-accent-ink: #f4faf9; --color-accent-deep: #084742; --color-accent-tint: #e0efec; --color-focus: #0e7a72;
+  --color-warm: #6b3a00; --color-warm-tint: #fbecd5; --color-warm-line: #d9a75c; --color-warm-ink: #3d2100; --color-spark: #f0b35c;
+  --color-error: #8f2d0f; --color-success: #0b5f5a; --color-off: #c9d1cf;
+  --color-shadow: rgb(16 28 27 / 0.14);
+  /* the ends the drawn figures mix their shades toward */
+  --mix-light: #ffffff; --mix-dark: #000000;
+  --code-bg: #101a23; --code-ink: #e6edf3; --code-keyword: #ff7b72; --code-string: #a5d6ff; --code-number: #79c0ff;
+  --code-comment: #8b949e; --code-name: #d2a8ff; --code-type: #ffa657; --code-failed: #ffc9a3;
+
+  --font-display: 'Instrument Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --font-body: 'Instrument Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --font-outlier: 'JetBrains Mono', 'IBM Plex Sans Arabic', ui-monospace, monospace;
+  --display-weight: 650;
+  --radius-card: 10px; --radius-input: 6px; --radius-inner: 4px; --radius-pill: 999px; --rule-hair: 1px;
+  --shadow-card: none; --shadow-float: 0 8px 24px var(--color-shadow);
+  --tracking-display: -0.015em;
+
+  /* the project's own names, read by the components, Mermaid, Plot, the graph and the print header */
+  --ground: var(--color-paper); --panel: var(--color-raised); --well: var(--color-paper-2);
+  --line: var(--color-rule); --line-strong: var(--color-rule-strong);
+  --ink: var(--color-ink); --muted: var(--color-muted);
+  --teal: var(--color-accent); --teal-dark: var(--color-accent-deep); --teal-tint: var(--color-accent-tint); --on-teal: var(--color-accent-ink);
+  --amber: var(--color-warm); --amber-tint: var(--color-warm-tint); --amber-line: var(--color-warm-line); --amber-ink: var(--color-warm-ink);
+  --danger: var(--color-error); --mastery-off: var(--color-off);
+  --sans: var(--font-body); --mono: var(--font-outlier);
+  --motion-fast: var(--dur-micro); --motion: var(--dur-short); --ease: var(--ease-out);
+  color-scheme: light;
+  interpolate-size: allow-keywords;
+}
+
+/* Dark follows the system unless the toggle in the top bar picked a theme. */
+:root[data-theme='dark'] {
+  --color-paper: #0f1514; --color-paper-2: #182120; --color-paper-3: #212b29; --color-raised: #151c1b;
+  --color-ink: #e3eae8; --color-ink-2: #c4cecc; --color-muted: #9aa8a5;
+  --color-rule: #2a3432; --color-rule-strong: #5f6e6b;
+  --color-accent: #3fb3a9; --color-accent-ink: #06211f; --color-accent-deep: #7fd6cd; --color-accent-tint: #15302d; --color-focus: #4cc3b8;
+  --color-warm: #f0b76a; --color-warm-tint: #2e2213; --color-warm-line: #7a5a25; --color-warm-ink: #f6dcb3;
+  --color-error: #e06a45; --color-success: #3fb3a9; --color-off: #2f3a38;
+  --color-shadow: rgb(0 0 0 / 0.4);
+  --code-bg: #0b1014;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-paper: #0f1514; --color-paper-2: #182120; --color-paper-3: #212b29; --color-raised: #151c1b;
+    --color-ink: #e3eae8; --color-ink-2: #c4cecc; --color-muted: #9aa8a5;
+    --color-rule: #2a3432; --color-rule-strong: #5f6e6b;
+    --color-accent: #3fb3a9; --color-accent-ink: #06211f; --color-accent-deep: #7fd6cd; --color-accent-tint: #15302d; --color-focus: #4cc3b8;
+    --color-warm: #f0b76a; --color-warm-tint: #2e2213; --color-warm-line: #7a5a25; --color-warm-ink: #f6dcb3;
+    --color-error: #e06a45; --color-success: #3fb3a9; --color-off: #2f3a38;
+    --color-shadow: rgb(0 0 0 / 0.4);
+    --code-bg: #0b1014;
+    color-scheme: dark;
+  }
+}

@@ -4,18 +4,18 @@
 .iso-svg {
   --iso-paper: var(--panel);
   --iso-face: var(--panel);
-  --iso-top: color-mix(in srgb, var(--panel) 94%, #fff);
-  --iso-shade-0: color-mix(in srgb, var(--panel) 86%, #000);
-  --iso-shade-1: color-mix(in srgb, var(--panel) 90%, #000);
-  --iso-shade-2: color-mix(in srgb, var(--panel) 94%, #000);
-  --iso-shade-3: color-mix(in srgb, var(--panel) 97%, #000);
-  --iso-lit-top: #fff;
-  --iso-lit-shade: color-mix(in srgb, var(--panel) 96%, #fff);
+  --iso-top: color-mix(in srgb, var(--panel) 94%, var(--mix-light));
+  --iso-shade-0: color-mix(in srgb, var(--panel) 86%, var(--mix-dark));
+  --iso-shade-1: color-mix(in srgb, var(--panel) 90%, var(--mix-dark));
+  --iso-shade-2: color-mix(in srgb, var(--panel) 94%, var(--mix-dark));
+  --iso-shade-3: color-mix(in srgb, var(--panel) 97%, var(--mix-dark));
+  --iso-lit-top: var(--mix-light);
+  --iso-lit-shade: color-mix(in srgb, var(--panel) 96%, var(--mix-light));
   --iso-hi: var(--ink);
   --iso-mid: var(--line-strong);
   --iso-lo: color-mix(in srgb, var(--line) 70%, var(--line-strong));
   --iso-faint: var(--line);
-  --iso-lit: #000;
+  --iso-lit: var(--mix-dark);
   --iso-halo: var(--ink);
   --iso-halo-opacity: 0.18;
   --iso-dot: var(--ink);
@@ -30,16 +30,16 @@
   overflow: visible;
 }
 :root[data-theme='dark'] .iso-svg {
-  --iso-lit-top: color-mix(in srgb, var(--panel) 80%, #fff);
-  --iso-lit: #fff;
-  --iso-halo: #000;
+  --iso-lit-top: color-mix(in srgb, var(--panel) 80%, var(--mix-light));
+  --iso-lit: var(--mix-light);
+  --iso-halo: var(--mix-dark);
   --iso-halo-opacity: 0.6;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .iso-svg {
-    --iso-lit-top: color-mix(in srgb, var(--panel) 80%, #fff);
-    --iso-lit: #fff;
-    --iso-halo: #000;
+    --iso-lit-top: color-mix(in srgb, var(--panel) 80%, var(--mix-light));
+    --iso-lit: var(--mix-light);
+    --iso-halo: var(--mix-dark);
     --iso-halo-opacity: 0.6;
   }
 }
@@ -225,13 +225,13 @@
   --paint-edge: var(--ink);
   --iso-paper: var(--paint-base);
   --iso-face: var(--paint-base);
-  --iso-top: color-mix(in srgb, var(--paint-base) 86%, #fff);
-  --iso-lit-top: color-mix(in srgb, var(--paint-base) 70%, #fff);
-  --iso-lit-shade: color-mix(in srgb, var(--paint-base) 94%, #fff);
-  --iso-shade-0: color-mix(in srgb, var(--paint-base) 80%, #000);
-  --iso-shade-1: color-mix(in srgb, var(--paint-base) 86%, #000);
-  --iso-shade-2: color-mix(in srgb, var(--paint-base) 92%, #000);
-  --iso-shade-3: color-mix(in srgb, var(--paint-base) 96%, #000);
+  --iso-top: color-mix(in srgb, var(--paint-base) 86%, var(--mix-light));
+  --iso-lit-top: color-mix(in srgb, var(--paint-base) 70%, var(--mix-light));
+  --iso-lit-shade: color-mix(in srgb, var(--paint-base) 94%, var(--mix-light));
+  --iso-shade-0: color-mix(in srgb, var(--paint-base) 80%, var(--mix-dark));
+  --iso-shade-1: color-mix(in srgb, var(--paint-base) 86%, var(--mix-dark));
+  --iso-shade-2: color-mix(in srgb, var(--paint-base) 92%, var(--mix-dark));
+  --iso-shade-3: color-mix(in srgb, var(--paint-base) 96%, var(--mix-dark));
   --iso-hi: var(--paint-edge);
   --iso-lit: var(--paint-edge);
   --iso-mid: color-mix(in srgb, var(--paint-edge) 75%, var(--paint-base));

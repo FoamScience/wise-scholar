@@ -118,8 +118,15 @@ export function GraphPage({ profile, course }: { profile: number; course: number
       })
       cy.current.on('tap', 'node[?claim]', (e) => setSelected(Number(e.target.id())))
       cy.current.on('tap', (e) => e.target === cy.current && setSelected(null))
+      fit.observe(box.current)
+    })
+    // the layout runs against the box as first measured; a box that settles or changes size afterwards gets the graph refitted
+    const fit = new ResizeObserver(() => {
+      cy.current?.resize()
+      cy.current?.fit(undefined, 16)
     })
     return () => {
+      fit.disconnect()
       gone = true
       cy.current?.destroy()
       cy.current = null
@@ -213,7 +220,7 @@ function ClaimPanel(props: { claim: Claim; all: Claim[]; reload: () => Promise<G
       <ul className="small">
         {claim.sources.map((s) => (
           <li key={s.id}>
-            <a href={s.concept_id ? `#/course/${s.course_id}?concept=${s.concept_id}` : `#/course/${s.course_id}`}>{s.topic}</a> · <span dir="auto">{s.title}</span>
+            <a href={s.concept_id ? `#/course/${s.course_id}?concept=${s.concept_id}` : `#/course/${s.course_id}`}>{s.topic}</a>: <span dir="auto">{s.title}</span>
           </li>
         ))}
       </ul>
@@ -223,7 +230,7 @@ function ClaimPanel(props: { claim: Claim; all: Claim[]; reload: () => Promise<G
           <ul className="small">
             {claim.evidence.map((e) => (
               <li key={e.block_id} dir="auto">
-                {e.verdict ? t(`graph.verdict.${e.verdict}`) : t('graph.verdict.open')} · {plain(e.markdown)}
+                {e.verdict ? t(`graph.verdict.${e.verdict}`) : t('graph.verdict.open')}: {plain(e.markdown)}
               </li>
             ))}
           </ul>

@@ -23,7 +23,7 @@ export function Credits({ credits }: { credits?: Credit[] }) {
   return (
     <div className="credits">
       {t('block.art')} {credits.map((c) => `${c.name} (${c.author}, ${c.licence})`).join(', ')}
-      {' · '}
+      {'; '}
       {packs.map(([pack, url]) => (
         <a key={pack} href={url} target="_blank" rel="noreferrer">
           {pack}

@@ -467,7 +467,7 @@ export function ReviewPanels({ profile }: { profile: number }) {
           </div>
         ))}
         {due.length > 0 && (
-          <a className="btn primary as-link" href="#/review">
+          <a className="btn as-link" href="#/review">
             {t('review.start')}
           </a>
         )}

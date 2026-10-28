@@ -43,7 +43,7 @@ export function ErrorsPage({ profile }: { profile: number }) {
   const open = entries.filter((e) => !e.resolved).length
 
   return (
-    <main className="home">
+    <main className="home notebook-page">
       <div className="row">
         <h1 className="grow">{t('notebook.heading', { n: open })}</h1>
         <label className="small">
@@ -52,44 +52,46 @@ export function ErrorsPage({ profile }: { profile: number }) {
       </div>
       {error && <div className="error">{error}</div>}
       {shown.length === 0 && <div className="muted">{t('notebook.empty')}</div>}
-      {shown.map((e) => (
-        <section key={e.id} className={`block entry${e.resolved ? ' resolved' : ''}`}>
-          <div className="label">
-            {e.kind === 'writing' ? t('common.correctedText') : e.kind === 'practice' ? t('notebook.practiceMiss') : t('notebook.confidentMiss')} · {e.topic} · {day(e.created)}
-            {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
-          </div>
-          {e.kind !== 'writing' && <Markdown>{e.prompt}</Markdown>}
-          <div className="attempt">
-            <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
-            <span className="said" dir={textDirection(e.said)}>
-              {e.said}
-            </span>
-          </div>
-          <div className="solution">
-            <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
-            {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
-            {e.explanation && <Markdown>{e.explanation}</Markdown>}
-          </div>
-          <label className="small" htmlFor={`note-${e.id}`}>
-            {t('notebook.note')}
-          </label>
-          <textarea
-            id={`note-${e.id}`}
-            className="field" dir="auto"
-            rows={2}
-            defaultValue={e.note}
-            onBlur={(ev) => ev.target.value !== e.note && patch(e.id, { note: ev.target.value })}
-          />
-          <div className="row">
-            <button type="button" className="btn" onClick={() => patch(e.id, { pinned: !e.pinned })}>
-              {e.pinned ? t('notebook.unpin') : t('notebook.pin')}
-            </button>
-            <button type="button" className="btn" onClick={() => patch(e.id, { resolved: !e.resolved })}>
-              {e.resolved ? t('notebook.reopen') : t('notebook.resolve')}
-            </button>
-          </div>
-        </section>
-      ))}
+      <div className="notebook">
+        {shown.map((e) => (
+          <section key={e.id} className={`block entry${e.resolved ? ' resolved' : ''}`}>
+            <div className="label">
+              {e.kind === 'writing' ? t('common.correctedText') : e.kind === 'practice' ? t('notebook.practiceMiss') : t('notebook.confidentMiss')}, {e.topic}, {day(e.created)}
+              {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
+            </div>
+            {e.kind !== 'writing' && <Markdown>{e.prompt}</Markdown>}
+            <div className="attempt">
+              <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
+              <span className="said" dir={textDirection(e.said)}>
+                {e.said}
+              </span>
+            </div>
+            <div className="solution">
+              <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
+              {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
+              {e.explanation && <Markdown>{e.explanation}</Markdown>}
+            </div>
+            <label className="small" htmlFor={`note-${e.id}`}>
+              {t('notebook.note')}
+            </label>
+            <textarea
+              id={`note-${e.id}`}
+              className="field" dir="auto"
+              rows={2}
+              defaultValue={e.note}
+              onBlur={(ev) => ev.target.value !== e.note && patch(e.id, { note: ev.target.value })}
+            />
+            <div className="row">
+              <button type="button" className="btn" onClick={() => patch(e.id, { pinned: !e.pinned })}>
+                {e.pinned ? t('notebook.unpin') : t('notebook.pin')}
+              </button>
+              <button type="button" className="btn" onClick={() => patch(e.id, { resolved: !e.resolved })}>
+                {e.resolved ? t('notebook.reopen') : t('notebook.resolve')}
+              </button>
+            </div>
+          </section>
+        ))}
+      </div>
     </main>
   )
 }
