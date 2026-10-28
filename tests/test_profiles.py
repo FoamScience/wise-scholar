@@ -850,6 +850,43 @@ def test_export_is_a_vault_folder_whose_links_all_resolve():
     assert "known: true" in electrons and "placed out" in electrons
 
 
+def test_export_writes_the_courses_claims_as_linked_notes():
+    import io
+    import re
+    import zipfile
+
+    from wise_scholar import obsidian
+
+    course, _ = seed_vault("Vault claims")
+    who = db.course(course)["profile_id"]
+    lesson = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", course)["id"]
+    check = next(b for b in db.blocks(lesson) if b["kind"] == "quiz")
+    elsewhere = db.create_course("Physics", who)["id"]
+    other = db.create_lesson(elsewhere, "Forces", "lesson")
+    ids = db.record_claims(who, lesson, [
+        {"key": "a", "text": "Carbon forms four bonds.", "evidence": [check["id"]]},
+        {"key": "b", "text": "Bonds share electron pairs.", "evidence": []},
+    ], [("b", "a", "follows")])  # fmt: skip
+    far = db.record_claims(who, other, [{"key": "f", "text": "Forces add as vectors.", "evidence": []}], [])["f"]
+    db.conn.execute("INSERT INTO claim_edges (from_id, to_id, kind) VALUES (?, ?, 'contrasts')", (ids["b"], far))
+
+    z = zipfile.ZipFile(io.BytesIO(obsidian.export(course, {})))
+    names = set(z.namelist())
+    vault = obsidian.Vault(course)
+    root = vault.root
+    carbon = z.read(f"{root}/Claims/Carbon forms four bonds.md").decode()
+    assert 'type: "claim"' in carbon and 'state: "shaky"' in carbon and "*shaky*" in carbon
+    assert f"**Follows from**\n- [[{root}/Claims/Bonds share electron pairs]]" in carbon and "**Checked by**\n- [[" in carbon and " · wrong" in carbon
+    pairs = z.read(f"{root}/Claims/Bonds share electron pairs.md").decode()
+    assert "**Looks like but differs from**\n- Forces add as vectors. (Physics)" in pairs
+    assert not any("Forces add" in n for n in names)
+    assert "## Claims" in z.read(f"{root}/Units/Bonds.md").decode() and "## Claims" in z.read(vault.names[("course",)] + ".md").decode()
+    for name in (n for n in names if n.endswith(".md")):
+        for target in re.findall(r"\[\[([^\]|#]+)", z.read(name).decode()):
+            assert target + ".md" in names or target in names, (name, target)
+    assert obsidian.Vault(course, inline=True).claims == []
+
+
 def test_vault_endpoint_serves_a_zip_without_a_browser(monkeypatch):
     import asyncio
     import io
