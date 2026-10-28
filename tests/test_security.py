@@ -201,3 +201,33 @@ def test_a_course_holds_a_bounded_amount_of_files(monkeypatch):
     finally:
         db.delete_course(course)
         db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
+
+
+def test_a_graph_turn_calls_only_the_graph_tools_and_a_lesson_turn_none_of_them():
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Graph guard')").lastrowid
+    try:
+        course = db.create_course("Claims", who)["id"]
+        lesson = db.lesson(db.create_lesson(course, "Unit", "lesson"))
+        call = tutor.mcp._tool_manager.call_tool
+        search = {"lesson_id": lesson["id"], "queries": ["faces"]}
+        tutor.turn_started(lesson, "tok-graph", graph=True)
+        tutor.turn_started(lesson, "tok-lesson")
+        try:
+            assert "nothing found" in str(asyncio.run(call("search_claims", search, _context("tok-graph"))))
+            with pytest.raises(ToolError, match="not available in this turn"):
+                asyncio.run(call("add_block", {"lesson_id": lesson["id"], "kind": "prose", "markdown": "x"}, _context("tok-graph")))
+            with pytest.raises(ToolError, match="not available in this turn"):
+                asyncio.run(call("search_claims", search, _context("tok-lesson")))
+            # Without a token each call finds the turn of its own kind on the same lesson.
+            asyncio.run(call("search_claims", search, _context(None)))
+            asyncio.run(call("add_block", {"lesson_id": lesson["id"], "kind": "prose", "markdown": "ok"}, _context(None)))
+        finally:
+            tutor.turn_ended(("graph", lesson["id"]))
+            tutor.turn_ended(lesson["id"])
+        with pytest.raises(ToolError, match="no turn running"):
+            asyncio.run(call("search_claims", search, _context(None)))
+    finally:
+        db.delete_course(course)
+        db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))

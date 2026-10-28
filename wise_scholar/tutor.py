@@ -1594,6 +1594,90 @@ async def finish_lesson(lesson_id: int, summary: str) -> str:
     return "finished; end the turn"
 
 
+GRAPH_TOOLS = ("search_claims", "record_claims")
+SEARCH_RESULTS = 8
+CLAIM_CHARS = 300
+_searched: set[int] = set()  # lessons whose running graph turn has searched the claims
+
+
+class NewClaim(BaseModel):
+    key: str
+    id: int | None = None
+    text: str = ""
+    evidence: list[int] = []
+
+
+class ClaimLink(BaseModel):
+    source: str
+    target: str
+    kind: Literal["follows", "supports", "contrasts"]
+
+
+@mcp.tool()
+async def search_claims(lesson_id: int, queries: list[str]) -> str:
+    """Search the learner's claims, from all their courses, for each query (a few words). Search before recording:
+    a claim that is already there is reused by its id, not recorded again."""
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    _searched.add(lesson_id)
+    out = []
+    for query in queries:
+        found = db.search_claims(lesson["profile_id"], query, SEARCH_RESULTS)
+        out.append(f"{query!r}:")
+        out += [
+            f"  claim {c['id']}: {c['text']}" + (" (marked wrong by the learner: never record it)" if c["wrong"] else f" (from: {', '.join(c['courses'])})")
+            for c in found
+        ] or ["  nothing found"]
+    return "\n".join(out)
+
+
+@mcp.tool()
+async def record_claims(lesson_id: int, claims: list[NewClaim], links: list[ClaimLink] = []) -> str:
+    """Record the claims this lesson taught, all in one call, after search_claims.
+
+    claims: each with a key of your choosing (used by links), then either id (a claim search found, reused) or
+    text (a new claim: one true statement, worded on its own, under 300 characters), and evidence: the block ids
+    of this lesson's quick checks, challenges and exercises that tested it (not the pretest).
+    links: between keys. follows: target is derived from source. supports: source grounds target without
+    entailing it. contrasts: the two look alike but differ.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if lesson_id not in _searched:
+        return "error: call search_claims first, and reuse the claims it finds"
+    keys = [c.key for c in claims]
+    if not claims or not all(keys) or len(set(keys)) < len(keys):
+        return "error: give at least one claim, each with its own key"
+    entries = []
+    for c in claims:
+        text = " ".join(c.text.split())
+        if (c.id is None) == (not text):
+            return f"error: claim {c.key!r} needs either id or text, not both"
+        if c.id is not None:
+            known = db.claim(c.id)
+            if not known or known["profile_id"] != lesson["profile_id"]:
+                return f"error: there is no claim {c.id}"
+            if known["wrong"]:
+                return f"error: claim {c.id} was marked wrong by the learner; leave it out"
+        else:
+            if len(text) > CLAIM_CHARS:
+                return f"error: claim {c.key!r} is too long; one statement, under {CLAIM_CHARS} characters"
+            if same := db.same_claim(lesson["profile_id"], text):
+                return f"error: claim {c.key!r} was marked wrong by the learner; leave it out" if same["wrong"] else f"error: claim {same['id']} says {c.key!r} already; give its id"
+        for block_id in c.evidence:
+            block = db.block(block_id)
+            if not block or block["lesson_id"] != lesson_id or block["kind"] not in db.EVIDENCE_KINDS or (block["data"] or {}).get("pretest"):
+                return f"error: block {block_id} is not a quick check, challenge or exercise of this lesson after the pretest"
+        entries.append({"key": c.key, "id": c.id, "text": text, "evidence": c.evidence})
+    for link in links:
+        if {link.source, link.target} - set(keys) or link.source == link.target:
+            return f"error: link {link.source!r} to {link.target!r} must join two different keys of this call"
+    ids = db.record_claims(lesson["profile_id"], lesson_id, entries, [(l.source, l.target, l.kind) for l in links])
+    return "recorded: " + ", ".join(f"{k} = claim {i}" for k, i in ids.items())
+
+
 @mcp.tool()
 async def set_placement(course_id: int, level: str, summary: str, areas: list[Area]) -> str:
     """Record the result of the placement check.
@@ -1651,16 +1735,21 @@ async def mark_solved(challenge_id: int) -> str:
 # may only touch that turn's lesson and course; opencode shares one connection, so its calls may touch any lesson
 # whose turn is running. Either way a tutor talked into it cannot reach another course, and a turn gets a bounded
 # number of calls.
-turns: dict[int, dict] = {}  # lesson_id -> {"token", "calls", "course_id"}
+# A graph turn reads a finished lesson for its claims; it may call only the graph tools, and a lesson turn may not.
+turns: dict[int | tuple[str, int], dict] = {}  # lesson_id, or ("graph", lesson_id) -> {"token", "calls", "lesson_id", "course_id", "graph"}
 _ID_ARGUMENTS = ("lesson_id", "course_id", "challenge_id", "quiz_id", "block_id")
 
 
-def turn_started(lesson: dict, token: str) -> None:
-    turns[lesson["id"]] = {"token": token, "calls": 0, "course_id": lesson["course_id"]}
+def turn_started(lesson: dict, token: str, graph: bool = False) -> None:
+    turns[("graph", lesson["id"]) if graph else lesson["id"]] = {
+        "token": token, "calls": 0, "lesson_id": lesson["id"], "course_id": lesson["course_id"], "graph": graph,
+    }
+    if graph:
+        _searched.discard(lesson["id"])
 
 
-def turn_ended(lesson_id: int) -> None:
-    turns.pop(lesson_id, None)
+def turn_ended(key: int | tuple[str, int]) -> None:
+    turns.pop(key, None)
 
 
 def _targets(arguments: dict) -> list[tuple[int | None, int | None]]:
@@ -1687,27 +1776,29 @@ def _token(context) -> str | None:
         return None
 
 
-def _owns(lesson_id: int, turn: dict, target: tuple[int | None, int | None]) -> bool:
+def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
     target_lesson, target_course = target
-    return target_lesson == lesson_id if target_lesson is not None else target_course == turn["course_id"]
+    return target_lesson == turn["lesson_id"] if target_lesson is not None else target_course == turn["course_id"]
 
 
 def _guard(call_tool):
     async def guarded(name: str, arguments: dict, context, convert_result: bool = False):
         targets = _targets(arguments)
+        graph = name in GRAPH_TOOLS
         if token := _token(context):
-            bound = next(((lesson, t) for lesson, t in turns.items() if t["token"] == token), None)
-            if bound is None:
+            turn = next((t for t in turns.values() if t["token"] == token), None)
+            if turn is None:
                 raise ToolError("this turn is over; nothing more can be changed")
-            if not all(_owns(bound[0], bound[1], target) for target in targets):
+            if turn["graph"] != graph:
+                raise ToolError("that tool is not available in this turn")
+            if not all(_owns(turn, target) for target in targets):
                 raise ToolError("that id belongs to another lesson or course; use the ids of the [state] line")
-            turn = bound[1]
         else:
             # Without a token (opencode shares one connection) a call lands on a lesson whose turn is running.
-            running = [(lesson, t) for lesson, t in turns.items() if all(_owns(lesson, t, target) for target in targets)]
+            running = [t for t in turns.values() if t["graph"] == graph and all(_owns(t, target) for target in targets)]
             if targets and not running:
                 raise ToolError("this lesson has no turn running; use the ids of the [state] line")
-            turn = running[0][1] if running else None
+            turn = running[0] if running else None
         if turn is not None:
             turn["calls"] += 1
             if turn["calls"] > TOOL_CALLS_PER_TURN:
