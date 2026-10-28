@@ -32,6 +32,12 @@
       "writingSession": "Writing session {{n}}",
       "nextUnit": "Next · {{title}}"
     },
+    "areas": {
+      "holds": "Has:",
+      "lacks": "Ends at:",
+      "nothingYet": "nothing yet",
+      "nothingLeft": "nothing the course teaches"
+    },
     "outline": {
       "testStep": "Test out of this step",
       "testUnit": "Test out of the unit",
@@ -79,6 +85,7 @@
       "list_playbooks": "weighing teaching approaches…",
       "get_playbook": "reading a playbook…",
       "rank_mechanisms": "ranking teaching approaches…",
+      "set_prerequisites": "linking the units…",
       "set_course_map": "laying out the course…",
       "pose_challenge": "preparing a challenge…",
       "pose_sort": "preparing a sorting check…",
@@ -230,6 +237,10 @@
       "vocab": "Vocabulary check"
     },
     "map": {
+      "needs": "Needs:",
+      "needsFirst": "This unit builds on {{titles}}, not done yet.",
+      "openFirst": "Open that first",
+      "startAnyway": "Start anyway",
       "menu": "Course options",
       "summaryDone": "Units {{done}} of {{total}} done",
       "summary_one": "Units {{done}} of {{total}} done, {{count}} needs review",

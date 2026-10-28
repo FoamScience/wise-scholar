@@ -17,9 +17,10 @@ import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
 import { challengeLabel, lessonTitle, outlineOf, practiceTitle } from './course'
 import { OutlineCard } from './Outline'
+import { PlacementAreas } from './Areas'
 import { SittingPage } from './Sitting'
 import { Comparison, HintList, Ladder } from './Ladder'
-import type { Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
+import type { Area, Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
 import { NetworkCard } from './Network'
 import { PlotCard } from './PlotCard'
@@ -45,7 +46,7 @@ type TutorEvent =
   | { type: 'plan.ranked'; ranking: Ranked[]; mechanism: string }
   | { type: 'plan.chosen'; mechanism: string }
   | { type: 'course.pace'; pace: 'momentum' | 'speed' }
-  | { type: 'placement.set'; level: string; placement: string }
+  | { type: 'placement.set'; level: string; placement: string; areas: Area[] }
   | { type: 'map.set'; concepts: Concept[]; capstones?: Capstone[] }
   | { type: 'capstone.set'; capstone: Capstone }
   | { type: 'source.updated'; source: Source }
@@ -989,6 +990,8 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const [writing, setWriting] = useState(false)
   const [draft, setDraft] = useState('')
   const [changing, setChanging] = useState(false)
+  // the unit asked for while units it needs are still open: the map says so before it starts
+  const [held, setHeld] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
   const online = useOnline()
@@ -1065,9 +1068,18 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
     setCourse((c) => c && (c.lessons.some((l) => l.id === lesson.id) ? c : { ...c, lessons: [...c.lessons, lesson] }))
   }
 
-  function openConcept(concept: Concept) {
+  function unmetNeeds(concept: Concept): Concept[] {
+    if (!course) return []
+    return concept.needs
+      .map((id) => course.concepts.find((c) => c.id === id))
+      .filter((c): c is Concept => c !== undefined && !c.known && !unitDone(c, course.lessons.find((l) => l.concept_id === c.id)))
+  }
+
+  function openConcept(concept: Concept, anyway = false) {
     const existing = course?.lessons.find((l) => l.concept_id === concept.id)
     if (existing) return showLesson(existing.id)
+    if (!anyway && course?.mode !== 'teacher' && unmetNeeds(concept).length > 0) return setHeld(concept.id)
+    setHeld(null)
     api<Lesson>(`/api/concepts/${concept.id}/lesson`, {}).then(
       (created) => {
         addLesson(created)
@@ -1115,7 +1127,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
       } else if (ev.type === 'course.pace') {
         setCourse((c) => c && { ...c, pace: ev.pace })
       } else if (ev.type === 'placement.set') {
-        setCourse((c) => c && { ...c, level: ev.level, placement: ev.placement })
+        setCourse((c) => c && { ...c, level: ev.level, placement: ev.placement, areas: ev.areas })
       } else if (ev.type === 'capstone.set') {
         setCourse(
           (c) =>
@@ -1182,6 +1194,8 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             (err: Error) => setError(err.message),
           )
         if (c.lessons.some((l) => l.running)) setActivity('thinking')
+        // a map made before units had prerequisites gets them worked out once, out of sight
+        if (c.concepts.length > 0 && !c.prerequisites) api(`/api/courses/${courseId}/prerequisites`, {}).catch(() => {})
       },
       (e) => setError(e.message),
     )
@@ -1416,7 +1430,30 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
                   )}
                 </span>
                 <span className="stats">{conceptStats(c, conceptLesson, t, course.mode === 'teacher')}</span>
+                {c.needs.length > 0 && !unitDone(c, conceptLesson) && (
+                  <span className="stats needs" dir="auto">
+                    {t('map.needs')}{' '}
+                    {c.needs
+                      .map((id) => course.concepts.find((u) => u.id === id))
+                      .filter((u): u is Concept => u !== undefined)
+                      .map((u) => (course.mode === 'teacher' ? u.title : `${u.title} ${unmetNeeds(c).includes(u) ? '✗' : '✓'}`))
+                      .join(', ')}
+                  </span>
+                )}
               </button>
+              {held === c.id && (
+                <div className="held small" role="status">
+                  <span dir="auto">{t('map.needsFirst', { titles: unmetNeeds(c).map((u) => u.title).join(', ') })}</span>
+                  <div className="row">
+                    <button type="button" className="btn primary" onClick={() => openConcept(unmetNeeds(c)[0])}>
+                      {t('map.openFirst')}
+                    </button>
+                    <button type="button" className="btn" onClick={() => openConcept(c, true)}>
+                      {t('map.startAnyway')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
@@ -1532,6 +1569,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
                 {t('block.placementResult')} <span className="chip">{(b.data as { level: string }).level}</span>
               </div>
               <Markdown>{b.markdown}</Markdown>
+              <PlacementAreas areas={(b.data as { areas?: Area[] }).areas} />
             </section>
           ) : b.kind === 'podcast' ? (
             <PodcastCard
@@ -1596,6 +1634,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               {t('block.placementResult')} <span className="chip">{course.level}</span>
             </div>
             <Markdown>{course.placement}</Markdown>
+            <PlacementAreas areas={course.areas} />
           </section>
         )}
         {lesson.running && (empty || writing) && <Skeleton />}

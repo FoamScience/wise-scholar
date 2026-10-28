@@ -32,6 +32,12 @@
       "writingSession": "جلسة الكتابة {{n}}",
       "nextUnit": "التالي · {{title}}"
     },
+    "areas": {
+      "holds": "المكتسب:",
+      "lacks": "يتوقف عند:",
+      "nothingYet": "لا شيء بعد",
+      "nothingLeft": "لا شيء مما يدرّسه المقرر"
+    },
     "outline": {
       "testStep": "تخطَّ هذه الخطوة باختبار",
       "testUnit": "تخطَّ الوحدة باختبار",
@@ -83,6 +89,7 @@
       "list_playbooks": "يوازن بين طرق التدريس…",
       "get_playbook": "يقرأ طريقة تدريس…",
       "rank_mechanisms": "يرتّب طرق التدريس…",
+      "set_prerequisites": "يربط الوحدات…",
       "set_course_map": "يضع خريطة الدورة…",
       "pose_challenge": "يحضّر تحدّيًا…",
       "pose_sort": "يحضّر تمرين تصنيف…",
@@ -254,6 +261,10 @@
       "vocab": "اختبار المفردات"
     },
     "map": {
+      "needs": "يتطلب:",
+      "needsFirst": "تُبنى هذه الوحدة على {{titles}}، ولم يكتمل بعد.",
+      "openFirst": "افتح ذلك أولًا",
+      "startAnyway": "ابدأ على أي حال",
       "menu": "خيارات الدورة",
       "summaryDone": "الوحدات المنجزة {{done}} من {{total}}",
       "summary_zero": "الوحدات المنجزة {{done}} من {{total}}، لا شيء للمراجعة",

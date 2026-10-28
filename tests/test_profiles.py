@@ -141,6 +141,93 @@ def test_set_known_recalibrates_the_map_without_rebuilding_it():
     assert [(c["title"], c["known"]) for c in db.concepts(course)] == [("Greetings", 0), ("Numbers", 1), ("Perfekt", 1)]
 
 
+def test_placement_records_each_area_and_a_retake_replaces_them(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Placed')").lastrowid
+    course = db.create_course("OCCT", who)["id"]
+    placement = db.create_lesson(course, "Placement", "placement")
+    area = tutor.Area
+    place = lambda areas: asyncio.run(tutor.set_placement(course, "Intermediate", "Knows topology.", areas))  # noqa: E731
+
+    assert place([area(title="Topology", holds="x", lacks="y")]) == "error: give 2 to 8 areas"
+    assert "appear more than once" in place([area(title="Topology", holds="", lacks=""), area(title="Topology", holds="", lacks="")])
+    assert "too long" in place([area(title="Topology", holds="x" * 301, lacks=""), area(title="Healing", holds="", lacks="")])
+    assert place([area(title=" ", holds="", lacks=""), area(title="Healing", holds="", lacks="")]) == "error: every area needs a title"
+    assert db.placement_areas(course) == [] and db.course(course)["level"] is None
+
+    first = [area(title="Topology", holds="walks  shapes", lacks=""), area(title="Healing", holds="", lacks="sewing faces")]
+    assert place(first) == "recorded"
+    assert db.placement_areas(course) == [
+        {"title": "Topology", "holds": "walks shapes", "lacks": ""}, {"title": "Healing", "holds": "", "lacks": "sewing faces"},
+    ]  # fmt: skip
+    assert db.blocks(placement)[-1]["data"]["areas"][1]["lacks"] == "sewing faces"
+    prompt = app._turn_prompt(db.lesson(placement), "[event] x")
+    assert "[known] (this course) Placement check, by area: Topology: has walks shapes, ends at nothing within the course; Healing: has nothing yet" in prompt
+    assert app._course(course)["areas"][0]["title"] == "Topology"
+    assert db.placement_areas(db.copy_course(course, "OCCT again")["id"]) == db.placement_areas(course)
+
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Shapes"], "known": []}])
+    lines = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: lines.append(line))
+    asyncio.run(app.retake_placement(course))
+    assert "By area: Topology: has walks shapes" in lines[0]
+    assert place([area(title="Transforms", holds="", lacks="gp_Trsf"), area(title="Healing", holds="sewing", lacks="")]) == "recorded"
+    assert [a["title"] for a in db.placement_areas(course)] == ["Transforms", "Healing"]
+
+
+def test_units_record_what_they_build_on_and_old_maps_get_it_once(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Linked')").lastrowid
+    course = db.create_course("Impellers", who)["id"]
+    module = tutor.Module
+    make = lambda modules: asyncio.run(tutor.set_course_map(course, modules))  # noqa: E731
+
+    assert make([module(title="Blades", concepts=["Camber", "Thickness"], needs={"Thickness": ["Camber", "Hub"]})]).startswith("error: needs names ['Hub']")
+    assert make([module(title="Blades", concepts=["Camber", "Thickness"], needs={"Camber": ["Thickness"]})]).startswith("error: a unit needs only units before it")
+    assert make([module(title="Blades", concepts=["Camber"]), module(title="Hub", concepts=["Revolve"], needs={"Camber": []})]).startswith("error: needs keys ['Camber']")
+    assert db.concepts(course) == []
+
+    assert make([
+        module(title="Blades", concepts=["Camber", "Thickness", "Loft"], needs={"Thickness": ["Camber"], "Loft": ["Camber", "Thickness"]}),
+        module(title="Hub", concepts=["Revolve", "Fuse"], needs={"Fuse": ["Loft", "Revolve"]}),
+    ]) == "shown"  # fmt: skip
+    ids = {c["title"]: c["id"] for c in db.concepts(course)}
+    assert db.course(course)["prerequisites"] == 1
+    view = {c["title"]: c["needs"] for c in db.concept_view(course)}
+    assert view["Loft"] == [ids["Camber"], ids["Thickness"]] and view["Fuse"] == [ids["Loft"], ids["Revolve"]] and view["Camber"] == []
+    assert "  - Fuse (this lesson; needs Loft, Revolve)" in app._map_outline(course, ids["Fuse"])
+
+    # A revision keeps the edges its new order allows, replaces those it is given, and loses those of dropped units.
+    revised = asyncio.run(tutor.revise_course_map(course, [
+        module(title="Hub", concepts=["Revolve", "Fuse"]),
+        module(title="Blades", concepts=["Camber", "Thickness", "Loft 2"], needs={"Loft 2": ["Thickness"]}),
+    ], renamed=[tutor.Renamed(old="Loft", new="Loft 2")]))  # fmt: skip
+    assert revised == "shown"
+    view = {c["title"]: c["needs"] for c in db.concept_view(course)}
+    assert view["Fuse"] == [ids["Revolve"]] and view["Loft 2"] == [ids["Thickness"]] and view["Thickness"] == [ids["Camber"]]
+    copied = db.copy_course(course, "Impellers again")["id"]
+    assert sorted(len(c["needs"]) for c in db.concept_view(copied) if c["kind"] == "concept") == [0, 0, 1, 1, 1] and db.course(copied)["prerequisites"] == 1
+
+    # A map from before prerequisites: worked out once in the interview's session, nothing started after that.
+    old = db.create_course("Old map", who)["id"]
+    db.set_concepts(old, [{"title": "M", "concepts": ["a", "b"], "known": []}])
+    started = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: started.append((lesson["phase"], line, quiet)))
+    assert asyncio.run(app.link_map(old)) == {"started": True} and started == [("interview", app.LINK_MAP + "M:\n  - a (not started)\n  - b (not started)", True)]
+    assert asyncio.run(tutor.set_prerequisites(old, {"a": ["b"]})).startswith("error: a unit needs only units before it")
+    assert asyncio.run(tutor.set_prerequisites(old, {"a": []})).startswith("error: no unit needs another")
+    assert asyncio.run(tutor.set_prerequisites(old, {"b": ["a"]})) == "linked"
+    assert db.course(old)["prerequisites"] == 1 and asyncio.run(app.link_map(old)) == {"started": False}
+    assert asyncio.run(app.link_map(db.create_course("No map", who)["id"])) == {"started": False}
+    assert asyncio.run(tutor.set_prerequisites(db.create_course("Empty", who)["id"], {"b": ["a"]})) == "error: this course has no map yet; use set_course_map"
+
+
 def test_pretest_gates_explanations_and_stays_out_of_reviews_and_mastery():
     import asyncio
 

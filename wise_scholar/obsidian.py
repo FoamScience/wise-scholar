@@ -18,7 +18,7 @@ WORDS = {
     "en": {
         "course": "Course", "modules": "Modules", "units": "Units", "lessons": "Lessons", "cards": "Cards", "mistakes": "Mistakes",
         "projects": "Projects", "words": "Vocabulary", "interview": "Interview", "placement": "Placement", "scope": "Scope",
-        "hours": "Planned teaching time: {} hours", "level": "Level", "mastery": "Mastery", "placed_out": "placed out",
+        "hours": "Planned teaching time: {} hours", "level": "Level", "holds": "Has", "lacks": "Ends at", "mastery": "Mastery", "placed_out": "placed out",
         "builds_on": "Earlier unit", "attempts": "Attempts", "hints": "Hints", "solution": "Solution", "your_answer": "Your answer",
         "sure": "{}% sure", "right": "right", "wrong": "wrong", "answer": "Answer", "explanation": "Explanation",
         "feedback": "Feedback", "files": "Files", "run": "Run command", "output": "Last run", "tutor": "Tutor", "you": "You",
@@ -31,7 +31,7 @@ WORDS = {
     "fr": {
         "course": "Cours", "modules": "Modules", "units": "Unités", "lessons": "Leçons", "cards": "Cartes", "mistakes": "Erreurs",
         "projects": "Projets", "words": "Vocabulaire", "interview": "Entretien", "placement": "Test de niveau", "scope": "Cadre",
-        "hours": "Temps d'enseignement prévu : {} heures", "level": "Niveau", "mastery": "Maîtrise", "placed_out": "déjà acquis",
+        "hours": "Temps d'enseignement prévu : {} heures", "level": "Niveau", "holds": "Acquis", "lacks": "S'arrête à", "mastery": "Maîtrise", "placed_out": "déjà acquis",
         "builds_on": "Unité précédente", "attempts": "Tentatives", "hints": "Indices", "solution": "Solution", "your_answer": "Votre réponse",
         "sure": "sûr à {} %", "right": "juste", "wrong": "faux", "answer": "Réponse", "explanation": "Explication",
         "feedback": "Retour", "files": "Fichiers", "run": "Commande d'exécution", "output": "Dernière exécution", "tutor": "Tuteur", "you": "Vous",
@@ -44,7 +44,7 @@ WORDS = {
     "ar": {
         "course": "الدورة", "modules": "الوحدات الكبرى", "units": "الوحدات", "lessons": "الدروس", "cards": "البطاقات", "mistakes": "الأخطاء",
         "projects": "المشاريع", "words": "المفردات", "interview": "المقابلة", "placement": "اختبار تحديد المستوى", "scope": "النطاق",
-        "hours": "وقت التدريس المخطط: {} ساعة", "level": "المستوى", "mastery": "الإتقان", "placed_out": "مُتقَن مسبقًا",
+        "hours": "وقت التدريس المخطط: {} ساعة", "level": "المستوى", "holds": "المكتسب", "lacks": "يتوقف عند", "mastery": "الإتقان", "placed_out": "مُتقَن مسبقًا",
         "builds_on": "الوحدة السابقة", "attempts": "المحاولات", "hints": "التلميحات", "solution": "الحل", "your_answer": "جوابك",
         "sure": "واثق بنسبة {}٪", "right": "صحيح", "wrong": "خطأ", "answer": "الجواب", "explanation": "الشرح",
         "feedback": "الملاحظات", "files": "الملفات", "run": "أمر التشغيل", "output": "آخر تشغيل", "tutor": "المعلّم", "you": "أنت",
@@ -250,7 +250,8 @@ class Vault:
             answer = d.get("answer")
             return f"**{block['markdown']}**\n\n{t['your_answer']}: {answer if answer is not None else t['unanswered']}\n"
         if kind == "placement":
-            return f"**{t['result']}** · {t['level']}: {d.get('level', '')}\n\n{block['markdown']}\n"
+            areas = "".join(f"\n- **{a['title']}**: {t['holds']}: {a['holds'] or '-'}; {t['lacks']}: {a['lacks'] or '-'}" for a in d.get("areas", []))
+            return f"**{t['result']}** · {t['level']}: {d.get('level', '')}\n\n{block['markdown']}\n" + (f"{areas}\n" if areas else "")
         if kind == "done":
             return _callout("success", t["unit_covered"], block["markdown"], folded=False, plain=self.inline)
         if kind == "podcast":

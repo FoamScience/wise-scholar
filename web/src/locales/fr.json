@@ -32,6 +32,12 @@
       "writingSession": "Séance d'écriture {{n}}",
       "nextUnit": "Suivant · {{title}}"
     },
+    "areas": {
+      "holds": "Acquis :",
+      "lacks": "S'arrête à :",
+      "nothingYet": "rien encore",
+      "nothingLeft": "rien de ce que le cours enseigne"
+    },
     "outline": {
       "testStep": "Sauter cette étape par un test",
       "testUnit": "Sauter l'unité par un test",
@@ -80,6 +86,7 @@
       "list_playbooks": "comparaison des approches…",
       "get_playbook": "lecture d'une méthode…",
       "rank_mechanisms": "classement des approches…",
+      "set_prerequisites": "liaison des unités…",
       "set_course_map": "construction du plan du cours…",
       "pose_challenge": "préparation d'un défi…",
       "pose_sort": "préparation d'un tri…",
@@ -236,6 +243,10 @@
       "vocab": "Test de vocabulaire"
     },
     "map": {
+      "needs": "Prérequis :",
+      "needsFirst": "Cette unité s'appuie sur {{titles}}, pas encore terminé.",
+      "openFirst": "Ouvrir d'abord",
+      "startAnyway": "Commencer quand même",
       "menu": "Options du cours",
       "summaryDone": "Unités faites : {{done}} sur {{total}}",
       "summary_one": "Unités faites : {{done}} sur {{total}}, {{count}} à réviser",

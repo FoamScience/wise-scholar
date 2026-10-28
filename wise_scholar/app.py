@@ -298,6 +298,7 @@ def _course(course_id: int) -> dict:
         "ranking": describe(course["ranking"]),
         "concepts": db.concept_view(course_id),
         "capstones": db.capstones(course_id),
+        "areas": db.placement_areas(course_id),
         "strands": db.strand_counts(course_id) if course["mechanism"] == "leveled-course" else None,
         "vocabulary": {**db.vocabulary(course_id, _now()), **_tier_view(course)},
         "lessons": [_lesson_view(lesson["id"]) for lesson in lessons],
@@ -347,15 +348,18 @@ def _update_block(block: dict, change: dict) -> tuple[dict, dict]:
     return lesson, block
 
 
-def _map_outline(course_id: int, current: int) -> str:
+def _map_outline(course_id: int, current: int | None) -> str:
     started = {r["concept_id"] for r in db.rows("SELECT concept_id FROM lessons WHERE course_id = ?", course_id)}
+    units, needs = db.concepts(course_id), db.needs(course_id)
+    titles = {c["id"]: c["title"] for c in units}
     lines, module = [], None
-    for c in db.concepts(course_id):
+    for c in units:
         if c["module"] != module:
             module = c["module"]
             lines.append(f"{module}:")
         mark = "this lesson" if c["id"] == current else "already opened" if c["id"] in started else "not started"
-        lines.append(f"  - {c['title']} ({mark}{'; practice unit' if c['kind'] == 'practice' else ''})")
+        builds = f"; needs {', '.join(titles[n] for n in needs[c['id']])}" if c["id"] in needs else ""
+        lines.append(f"  - {c['title']} ({mark}{'; practice unit' if c['kind'] == 'practice' else ''}{builds})")
     return "\n".join(lines)
 
 
@@ -391,6 +395,10 @@ def _untrusted(text: str) -> str:
     return re.sub(r"(?m)^([\s\u200b\u200c\u200d\u2060\ufeff]*)[\[\uff3b]", r"\1\\[", text)
 
 
+def _areas_line(areas: list[dict]) -> str:
+    return "; ".join(f"{a['title']}: has {a['holds'] or 'nothing yet'}, ends at {a['lacks'] or 'nothing within the course'}" for a in areas)
+
+
 def _turn_prompt(lesson: dict, line: str) -> str:
     state = (
         f"[state] course_id={lesson['course_id']} topic={lesson['topic']!r} lesson_id={lesson['id']} "
@@ -407,6 +415,8 @@ def _turn_prompt(lesson: dict, line: str) -> str:
     known = [
         f"[known] ({'this course' if f['course_id'] else 'learner'}) {_untrusted(' '.join(f['text'].split()))}" for f in db.facts(lesson["course_id"])
     ]
+    if areas := db.placement_areas(lesson["course_id"]):
+        known.append("[known] (this course) Placement check, by area: " + _untrusted(_areas_line(areas)))
     if given := [f for f in db.sources(lesson["course_id"]) if f["status"] != "failed"][:SOURCES_PER_COURSE]:
         known.append(
             "[known] (this course) Materials the learner gave for this course, to plan and teach from: "
@@ -451,7 +461,7 @@ def _turn_prompt(lesson: dict, line: str) -> str:
     return "\n".join([state, *known, fmt, language, *tools, line])
 
 
-async def _run_turn(lesson: dict, line: str) -> None:
+async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
     lesson_id, course_id = lesson["id"], lesson["course_id"]
     reply = ""
     final = {"type": "turn.done", "ok": False, "error": "stopped"}
@@ -482,7 +492,8 @@ async def _run_turn(lesson: dict, line: str) -> None:
                 if event["type"] == "turn.done":
                     final = event
                     break
-                hub.publish(course_id, {**event, "lesson_id": lesson_id})
+                if not quiet:
+                    hub.publish(course_id, {**event, "lesson_id": lesson_id})
     except asyncio.CancelledError:
         pass
     finally:
@@ -490,6 +501,10 @@ async def _run_turn(lesson: dict, line: str) -> None:
             await events.aclose()
         tutor.turn_ended(lesson_id)
         del _turns[lesson_id]
+    if quiet:
+        if not final["ok"]:
+            log.warning("quiet turn in lesson %s failed: %s", lesson_id, final["error"])
+        return
     message = db.add_message(lesson_id, "tutor", reply) if reply.strip() else None
     hub.publish(course_id, {**final, "lesson_id": lesson_id, "message": message})
 
@@ -524,8 +539,11 @@ def _phase_prompt(lesson: dict) -> str:
     return lesson["phase"]
 
 
-def _start_turn(lesson: dict, line: str) -> None:
-    _turns[lesson["id"]] = asyncio.create_task(_run_turn(lesson, line))
+def _start_turn(lesson: dict, line: str, quiet: bool = False) -> None:
+    """quiet: a turn the learner does not see: nothing of it is streamed or kept in the chat, only what its tools do."""
+    _turns[lesson["id"]] = asyncio.create_task(_run_turn(lesson, line, quiet))
+    if quiet:
+        return
     hub.publish(lesson["course_id"], {"type": "turn.started", "lesson_id": lesson["id"]})
 
 
@@ -926,6 +944,27 @@ async def accept_plan(course_id: int) -> None:
     _start_turn(interview, f"[event] {who} accepted the plan with mechanism {course['mechanism']}{tail}. Build the course map.")
 
 
+LINK_MAP = (
+    "[event] The course map was made before units had prerequisites. Call set_prerequisites once: for each unit, "
+    "the earlier units it builds on directly, by the exact titles below. Ask nothing and write nothing in the chat; "
+    "end the turn after the call. Course map:\n"
+)
+
+
+@app.post("/api/courses/{course_id}/prerequisites")
+async def link_map(course_id: int) -> dict:
+    """A map made before units had prerequisites gets them worked out once, in the interview's session, without a word
+    to the learner. Asked again while that runs, or after, it starts nothing."""
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    interview = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'interview' ORDER BY id LIMIT 1", course_id)
+    if course["prerequisites"] or not db.concepts(course_id) or not interview or interview["id"] in _turns:
+        return {"started": False}
+    _start_turn(_lesson(interview["id"]), LINK_MAP + _map_outline(course_id, None), quiet=True)
+    return {"started": True}
+
+
 @app.post("/api/courses/{course_id}/placement")
 async def start_placement(course_id: int) -> dict:
     course = _course(course_id)
@@ -957,6 +996,8 @@ async def retake_placement(course_id: int) -> dict:
     view = _lesson_view(lesson_id)
     hub.publish(course_id, {"type": "lesson.created", "lesson": view})
     before = f"level {course['level']!r}: {course['placement']}" if course["level"] else "none; the check was skipped"
+    if areas := db.placement_areas(course_id):
+        before += f" By area: {_areas_line(areas)}."
     _start_turn(
         _lesson(lesson_id),
         f"[event] The learner retakes the placement check. Earlier result: {before}. Run the check again from the start. "
