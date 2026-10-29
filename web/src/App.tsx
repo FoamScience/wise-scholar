@@ -950,6 +950,15 @@ function EditBar(props: { block: Block; first: boolean; last: boolean; disabled:
   )
 }
 
+function moduleRuns(concepts: Concept[]): Concept[][] {
+  const runs: Concept[][] = []
+  for (const c of concepts) {
+    if (runs.at(-1)?.[0].module === c.module) runs.at(-1)!.push(c)
+    else runs.push([c])
+  }
+  return runs
+}
+
 /** A unit is done once its lesson is finished, or placed out with no lesson begun. */
 function unitDone(concept: Concept, lesson: Lesson | undefined): boolean {
   return lesson ? lesson.blocks.some((b) => b.kind === 'done') : Boolean(concept.known)
@@ -1059,6 +1068,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const [changing, setChanging] = useState(false)
   // the unit asked for while units it needs are still open: the map says so before it starts
   const [held, setHeld] = useState<number | null>(null)
+  const [openModules, setOpenModules] = useState<Record<string, boolean>>({})
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
   const online = useOnline()
@@ -1463,73 +1473,90 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               {lessonTitle(l, t)}
             </button>
           ))}
-        {course.concepts.map((c, i) => {
-          const conceptLesson = course.lessons.find((l) => l.concept_id === c.id)
+        {moduleRuns(course.concepts).map((units) => {
+          const module = units[0].module
+          const lessonOf = (c: Concept) => course.lessons.find((l) => l.concept_id === c.id)
+          const projects = course.capstones.filter((k) => k.module === module)
+          const finished = units.every((c) => unitDone(c, lessonOf(c))) || (projects.length > 0 && projects.every((k) => k.done === k.milestones.length))
+          const started = units.some((c) => lessonOf(c) || unitDone(c, lessonOf(c)))
+          // a finished or untouched module folds away; the one holding the open lesson stays open
+          const open = openModules[module] ?? (units.some((c) => lessonOf(c)?.id === lesson.id) || (started && !finished))
           return (
-            <div key={c.id} className="concept">
-              {c.module !== course.concepts[i - 1]?.module && (
-                <>
-                  <strong dir="auto">{c.module}</strong>
-                  {course.capstones
-                    .filter((k) => k.module === c.module)
-                    .map((k) => (
-                      <div key={k.id} className="capstone" title={k.brief}>
-                        <span className="small">{t('map.project', { title: k.title })}</span>
-                        <progress value={k.done} max={k.milestones.length} />
-                        <span className="small">{t('map.milestones', { done: k.done, total: k.milestones.length })}</span>
-                      </div>
-                    ))}
-                </>
-              )}
-              <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
-                <span className="concept-title">
-                  <span className="concept-name" dir="auto">{c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}</span>
-                  {course.mode !== 'teacher' && (
-                    <span className="marks">
-                      {/* the slot stays when empty, so every unit's squares sit on the same line */}
-                      {unitDone(c, conceptLesson) ? (
-                        <span className="done-mark" role="img" aria-label={t('common.done')}>
-                          ✓
-                        </span>
-                      ) : (
-                        <span className="done-mark empty" />
-                      )}
-                      {c.kind !== 'practice' && (
-                        <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
-                          {[1, 2, 3].map((n) => (
-                            <i key={n} className={n <= squares(c) ? 'on' : ''} />
-                          ))}
+            <details
+              key={units[0].id}
+              className="module"
+              open={open}
+              onToggle={(e) => {
+                const now = e.currentTarget.open
+                if (now !== open) setOpenModules((m) => ({ ...m, [module]: now }))
+              }}
+            >
+              <summary>
+                <strong dir="auto">{module}</strong>
+                {projects.map((k) => (
+                  <div key={k.id} className="capstone" title={k.brief}>
+                    <span className="small">{t('map.project', { title: k.title })}</span>
+                    <progress value={k.done} max={k.milestones.length} />
+                    <span className="small">{t('map.milestones', { done: k.done, total: k.milestones.length })}</span>
+                  </div>
+                ))}
+              </summary>
+              {units.map((c) => {
+                const conceptLesson = lessonOf(c)
+                return (
+                  <div key={c.id} className="concept">
+                  <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
+                    <span className="concept-title">
+                      <span className="concept-name" dir="auto">{c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}</span>
+                      {course.mode !== 'teacher' && (
+                        <span className="marks">
+                          {/* the slot stays when empty, so every unit's squares sit on the same line */}
+                          {unitDone(c, conceptLesson) ? (
+                            <span className="done-mark" role="img" aria-label={t('common.done')}>
+                              ✓
+                            </span>
+                          ) : (
+                            <span className="done-mark empty" />
+                          )}
+                          {c.kind !== 'practice' && (
+                            <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
+                              {[1, 2, 3].map((n) => (
+                                <i key={n} className={n <= squares(c) ? 'on' : ''} />
+                              ))}
+                            </span>
+                          )}
                         </span>
                       )}
                     </span>
-                  )}
-                </span>
-                <span className="stats">{conceptStats(c, conceptLesson, t, course.mode === 'teacher')}</span>
-                {c.needs.length > 0 && !unitDone(c, conceptLesson) && (
-                  <span className="stats needs" dir="auto">
-                    {t('map.needs')}{' '}
-                    {c.needs
-                      .map((id) => course.concepts.find((u) => u.id === id))
-                      .filter((u): u is Concept => u !== undefined)
-                      .map((u) => (course.mode === 'teacher' ? u.title : `${u.title} ${unmetNeeds(c).includes(u) ? '✗' : '✓'}`))
-                      .join(', ')}
-                  </span>
-                )}
-              </button>
-              {held === c.id && (
-                <div className="held small" role="status">
-                  <span dir="auto">{t('map.needsFirst', { titles: unmetNeeds(c).map((u) => u.title).join(', ') })}</span>
-                  <div className="row">
-                    <button type="button" className="btn primary" onClick={() => openConcept(unmetNeeds(c)[0])}>
-                      {t('map.openFirst')}
-                    </button>
-                    <button type="button" className="btn" onClick={() => openConcept(c, true)}>
-                      {t('map.startAnyway')}
-                    </button>
+                    <span className="stats">{conceptStats(c, conceptLesson, t, course.mode === 'teacher')}</span>
+                    {c.needs.length > 0 && !unitDone(c, conceptLesson) && (
+                      <span className="stats needs" dir="auto">
+                        {t('map.needs')}{' '}
+                        {c.needs
+                          .map((id) => course.concepts.find((u) => u.id === id))
+                          .filter((u): u is Concept => u !== undefined)
+                          .map((u) => (course.mode === 'teacher' ? u.title : `${u.title} ${unmetNeeds(c).includes(u) ? '✗' : '✓'}`))
+                          .join(', ')}
+                      </span>
+                    )}
+                  </button>
+                  {held === c.id && (
+                    <div className="held small" role="status">
+                      <span dir="auto">{t('map.needsFirst', { titles: unmetNeeds(c).map((u) => u.title).join(', ') })}</span>
+                      <div className="row">
+                        <button type="button" className="btn primary" onClick={() => openConcept(unmetNeeds(c)[0])}>
+                          {t('map.openFirst')}
+                        </button>
+                        <button type="button" className="btn" onClick={() => openConcept(c, true)}>
+                          {t('map.startAnyway')}
+                        </button>
+                      </div>
+                    </div>
+                    )}
                   </div>
-                </div>
-              )}
-            </div>
+                )
+              })}
+            </details>
           )
         })}
       </nav>
