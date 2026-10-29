@@ -8,6 +8,8 @@ export type Course = {
   level: string | null
   archived: number
   mode: 'learner' | 'teacher'
+  cover: number
+  cover_alt: string | null
 }
 export type Message = { id: number; lesson_id: number; role: 'learner' | 'tutor'; text: string; created: string }
 export type QuestionData = { options: string[]; answer: string | null; multiple?: boolean }

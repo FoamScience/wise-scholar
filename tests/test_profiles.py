@@ -1804,3 +1804,35 @@ def test_renaming_a_course_changes_its_name_and_keeps_its_workspace():
         app.rename_course(course["id"], app.Topic(topic="   "))
     with pytest.raises(HTTPException, match="no such course"):
         app.rename_course(course["id"] + 1000, app.Topic(topic="x"))
+
+
+def test_a_course_with_a_map_gets_one_cover_drawn_out_of_sight_and_kept_with_its_copy(monkeypatch):
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Coverer')").lastrowid
+    course = db.create_course("Pumps", who)["id"]
+    started = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: started.append((lesson["phase"], line, quiet)))
+    assert asyncio.run(app.draw_cover(course)) == {"started": False}
+    db.set_concepts(course, [{"title": "M", "concepts": ["Impeller"], "known": []}])
+    assert asyncio.run(app.draw_cover(course)) == {"started": True}
+    assert started == [("interview", app.DRAW_COVER + "Topic: Pumps. Scope: none given. Course map:\nM:\n  - Impeller (not started)", True)]
+
+    assert asyncio.run(tutor.set_cover(course, '<svg viewBox="0 0 640 360"><use href="art:x"/></svg>', "a pump")).startswith("error: a cover has no art")
+    assert asyncio.run(tutor.set_cover(course, '<svg viewBox="0 0 640 360"/>', " ")) == "error: alt text is required"
+    drawn = '<svg viewBox="0 0 640 360" width="640"><rect width="640" height="360" fill="#e0efec" onclick="x()"/></svg>'
+    assert asyncio.run(tutor.set_cover(course, drawn, "event attributes")).startswith("error: event attributes")
+    assert asyncio.run(tutor.set_cover(course, drawn.replace(' onclick="x()"', "").replace("<rect", "<script/><rect"), "a pump")).startswith("error: scripts")
+    assert asyncio.run(tutor.set_cover(course, drawn.replace(' onclick="x()"', ""), "A volute pump.")) == "drawn"
+    cover = app.get_cover(course)
+    assert cover.media_type == "image/svg+xml" and cover.body.startswith(b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect')
+    assert asyncio.run(app.draw_cover(course)) == {"started": False}
+    listed = next(c for c in app.list_courses(who) if c["id"] == course)
+    assert listed["cover"] == 1 and listed["cover_alt"] == "A volute pump." and app._course(course)["cover"] == 1
+    assert db.course(db.copy_course(course, "Pumps again")["id"])["cover_alt"] == "A volute pump."
+    with pytest.raises(HTTPException, match="no cover"):
+        app.get_cover(db.create_course("Bare", who)["id"])

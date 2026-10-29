@@ -305,6 +305,7 @@ def _course(course_id: int) -> dict:
     lessons = db.rows("SELECT id FROM lessons WHERE course_id = ? ORDER BY id", course_id)
     return {
         **course,
+        "cover": int(course["cover"] is not None),
         "ranking": describe(course["ranking"]),
         "concepts": db.concept_view(course_id),
         "capstones": db.capstones(course_id),
@@ -852,7 +853,8 @@ def forget_fact(fact_id: int) -> None:
 @app.get("/api/courses")
 def list_courses(profile: int) -> list[dict]:
     return db.rows(
-        "SELECT id, topic, slug, mechanism, level, archived, mode FROM courses WHERE profile_id = ? ORDER BY id DESC",
+        "SELECT id, topic, slug, mechanism, level, archived, mode, cover IS NOT NULL AS cover, cover_alt FROM courses "
+        "WHERE profile_id = ? ORDER BY id DESC",
         profile,
     )
 
@@ -1140,6 +1142,35 @@ async def link_map(course_id: int) -> dict:
         return {"started": False}
     _start_turn(_lesson(interview["id"]), LINK_MAP + _map_outline(course_id, None), quiet=True)
     return {"started": True}
+
+
+DRAW_COVER = (
+    "[event] The course has no cover yet. Call set_cover once with a cover for it, drawn from its topic, scope and "
+    "map below. Ask nothing and write nothing in the chat; end the turn after the call.\n"
+)
+
+
+@app.post("/api/courses/{course_id}/cover")
+async def draw_cover(course_id: int) -> dict:
+    """A course with a map and no cover gets one drawn, in the interview's session, without a word to the learner.
+    Asked again while that runs, or after, it starts nothing."""
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    interview = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'interview' ORDER BY id LIMIT 1", course_id)
+    if course["cover"] or not db.concepts(course_id) or not interview or interview["id"] in _turns:
+        return {"started": False}
+    scope = f"Topic: {course['topic']}. Scope: {course['details'] or 'none given'}. Course map:\n"
+    _start_turn(_lesson(interview["id"]), DRAW_COVER + scope + _map_outline(course_id, None), quiet=True)
+    return {"started": True}
+
+
+@app.get("/api/courses/{course_id}/cover")
+def get_cover(course_id: int) -> Response:
+    course = db.course(course_id)
+    if not course or not course["cover"]:
+        raise HTTPException(404, "no cover")
+    return Response(course["cover"], media_type="image/svg+xml", headers={"Content-Security-Policy": "default-src 'none'"})
 
 
 @app.post("/api/courses/{course_id}/claims")
