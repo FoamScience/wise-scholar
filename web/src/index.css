@@ -1211,8 +1211,45 @@ a.btn.primary:hover {
   gap: var(--space-2xs);
 }
 
-.concept strong {
+.module {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.module summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-xs);
+  align-items: baseline;
   margin-top: var(--space-xs);
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-input);
+  list-style: none;
+  cursor: pointer;
+}
+
+.module summary:hover {
+  background: var(--panel);
+}
+
+.module summary::-webkit-details-marker {
+  display: none;
+}
+
+.module summary::after {
+  content: '▾' / '';
+  grid-row: 1;
+  grid-column: 2;
+  color: var(--muted);
+}
+
+.module[open] summary::after {
+  content: '▴' / '';
+}
+
+.module summary .capstone {
+  grid-column: 1 / -1;
 }
 
 .concept button {
