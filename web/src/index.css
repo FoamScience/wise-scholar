@@ -731,6 +731,10 @@ a.btn.primary:hover {
   cursor: pointer;
 }
 
+.map .concept > button {
+  padding-block: var(--space-xs);
+}
+
 .map > button:hover:enabled,
 .map .concept > button:hover:enabled {
   background: var(--color-paper-3);
@@ -1214,7 +1218,7 @@ a.btn.primary:hover {
 .module {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2xs);
+  gap: var(--space-xs);
 }
 
 .module summary {
