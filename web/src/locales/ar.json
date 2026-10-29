@@ -644,6 +644,31 @@
         "meaning": "بالمعنى",
         "both": "بالكلمات والمعنى"
       }
+    },
+    "hand": {
+      "addPhoto": "أضف صورة لعملك",
+      "takePhoto": "التقط صورة لعملك",
+      "usePhone": "استخدم هاتفك",
+      "hint": "حللتها على الورق؟ أضف صورًا؛ تُرسل مع إجابتك.",
+      "sending": "جارٍ الإرسال…",
+      "waiting_zero": "لا صور مع إجابتك",
+      "waiting_one": "صورة واحدة تُرسل مع إجابتك",
+      "waiting_two": "صورتان تُرسلان مع إجابتك",
+      "waiting_few": "{{count}} صور تُرسل مع إجابتك",
+      "waiting_many": "{{count}} صورة تُرسل مع إجابتك",
+      "waiting_other": "{{count}} صورة تُرسل مع إجابتك",
+      "remove": "احذف هذه الصورة",
+      "photoAlt": "صورة لعمل مكتوب باليد",
+      "phoneHeading": "أرسل الصور من هاتفك",
+      "phoneSteps": "امسح هذا الرمز بكاميرا هاتفك، والتقط صورة لكل صفحة، ثم اضغط «تم» هنا وأرسل إجابتك.",
+      "qrAlt": "رمز QR يفتح صفحة الصور على هاتفك",
+      "localAddress": "هذه الصفحة مفتوحة على عنوان محلي لا يصل إليه هاتفك. افتح التطبيق على عنوانه العام لاستخدام هاتفك.",
+      "openLink": "افتح الرابط",
+      "expires": "يعمل لمدة 15 دقيقة",
+      "pageHeading": "صور عملك",
+      "another": "التقط صورة أخرى",
+      "sentBack": "أُرسلت. الصور تنتظر على البطاقة في حاسوبك؛ أرسل إجابتك هناك.",
+      "task": "نص المهمة"
     }
   },
   "server": {
@@ -708,6 +733,10 @@
     "only a prepared course can be duplicated": "لا يمكن نسخ إلا دورة مُعدّة",
     "only the cards of a prepared course can be edited": "لا يمكن تعديل إلا بطاقات الدورة المُعدّة",
     "a choice quiz needs 2 to 5 options, one of them exactly the key": "سؤال الاختيار يحتاج من 2 إلى 5 خيارات، أحدها مطابق للمفتاح تمامًا",
-    "the designer is still answering in this course": "ما زال المصمّم يجيب في هذه الدورة"
+    "the designer is still answering in this course": "ما زال المصمّم يجيب في هذه الدورة",
+    "at most 6 photos go with one answer": "تُرفق 6 صور على الأكثر مع إجابة واحدة",
+    "a photo is limited to 25 MB": "حجم الصورة محدود بـ 25 ميغابايت",
+    "that file is not a photo this server can read (JPEG, PNG or WebP)": "هذا الملف ليس صورة يستطيع هذا الخادم قراءتها (JPEG أو PNG أو WebP)",
+    "this link has expired; show the QR code again on the card": "انتهت صلاحية هذا الرابط؛ اعرض رمز QR مرة أخرى على البطاقة"
   }
 }

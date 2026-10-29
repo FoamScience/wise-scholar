@@ -15,12 +15,13 @@ import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
-import { challengeLabel, lessonTitle, outlineOf, practiceTitle, searchHref } from './course'
+import { challengeLabel, lessonTitle, outlineOf, pendingPhotos, practiceTitle, searchHref } from './course'
 import { OutlineCard } from './Outline'
 import { PlacementAreas } from './Areas'
 import { GraphPage } from './Graph'
 import { SittingPage } from './Sitting'
 import { SearchPage } from './Search'
+import { HandPage, PhotoTray } from './Handwork'
 import { Comparison, HintList, Ladder } from './Ladder'
 import type { Area, Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
@@ -524,9 +525,11 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
   const open = !d.solved && d.solution === null && !props.authored
   const player = usePlayer(d.lang ?? '', props.speech)
 
+  const photos = pendingPhotos(d).length
+
   function submit(e: FormEvent) {
     e.preventDefault()
-    if (!text.trim()) return
+    if (!text.trim() && !photos) return
     props.onAct('attempt', { answer: text.trim() })
     setText('')
   }
@@ -546,7 +549,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
       <Comparison data={d} />
       {player.error && <div className="error">{player.error}</div>}
 
-      <Ladder data={d} />
+      <Ladder data={d} blockId={props.block.id} />
 
       {open && (
         <>
@@ -572,6 +575,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
+            {!d.spoken && <PhotoTray blockId={props.block.id} data={d} disabled={props.disabled} onError={props.onError} />}
             <div className="row">
               <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
               {d.spoken && props.speech && (
@@ -582,7 +586,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
                   limit={d.teachback ? 60 : undefined}
                 />
               )}
-              <button className="btn primary" disabled={props.disabled || !text.trim()}>
+              <button className="btn primary" disabled={props.disabled || (!text.trim() && !photos)}>
                 {t('challenge.submit')}
               </button>
             </div>
@@ -690,7 +694,7 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
   )
 }
 
-function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolean; authored: boolean; onAct: Act }) {
+function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolean; authored: boolean; onAct: Act; onError: (m: string) => void }) {
   const { t } = useTranslation()
   const d = props.block.data as ExerciseData
   const [files, setFiles] = useState<ExerciseFile[]>([])
@@ -749,6 +753,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
         <form onSubmit={(e) => e.preventDefault()}>
           <label htmlFor={`answer-${blockId}`}>{t('exercise.answer')}</label>
           <textarea id={`answer-${blockId}`} className="field" dir="auto" rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} />
+          <PhotoTray blockId={blockId} data={d} disabled={props.disabled} onError={props.onError} />
         </form>
       )}
 
@@ -787,7 +792,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       )}
       {error && <div className="error">{error}</div>}
 
-      <Ladder data={d} />
+      <Ladder data={d} blockId={blockId} />
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}
     </section>
   )
@@ -1653,6 +1658,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               commands={commands}
               authored={course.mode === 'teacher'}
               onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
+              onError={setError}
             />
           ) : b.kind === 'challenge' ? (
             <ChallengeCard
@@ -2019,10 +2025,12 @@ export default function App() {
   const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
   const book = hash.match(/^#\/course\/(\d+)\/book$/)
   const found = hash.match(/^#\/course\/(\d+)\/search\?(.*)$/)
+  const hand = hash.match(/^#\/hand\/([\w-]+)$/)
   const graph = hash.match(/^#\/graph(?:\?course=(\d+))?$/)
   const handout = hash.match(/^#\/lesson\/(\d+)\/handout\/(student|teacher)$/)
 
   function page() {
+    if (hand) return <HandPage key={hand[1]} token={hand[1]} />
     if (!profiles) return null
     if (!current)
       return (

@@ -605,6 +605,28 @@
         "meaning": "Par le sens",
         "both": "Mots et sens"
       }
+    },
+    "hand": {
+      "addPhoto": "Ajouter une photo de votre travail",
+      "takePhoto": "Photographier votre travail",
+      "usePhone": "Utiliser votre téléphone",
+      "hint": "Résolu sur papier ? Ajoutez des photos ; elles accompagnent votre réponse.",
+      "sending": "Envoi…",
+      "waiting_one": "{{count}} photo accompagne votre réponse",
+      "waiting_many": "{{count}} photos accompagnent votre réponse",
+      "waiting_other": "{{count}} photos accompagnent votre réponse",
+      "remove": "Retirer cette photo",
+      "photoAlt": "Photo d'un travail manuscrit",
+      "phoneHeading": "Envoyer des photos depuis votre téléphone",
+      "phoneSteps": "Scannez ce code avec l'appareil photo de votre téléphone, photographiez chaque page, puis appuyez sur Terminé ici et envoyez votre réponse.",
+      "qrAlt": "Code QR qui ouvre la page photo sur votre téléphone",
+      "localAddress": "Cette page est ouverte à une adresse locale, que votre téléphone ne peut pas atteindre. Ouvrez l'application à son adresse publique pour utiliser votre téléphone.",
+      "openLink": "Ouvrir le lien",
+      "expires": "il fonctionne 15 minutes",
+      "pageHeading": "Photos de votre travail",
+      "another": "Prendre une autre photo",
+      "sentBack": "Envoyé. Les photos attendent sur la carte de votre ordinateur ; envoyez votre réponse là-bas.",
+      "task": "L'énoncé"
     }
   },
   "server": {
@@ -669,6 +691,10 @@
     "only a prepared course can be duplicated": "seul un cours préparé peut être dupliqué",
     "only the cards of a prepared course can be edited": "seules les cartes d'un cours préparé peuvent être modifiées",
     "a choice quiz needs 2 to 5 options, one of them exactly the key": "une question à choix a besoin de 2 à 5 options, dont une exactement égale à la clé",
-    "the designer is still answering in this course": "le concepteur répond encore dans ce cours"
+    "the designer is still answering in this course": "le concepteur répond encore dans ce cours",
+    "at most 6 photos go with one answer": "au plus 6 photos accompagnent une réponse",
+    "a photo is limited to 25 MB": "une photo est limitée à 25 Mo",
+    "that file is not a photo this server can read (JPEG, PNG or WebP)": "ce fichier n'est pas une photo que ce serveur sait lire (JPEG, PNG ou WebP)",
+    "this link has expired; show the QR code again on the card": "ce lien a expiré ; affichez à nouveau le code QR sur la carte"
   }
 }
