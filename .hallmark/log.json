@@ -1,0 +1,24 @@
+[
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "app",
+  "shape": "app screen",
+  "theme": "brand",
+  "axes": "light/grotesk-sans/chromatic-teal",
+  "nav": "kept top bar, nav links beside the wordmark",
+  "footer": "none",
+  "signature": "the sitting agenda",
+  "sections": [
+   "today",
+   "review rail",
+   "courses",
+   "new course"
+  ],
+  "waived": [
+   "49b"
+  ],
+  "prompt": "tutor web app: daily sittings, lessons and reviews across courses",
+  "date": "2026-10-28"
+ }
+]

@@ -1,7 +1,11 @@
 import asyncio
+import ctypes
 import json
 import os
 import secrets
+import signal
+import socket
+import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -21,11 +25,27 @@ AUTH = ("opencode", secrets.token_urlsafe(24))
 CONFIG_DIR = ROOT / "data" / "opencode-config"
 
 _server: asyncio.subprocess.Process | None = None
+PR_SET_PDEATHSIG = 1
+
+
+def _die_with_parent() -> None:
+    """Linux: the opencode server goes when this process does, also on a kill that never reaches stop()."""
+    ctypes.CDLL(None).prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+
+
+def _taken(port: int) -> bool:
+    with socket.socket() as probe:
+        return probe.connect_ex(("127.0.0.1", port)) == 0
 
 
 async def start() -> None:
     """Run `opencode serve` with the repo's opencode.json; the user's plugins and Claude files stay out."""
     global _server
+    if _taken(OPENCODE_PORT):
+        raise RuntimeError(
+            f"port {OPENCODE_PORT} is already in use, likely by an opencode server left from an earlier run; "
+            "stop it, or set WISE_SCHOLAR_OPENCODE_PORT to a free port"
+        )
     log = open(ROOT / "data" / "opencode.log", "ab")
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     _server = await asyncio.create_subprocess_exec(
@@ -46,6 +66,7 @@ async def start() -> None:
         },
         stdout=log,
         stderr=log,
+        preexec_fn=_die_with_parent if sys.platform == "linux" else None,
     )
     async with httpx.AsyncClient(base_url=BASE, auth=AUTH) as client:
         for _ in range(100):
