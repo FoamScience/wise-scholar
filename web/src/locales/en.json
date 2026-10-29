@@ -587,6 +587,10 @@
         "card": "Cards",
         "chat": "Chats",
         "code": "Code"
+      },
+      "by": {
+        "meaning": "By meaning",
+        "both": "Words and meaning"
       }
     }
   },

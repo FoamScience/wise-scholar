@@ -14,7 +14,11 @@ from . import db
 
 MODEL = os.environ.get("WISE_SCHOLAR_SEARCH_MODEL", "minishlab/potion-multilingual-128M")
 KINDS = ("source", "card", "chat", "code")
-MEANING = 0.4  # cosine a passage needs to come up by meaning alone; unrelated text sits near 0.3 with this model
+# A passage comes up by meaning when its cosine is high both outright and against the query's other scores: how
+# high the scores run changes from query to query, and with this model unrelated text reaches 0.35 either way.
+MEANING = 0.35
+MEANING_Z = 3.0  # standard deviations above the mean score, checked from RELATIVE_FROM passages on (below, it cannot reach 3)
+RELATIVE_FROM = 50
 CANDIDATES = 50  # taken from each of the two rankings before they are fused
 FUSION = 60  # the k of reciprocal rank fusion
 SNIPPET = 200
@@ -144,8 +148,9 @@ def refresh(course_id: int) -> None:
 
 
 def search(course_id: int, query: str, n: int, kinds: tuple[str, ...] = KINDS) -> list[dict]:
-    """The course's passages of these kinds best matching the query by its words or its meaning, best first. A
-    snippet marks the matched words with MARK when the words matched; otherwise it is the passage's opening."""
+    """The course's passages of these kinds best matching the query by its words or its meaning, best first, each
+    with `by`: words, meaning or both. A snippet marks the matched words with MARK when the words matched; otherwise
+    it is the passage's opening."""
     if not query.strip():
         return []
     refresh(course_id)
@@ -174,7 +179,11 @@ def search(course_id: int, query: str, n: int, kinds: tuple[str, ...] = KINDS) -
             *best,
         )
     }
-    return [found[i] | {"snippet": snippets.get(i) or _opening(found[i]["text"])} for i in best]
+    close = set(meaning)
+    return [
+        found[i] | {"snippet": snippets.get(i) or _opening(found[i]["text"]), "by": "both" if i in close and i in snippets else "meaning" if i in close else "words"}
+        for i in best
+    ]
 
 
 def _by_meaning(query: str, among: str, course_id: int, kinds: tuple[str, ...]) -> list[int]:
@@ -184,7 +193,8 @@ def _by_meaning(query: str, among: str, course_id: int, kinds: tuple[str, ...]) 
     if not stored:
         return []
     scores = np.frombuffer(b"".join(p["vector"] for p in stored), dtype=np.float32).reshape(len(stored), -1) @ encode([query])[0]
-    return [stored[i]["id"] for i in np.argsort(-scores)[:CANDIDATES] if scores[i] >= MEANING]
+    floor = max(MEANING, scores.mean() + MEANING_Z * scores.std()) if len(stored) >= RELATIVE_FROM else MEANING
+    return [stored[i]["id"] for i in np.argsort(-scores)[:CANDIDATES] if scores[i] >= floor]
 
 
 def _keywords(query: str) -> str:

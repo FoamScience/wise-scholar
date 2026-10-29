@@ -2895,3 +2895,14 @@ pre {
 .hit pre {
   overflow-x: auto;
 }
+
+.hit .label .chip + .chip {
+  margin-inline-start: var(--space-xs);
+}
+
+.chip.by-meaning,
+.chip.by-both {
+  background: var(--amber-tint);
+  color: var(--amber);
+  font-weight: 500;
+}

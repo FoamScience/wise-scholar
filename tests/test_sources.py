@@ -69,6 +69,7 @@ def test_a_course_search_finds_its_cards_chats_and_code_and_follows_their_change
     hits = search.search(course["id"], "orientation outside", 5)
     assert hits[0]["kind"] == "card" and hits[0]["ref"] == str(card["id"]) and hits[0]["concept_id"] == concept
     assert [h["ref"] for h in search.search(course["id"], "outward", 5)] == ["faces/orient.py:1-2"]
+    assert search.search(course["id"], "explorer corner", 1)[0]["by"] == "both"
     found = asyncio.run(tutor.search_course(course["id"], "explorer corner"))
     assert found.startswith(f"chat {chat['id']} · Faces · learner: why does the [explorer] visit a [corner]")
     assert "nothing found" in asyncio.run(tutor.search_course(course["id"], "lattice"))
@@ -89,7 +90,7 @@ def test_without_model2vec_a_search_goes_by_words_and_vectors_come_once_it_is_in
     lesson = db.create_lesson(course["id"], "Shells", "lesson")
     db.add_message(lesson, "tutor", "The outer shell holds the valence electrons.")
     monkeypatch.setattr(search, "available", lambda: False)
-    assert [h["kind"] for h in search.search(course["id"], "valence", 3)] == ["chat"]
+    assert [(h["kind"], h["by"]) for h in search.search(course["id"], "valence", 3)] == [("chat", "words")]
     assert search.search(course["id"], "outermost electron layer", 3) == []
     assert db.row("SELECT vector FROM passages WHERE course_id = ?", course["id"])["vector"] is None
     monkeypatch.setattr(search, "available", lambda: True)

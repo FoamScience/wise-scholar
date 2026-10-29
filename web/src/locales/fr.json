@@ -600,6 +600,10 @@
         "card": "Cartes",
         "chat": "Échanges",
         "code": "Code"
+      },
+      "by": {
+        "meaning": "Par le sens",
+        "both": "Mots et sens"
       }
     }
   },
