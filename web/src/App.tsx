@@ -549,7 +549,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
       <Comparison data={d} />
       {player.error && <div className="error">{player.error}</div>}
 
-      <Ladder data={d} blockId={props.block.id} />
+      <Ladder data={d} blockId={props.block.id} onError={props.onError} />
 
       {open && (
         <>
@@ -792,7 +792,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       )}
       {error && <div className="error">{error}</div>}
 
-      <Ladder data={d} blockId={blockId} />
+      <Ladder data={d} blockId={blockId} onError={props.onError} />
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}
     </section>
   )

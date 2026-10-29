@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException, UploadFile
 from PIL import Image
 
-from wise_scholar import app, challenge, db, handwork, tutor
+from wise_scholar import app, challenge, db, handwork, search, tutor
 
 
 def _photo(width: int, height: int, orientation: int = 1, kind: str = "JPEG") -> bytes:
@@ -74,6 +74,23 @@ def test_photos_go_with_the_next_attempt_and_the_tutor_sees_them(monkeypatch, tm
         assert [c.type for c in result.content] == ["text", "image"] and result.content[1].mime_type == "image/jpeg"
     finally:
         tutor.turn_ended(lesson)
+
+    assert asyncio.run(tutor.transcribe_handwork(block, "Let $u = x^2$, so $du = 2x\\,dx$ and the integral is $\\sin(u)$.")) == (
+        "recorded; the learner sees it under their photos"
+    )
+    data = db.block(block)["data"]
+    assert data["transcripts"]["0"]["by"] == "tutor" and challenge.said(data).startswith("Let $u = x^2$")
+    assert asyncio.run(tutor.give_hint(block, "Check the factor in front.", ["$\\sin(u)$"])).startswith("shown as hint 1")
+    assert search.search(course, "integral", 3, ("card",))[0]["ref"] == str(block)
+
+    turns.clear()
+    corrected = asyncio.run(app.correct_reading(block, 0, app.Reading(text="Let $u = x^2$; the integral is $\\sin(u)/2$.")))
+    assert corrected["data"]["transcripts"]["0"] == {"text": "Let $u = x^2$; the integral is $\\sin(u)/2$.", "by": "learner"}
+    assert "corrected how you read their paper work for attempt 1" in turns[-1]
+    assert asyncio.run(tutor.transcribe_handwork(block, "something else")).startswith("refused: the learner corrected")
+    with pytest.raises(HTTPException) as unread:
+        asyncio.run(app.correct_reading(block, 3, app.Reading(text="x")))
+    assert unread.value.status_code == 404
 
     asyncio.run(app.attempt(block, app.Answer(answer="sin(x²)/2 + C")))
     assert "view_handwork" not in turns[-1]

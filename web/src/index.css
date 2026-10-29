@@ -3009,3 +3009,25 @@ dialog.handoff .qr {
   width: 120px;
   height: 120px;
 }
+
+.reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  margin-top: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-inline-start: 3px solid var(--line-strong);
+  background: var(--well);
+  border-radius: var(--radius-inner);
+}
+
+.reading .label {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+}
+
+.marked-reading {
+  margin: 0;
+  white-space: pre-wrap;
+}

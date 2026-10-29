@@ -39,3 +39,12 @@ def hint_blocker(data: dict) -> str | None:
     if len(data["hints"]) >= data["max_hints"]:
         return "the hint ladder is used up. Ask a guiding question in chat, or wait for another attempt or a give-up"
     return None
+
+
+def said(data: dict, attempt: int = -1) -> str:
+    """What the learner answered in an attempt: what they typed, and how the photos of their paper work were read."""
+    if not data["attempts"]:
+        return ""
+    index = attempt % len(data["attempts"])
+    reading = data.get("transcripts", {}).get(str(index), {}).get("text", "")
+    return "\n\n".join(part for part in (data["attempts"][index], reading) if part)

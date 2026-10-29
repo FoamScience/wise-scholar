@@ -957,9 +957,39 @@ async def view_handwork(block_id: int, attempt: int = 0) -> list[str | Image]:
     if not sent:
         return [f"error: attempt {attempt} came without photos; attempts with photos: {sorted({p['attempt'] + 1 for p in photos})}"]
     course_id = db.lesson(block["lesson_id"])["course_id"]
-    return [f"Attempt {wanted + 1}: {len(sent)} photo(s) of the learner's handwritten work, in the order they were taken."] + [
+    return [
+        f"Attempt {wanted + 1}: {len(sent)} photo(s) of the learner's handwritten work, in the order they were taken. "
+        f"Call transcribe_handwork({block_id}, ...) with what you read before you judge it."
+    ] + [
         Image(path=found) for p in sent if (found := handwork.path(course_id, block_id, p["name"]))
     ]
+
+
+@mcp.tool()
+async def transcribe_handwork(block_id: int, transcript: str, attempt: int = 0) -> str:
+    """Record how you read the photos of the learner's paper work for an attempt, right after view_handwork and
+    before you judge. attempt: counted from 1; 0 for the latest one that came with photos. The learner sees the
+    reading under their photos and may correct it; hint marks and the writing correction then work on it.
+
+    transcript: Markdown of everything on the paper, in its order. Text as written, keeping the learner's own errors
+    and wording. Math in $...$ or $$...$$. A diagram as a ```mermaid block where one fits (flowchart, graph, tree,
+    sequence), otherwise its parts and how they connect in a short list. A chart or plot as its axes, labels, the
+    values or points drawn and the shape of the curve. Crossed-out work as ~~struck~~. [unreadable] where you cannot
+    read it; do not guess there.
+    """
+    block = db.block(block_id)
+    data = (block or {}).get("data") or {}
+    sent = {p["attempt"] for p in data.get("photos", []) if p["attempt"] is not None}
+    if not sent:
+        return "error: no photos were sent with an attempt on this card"
+    index = attempt - 1 if attempt else max(sent)
+    if index not in sent:
+        return f"error: attempt {attempt} came without photos; attempts with photos: {sorted(i + 1 for i in sent)}"
+    readings = data.get("transcripts", {})
+    if readings.get(str(index), {}).get("by") == "learner":
+        return "refused: the learner corrected this reading themselves; judge from theirs"
+    _patch_block(block_id, {"transcripts": {**readings, str(index): {"text": transcript.strip(), "by": "tutor"}}})
+    return "recorded; the learner sees it under their photos"
 
 
 @mcp.tool()
@@ -977,7 +1007,7 @@ async def give_hint(challenge_id: int, hint: str, marks: list[str] = []) -> str:
         return data
     if problem := challenge.hint_blocker(data):
         return f"refused: {problem}"
-    last = data["attempts"][-1] if data["attempts"] else ""
+    last = challenge.said(data)
     if stray := [m for m in marks if m not in last]:
         return f"error: marks {stray} are not exact pieces of the learner's last attempt"
     _patch_block(challenge_id, {"hints": [*data["hints"], hint], "marks": marks})
@@ -1386,7 +1416,7 @@ async def pose_teachback(lesson_id: int, prompt: str, key_points: str) -> str:
 def _grade_teachback(data: dict, correct: bool) -> None:
     """A teach-back's outcome becomes a graded answer on its hidden card, so it counts toward mastery."""
     if card_id := data.get("card_id"):
-        answer_id = quiz.submit(db.card(card_id), data["attempts"][-1] if data["attempts"] else "", 0.5)
+        answer_id = quiz.submit(db.card(card_id), challenge.said(data), 0.5)
         quiz.grade(answer_id, correct)
 
 
@@ -1417,14 +1447,14 @@ def _note_practice_miss(challenge_id: int, data: dict, solution: str) -> None:
     origin = db.lesson(db.block(data["variant_of"])["lesson_id"])
     if origin["concept_id"]:
         db.pull_forward(origin["concept_id"], _now())
-    db.add_error(lesson["profile_id"], lesson["course_id"], "practice", block["markdown"], data["attempts"][-1] if data["attempts"] else "", solution)
+    db.add_error(lesson["profile_id"], lesson["course_id"], "practice", block["markdown"], challenge.said(data), solution)
 
 
 def _note_writing_error(challenge_id: int, data: dict, solution: str) -> None:
     """A corrected text goes into the error notebook with a review card that asks for the correction again."""
     block = db.block(challenge_id)
     lesson = db.lesson(block["lesson_id"])
-    said = data["attempts"][-1]
+    said = challenge.said(data)
     card_id = db.add_card(
         lesson["course_id"], lesson["concept_id"], f"Correct this text:\n\n> {said}", "open", [], solution,
         data["hints"][-1] if data["hints"] else "", scheduled=True, due=_now(),

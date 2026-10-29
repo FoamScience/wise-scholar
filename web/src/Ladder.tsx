@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next'
-import type { ChallengeData } from './course'
+import { type ChallengeData, saidIn } from './course'
 import { Correction } from './Diff'
-import { AttemptPhotos } from './Handwork'
+import { AttemptWork } from './Handwork'
 import Markdown from './Md'
 import { splitBy, textDirection } from './text'
 
-export function Ladder({ data: d, blockId }: { data: ChallengeData; blockId?: number }) {
+export function Ladder({ data: d, blockId, onError }: { data: ChallengeData; blockId?: number; onError?: (m: string) => void }) {
   const { t } = useTranslation()
   return (
     <>
@@ -17,7 +17,9 @@ export function Ladder({ data: d, blockId }: { data: ChallengeData; blockId?: nu
               piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text,
             )}
           </span>
-          {blockId !== undefined && <AttemptPhotos blockId={blockId} data={d} attempt={i} />}
+          {blockId !== undefined && (
+            <AttemptWork blockId={blockId} data={d} attempt={i} marks={i === d.attempts.length - 1 ? (d.marks ?? []) : []} onError={onError} />
+          )}
         </div>
       ))}
       <HintList data={d} />
@@ -42,7 +44,7 @@ export function HintList({ data: d }: { data: ChallengeData }) {
         <div className="solution">
           <div className="label">{d.writing ? t('common.correctedText') : t('common.solution')}</div>
           {d.writing && d.attempts.length > 0 ? (
-            <Correction attempt={d.attempts[d.attempts.length - 1]} corrected={d.solution} />
+            <Correction attempt={saidIn(d, d.attempts.length - 1)} corrected={d.solution} />
           ) : (
             <Markdown>{d.solution}</Markdown>
           )}
