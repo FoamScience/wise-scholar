@@ -2861,3 +2861,37 @@ pre {
     overflow-wrap: anywhere;
   }
 }
+
+.map-search .field {
+  width: 100%;
+}
+
+.search-form {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.search-form .field {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.search-page a.cat {
+  text-decoration: none;
+}
+
+.hit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.hit .snippet {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.hit pre {
+  overflow-x: auto;
+}

@@ -371,6 +371,29 @@ MIGRATIONS = [
     ALTER TABLE courses ADD COLUMN cover TEXT;
     ALTER TABLE courses ADD COLUMN cover_alt TEXT;
     """,
+    """
+    DROP TRIGGER source_sections_ai;
+    DROP TRIGGER source_sections_ad;
+    DROP TABLE source_fts;
+    CREATE TABLE passages (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('source', 'card', 'chat', 'code')),
+        ref TEXT NOT NULL,
+        lesson_id INTEGER,
+        title TEXT NOT NULL,
+        text TEXT NOT NULL,
+        vector BLOB,
+        UNIQUE (course_id, kind, ref)
+    );
+    CREATE VIRTUAL TABLE passage_fts USING fts5(title, text, content='passages', content_rowid='id');
+    CREATE TRIGGER passages_ai AFTER INSERT ON passages BEGIN
+        INSERT INTO passage_fts(rowid, title, text) VALUES (new.id, new.title, new.text);
+    END;
+    CREATE TRIGGER passages_ad AFTER DELETE ON passages BEGIN
+        INSERT INTO passage_fts(passage_fts, rowid, title, text) VALUES ('delete', old.id, old.title, old.text);
+    END;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -1248,17 +1271,6 @@ def finish_source(source_id: int, sections: list[tuple[str, str]], error: str | 
 def delete_source(source_id: int) -> None:
     conn.execute("DELETE FROM source_sections WHERE source_id = ?", (source_id,))
     conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
-
-
-def search_sources(course_id: int, query: str, n: int) -> list[dict]:
-    """Sections of the course's ready sources that match an FTS5 query, best first, with a short snippet.
-    Raises sqlite3.OperationalError on FTS5 syntax the query cannot parse."""
-    return rows(
-        "SELECT s.id, s.title, src.name, snippet(source_fts, 1, '[', ']', '…', 24) AS snippet "
-        "FROM source_fts JOIN source_sections s ON s.id = source_fts.rowid JOIN sources src ON src.id = s.source_id "
-        "WHERE source_fts MATCH ? AND src.course_id = ? AND src.status = 'ready' ORDER BY rank LIMIT ?",
-        query, course_id, n,
-    )
 
 
 def source_section(section_id: int) -> dict | None:

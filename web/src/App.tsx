@@ -15,11 +15,12 @@ import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
-import { challengeLabel, lessonTitle, outlineOf, practiceTitle } from './course'
+import { challengeLabel, lessonTitle, outlineOf, practiceTitle, searchHref } from './course'
 import { OutlineCard } from './Outline'
 import { PlacementAreas } from './Areas'
 import { GraphPage } from './Graph'
 import { SittingPage } from './Sitting'
+import { SearchPage } from './Search'
 import { Comparison, HintList, Ladder } from './Ladder'
 import type { Area, Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
@@ -1388,6 +1389,17 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             story={course.lang !== null}
           />
         )}
+        <form
+          className="map-search"
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const query = String(new FormData(e.currentTarget).get('q') ?? '')
+            if (query.trim()) location.hash = searchHref(course.id, query)
+          }}
+        >
+          <input type="search" name="q" className="field" dir="auto" aria-label={t('search.label')} placeholder={t('search.placeholder')} />
+        </form>
         <details ref={sideMenu} className="side-menu">
           <summary className="btn">{t('map.menu')}</summary>
           <div className="side-menu-panel">
@@ -2006,6 +2018,7 @@ export default function App() {
   const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing))?$/)
   const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
   const book = hash.match(/^#\/course\/(\d+)\/book$/)
+  const found = hash.match(/^#\/course\/(\d+)\/search\?(.*)$/)
   const graph = hash.match(/^#\/graph(?:\?course=(\d+))?$/)
   const handout = hash.match(/^#\/lesson\/(\d+)\/handout\/(student|teacher)$/)
 
@@ -2034,6 +2047,10 @@ export default function App() {
           start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
         />
       )
+    if (found) {
+      const params = new URLSearchParams(found[2])
+      return <SearchPage key={hash} courseId={Number(found[1])} query={params.get('q') ?? ''} kind={params.get('kind') ?? ''} />
+    }
     if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={pdf} sketched={current.sketch} />
     if (handout) return <Handout key={handout[0]} lessonId={Number(handout[1])} version={handout[2] as 'student' | 'teacher'} pdf={pdf} />
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />

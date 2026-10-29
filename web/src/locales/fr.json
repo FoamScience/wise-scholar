@@ -584,6 +584,23 @@
       "key": "Clé",
       "explanation": "Explication",
       "save": "Enregistrer"
+    },
+    "search": {
+      "label": "Chercher dans ce cours",
+      "placeholder": "Chercher cartes, échanges, code…",
+      "go": "Chercher",
+      "kinds": "Où chercher",
+      "searching": "Recherche…",
+      "none": "Rien trouvé. Essayez d'autres mots, ou décrivez ce que vous cherchez en une phrase.",
+      "openLesson": "Ouvrir la leçon",
+      "showPassage": "Afficher le passage",
+      "kind": {
+        "all": "Tout",
+        "source": "Vos fichiers",
+        "card": "Cartes",
+        "chat": "Échanges",
+        "code": "Code"
+      }
     }
   },
   "server": {

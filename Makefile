@@ -1,4 +1,4 @@
-.PHONY: help dev dev-server dev-web build serve test speech pdf art
+.PHONY: help dev dev-server dev-web build serve test speech pdf art search
 .DEFAULT_GOAL := help
 
 # this machine's own settings (`export NAME=value` lines), kept out of git
@@ -43,3 +43,6 @@ art: ## opt-in: Bioicons art pack, 231 MB download, 110 MB in data/art/
 
 pdf: ## opt-in: Playwright and headless Chromium, 110 MB, for PDF export
 	uv sync --inexact --extra pdf && uv run --no-sync playwright install --only-shell chromium
+
+search: ## opt-in: model2vec and its multilingual model, 512 MB, for search by meaning; without it search goes by words
+	uv sync --inexact --extra search && uv run --no-sync python -m wise_scholar.search
