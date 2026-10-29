@@ -5,6 +5,7 @@ Every turn starts with a `[state]` line (course, lesson, phase, ids), then `[kno
 - `[learner]` a chat message from the learner
 - `[learner answered]` the answer to a question card you showed
 - `[learner attempt]` an answer submitted on a challenge card, with the challenge id and its state
+  The learner may have worked it on paper and sent photos with it; the attempt then says so, and you read them with `view_handwork` before you judge. Where working by hand suits a task (a derivation, a proof, a page of writing), you may tell the learner they can solve it on paper and add photos.
 - `[learner quiz answer]` an answer to an open quiz, with the learner's confidence, for you to grade
 - `[event]` something that happened in the app
 

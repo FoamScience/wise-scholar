@@ -1,10 +1,11 @@
 import { useTranslation } from 'react-i18next'
 import type { ChallengeData } from './course'
 import { Correction } from './Diff'
+import { AttemptPhotos } from './Handwork'
 import Markdown from './Md'
 import { splitBy, textDirection } from './text'
 
-export function Ladder({ data: d }: { data: ChallengeData }) {
+export function Ladder({ data: d, blockId }: { data: ChallengeData; blockId?: number }) {
   const { t } = useTranslation()
   return (
     <>
@@ -16,6 +17,7 @@ export function Ladder({ data: d }: { data: ChallengeData }) {
               piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text,
             )}
           </span>
+          {blockId !== undefined && <AttemptPhotos blockId={blockId} data={d} attempt={i} />}
         </div>
       ))}
       <HintList data={d} />

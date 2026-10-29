@@ -592,6 +592,27 @@
         "meaning": "By meaning",
         "both": "Words and meaning"
       }
+    },
+    "hand": {
+      "addPhoto": "Add a photo of your work",
+      "takePhoto": "Take a photo of your work",
+      "usePhone": "Use your phone",
+      "hint": "Solved it on paper? Add photos; they go with your answer.",
+      "sending": "Sending…",
+      "waiting_one": "{{count}} photo goes with your answer",
+      "waiting_other": "{{count}} photos go with your answer",
+      "remove": "Remove this photo",
+      "photoAlt": "Photo of handwritten work",
+      "phoneHeading": "Send photos from your phone",
+      "phoneSteps": "Scan this code with your phone's camera, take a photo of each page, then press Done here and send your answer.",
+      "qrAlt": "QR code that opens the photo page on your phone",
+      "localAddress": "This page is open at a local address, which your phone cannot reach. Open the app at its public address to use your phone.",
+      "openLink": "Open the link",
+      "expires": "it works for 15 minutes",
+      "pageHeading": "Photos of your work",
+      "another": "Take another photo",
+      "sentBack": "Sent. They wait on the card on your computer; send your answer there.",
+      "task": "The task"
     }
   },
   "server": {}

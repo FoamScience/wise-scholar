@@ -2910,3 +2910,102 @@ pre {
   color: var(--amber);
   font-weight: 500;
 }
+
+/* photos of work done on paper */
+.photo-tray {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-block: var(--space-xs);
+  padding: var(--space-xs);
+  border: 1px dashed transparent;
+  border-radius: var(--radius-input);
+}
+
+.photo-tray.dragging {
+  border-color: var(--teal);
+  background: var(--teal-tint);
+}
+
+.photo-tray .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin: var(--space-2xs) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.photos li {
+  position: relative;
+}
+
+.photos img {
+  display: block;
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-inner);
+  background: var(--well);
+}
+
+.photos .remove {
+  position: absolute;
+  inset-block-start: -8px;
+  inset-inline-end: -8px;
+  width: 28px;
+  min-width: 0;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--panel);
+  line-height: 1;
+}
+
+dialog.handoff {
+  width: min(22rem, calc(100vw - 2 * var(--space-md)));
+  padding: var(--space-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  text-align: center;
+}
+
+dialog.handoff::backdrop {
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+
+dialog.handoff h2 {
+  margin-top: 0;
+  font-size: var(--text-section);
+}
+
+dialog.handoff .qr {
+  display: block;
+  width: 240px;
+  height: 240px;
+  margin: var(--space-sm) auto;
+  border-radius: var(--radius-inner);
+  background: #fff;
+}
+
+.hand-page .big {
+  min-height: 56px;
+  font-size: var(--text-md);
+}
+
+.hand-page .photos img {
+  width: 120px;
+  height: 120px;
+}

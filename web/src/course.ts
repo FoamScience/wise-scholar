@@ -33,6 +33,12 @@ export type ChallengeData = {
   lang?: string
   words?: [number, number] | null
   structure?: string
+  photos?: Photo[]
+}
+export type Photo = { name: string; attempt: number | null }
+
+export function pendingPhotos(data: ChallengeData): Photo[] {
+  return (data.photos ?? []).filter((p) => p.attempt === null)
 }
 export type Scored = { word: string; score: number }
 export type SpeakingData = ChallengeData & { speaking: 'read' | 'shadow'; lang: string; scores: { words: Scored[]; heard: string | null; score: number }[] }
