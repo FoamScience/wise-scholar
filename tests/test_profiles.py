@@ -3,7 +3,7 @@ import tempfile
 
 os.environ["WISE_SCHOLAR_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
 
-from wise_scholar import db  # noqa: E402
+from wise_scholar import db, search  # noqa: E402
 
 
 def test_facts_reviews_and_answers_stay_inside_their_profile():
@@ -1189,8 +1189,8 @@ def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tm
     assert db.rows("SELECT text FROM messages WHERE lesson_id = ?", lessons[1]["id"])[0]["text"] == "make it shorter"
     assert [f["text"] for f in db.facts(copy["id"])] == ["class of 28"]
     copied_source = db.sources(copy["id"])[0]
-    assert len(db.sources(copy["id"])) == 1 and copied_source["status"] == "ready" and db.search_sources(copy["id"], "Atoms", 1)[0]["title"].endswith("part 1")
-    assert db.search_sources(course, "Atoms", 2)[0]["title"].endswith("part 1") and len(db.sources(course)) == 2
+    assert len(db.sources(copy["id"])) == 1 and copied_source["status"] == "ready" and search.search(copy["id"], "Atoms", 1, ("source",))[0]["title"].endswith("part 1")
+    assert search.search(course, "Atoms", 2, ("source",))[0]["title"].endswith("part 1") and len(db.sources(course)) == 2
     assert (tmp_path / "sources" / str(copy["id"]) / f"{copied_source['id']}-syllabus.md").read_text() == "Atoms first."
     assert (db.workspace(new["slug"]) / "demo.py").read_text() == "print(1)"
     assert db.commands(who) == [] and db.graded_answers(who) == []

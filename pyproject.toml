@@ -23,6 +23,9 @@ pdf = [
     "playwright>=1.63.0",
     "pypdf>=6.19.0",
 ]
+search = [
+    "model2vec>=0.10.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -30,5 +33,6 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
+    "model2vec>=0.10.0",
     "pytest>=9.1.1",
 ]

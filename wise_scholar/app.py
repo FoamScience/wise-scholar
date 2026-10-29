@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 import httpx
 import simplemma
 
-from . import art, book, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, history, hub, obsidian, quiz, review, sandbox, sources, speech, tutor, vault, vocab
+from . import art, book, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, history, hub, obsidian, quiz, review, sandbox, search, sources, speech, tutor, vault, vocab
 from .backends import AGENT, BACKEND, MCP_SECRET, claude, opencode
 from .playbooks import describe
 
@@ -1220,6 +1220,22 @@ async def retake_placement(course_id: int) -> dict:
         "At the end call set_placement, then set_known for the existing course map instead of set_course_map.",
     )
     return view
+
+
+@app.get("/api/courses/{course_id}/search")
+def search_course(course_id: int, q: str = "", kind: Literal["", "source", "card", "chat", "code"] = "", n: int = 20) -> list[dict]:
+    """The course's sources, cards, chats and code best matching q, or only those of one kind, each with its snippet
+    cut into plain and matched parts."""
+    _course(course_id)
+    return [
+        {**{k: h[k] for k in ("kind", "ref", "lesson_id", "concept_id", "title", "text")}, "snippet": _parts(h["snippet"])}
+        for h in search.search(course_id, q, min(n, 50), (kind,) if kind else search.KINDS)
+    ]
+
+
+def _parts(snippet: str) -> list[tuple[str, bool]]:
+    pieces = re.split(f"{search.MARK[0]}(.*?){search.MARK[1]}", snippet)
+    return [(piece, i % 2 == 1) for i, piece in enumerate(pieces) if piece]
 
 
 @app.get("/api/courses/{course_id}/sources")

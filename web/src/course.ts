@@ -129,3 +129,12 @@ export function outlineOf(lesson: Lesson): OutlineData | null {
 export function sortItems(options: string[] | SortItem[]): SortItem[] {
   return options.filter((o): o is SortItem => typeof o !== 'string')
 }
+
+export const SEARCH_KINDS = ['source', 'card', 'chat', 'code'] as const
+export type SearchKind = (typeof SEARCH_KINDS)[number]
+
+export function searchHref(courseId: number, query: string, kind: SearchKind | '' = '') {
+  const params = new URLSearchParams({ q: query })
+  if (kind) params.set('kind', kind)
+  return `#/course/${courseId}/search?${params}`
+}

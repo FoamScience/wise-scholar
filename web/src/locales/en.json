@@ -571,6 +571,23 @@
       "key": "Key",
       "explanation": "Explanation",
       "save": "Save"
+    },
+    "search": {
+      "label": "Search this course",
+      "placeholder": "Search cards, chats, code…",
+      "go": "Search",
+      "kinds": "What to search",
+      "searching": "Searching…",
+      "none": "Nothing found. Try other words, or say what you are looking for in a sentence.",
+      "openLesson": "Open the lesson",
+      "showPassage": "Show the passage",
+      "kind": {
+        "all": "All",
+        "source": "Your files",
+        "card": "Cards",
+        "chat": "Chats",
+        "code": "Code"
+      }
     }
   },
   "server": {}
