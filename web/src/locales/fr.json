@@ -631,6 +631,24 @@
       "readByYou": "Votre lecture de votre feuille",
       "fixReading": "Corriger la lecture",
       "saveReading": "Enregistrer la lecture"
+    },
+    "pad": {
+      "open": "Écrire à l'écran",
+      "label": "Page d'écriture",
+      "tools": "Outils d'écriture",
+      "task": "Énoncé",
+      "pen": "Stylo",
+      "eraser": "Gomme",
+      "undo": "Annuler",
+      "clear": "Effacer la page",
+      "previous": "Page précédente",
+      "next": "Page suivante",
+      "newPage": "Nouvelle page",
+      "page": "Page {{n}} sur {{total}}",
+      "close": "Fermer",
+      "send_one": "Ajouter {{count}} page à la réponse",
+      "send_many": "Ajouter {{count}} pages à la réponse",
+      "send_other": "Ajouter {{count}} pages à la réponse"
     }
   },
   "server": {

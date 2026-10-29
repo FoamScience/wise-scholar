@@ -617,6 +617,23 @@
       "readByYou": "Your reading of your paper",
       "fixReading": "Correct the reading",
       "saveReading": "Save the reading"
+    },
+    "pad": {
+      "open": "Write on screen",
+      "label": "Writing page",
+      "tools": "Writing tools",
+      "task": "Task",
+      "pen": "Pen",
+      "eraser": "Eraser",
+      "undo": "Undo",
+      "clear": "Clear page",
+      "previous": "Previous page",
+      "next": "Next page",
+      "newPage": "New page",
+      "page": "Page {{n}} of {{total}}",
+      "close": "Close",
+      "send_one": "Add {{count}} page to the answer",
+      "send_other": "Add {{count}} pages to the answer"
     }
   },
   "server": {}

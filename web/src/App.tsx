@@ -575,7 +575,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
-            {!d.spoken && <PhotoTray blockId={props.block.id} data={d} disabled={props.disabled} onError={props.onError} />}
+            {!d.spoken && <PhotoTray blockId={props.block.id} task={props.block.markdown} data={d} disabled={props.disabled} onError={props.onError} />}
             <div className="row">
               <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
               {d.spoken && props.speech && (
@@ -753,7 +753,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
         <form onSubmit={(e) => e.preventDefault()}>
           <label htmlFor={`answer-${blockId}`}>{t('exercise.answer')}</label>
           <textarea id={`answer-${blockId}`} className="field" dir="auto" rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} />
-          <PhotoTray blockId={blockId} data={d} disabled={props.disabled} onError={props.onError} />
+          <PhotoTray blockId={blockId} task={props.block.markdown} data={d} disabled={props.disabled} onError={props.onError} />
         </form>
       )}
 
