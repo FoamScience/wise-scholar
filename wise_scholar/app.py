@@ -1228,7 +1228,7 @@ def search_course(course_id: int, q: str = "", kind: Literal["", "source", "card
     cut into plain and matched parts."""
     _course(course_id)
     return [
-        {**{k: h[k] for k in ("kind", "ref", "lesson_id", "concept_id", "title", "text")}, "snippet": _parts(h["snippet"])}
+        {**{k: h[k] for k in ("kind", "ref", "lesson_id", "concept_id", "title", "text", "by")}, "snippet": _parts(h["snippet"])}
         for h in search.search(course_id, q, min(n, 50), (kind,) if kind else search.KINDS)
     ]
 

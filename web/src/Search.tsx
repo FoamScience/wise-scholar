@@ -12,6 +12,7 @@ type Hit = {
   title: string
   text: string
   snippet: [string, boolean][]
+  by: 'words' | 'meaning' | 'both'
 }
 
 /** The course's sources, lesson cards, chats and code found by their words or their meaning. */
@@ -58,6 +59,7 @@ export function SearchPage({ courseId, query, kind: asked }: { courseId: number;
         <section key={`${h.kind}-${h.ref}`} className="block hit">
           <div className="label">
             <span className="chip">{t(`search.kind.${h.kind}`)}</span> <span dir="auto">{h.kind === 'code' ? h.ref : h.title}</span>
+            {h.by !== 'words' && <span className={`chip by-${h.by}`}>{t(`search.by.${h.by}`)}</span>}
           </div>
           <p dir="auto" className="snippet">
             {h.snippet.map(([piece, matched], i) => (matched ? <mark key={i}>{piece}</mark> : piece))}
