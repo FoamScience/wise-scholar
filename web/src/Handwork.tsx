@@ -4,11 +4,14 @@ import QRCode from 'qrcode'
 import { api, failure } from './api'
 import { type ChallengeData, pendingPhotos } from './course'
 import Markdown from './Md'
+import { Sketchpad } from './Sketchpad'
 import { splitBy } from './text'
 
 const photoUrl = (blockId: number, name: string) => `/api/blocks/${blockId}/photos/${name}`
 // a phone's own camera is one tap away, so the QR code is only offered where the pointer is a mouse
 const phone = () => matchMedia('(pointer: coarse)').matches
+// a screen that takes a finger or a stylus can be written on directly
+const touchscreen = () => matchMedia('(any-pointer: coarse)').matches
 
 async function send(url: string, file: File) {
   const form = new FormData()
@@ -19,12 +22,13 @@ async function send(url: string, file: File) {
 }
 
 /** Photos of work done on paper, waiting to go with the next answer: added from a file, a drop, the camera or a phone. */
-export function PhotoTray(props: { blockId: number; data: ChallengeData; disabled: boolean; onError: (m: string) => void }) {
+export function PhotoTray(props: { blockId: number; task: string; data: ChallengeData; disabled: boolean; onError: (m: string) => void }) {
   const { t } = useTranslation()
   const input = useRef<HTMLInputElement>(null)
   const [sending, setSending] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [link, setLink] = useState('')
+  const [writing, setWriting] = useState(false)
   const pending = pendingPhotos(props.data)
 
   async function add(files: FileList | File[]) {
@@ -88,6 +92,11 @@ export function PhotoTray(props: { blockId: number; data: ChallengeData; disable
         <button type="button" className="btn" disabled={props.disabled} onClick={() => input.current?.click()}>
           {t(phone() ? 'hand.takePhoto' : 'hand.addPhoto')}
         </button>
+        {touchscreen() && (
+          <button type="button" className="btn" disabled={props.disabled} onClick={() => setWriting(true)}>
+            {t('pad.open')}
+          </button>
+        )}
         {!phone() && (
           <button
             type="button"
@@ -105,6 +114,17 @@ export function PhotoTray(props: { blockId: number; data: ChallengeData; disable
         )}
         <span className="small muted">{sending > 0 ? t('hand.sending') : pending.length > 0 ? t('hand.waiting', { count: pending.length }) : t('hand.hint')}</span>
       </div>
+      {writing && (
+        <Sketchpad
+          blockId={props.blockId}
+          task={props.task}
+          onClose={() => setWriting(false)}
+          onSend={(pages) => {
+            setWriting(false)
+            add(pages)
+          }}
+        />
+      )}
       {link && <PhoneHandoff link={link} count={pending.length} onClose={() => setLink('')} />}
     </div>
   )
