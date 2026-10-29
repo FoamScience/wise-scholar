@@ -8,7 +8,7 @@ Everything the [README](../README.md) leaves out: prerequisites, backends, optio
 - Node.js with npm
 - One agent backend:
   - [Claude Code](https://claude.com/claude-code), logged in (`claude` on your `PATH`), or
-  - [opencode](https://opencode.ai), with a provider configured (`opencode` on your `PATH`)
+  - [opencode](https://opencode.ai) 2 or newer, with a provider configured (`opencode` on your `PATH`)
 - [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`, Linux), for the sandbox that commands run in
 
 > [!NOTE]

@@ -14,8 +14,11 @@ ROOT = Path(__file__).resolve().parents[2]
 OPENCODE_PORT = int(os.environ.get("WISE_SCHOLAR_OPENCODE_PORT", "8322"))
 BASE = f"http://127.0.0.1:{OPENCODE_PORT}"
 MCP_PREFIX = "scholar_"
-# opencode serve answers anyone who reaches its port; a password known only to this process keeps it ours.
-AUTH = ("wise-scholar", secrets.token_urlsafe(24))
+# opencode serve answers anyone who reaches its port; a password known only to this process keeps it ours. The
+# user name is fixed by opencode.
+AUTH = ("opencode", secrets.token_urlsafe(24))
+# opencode's own config folder for this server, empty: the user's plugins, agents and AGENTS.md stay out.
+CONFIG_DIR = ROOT / "data" / "opencode-config"
 
 _server: asyncio.subprocess.Process | None = None
 
@@ -24,8 +27,9 @@ async def start() -> None:
     """Run `opencode serve` with the repo's opencode.json; the user's plugins and Claude files stay out."""
     global _server
     log = open(ROOT / "data" / "opencode.log", "ab")
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     _server = await asyncio.create_subprocess_exec(
-        "opencode", "serve", "--pure", "--port", str(OPENCODE_PORT),
+        "opencode", "serve", "--port", str(OPENCODE_PORT),
         cwd=ROOT,
         env={
             # Its own settings and the keys of the model providers it may call; nothing else of the server's.
@@ -33,8 +37,11 @@ async def start() -> None:
                           "MISTRAL_*", "DEEPSEEK_*", "XAI_*", "TOGETHER_*", "FIREWORKS_*", "OLLAMA_*", "AZURE_*", "AWS_*"),
             "OPENCODE_CONFIG": str(ROOT / "opencode.json"),
             "OPENCODE_CONFIG_CONTENT": json.dumps({"mcp": {"scholar": {"type": "remote", "url": MCP_URL, "enabled": True, "headers": MCP_HEADERS}}}),
+            "OPENCODE_CONFIG_DIR": str(CONFIG_DIR),
+            # an opencode.json or .opencode/ a command plants in a session's folder is not read
+            "OPENCODE_DISABLE_PROJECT_CONFIG": "1",
             "OPENCODE_DISABLE_CLAUDE_CODE": "1",
-            "OPENCODE_SERVER_USERNAME": AUTH[0],
+            "OPENCODE_DISABLE_AUTOUPDATE": "1",
             "OPENCODE_SERVER_PASSWORD": AUTH[1],
         },
         stdout=log,
@@ -45,7 +52,7 @@ async def start() -> None:
             if _server.returncode is not None:
                 raise RuntimeError(f"opencode serve exited with code {_server.returncode}; see data/opencode.log")
             try:
-                await client.get("/global/health")
+                (await client.get("/api/info")).raise_for_status()
                 return
             except httpx.TransportError:
                 await asyncio.sleep(0.2)
@@ -60,36 +67,28 @@ async def stop() -> None:
 
 
 class EventParser:
-    """Turn the opencode event stream of one session into UI events."""
+    """Turn the opencode event stream, which carries every session, into the UI events of one session."""
 
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.assistant_messages: set[str] = set()
-        self.text_parts: set[str] = set()
-        self.tool_parts: set[str] = set()
 
     def feed(self, event: dict) -> list[dict]:
-        kind, p = event["type"], event.get("properties", {})
-        if p.get("sessionID") != self.session_id:
+        kind, d = event["type"], event.get("data") or {}
+        if d.get("sessionID") != self.session_id:
             return []
-        if kind == "message.updated" and p["info"]["role"] == "assistant":
-            self.assistant_messages.add(p["info"]["id"])
-        elif kind == "message.part.updated" and p["part"]["messageID"] in self.assistant_messages:
-            part = p["part"]
-            if part["type"] == "text" and part["id"] not in self.text_parts:
-                self.text_parts.add(part["id"])
-                return [{"type": "chat.break"}]
-            if part["type"] == "tool" and part["id"] not in self.tool_parts:
-                self.tool_parts.add(part["id"])
-                return [{"type": "activity", "tool": part["tool"].removeprefix(MCP_PREFIX).lower()}]
-        elif kind == "message.part.delta" and p["partID"] in self.text_parts and p["field"] == "text":
-            return [{"type": "chat.delta", "text": p["delta"]}]
-        elif kind == "session.error":
-            error = p.get("error") or {}
-            message = (error.get("data") or {}).get("message") or error.get("name") or "opencode reported an error"
-            return [{"type": "turn.done", "ok": False, "error": message}]
-        elif kind == "session.idle":
+        if kind == "session.text.started":
+            return [{"type": "chat.break"}]
+        if kind == "session.text.delta":
+            return [{"type": "chat.delta", "text": d["delta"]}]
+        if kind == "session.tool.input.started":
+            return [{"type": "activity", "tool": d["name"].removeprefix(MCP_PREFIX).lower()}]
+        if kind == "session.execution.succeeded":
             return [{"type": "turn.done", "ok": True, "error": None}]
+        if kind in ("session.execution.failed", "session.error"):
+            error = d.get("error") or {}
+            return [{"type": "turn.done", "ok": False, "error": error.get("message") or error.get("type") or "opencode reported an error"}]
+        if kind == "session.execution.interrupted":
+            return [{"type": "turn.done", "ok": False, "error": "the turn was interrupted"}]
         return []
 
 
@@ -102,32 +101,38 @@ async def run_turn(
     # write there. A file planted in the workspace could hand the agent its built-in shell back.
     directory = db.DB_PATH.parent / "agents" / cwd.name
     directory.mkdir(parents=True, exist_ok=True)
-    params = {"directory": str(directory)}
-    body: dict = {"agent": f"tutor-{phase}", "parts": [{"type": "text", "text": prompt}]}
-    if MODEL:
-        provider, _, model = MODEL.partition("/")
-        body["model"] = {"providerID": provider, "modelID": model}
     async with httpx.AsyncClient(base_url=BASE, timeout=None, auth=AUTH) as client:
         async def create() -> str:
-            created = await client.post("/session", params=params, json={"title": name})
+            created = await client.post("/api/session", json={"title": name, "location": {"directory": str(directory)}})
             created.raise_for_status()
-            return created.json()["id"]
+            return created.json()["data"]["id"]
+
+        async def prepare(session: str) -> httpx.Response:
+            """The session's agent and model for this turn; a phase change between turns picks another agent."""
+            chosen = await client.post(f"/api/session/{session}/agent", json={"agent": f"tutor-{phase}"})
+            if chosen.status_code < 400 and MODEL:
+                provider, _, model = MODEL.partition("/")
+                chosen = await client.post(f"/api/session/{session}/model", json={"model": {"id": model, "providerID": provider}})
+            return chosen
 
         if not resume:
             session_id = await create()
             yield {"type": "session.started", "session_id": session_id}
+        prepared = await prepare(session_id)
+        if resume and prepared.status_code == 404:
+            # A session opencode no longer has (one from opencode 1, or from before the move out of the workspace):
+            # the lesson goes on in a fresh one, and the state header of every turn carries it over.
+            session_id = await create()
+            yield {"type": "session.started", "session_id": session_id}
+            prepared = await prepare(session_id)
+        if prepared.status_code >= 400:
+            yield {"type": "turn.done", "ok": False, "error": f"opencode refused the turn: {prepared.text[:300]}"}
+            return
         parser = EventParser(session_id)
         finished = False
         try:
-            async with client.stream("GET", "/event", params=params) as events:
-                sent = await client.post(f"/session/{session_id}/prompt_async", params=params, json=body)
-                if resume and sent.status_code >= 400:
-                    # A session from before the move out of the workspace is not found here: the lesson goes on in
-                    # a fresh one, and the state header of every turn carries it over.
-                    session_id = await create()
-                    yield {"type": "session.started", "session_id": session_id}
-                    parser = EventParser(session_id)
-                    sent = await client.post(f"/session/{session_id}/prompt_async", params=params, json=body)
+            async with client.stream("GET", "/api/event") as events:
+                sent = await client.post(f"/api/session/{session_id}/prompt", json={"text": prompt})
                 if sent.status_code >= 400:
                     finished = True
                     yield {"type": "turn.done", "ok": False, "error": f"opencode refused the turn: {sent.text[:300]}"}
@@ -142,4 +147,4 @@ async def run_turn(
                             return
         finally:
             if not finished:
-                await asyncio.shield(client.post(f"/session/{session_id}/abort", params=params))
+                await asyncio.shield(client.post(f"/api/session/{session_id}/interrupt", json={}))
