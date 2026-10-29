@@ -626,7 +626,11 @@
       "pageHeading": "Photos de votre travail",
       "another": "Prendre une autre photo",
       "sentBack": "Envoyé. Les photos attendent sur la carte de votre ordinateur ; envoyez votre réponse là-bas.",
-      "task": "L'énoncé"
+      "task": "L'énoncé",
+      "readByTutor": "Ce que le tuteur a lu sur votre feuille",
+      "readByYou": "Votre lecture de votre feuille",
+      "fixReading": "Corriger la lecture",
+      "saveReading": "Enregistrer la lecture"
     }
   },
   "server": {

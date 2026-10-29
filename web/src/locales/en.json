@@ -612,7 +612,11 @@
       "pageHeading": "Photos of your work",
       "another": "Take another photo",
       "sentBack": "Sent. They wait on the card on your computer; send your answer there.",
-      "task": "The task"
+      "task": "The task",
+      "readByTutor": "How the tutor read your paper",
+      "readByYou": "Your reading of your paper",
+      "fixReading": "Correct the reading",
+      "saveReading": "Save the reading"
     }
   },
   "server": {}

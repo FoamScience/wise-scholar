@@ -34,8 +34,14 @@ export type ChallengeData = {
   words?: [number, number] | null
   structure?: string
   photos?: Photo[]
+  transcripts?: Record<string, { text: string; by: 'tutor' | 'learner' }>
 }
 export type Photo = { name: string; attempt: number | null }
+
+/** What the learner answered in an attempt: what they typed, and how the photos of their paper work were read. */
+export function saidIn(data: ChallengeData, attempt: number): string {
+  return [data.attempts[attempt], data.transcripts?.[attempt]?.text].filter(Boolean).join('\n\n')
+}
 
 export function pendingPhotos(data: ChallengeData): Photo[] {
   return (data.photos ?? []).filter((p) => p.attempt === null)

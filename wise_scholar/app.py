@@ -1531,6 +1531,33 @@ def get_photo(block_id: int, name: str) -> FileResponse:
     return FileResponse(found, media_type="image/jpeg")
 
 
+class Reading(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
+
+
+@app.post("/api/blocks/{block_id}/transcripts/{attempt}")
+async def correct_reading(block_id: int, attempt: int, body: Reading) -> dict:
+    """The learner's own correction of how the tutor read the photos of an attempt (counted from 0). On an open
+    challenge the tutor judges again from it."""
+    block = db.block(block_id)
+    if not block or block["kind"] not in ("challenge", "exercise"):
+        raise HTTPException(404, "no such challenge or exercise")
+    _require_answerable(block)
+    _require_idle(block["lesson_id"])
+    readings = block["data"].get("transcripts", {})
+    if str(attempt) not in readings:
+        raise HTTPException(404, "the tutor has not read that attempt's photos")
+    text = body.text.strip()
+    lesson, block = _update_block(block, {"transcripts": {**readings, str(attempt): {"text": text, "by": "learner"}}})
+    if challenge.is_open(block["data"]):
+        _start_turn(
+            lesson,
+            f"[event] The learner corrected how you read their paper work for attempt {attempt + 1} of {_challenge_state(block)}. "
+            f"Judge that attempt again from their reading:\n{_untrusted(text)}",
+        )
+    return block
+
+
 @app.post("/api/blocks/{block_id}/handoff")
 async def hand_off(block_id: int) -> dict:
     """A token for the phone page that sends photos to this card, shown as a QR code."""

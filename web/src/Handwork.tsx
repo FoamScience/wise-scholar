@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import { api, failure } from './api'
 import { type ChallengeData, pendingPhotos } from './course'
 import Markdown from './Md'
+import { splitBy } from './text'
 
 const photoUrl = (blockId: number, name: string) => `/api/blocks/${blockId}/photos/${name}`
 // a phone's own camera is one tap away, so the QR code is only offered where the pointer is a mouse
@@ -142,21 +143,68 @@ function PhoneHandoff(props: { link: string; count: number; onClose: () => void 
   )
 }
 
-/** The photos that went with one attempt, under it in the ladder. */
-export function AttemptPhotos(props: { blockId: number; data: ChallengeData; attempt: number }) {
+/** The photos that went with one attempt, under it in the ladder, with how the tutor read them. */
+export function AttemptWork(props: { blockId: number; data: ChallengeData; attempt: number; marks: string[]; onError?: (m: string) => void }) {
   const { t } = useTranslation()
+  const [draft, setDraft] = useState<string | null>(null)
   const sent = (props.data.photos ?? []).filter((p) => p.attempt === props.attempt)
+  const reading = props.data.transcripts?.[props.attempt]
   if (sent.length === 0) return null
+  const marked = reading ? props.marks.filter((m) => reading.text.includes(m)) : []
   return (
-    <ul className="photos">
-      {sent.map((p) => (
-        <li key={p.name}>
-          <a href={photoUrl(props.blockId, p.name)} target="_blank" rel="noreferrer">
-            <img src={photoUrl(props.blockId, p.name)} alt={t('hand.photoAlt')} />
-          </a>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="photos">
+        {sent.map((p) => (
+          <li key={p.name}>
+            <a href={photoUrl(props.blockId, p.name)} target="_blank" rel="noreferrer">
+              <img src={photoUrl(props.blockId, p.name)} alt={t('hand.photoAlt')} />
+            </a>
+          </li>
+        ))}
+      </ul>
+      {reading && (
+        <div className="reading">
+          <div className="label">
+            {t(reading.by === 'learner' ? 'hand.readByYou' : 'hand.readByTutor')}
+            {draft === null && (
+              <button type="button" className="link" onClick={() => setDraft(reading.text)}>
+                {t('hand.fixReading')}
+              </button>
+            )}
+          </div>
+          {draft !== null ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                api(`/api/blocks/${props.blockId}/transcripts/${props.attempt}`, { text: draft }).then(
+                  () => setDraft(null),
+                  (err: Error) => props.onError?.(err.message),
+                )
+              }}
+            >
+              <textarea className="field" dir="auto" rows={6} value={draft} onChange={(e) => setDraft(e.target.value)} />
+              <div className="row">
+                <button type="button" className="btn" onClick={() => setDraft(null)}>
+                  {t('common.cancel')}
+                </button>
+                <button className="btn primary" disabled={!draft.trim()}>
+                  {t('hand.saveReading')}
+                </button>
+              </div>
+            </form>
+          ) : marked.length > 0 ? (
+            // a hint's marks point at pieces of the reading, so it shows as text with them
+            <p className="marked-reading" dir="auto">
+              {splitBy(reading.text, marked).map((piece, j) => (piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text))}
+            </p>
+          ) : (
+            <div dir="auto">
+              <Markdown>{reading.text}</Markdown>
+            </div>
+          )}
+        </div>
+      )}
+    </>
   )
 }
 

@@ -3,6 +3,7 @@ passage is kept with its text and, once `make search` installed model2vec, a vec
 passages up to date first, so nothing has to be told when a card, a message or a file changes. Without model2vec
 the search goes by the words alone."""
 import importlib.util
+import json
 import os
 import re
 import threading
@@ -90,11 +91,13 @@ def _wanted(course: dict) -> dict[tuple[str, str], tuple[int | None, str, str]]:
         )
     }
     for b in db.rows(
-        "SELECT b.id, b.kind, b.markdown, l.id AS lesson_id, l.title FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+        "SELECT b.id, b.kind, b.markdown, b.data, l.id AS lesson_id, l.title FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
         "WHERE l.course_id = ? AND trim(b.markdown) != ''",
         course["id"],
     ):
-        wanted["card", str(b["id"])] = (b["lesson_id"], f"{b['title']} · {b['kind']}", b["markdown"])
+        # how the photos of the learner's paper work were read is part of the card
+        readings = [r["text"] for r in (json.loads(b["data"]) if b["data"] else {}).get("transcripts", {}).values()]
+        wanted["card", str(b["id"])] = (b["lesson_id"], f"{b['title']} · {b['kind']}", "\n\n".join([b["markdown"], *readings]))
     for m in db.rows(
         "SELECT m.id, m.role, m.text, l.id AS lesson_id, l.title FROM messages m JOIN lessons l ON l.id = m.lesson_id "
         "WHERE l.course_id = ? AND trim(m.text) != ''",
