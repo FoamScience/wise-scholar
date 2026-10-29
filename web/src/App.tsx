@@ -1494,7 +1494,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               <summary>
                 <strong dir="auto">{module}</strong>
                 {projects.map((k) => (
-                  <div key={k.id} className="capstone" title={k.brief}>
+                  <div key={k.id} className={k.done === k.milestones.length ? 'capstone done' : 'capstone'} title={k.brief}>
                     <span className="small">{t('map.project', { title: k.title })}</span>
                     <progress value={k.done} max={k.milestones.length} />
                     <span className="small">{t('map.milestones', { done: k.done, total: k.milestones.length })}</span>
