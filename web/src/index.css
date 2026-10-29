@@ -397,7 +397,7 @@ a.btn.primary:hover {
 .home.desk {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  max-width: var(--page);
+  max-width: none;
 }
 
 .desk-main {
@@ -431,6 +431,7 @@ a.btn.primary:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
+  max-width: var(--measure);
 }
 
 .topic-form label {
@@ -483,7 +484,7 @@ a.btn.primary:hover {
   flex-direction: column;
   gap: var(--space-2xs);
   min-height: 100%;
-  padding: var(--space-md) var(--space-2xl) var(--space-md) var(--space-md);
+  padding-bottom: var(--space-md);
   border-radius: var(--radius-card);
   color: var(--ink);
   text-decoration: none;
@@ -502,6 +503,31 @@ a.btn.primary:hover {
 .course-card .chip {
   margin-inline-start: var(--space-xs);
   vertical-align: 1px;
+}
+
+.course-card > a > :not(.cover) {
+  padding-inline: var(--space-md);
+}
+
+.course-card .cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-bottom: var(--space-xs);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--teal-tint);
+  object-fit: cover;
+}
+
+.course-card .menu {
+  top: var(--space-xs);
+  inset-inline-end: var(--space-xs);
+}
+
+.course-card .menu summary {
+  background: var(--panel);
+  box-shadow: 0 1px 2px var(--color-shadow);
 }
 
 .menu {

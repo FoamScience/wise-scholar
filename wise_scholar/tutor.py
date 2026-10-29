@@ -406,6 +406,31 @@ async def set_prerequisites(course_id: int, needs: dict[str, list[str]]) -> str:
 
 
 @mcp.tool()
+async def set_cover(course_id: int, svg: str, alt: str) -> str:
+    """Draw the course's cover, shown on its card on the home screen, replacing the one before it.
+
+    svg: a flat editorial illustration of what the course is about: the one object, scene or idea a reader
+    recognises the subject by, built from a few large simple shapes, with the subject's real proportions. viewBox
+    "0 0 640 360", a full-bleed background rect, no text, no outlines thinner than 2 px. It is shown as a picture,
+    the same in both themes, so give every shape a fill or stroke from the palette: teal #0b5f5a, deep teal
+    #084742, teal tint #e0efec, amber #f0b35c, amber tint #fbecd5, ink #16201f, paper #fcfdfd. No script, style
+    element, image, foreignObject, art pack icon or external link. alt: what the cover shows, in one sentence.
+    """
+    if not db.course(course_id):
+        return f"error: no course with id {course_id}"
+    if "art:" in svg:
+        return "error: a cover has no art pack icons; draw every shape yourself"
+    if not alt.strip():
+        return "error: alt text is required"
+    try:
+        drawing = figures.clean(svg)
+    except ValueError as e:
+        return f"error: {e}"
+    db.conn.execute("UPDATE courses SET cover = ?, cover_alt = ? WHERE id = ?", (drawing, alt.strip(), course_id))
+    return "drawn"
+
+
+@mcp.tool()
 async def set_capstone(course_id: int, module: str, title: str, brief: str, milestones: list[Milestone]) -> str:
     """Propose the project that runs through one module of the course map: one milestone per unit.
 

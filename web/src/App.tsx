@@ -176,7 +176,11 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api<Course[]>(`/api/courses?profile=${profile}`).then(setCourses, (e) => setError(e.message))
+    api<Course[]>(`/api/courses?profile=${profile}`).then((all) => {
+      setCourses(all)
+      // a course without a cover gets one drawn out of sight; the server starts nothing for one without a map
+      for (const c of all) if (!c.cover) api(`/api/courses/${c.id}/cover`, {}).catch(() => {})
+    }, (e) => setError(e.message))
   }, [profile])
 
   async function start(e: FormEvent) {
@@ -353,6 +357,7 @@ function CourseCard(props: {
   return (
     <div className="course-card">
       <a href={`#/course/${course.id}`}>
+        {course.cover ? <img className="cover" src={`/api/courses/${course.id}/cover`} alt={course.cover_alt ?? ''} /> : <span className="cover" aria-hidden="true" />}
         <strong dir="auto">
           {course.topic}
           {course.mode === 'teacher' && <span className="chip">{t('home.prepared')}</span>}
@@ -1258,6 +1263,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
         if (c.lessons.some((l) => l.running)) setActivity('thinking')
         // a map made before units had prerequisites gets them worked out once, out of sight
         if (c.concepts.length > 0 && !c.prerequisites) api(`/api/courses/${courseId}/prerequisites`, {}).catch(() => {})
+        if (c.concepts.length > 0 && !c.cover) api(`/api/courses/${courseId}/cover`, {}).catch(() => {})
         // finished lessons whose claims were not taken out yet, older ones included, go to the extractor
         if (c.mode === 'learner') api(`/api/courses/${courseId}/claims`, {}).catch(() => {})
       },

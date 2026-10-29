@@ -367,6 +367,10 @@ MIGRATIONS = [
     );
     ALTER TABLE lessons ADD COLUMN extracted TEXT;
     """,
+    """
+    ALTER TABLE courses ADD COLUMN cover TEXT;
+    ALTER TABLE courses ADD COLUMN cover_alt TEXT;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -489,10 +493,10 @@ def copy_course(course_id: int, topic: str) -> dict:
             raise ValueError("no such course")
         slug = _free_slug(topic)
         new_id = conn.execute(
-            "INSERT INTO courses (topic, slug, profile_id, mechanism, level, lang, ranking, details, hours, started, mode, placement, prerequisites) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO courses (topic, slug, profile_id, mechanism, level, lang, ranking, details, hours, started, mode, placement, prerequisites, cover, cover_alt) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (topic, slug, old["profile_id"], old["mechanism"], old["level"], old["lang"], json.dumps(old["ranking"]) if old["ranking"] else None,
-             old["details"], old["hours"], old["started"], old["mode"], old["placement"], old["prerequisites"]),
+             old["details"], old["hours"], old["started"], old["mode"], old["placement"], old["prerequisites"], old["cover"], old["cover_alt"]),
         ).lastrowid
         conn.execute(
             "INSERT INTO placement_areas (course_id, position, title, holds, lacks) "
