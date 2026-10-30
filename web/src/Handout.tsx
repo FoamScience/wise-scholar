@@ -53,13 +53,14 @@ export function Handout({ lessonId, version, pdf }: { lessonId: number; version:
     <main className="book">
       <style key={theme}>{pageStyle(head?.topic ?? '')}</style>
       <div className="book-bar">
-        <a href={head ? `#/course/${head.course_id}?concept=${head.concept_id}` : '#/'}>{t('handout.back')}</a>
-        <a className="small" href={`#/lesson/${lessonId}/handout/${other}`}>
+        <a className="btn as-link" href={head ? `#/course/${head.course_id}?concept=${head.concept_id}` : '#/'}>{t('handout.back')}</a>
+        <a className="btn as-link" href={`#/lesson/${lessonId}/handout/${other}`}>
           {t(`handout.${other}`)}
         </a>
-        <a className="small grow" href={`/api/lessons/${lessonId}/handout.md?version=${version}`} download>
+        <a className="btn as-link" href={`/api/lessons/${lessonId}/handout.md?version=${version}`} download>
           {t('handout.markdown')}
         </a>
+        <span className="grow" />
         {pdf ? (
           <button type="button" className="btn primary" disabled={preparing} onClick={download}>
             <Swap labels={[t('book.download'), t('book.preparing')]} at={preparing ? 1 : 0} />

@@ -468,7 +468,7 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
     <main className="book">
       <style key={theme}>{pageStyle(course.topic)}</style>
       <div className="book-bar">
-        <a href={`#/course/${course.id}`}>{t('book.back')}</a>
+        <a className="btn as-link" href={`#/course/${course.id}`}>{t('book.back')}</a>
         <span className="grow small">{!pdf && t('book.saveHint')}</span>
         {pdf ? (
           <button type="button" className="btn primary" disabled={preparing} onClick={() => download(course.topic)}>

@@ -43,7 +43,7 @@ export function SittingPage({ profile }: { profile: number }) {
     <main className="home">
       <h1>{t('sitting.ended')}</h1>
       <SittingSummary profile={profile} />
-      <a href="#/">{t('review.back')}</a>
+      <a className="btn as-link" href="#/">{t('review.back')}</a>
     </main>
   )
 }
