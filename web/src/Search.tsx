@@ -31,7 +31,7 @@ export function SearchPage({ courseId, query, kind: asked }: { courseId: number;
 
   return (
     <main className="home search-page">
-      <a href={`#/course/${courseId}`}>{t('book.back')}</a>
+      <a className="btn as-link" href={`#/course/${courseId}`}>{t('book.back')}</a>
       <form
         className="search-form"
         role="search"
@@ -65,7 +65,7 @@ export function SearchPage({ courseId, query, kind: asked }: { courseId: number;
             {h.snippet.map(([piece, matched], i) => (matched ? <mark key={i}>{piece}</mark> : piece))}
           </p>
           {h.lesson_id !== null ? (
-            <a href={h.concept_id === null ? `#/course/${courseId}` : `#/course/${courseId}?concept=${h.concept_id}`}>{t('search.openLesson')}</a>
+            <a className="btn as-link" href={h.concept_id === null ? `#/course/${courseId}` : `#/course/${courseId}?concept=${h.concept_id}`}>{t('search.openLesson')}</a>
           ) : (
             <details>
               <summary>{t('search.showPassage')}</summary>
