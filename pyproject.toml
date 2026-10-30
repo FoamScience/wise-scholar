@@ -6,13 +6,13 @@ requires-python = ">=3.11"
 dependencies = [
     "defusedxml>=0.7.1",
     "ebooklib>=0.20",
-    "fastapi>=0.142.2",
+    "fastapi>=0.162.0",
     "fsrs>=6.3.2",
     "geonamescache>=3.0.2",
     "httpx>=0.28.1",
-    "mcp>=2.2.0",
+    "mcp>=2.3.0",
     "pillow>=13.0.0",
-    "pymupdf>=1.28.2",
+    "pymupdf>=2.0",
     "python-multipart>=0.0.32",
     "simplemma>=2.0.0",
     "uvicorn>=0.54.0",
@@ -21,8 +21,8 @@ dependencies = [
 
 [project.optional-dependencies]
 pdf = [
-    "playwright>=1.63.0",
-    "pypdf>=6.19.0",
+    "playwright>=1.64.1",
+    "pypdf>=6.21.4",
 ]
 search = [
     "model2vec>=0.10.0",
@@ -35,5 +35,5 @@ testpaths = ["tests"]
 [dependency-groups]
 dev = [
     "model2vec>=0.10.0",
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
 ]
