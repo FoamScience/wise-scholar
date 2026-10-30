@@ -74,6 +74,15 @@
         "scholar_*": "allow"
       }
     },
+    "tutor-cards": {
+      "mode": "primary",
+      "description": "wise-scholar: short review cards",
+      "prompt": "{file:./wise_scholar/prompts/cards.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
+    },
     "tutor-lesson-teacher": {
       "mode": "primary",
       "description": "wise-scholar course designer: lesson for a teacher",

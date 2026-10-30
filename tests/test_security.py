@@ -212,7 +212,7 @@ def test_a_graph_turn_calls_only_the_graph_tools_and_a_lesson_turn_none_of_them(
         lesson = db.lesson(db.create_lesson(course, "Unit", "lesson"))
         call = tutor.mcp._tool_manager.call_tool
         search = {"lesson_id": lesson["id"], "queries": ["faces"]}
-        tutor.turn_started(lesson, "tok-graph", graph=True)
+        tutor.turn_started(lesson, "tok-graph", kind="graph")
         tutor.turn_started(lesson, "tok-lesson")
         try:
             assert "nothing found" in str(asyncio.run(call("search_claims", search, _context("tok-graph"))))
@@ -228,6 +228,34 @@ def test_a_graph_turn_calls_only_the_graph_tools_and_a_lesson_turn_none_of_them(
             tutor.turn_ended(lesson["id"])
         with pytest.raises(ToolError, match="no turn running"):
             asyncio.run(call("search_claims", search, _context(None)))
+    finally:
+        db.delete_course(course)
+
+
+def test_a_cards_turn_replaces_only_its_own_cards_and_a_lesson_turn_none():
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Cards guard')").lastrowid
+    try:
+        course = db.create_course("Fans", who)["id"]
+        lesson = db.lesson(db.create_lesson(course, "Unit", "lesson"))
+        mine, other = (db.add_card(course, None, f"Long question {i}?", "open", [], "a", "e", scheduled=True) for i in range(2))
+        call = tutor.mcp._tool_manager.call_tool
+        split = lambda card: {"course_id": course, "card_id": card, "parts": [{"question": "Q?", "kind": "open", "answer_key": "a"}]}  # noqa: E731
+        tutor.turn_started(lesson, "tok-cards", kind="cards")
+        tutor.turn_started(lesson, "tok-lesson")
+        tutor.card_jobs[mine] = "short"
+        try:
+            with pytest.raises(ToolError, match="not available in this turn"):
+                asyncio.run(call("split_card", split(mine), _context("tok-lesson")))
+            with pytest.raises(ToolError, match="not available in this turn"):
+                asyncio.run(call("add_block", {"lesson_id": lesson["id"], "kind": "prose", "markdown": "x"}, _context("tok-cards")))
+            assert "not one of the cards" in str(asyncio.run(call("split_card", split(other), _context("tok-cards"))))
+            assert "replaced by cards" in str(asyncio.run(call("split_card", split(mine), _context("tok-cards"))))
+        finally:
+            tutor.card_jobs.clear()
+            tutor.turn_ended(("cards", lesson["id"]))
+            tutor.turn_ended(lesson["id"])
     finally:
         db.delete_course(course)
         db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))

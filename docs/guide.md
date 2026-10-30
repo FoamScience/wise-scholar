@@ -52,6 +52,8 @@ When the interview asks what you want to be able to do, tap an option once to pi
 
 The placement check counts its questions on each card (3/8). A course of an hour or two gets about 4 to 6 questions and a course of 200 hours about 19; without a teaching time it takes 8. A retake sizes itself from the hours still ahead: the course's hours less the share of the map you have mastered or placed out of.
 
+Reviews take three minutes at a time. A card with options takes one tap; any other card shows its answer when you ask, and you say whether you knew it. Long cards from lessons are rewritten into short ones in the background before they come up, and a card you miss is broken into smaller cards that replace it.
+
 ## Choose the backend and model
 
 Set `WISE_SCHOLAR_AGENT` to `<backend>` or `<backend>/<model>`. The backend is `claude` or `opencode`.
