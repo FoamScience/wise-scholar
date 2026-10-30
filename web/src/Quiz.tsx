@@ -8,7 +8,6 @@ import { sortItems } from './course'
 import type { SortItem } from './course'
 import { percent } from './i18n'
 import { gradeOffline, placements } from './offline'
-import { SittingSummary } from './Sitting'
 import type { Given } from './offline'
 
 export type QuizKind = 'choice' | 'open' | 'sort'
@@ -335,38 +334,52 @@ export function QuizCard(props: {
   )
 }
 
+// a review sitting is a short box of time; whatever is still due waits for the next one
+const REVIEW_BOX_MS = 3 * 60 * 1000
+
 export function Review({ profile, then }: { profile: number; then: string | null }) {
   const { t } = useTranslation()
   const [cards, setCards] = useState<DueCard[] | null>(null)
   const [index, setIndex] = useState(0)
-  const [given, setGiven] = useState<{ answer: string; confidence: number } | null>(null)
-  const [pending, setPending] = useState<{ answer_id: number; answer_key: string; explanation: string } | null>(null)
+  const [started, setStarted] = useState(() => Date.now())
+  const [over, setOver] = useState(false)
+  const [picked, setPicked] = useState<string | null>(null)
+  const [shown, setShown] = useState<{ answer_id: number; answer_key: string; explanation: string } | null>(null)
   const [result, setResult] = useState<Graded | null>(null)
   const [error, setError] = useState('')
   const box = useRef<HTMLElement>(null)
   useArrivals(box, cards !== null)
 
   useEffect(() => {
-    // on the way to a lesson the review is the sitting's warm-up: a few cards, the rest wait here
     api<DueCard[]>(`/api/reviews?profile=${profile}${then ? '&warmup=true' : ''}`).then(setCards, (e) => setError(e.message))
   }, [profile, then])
 
   if (!cards) return <main className="home">{error && <div className="error">{error}</div>}</main>
 
-  const card = cards[index]
-  if (!card)
+  const card = over ? undefined : cards[index]
+  if (!card) {
+    const left = cards.length - index
     return (
       <main className="home">
-        <h1>{cards.length ? t('review.done') : t('review.nothingDue')}</h1>
-        {then ? (
-          <a className="btn primary as-link" href={then} onClick={goOn}>
-            {t('review.onToNext')}
-          </a>
-        ) : (
-          <a href="#/">{t('review.back')}</a>
-        )}
+        <h1>{left > 0 ? t('review.timeUp') : cards.length ? t('review.done') : t('review.nothingDue')}</h1>
+        {left > 0 && <p className="muted">{t('review.left', { count: left })}</p>}
+        <div className="row">
+          {then ? (
+            <a className="btn primary as-link" href={then} onClick={goOn}>
+              {t('review.onToNext')}
+            </a>
+          ) : (
+            <a className="btn as-link" href="#/">{t('review.back')}</a>
+          )}
+          {left > 0 && (
+            <button type="button" className="btn" onClick={more}>
+              {t('review.more')}
+            </button>
+          )}
+        </div>
       </main>
     )
+  }
 
   // the warm-up leaves no history entry: going back from the lesson returns to where the learner came from
   function goOn(e: MouseEvent) {
@@ -374,71 +387,97 @@ export function Review({ profile, then }: { profile: number; then: string | null
     location.replace(then!)
   }
 
-  function submit(answer: string, confidence: number) {
-    setGiven({ answer, confidence })
-    api<Graded | NonNullable<typeof pending>>(`/api/cards/${card.id}/review`, { answer, confidence }).then(
-      (res) => ('correct' in res ? setResult(res) : setPending(res)),
-      (e: Error) => setError(e.message),
-    )
+  function more() {
+    setStarted(Date.now())
+    setOver(false)
   }
 
-  function selfGrade(correct: boolean) {
-    api<Graded>(`/api/answers/${pending!.answer_id}/grade`, { correct }).then(setResult, (e: Error) => setError(e.message))
-    setPending(null)
+  function pick(option: string) {
+    setPicked(option)
+    api<{ answer_id: number } & Graded>(`/api/cards/${card!.id}/review`, { answer: option }).then(setResult, (e: Error) => setError(e.message))
+  }
+
+  function show() {
+    api<NonNullable<typeof shown>>(`/api/cards/${card!.id}/review`, {}).then(setShown, (e: Error) => setError(e.message))
+  }
+
+  function knew(correct: boolean) {
+    api<Graded>(`/api/answers/${shown!.answer_id}/grade`, { correct }).then(next, (e: Error) => setError(e.message))
   }
 
   function next() {
-    setGiven(null)
+    setPicked(null)
+    setShown(null)
     setResult(null)
     setIndex(index + 1)
+    if (Date.now() - started >= REVIEW_BOX_MS) setOver(true)
   }
 
+  const options = card.options as string[]
   return (
     <main ref={box} className="home">
-      {then && <SittingSummary profile={profile} />}
-      {then && (
-        <a className="small" href={then} onClick={goOn}>
-          {t('review.skipWarmup')}
-        </a>
-      )}
-      <section key={card.id} className="block quiz">
+      <section key={card.id} className="block quiz review-card">
         <div className="label">
-          {t('review.position', { n: index + 1, total: cards.length, topic: card.topic })}
+          <span dir="auto">{card.topic}</span>
           {card.confident_miss && <span className="chip warn">{t('review.sureAndMissed')}</span>}
+          {then && (
+            <a className="btn as-link skip" href={then} onClick={goOn}>
+              {t('review.skipWarmup')}
+            </a>
+          )}
+        </div>
+        <div className="review-time" aria-hidden="true">
+          <span style={{ animationDuration: `${REVIEW_BOX_MS}ms`, animationDelay: `-${Date.now() - started}ms` }} />
         </div>
         <Markdown>{card.question}</Markdown>
         <Translation text={card.translation} />
-        {!given && <QuizForm id={`card-${card.id}`} kind={card.kind} options={card.options} categories={card.categories} disabled={false} onSubmit={submit} />}
-        {given && pending && (
-          <div className="quiz-result">
-            <div className="attempt">
-              <span className="label">{t('quiz.answerSure', { percent: percent(given.confidence) })}</span>
-              {given.answer}
-            </div>
-            <div className="solution">
-              <div className="label">{t('review.model')}</div>
-              <Markdown>{pending.answer_key}</Markdown>
-              <Markdown>{pending.explanation}</Markdown>
-            </div>
-            <div className="row">
-              <button className="btn" onClick={() => selfGrade(false)}>
-                {t('review.missed')}
-              </button>
-              <button className="btn primary" onClick={() => selfGrade(true)}>
-                {t('review.right')}
-              </button>
-            </div>
-          </div>
-        )}
-        {given && result && (
+        {card.kind === 'choice' ? (
           <>
-            <QuizResult answer={given.answer} confidence={given.confidence} result={result} items={card.kind === 'sort' ? sortItems(card.options) : undefined} />
+            <div className="quiz-options">
+              {options.map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  className={result ? (o === result.answer_key ? 'quiz-option right' : o === picked ? 'quiz-option wrong' : 'quiz-option') : 'quiz-option'}
+                  disabled={picked !== null}
+                  onClick={() => pick(o)}
+                >
+                  <Markdown>{o}</Markdown>
+                </button>
+              ))}
+            </div>
+            {result && (
+              <>
+                {!result.correct && <Markdown>{result.explanation}</Markdown>}
+                <div className="row">
+                  <button className="btn primary" onClick={next}>
+                    {t('common.next')}
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        ) : shown ? (
+          <>
+            <div className="solution">
+              <Markdown>{shown.answer_key}</Markdown>
+              <Markdown>{shown.explanation}</Markdown>
+            </div>
             <div className="row">
-              <button className="btn primary" onClick={next}>
-                {index + 1 < cards.length ? t('common.next') : t('common.finish')}
+              <button className="btn" onClick={() => knew(false)}>
+                {t('review.didnt')}
+              </button>
+              <button className="btn primary" onClick={() => knew(true)}>
+                {t('review.knewIt')}
               </button>
             </div>
           </>
+        ) : (
+          <div className="row">
+            <button className="btn primary" onClick={show}>
+              {t('review.showAnswer')}
+            </button>
+          </div>
         )}
         {error && <div className="error">{error}</div>}
       </section>

@@ -406,7 +406,6 @@
       "nothingDue": "Nothing is due",
       "onToNext": "On to the next unit",
       "back": "Back to your courses",
-      "position": "Review {{n}} of {{total}}: {{topic}}",
       "sureAndMissed": "You were sure and missed this",
       "model": "Model answer",
       "missed": "I missed it",
@@ -421,7 +420,14 @@
       "ofN": "{{percent}} of {{n}}",
       "howSure": "How sure you said",
       "howOften": "How often you were right",
-      "brier": "Brier score {{brier}} over {{n}} answers. 0 is perfect; 0.25 is what always saying 50% scores."
+      "brier": "Brier score {{brier}} over {{n}} answers. 0 is perfect; 0.25 is what always saying 50% scores.",
+      "timeUp": "Time's up",
+      "left_one": "{{count}} more card is due.",
+      "left_other": "{{count}} more cards are due.",
+      "more": "Another 3 minutes",
+      "showAnswer": "Show answer",
+      "knewIt": "Knew it",
+      "didnt": "Didn't know"
     },
     "reading": {
       "story": "{{story}}, episode {{n}}: read for pleasure",

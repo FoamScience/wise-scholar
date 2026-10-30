@@ -417,7 +417,6 @@
       "nothingDue": "Rien à réviser",
       "onToNext": "Passer à l'unité suivante",
       "back": "Retour à vos cours",
-      "position": "Révision {{n}} sur {{total}} : {{topic}}",
       "sureAndMissed": "Certitude élevée, réponse fausse",
       "model": "Réponse modèle",
       "missed": "C'était faux",
@@ -432,7 +431,15 @@
       "ofN": "{{percent}} sur {{n}}",
       "howSure": "Votre certitude annoncée",
       "howOften": "Votre taux de réussite",
-      "brier": "Score de Brier {{brier}} sur {{n}} réponses. 0 est parfait ; 0,25 est le score de qui annonce toujours 50 %."
+      "brier": "Score de Brier {{brier}} sur {{n}} réponses. 0 est parfait ; 0,25 est le score de qui annonce toujours 50 %.",
+      "timeUp": "Temps écoulé",
+      "left_one": "Encore {{count}} carte à revoir.",
+      "left_many": "Encore {{count}} cartes à revoir.",
+      "left_other": "Encore {{count}} cartes à revoir.",
+      "more": "Encore 3 minutes",
+      "showAnswer": "Voir la réponse",
+      "knewIt": "Je savais",
+      "didnt": "Je ne savais pas"
     },
     "reading": {
       "story": "{{story}}, épisode {{n}} : à lire pour le plaisir",

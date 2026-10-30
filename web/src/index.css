@@ -1511,9 +1511,15 @@ a.btn.primary:hover {
 
 .quiz .label {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-sm);
   margin-bottom: 0;
+}
+
+.quiz .label .skip {
+  margin-inline-start: auto;
+  white-space: normal;
 }
 
 .quiz .label .count {
@@ -1553,6 +1559,61 @@ a.btn.primary:hover {
 .quiz-option.picked {
   background: var(--teal-tint);
   border-color: var(--teal);
+}
+
+.review-card .quiz-option {
+  width: 100%;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+}
+
+.review-card .quiz-option:hover:enabled {
+  border-color: var(--teal);
+}
+
+.review-card .quiz-option:disabled {
+  cursor: default;
+}
+
+.quiz-option.right {
+  background: var(--teal-tint);
+  border-color: var(--teal);
+}
+
+.quiz-option.wrong {
+  border-color: var(--danger);
+  color: var(--muted);
+}
+
+/* the review's time box, filling up as it runs */
+.review-time {
+  height: 3px;
+  overflow: hidden;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.review-time span {
+  display: block;
+  height: 100%;
+  background: var(--teal);
+  transform-origin: left;
+  animation: review-time linear forwards;
+}
+
+.review-time span:dir(rtl) {
+  transform-origin: right;
+}
+
+@keyframes review-time {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 .sort {

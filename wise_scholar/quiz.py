@@ -1,6 +1,13 @@
 import json
 from . import db, review
 
+# a review card asks one thing in a glance: a short question, and a short key or at most three short options
+SHORT_QUESTION = 140
+SHORT_KEY = 160
+SHORT_OPTION = 80
+SHORT_OPTIONS = 3
+SHORT_EXPLANATION = 240
+
 
 def public(card: dict) -> dict:
     """The part of a card the browser may see before the answer is graded."""
@@ -16,11 +23,23 @@ def public(card: dict) -> dict:
     }
 
 
-def submit(card: dict, answer: str, confidence: float) -> int:
-    """Store an answer before anything about the key is disclosed; returns the answer id."""
+def submit(card: dict, answer: str, confidence: float, stated: bool = True) -> int:
+    """Store an answer before anything about the key is disclosed; returns the answer id. An answer whose confidence
+    the learner did not state stays out of calibration."""
     return db.conn.execute(
-        "INSERT INTO answers (card_id, answer, confidence) VALUES (?, ?, ?)", (card["id"], answer, confidence)
+        "INSERT INTO answers (card_id, answer, confidence, stated) VALUES (?, ?, ?, ?)", (card["id"], answer, confidence, int(stated))
     ).lastrowid
+
+
+def is_long(card: dict) -> bool:
+    """Too much to read for a review: a sort, a long question, or more or longer options or key than a glance takes."""
+    if card.get("vocab") or card.get("lemma"):
+        return False
+    if card["kind"] == "sort" or len(card["question"]) > SHORT_QUESTION:
+        return True
+    if card["kind"] == "choice":
+        return len(card["options"]) > SHORT_OPTIONS or any(len(o) > SHORT_OPTION for o in card["options"])
+    return len(card["answer_key"]) > SHORT_KEY
 
 
 def auto_correct(card: dict, answer: str) -> bool | None:

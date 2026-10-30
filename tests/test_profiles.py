@@ -1453,7 +1453,7 @@ def test_a_sort_check_is_graded_placement_by_placement(monkeypatch):
         assert graded["correct"] is False and graded["misplaced"] == ["set"] and graded["confident_miss"] is True
         assert turns[-1].startswith("[event] Quiz") and "misplaced: 'set'" in turns[-1] and "set → immutable" in turns[-1]
         assert db.errors(who)[-1]["said"] == "set → immutable" and db.errors(who)[-1]["correct"] == "set → mutable"
-        reviewed = app.review_card(card["id"], app.QuizAnswer(answer=wrong, confidence=0.4))
+        reviewed = app.review_card(card["id"], app.ReviewAnswer(answer=wrong))
         assert reviewed["correct"] is False and reviewed["misplaced"] == ["set"]
         assert quiz.misplaced(card, "not json") == [o["text"] for o in card["options"]]
 
@@ -1655,7 +1655,7 @@ def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypa
     assert app._lesson_view(lesson)["batch"] == 0 and turns[-1].startswith("[batch results]\nleft unanswered: ")
 
 
-def test_a_sitting_after_a_gap_opens_with_a_warm_up_of_at_most_five_due_cards():
+def test_a_sitting_after_a_gap_opens_with_a_warm_up_of_the_due_cards():
     from wise_scholar import app
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Warm')").lastrowid
@@ -1663,11 +1663,12 @@ def test_a_sitting_after_a_gap_opens_with_a_warm_up_of_at_most_five_due_cards():
     second = db.create_course("Welsh", who)["id"]
     cards = [db.add_card(course, None, f"q{i}", "open", [], "a", "e", scheduled=True, due="2026-01-01T00:00:00+00:00")
              for i, course in enumerate([first, second] * 4)]
-    assert db.last_activity(who) is None and app.warmup(first) == {"due": 5}  # never active: a sitting starts
+    assert db.last_activity(who) is None and app.warmup(first) == {"due": 8}  # never active: a sitting starts
     db.conn.execute("UPDATE cards SET confident_miss = 1 WHERE id = ?", (cards[5],))
-    assert len(app.reviews(who)) == 8 and app.today(who)["due"] == 8 and app.today(who)["warmup"] == 5
+    # the plan counts what fits the review page's time box
+    assert len(app.reviews(who)) == 8 and app.today(who)["due"] == 8 and app.today(who)["warmup"] == 6
     warm = app.reviews(who, warmup=True)
-    assert len(warm) == 5 and warm[0]["id"] == cards[5]  # a confident miss leads
+    assert len(warm) == 8 and warm[0]["id"] == cards[5]  # a confident miss leads
     assert [c["topic"] for c in warm][1:3] == ["Rust", "Welsh"]  # then mixed across courses
     assert app.warmup(first) == {"due": 0}  # served once: skipping it does not bring it back within the sitting
     app._warmed[who] -= app.SITTING_GAP
@@ -1675,12 +1676,12 @@ def test_a_sitting_after_a_gap_opens_with_a_warm_up_of_at_most_five_due_cards():
     db.conn.execute("INSERT INTO answers (card_id, answer, confidence, created) VALUES (?, 'x', 0.5, datetime('now', '-30 minutes'))", (cards[0],))
     assert app.warmup(second) == {"due": 0}  # active half an hour ago: the same sitting
     db.conn.execute("UPDATE answers SET created = datetime('now', '-3 hours') WHERE card_id = ?", (cards[0],))
-    assert db.last_activity(who) is not None and app.warmup(second) == {"due": 5}
+    assert db.last_activity(who) is not None and app.warmup(second) == {"due": 8}
     lesson = db.create_lesson(first, "Talk", "lesson", None)
     db.conn.execute("INSERT INTO messages (lesson_id, role, text, created) VALUES (?, 'tutor', 'hi', datetime('now'))", (lesson,))
     assert app.warmup(first) == {"due": 0}  # a tutor reply answers something the learner just did
     db.conn.execute("UPDATE messages SET created = datetime('now', '-3 hours') WHERE lesson_id = ?", (lesson,))
-    assert app.warmup(first) == {"due": 5}
+    assert app.warmup(first) == {"due": 8}
     # a run of their own code counts too, with its ISO time compared against the other tables' format
     db.conn.execute("INSERT INTO commands (course_id, profile_id, lesson_id, origin, command, consent, started) VALUES (?, ?, ?, 'learner', 'ls', 'none', ?)",
                     (first, who, lesson, app._now()))
@@ -1898,3 +1899,85 @@ def test_a_course_with_a_map_gets_one_cover_drawn_out_of_sight_and_kept_with_its
     assert db.course(db.copy_course(course, "Pumps again")["id"])["cover_alt"] == "A volute pump."
     with pytest.raises(HTTPException, match="no cover"):
         app.get_cover(db.create_course("Bare", who)["id"])
+
+
+def test_reviews_are_short_cards_and_a_missed_one_is_broken_into_parts(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, quiz, tutor
+
+    queued = []
+    monkeypatch.setattr(app, "_queue_cards", queued.append)
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Glancer')").lastrowid
+    course = db.create_course("Fans", who)["id"]
+    db.set_concepts(course, [{"title": "Blades", "concepts": ["Camber"], "known": []}])
+    concept = db.concepts(course)[0]["id"]
+    due = "2026-01-01T00:00:00+00:00"
+    long = db.add_card(course, concept, "Sort each line by what it does to the shape stored in the document. " * 3, "open", [], "a", "e", scheduled=True, due=due)
+    short = db.add_card(course, concept, "Which surface does a blade's camber line live on?", "choice", ["Mean", "Pressure"], "Mean", "Midway.", scheduled=True, due=due)
+    assert quiz.is_long(db.card(long)) and not quiz.is_long(db.card(short))
+    assert quiz.is_long({"kind": "choice", "question": "Q?", "options": ["a", "b", "c", "d"], "answer_key": "a"})
+
+    assert [c["id"] for c in app.reviews(who)] == [short] and queued == [("short", course)]
+    assert app.today(who)["due"] == 1
+
+    missed = app.review_card(short, app.ReviewAnswer(answer="Pressure"))
+    assert missed["correct"] is False and missed["confident_miss"] is False and queued[-1] == ("miss", short)
+    assert db.row("SELECT stated FROM answers WHERE id = ?", missed["answer_id"])["stated"] == 0
+    assert app.calibration(who)["n"] == 0  # a review states no confidence
+    shown = app.review_card(long, app.ReviewAnswer())
+    assert shown["answer_key"] == "a"
+    app.self_grade(shown["answer_id"], app.SelfGrade(correct=True))
+    assert queued[-1] == ("miss", short)
+
+    prompt = app._cards_prompt(db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]), [db.card(short)], "Pressure")
+    assert "job=miss" in prompt and f"[card {short}, choice]" in prompt and "options: " in prompt and "Pressure" in prompt.splitlines()[-1]
+
+    tutor.card_jobs[short] = "miss"
+    split = lambda parts: asyncio.run(tutor.split_card(course, short, [tutor.ShortCard(**p) for p in parts]))  # noqa: E731
+    assert split([{"question": "Q?", "kind": "choice", "options": ["a", "b", "c", "d"], "answer_key": "a"}]).startswith("error: part 1: a choice part has 2 to 3")
+    assert split([{"question": "Q" * 141, "kind": "open", "answer_key": "a"}]) == "error: part 1 is too long or empty; keep to the limits above"
+    assert split([{"question": "Q?", "kind": "open", "answer_key": "a"}] * 5) == "error: give 1 to 4 parts"
+    made = split([
+        {"question": "What is a camber line?", "kind": "open", "answer_key": "The line midway between both faces"},
+        {"question": "Midway between which faces?", "kind": "choice", "options": ["Pressure and suction", "Hub and tip"], "answer_key": "Pressure and suction"},
+    ])
+    assert made.startswith(f"card {short} replaced by cards") and short not in tutor.card_jobs
+    parts = db.rows("SELECT * FROM cards WHERE parent_id = ?", short)
+    assert [p["origin"] for p in parts] == ["miss", "miss"] and all(p["fsrs"] is None and p["concept_id"] == concept for p in parts)
+    assert db.card(short)["retired"] == 1 and short not in [c["id"] for c in db.due_cards(who, app._now())]
+    assert {c["id"] for c in app.reviews(who)} == {p["id"] for p in parts}
+    # the retired card's miss no longer holds the concept's mastery down
+    assert db.concept_mastery(course) == {concept: 1.0}
+
+    part = parts[0]["id"]
+    app.self_grade(app.review_card(part, app.ReviewAnswer())["answer_id"], app.SelfGrade(correct=False))
+    assert queued[-1] != ("miss", part)  # a part made from a miss is not broken up again
+
+    tutor.card_jobs[long] = "short"
+    asyncio.run(tutor.split_card(course, long, [tutor.ShortCard(question="Short?", kind="open", answer_key="a")]))
+    kept = db.row("SELECT * FROM cards WHERE parent_id = ?", long)
+    assert kept["origin"] == "short" and kept["due"] == db.card(long)["due"] and kept["fsrs"] == db.card(long)["fsrs"]
+
+
+def test_a_cards_job_goes_on_while_turns_make_cards_short(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Shortener')").lastrowid
+    course = db.create_course("Pumps", who)["id"]
+    longs = [db.add_card(course, None, "Long " * 40, "open", [], "a", "e", scheduled=True) for _ in range(app.CARDS_PER_TURN + 1)]
+    seen = []
+
+    async def turn(lesson, prompt, kind, what):
+        seen.append(prompt)
+        for card_id in list(tutor.card_jobs):
+            await tutor.split_card(course, card_id, [tutor.ShortCard(question="Short?", kind="open", answer_key="a")])
+        return True
+
+    monkeypatch.setattr(app, "_background_turn", turn)
+    assert asyncio.run(app._shorten(("short", course))) == "more" and len(seen[0].splitlines()) == 2 + app.CARDS_PER_TURN
+    assert asyncio.run(app._shorten(("short", course))) == "more"
+    assert asyncio.run(app._shorten(("short", course))) == "done" and len(seen) == 2
+    assert all(db.card(c)["retired"] for c in longs) and tutor.card_jobs == {}

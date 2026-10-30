@@ -81,12 +81,16 @@ async def lifespan(app: FastAPI):
         await backend.start()
         sweeper = asyncio.create_task(cleanup.forever(_busy))
         extractor = asyncio.create_task(_extract_forever())
+        shortener = asyncio.create_task(_shorten_forever())
+        for course in db.rows("SELECT id FROM courses WHERE archived = 0"):
+            _queue_cards(("short", course["id"]))
         await vault.start()
         try:
             yield
         finally:
             sweeper.cancel()
             extractor.cancel()
+            shortener.cancel()
             await vault.stop()
             await backend.stop()
             speech.worker.stop()
@@ -259,6 +263,11 @@ class Choice(BaseModel):
 class QuizAnswer(BaseModel):
     answer: str = Field(min_length=1)
     confidence: float = Field(ge=0, le=1)
+
+
+class ReviewAnswer(BaseModel):
+    """A choice picked, or nothing for an open card whose answer the learner shows and then grades themselves."""
+    answer: str = Field(default="", max_length=8000)
 
 
 class SelfGrade(BaseModel):
@@ -574,6 +583,7 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
     hub.publish(course_id, {**final, "lesson_id": lesson_id, "message": message})
     if lesson["phase"] in ("lesson", "practice"):
         _queue_claims(db.unextracted(course_id))
+        _queue_cards(("short", course_id))
 
 
 # --- Claims: a finished lesson is read once more, in a session of its own, for what it taught -----------------------
@@ -636,20 +646,25 @@ def _claims_prompt(lesson: dict) -> str:
 
 async def _extract(lesson: dict) -> bool:
     """One quiet turn in a fresh session that records the lesson's claims; True when it ended well."""
+    return await _background_turn(lesson, _claims_prompt(lesson), "graph", f"claims of {lesson['title']}")
+
+
+async def _background_turn(lesson: dict, prompt: str, kind: str, what: str) -> bool:
+    """One turn in a fresh session that only calls the tools of its kind; True when it ended well."""
     token = secrets.token_urlsafe(16)
-    tutor.turn_started(lesson, token, graph=True)
+    tutor.turn_started(lesson, token, kind=kind)
     final = {"ok": False, "error": "stopped"}
     try:
         if wait := _allowance(_turn_clock, TURNS_PER_HOUR, 3600):
             await asyncio.sleep(wait)
         async with _turn_slots:
             async with aclosing(backend.run_turn(
-                _claims_prompt(lesson),
+                prompt,
                 session_id=str(uuid.uuid4()),
                 resume=False,
-                name=f"wise-scholar · {lesson['profile']} · {lesson['topic']} · claims of {lesson['title']}",
+                name=f"wise-scholar · {lesson['profile']} · {lesson['topic']} · {what}",
                 cwd=db.workspace(lesson["slug"]),
-                phase="graph",
+                phase=kind,
                 token=token,
             )) as events:
                 async for event in events:
@@ -657,9 +672,9 @@ async def _extract(lesson: dict) -> bool:
                         final = event
                         break
     finally:
-        tutor.turn_ended(("graph", lesson["id"]))
+        tutor.turn_ended((kind, lesson["id"]))
     if not final["ok"]:
-        log.warning("claims of lesson %s: %s", lesson["id"], final["error"])
+        log.warning("%s, lesson %s: %s", what, lesson["id"], final["error"])
     return final["ok"]
 
 
@@ -680,6 +695,83 @@ async def _extract_forever() -> None:
             _claims_failed.add(lesson_id)
         finally:
             _claims_waiting.discard(lesson_id)
+
+
+# --- Review cards: long cards are made short, and a card missed in review is broken into parts ----------------------
+CARDS_PER_TURN = 8
+_cards_queue: asyncio.Queue[tuple[str, int]] = asyncio.Queue()
+_cards_waiting: set[tuple[str, int]] = set()
+_cards_failed: set[tuple[str, int]] = set()  # tried in this process and failed: not tried again until a restart
+
+
+def _queue_cards(job: tuple[str, int]) -> None:
+    """("short", course_id) makes the course's long review cards short; ("miss", card_id) breaks up a missed card."""
+    if job not in _cards_waiting and job not in _cards_failed:
+        _cards_waiting.add(job)
+        _cards_queue.put_nowait(job)
+
+
+def _card_line(card: dict) -> str:
+    if card["kind"] == "sort":
+        shown = " | items: " + "; ".join(f"{o['text']} -> {o['category']}" for o in card["options"])
+    else:
+        shown = f" | options: {'; '.join(card['options'])}" if card["options"] else ""
+    return f"[card {card['id']}, {card['kind']}] {card['question']}{shown} | key: {card['answer_key']} | {card['explanation']}"
+
+
+def _cards_prompt(lesson: dict, cards: list[dict], missed: str | None) -> str:
+    lines = [
+        f"[state] course_id={lesson['course_id']} course={lesson['topic']!r} job={'miss' if missed is not None else 'short'}",
+        f"[language] Write the cards in {LOCALE_NAMES[lesson['locale']]}; code, commands and identifiers stay as they are.",
+        *map(_card_line, cards),
+    ]
+    if missed is not None:
+        lines.append(f"[learner answered in review] {_untrusted(missed) if missed else '(showed the answer, then said they did not know it)'}")
+    return "\n".join(lines)
+
+
+async def _shorten(job: tuple[str, int]) -> str:
+    """One cards turn: "done", "more" when a course has long cards left after a turn that made progress, or "failed"."""
+    kind, ref = job
+    if kind == "short":
+        course_id, missed = ref, None
+        cards = [c for c in db.scheduled_cards(course_id) if quiz.is_long(c)][:CARDS_PER_TURN]
+    else:
+        card = db.card(ref)
+        if not card or card["retired"]:
+            return "done"
+        course_id, cards = card["course_id"], [card]
+        last = db.row("SELECT answer FROM answers WHERE card_id = ? ORDER BY id DESC LIMIT 1", ref)
+        missed = quiz.said(card, last["answer"]) if last else ""
+    first = db.row("SELECT id FROM lessons WHERE course_id = ? ORDER BY id LIMIT 1", course_id)
+    if not cards or not first:
+        return "done"
+    lesson = db.lesson(first["id"])
+    tutor.card_jobs.update({c["id"]: kind for c in cards})
+    try:
+        ok = await _background_turn(lesson, _cards_prompt(lesson, cards, missed), "cards", "short review cards")
+    finally:
+        for c in cards:
+            tutor.card_jobs.pop(c["id"], None)
+    if not ok:
+        return "failed"
+    return "more" if kind == "short" and any(db.card(c["id"])["retired"] for c in cards) else "done"
+
+
+async def _shorten_forever() -> None:
+    while True:
+        job = await _cards_queue.get()
+        outcome = "failed"
+        try:
+            outcome = await _shorten(job)
+        except Exception:
+            log.exception("review cards, job %s", job)
+        finally:
+            _cards_waiting.discard(job)
+        if outcome == "failed":
+            _cards_failed.add(job)
+        elif outcome == "more":
+            _queue_cards(job)
 
 
 async def _events(events, lesson_id: int, session_id: str, course_id: int):
@@ -2230,16 +2322,22 @@ def patch_error(error_id: int, body: ErrorPatch) -> dict:
 
 @app.get("/api/reviews")
 def reviews(profile: int, warmup: bool = False) -> list[dict]:
-    """The due cards, mixed across courses; a warm-up before a lesson takes the first few, the rest wait for the
-    review page."""
-    cards = review.interleave(db.due_cards(profile, _now()))
+    """The due cards, mixed across courses; the review page stops when its time box runs out. A long card waits until
+    it is made short."""
     if warmup:
         _warmed[profile] = datetime.now(timezone.utc)
-        cards = cards[:WARMUP_CARDS]
-    return [quiz.public(c) for c in cards]
+    return [quiz.public(c) for c in review.interleave(_due(profile))]
 
 
-WARMUP_CARDS = 5
+def _due(profile: int) -> list[dict]:
+    due = db.due_cards(profile, _now())
+    for course_id in {c["course_id"] for c in due if quiz.is_long(c)}:
+        _queue_cards(("short", course_id))
+    return [c for c in due if not quiz.is_long(c)]
+
+
+# the review page's time box; the browser keeps it
+REVIEW_BOX_MINUTES = 3
 SITTING_GAP = timedelta(hours=2)
 # when each profile last got a warm-up, so a skipped one is not offered again within the sitting; a restart forgets
 _warmed: dict[int, datetime] = {}
@@ -2255,7 +2353,7 @@ def warmup(course_id: int) -> dict:
     recent = [t for t in (db.last_activity(profile), _warmed.get(profile)) if t and now - t < SITTING_GAP]
     if recent:
         return {"due": 0}
-    return {"due": min(len(db.due_cards(profile, _now())), WARMUP_CARDS)}
+    return {"due": len(_due(profile))}
 
 
 # ponytail: a flat half minute per review; fit it to the answer timestamps if the plan is always off.
@@ -2265,7 +2363,7 @@ REVIEW_MINUTES = 0.5
 @app.get("/api/today")
 def today(profile: int) -> dict:
     """What a sitting holds: a warm-up of due reviews, then the next unit of each active course, and a ready cast."""
-    due = len(db.due_cards(profile, _now()))
+    due = len(_due(profile))
     units = []
     for course in db.rows("SELECT id, topic, started FROM courses WHERE profile_id = ? AND archived = 0 ORDER BY id", profile):
         concepts = db.concept_view(course["id"])
@@ -2290,32 +2388,47 @@ def today(profile: int) -> dict:
         profile,
     )
     open_errors = len(db.errors(profile, open_only=True))
-    # the sitting opens with a warm-up of a few cards; the rest wait on the review page
-    warmup = min(due, WARMUP_CARDS)
+    # the sitting opens with a warm-up of the cards that fit the review page's time box; the rest wait for later
+    warmup = min(due, round(REVIEW_BOX_MINUTES / REVIEW_MINUTES))
     return {"due": due, "warmup": warmup, "review_minutes": round(warmup * REVIEW_MINUTES), "units": units, "cast": cast, "errors": open_errors, "extras": extras}
 
 
+# A review states no confidence: it counts as a plain recall for the schedule, below a confident miss, and stays out
+# of calibration.
+REVIEW_CONFIDENCE = 0.6
+
+
 @app.post("/api/cards/{card_id}/review")
-def review_card(card_id: int, body: QuizAnswer) -> dict:
+def review_card(card_id: int, body: ReviewAnswer) -> dict:
     card = db.card(card_id)
-    if not card:
+    if not card or card["retired"]:
         raise HTTPException(404, "no such card")
-    answer_id = quiz.submit(card, body.answer, body.confidence)
+    answer_id = quiz.submit(card, body.answer, REVIEW_CONFIDENCE, stated=False)
     correct = quiz.auto_correct(card, body.answer)
     if correct is None:
         # ponytail: open answers are self-graded in reviews; route them to a tutor turn if self-grading proves too lenient
         return {"answer_id": answer_id, "answer_key": card["answer_key"], "explanation": card["explanation"]}
-    return {"answer_id": answer_id, **quiz.grade(answer_id, correct)}
+    return {"answer_id": answer_id, **_graded_review(card, answer_id, correct)}
+
+
+def _graded_review(card: dict, answer_id: int, correct: bool) -> dict:
+    """A review miss breaks the card into parts, unless it is a part made from a miss already, or a vocabulary card."""
+    result = quiz.grade(answer_id, correct)
+    if not correct and card["origin"] != "miss" and not card["vocab"] and not card["lemma"]:
+        _queue_cards(("miss", card["id"]))
+    return result
 
 
 @app.post("/api/answers/{answer_id}/grade")
 def self_grade(answer_id: int, body: SelfGrade) -> dict:
-    answer = db.row("SELECT correct FROM answers WHERE id = ?", answer_id)
+    answer = db.row("SELECT card_id, correct, stated FROM answers WHERE id = ?", answer_id)
     if not answer:
         raise HTTPException(404, "no such answer")
     if answer["correct"] is not None:
         raise HTTPException(409, "already graded")
-    return quiz.grade(answer_id, body.correct)
+    if answer["stated"]:
+        return quiz.grade(answer_id, body.correct)
+    return _graded_review(db.card(answer["card_id"]), answer_id, body.correct)
 
 
 @app.get("/api/sitting")

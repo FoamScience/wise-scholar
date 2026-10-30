@@ -1703,6 +1703,48 @@ async def finish_lesson(lesson_id: int, summary: str) -> str:
     return "finished; end the turn"
 
 
+CARD_TOOLS = ("split_card",)
+PARTS = (1, 4)
+card_jobs: dict[int, str] = {}  # card id -> "short" or "miss", the cards the running cards turn may replace
+
+
+class ShortCard(BaseModel):
+    question: str
+    kind: Literal["choice", "open"]
+    options: list[str] = []
+    answer_key: str
+    explanation: str = ""
+
+
+@mcp.tool()
+async def split_card(course_id: int, card_id: int, parts: list[ShortCard]) -> str:
+    """Replace one review card by 1 to 4 short cards, each asking for one idea of it; the original leaves the reviews.
+
+    question: under 140 characters, readable on its own, with no reference to the original card or to another part.
+    choice: 2 or 3 options, each under 80 characters, answer_key exactly one of them; the server shuffles them.
+    open: options empty, answer_key the answer in under 160 characters. explanation: under 240 characters, why
+    the key is right.
+    """
+    card = db.card(card_id)
+    if not card or card["course_id"] != course_id or card_id not in card_jobs:
+        return f"error: card {card_id} is not one of the cards this turn makes short"
+    made = []
+    for n, part in enumerate(parts, start=1):
+        options = [o.strip() for o in part.options] if part.kind == "choice" else []
+        made.append({"question": part.question.strip(), "kind": part.kind, "options": options,
+                     "answer_key": part.answer_key.strip(), "explanation": part.explanation.strip()})
+        if part.kind == "choice" and not (2 <= len(options) <= quiz.SHORT_OPTIONS and len(set(options)) == len(options) and made[-1]["answer_key"] in options):
+            return f"error: part {n}: a choice part has 2 to {quiz.SHORT_OPTIONS} distinct options, one of them exactly answer_key"
+        if not made[-1]["question"] or not made[-1]["answer_key"] or quiz.is_long(made[-1]) or len(made[-1]["explanation"]) > quiz.SHORT_EXPLANATION:
+            return f"error: part {n} is too long or empty; keep to the limits above"
+    if not PARTS[0] <= len(made) <= PARTS[1]:
+        return f"error: give {PARTS[0]} to {PARTS[1]} parts"
+    for part in made:
+        part["options"] = _shuffled(part["options"])
+    ids = db.split_card(card_id, made, card_jobs.pop(card_id))
+    return f"card {card_id} replaced by cards {', '.join(map(str, ids))}"
+
+
 GRAPH_TOOLS = ("search_claims", "record_claims")
 SEARCH_RESULTS = 8
 CLAIM_CHARS = 300
@@ -1844,16 +1886,17 @@ async def mark_solved(challenge_id: int) -> str:
 # may only touch that turn's lesson and course; opencode shares one connection, so its calls may touch any lesson
 # whose turn is running. Either way a tutor talked into it cannot reach another course, and a turn gets a bounded
 # number of calls.
-# A graph turn reads a finished lesson for its claims; it may call only the graph tools, and a lesson turn may not.
-turns: dict[int | tuple[str, int], dict] = {}  # lesson_id, or ("graph", lesson_id) -> {"token", "calls", "lesson_id", "course_id", "graph"}
+# A graph turn reads a finished lesson for its claims and a cards turn makes long or missed review cards short; each
+# may call only its own tools, and a lesson turn may call neither.
+turns: dict[int | tuple[str, int], dict] = {}  # lesson_id, or (kind, lesson_id) -> {"token", "calls", "lesson_id", "course_id", "kind"}
 _ID_ARGUMENTS = ("lesson_id", "course_id", "challenge_id", "quiz_id", "block_id")
 
 
-def turn_started(lesson: dict, token: str, graph: bool = False) -> None:
-    turns[("graph", lesson["id"]) if graph else lesson["id"]] = {
-        "token": token, "calls": 0, "lesson_id": lesson["id"], "course_id": lesson["course_id"], "graph": graph,
+def turn_started(lesson: dict, token: str, kind: str = "lesson") -> None:
+    turns[lesson["id"] if kind == "lesson" else (kind, lesson["id"])] = {
+        "token": token, "calls": 0, "lesson_id": lesson["id"], "course_id": lesson["course_id"], "kind": kind,
     }
-    if graph:
+    if kind == "graph":
         _searched.discard(lesson["id"])
 
 
@@ -1893,18 +1936,18 @@ def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
 def _guard(call_tool):
     async def guarded(name: str, arguments: dict, context, convert_result: bool = False):
         targets = _targets(arguments)
-        graph = name in GRAPH_TOOLS
+        kind = "graph" if name in GRAPH_TOOLS else "cards" if name in CARD_TOOLS else "lesson"
         if token := _token(context):
             turn = next((t for t in turns.values() if t["token"] == token), None)
             if turn is None:
                 raise ToolError("this turn is over; nothing more can be changed")
-            if turn["graph"] != graph:
+            if turn["kind"] != kind:
                 raise ToolError("that tool is not available in this turn")
             if not all(_owns(turn, target) for target in targets):
                 raise ToolError("that id belongs to another lesson or course; use the ids of the [state] line")
         else:
             # Without a token (opencode shares one connection) a call lands on a lesson whose turn is running.
-            running = [t for t in turns.values() if t["graph"] == graph and all(_owns(t, target) for target in targets)]
+            running = [t for t in turns.values() if t["kind"] == kind and all(_owns(t, target) for target in targets)]
             if targets and not running:
                 raise ToolError("this lesson has no turn running; use the ids of the [state] line")
             turn = running[0] if running else None

@@ -395,6 +395,12 @@ MIGRATIONS = [
     END;
     """,
     "ALTER TABLE lessons ADD COLUMN questions INTEGER;",
+    """
+    ALTER TABLE cards ADD COLUMN parent_id INTEGER REFERENCES cards(id);
+    ALTER TABLE cards ADD COLUMN origin TEXT;
+    ALTER TABLE cards ADD COLUMN retired INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE answers ADD COLUMN stated INTEGER NOT NULL DEFAULT 1;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -546,7 +552,8 @@ def copy_course(course_id: int, topic: str) -> dict:
                 [(capstone_id, concept_map[m["concept_id"]], m["deliverable"]) for m in k["milestones"] if m["concept_id"] in concept_map],
             )
         card_map = {}
-        for k in rows("SELECT * FROM cards WHERE course_id = ? ORDER BY id", course_id):
+        # a copy starts its reviews afresh from the lesson cards; the short parts made for reviews stay behind
+        for k in rows("SELECT * FROM cards WHERE course_id = ? AND parent_id IS NULL ORDER BY id", course_id):
             card_map[k["id"]] = conn.execute(
                 "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1042,6 +1049,38 @@ def card(card_id: int) -> dict | None:
     return _card(row("SELECT * FROM cards WHERE id = ?", card_id))
 
 
+def scheduled_cards(course_id: int) -> list[dict]:
+    """The course's cards that come back in reviews, vocabulary cards aside."""
+    return [_card(c) for c in rows(
+        "SELECT * FROM cards WHERE course_id = ? AND scheduled = 1 AND retired = 0 AND vocab = 0 AND lemma IS NULL ORDER BY id", course_id,
+    )]
+
+
+def split_card(card_id: int, parts: list[dict], origin: str) -> list[int]:
+    """Replace a review card by its parts. A card made short keeps its place in the schedule; the parts of a missed
+    card start fresh and are due at once."""
+    parent = card(card_id)
+    keep = origin == "short"
+    conn.execute("BEGIN")
+    try:
+        ids = [
+            conn.execute(
+                "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, "
+                "fsrs, due, translation, parent_id, origin) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, '', ?, ?)",
+                (parent["course_id"], parent["concept_id"], p["question"], p["kind"], json.dumps(p["options"]), p["answer_key"],
+                 p["explanation"], parent["fsrs"] if keep else None, parent["due"] if keep else datetime.now(timezone.utc).isoformat(),
+                 card_id, origin),
+            ).lastrowid
+            for p in parts
+        ]
+        conn.execute("UPDATE cards SET retired = 1 WHERE id = ?", (card_id,))
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return ids
+
+
 def recall_days(card_id: int) -> int:
     """On how many separate (local) days the card was answered right since its last miss."""
     return row(
@@ -1062,7 +1101,7 @@ def due_cards(profile_id: int, now: str) -> list[dict]:
         "SELECT k.*, c.topic, (k.confident_miss OR k.id IN "
         "(SELECT card_id FROM errors WHERE resolved = 0 AND card_id IS NOT NULL)) AS leads "
         "FROM cards k JOIN courses c ON c.id = k.course_id "
-        "WHERE c.profile_id = ? AND c.archived = 0 AND k.due IS NOT NULL AND k.due <= ? "
+        "WHERE c.profile_id = ? AND c.archived = 0 AND k.retired = 0 AND k.due IS NOT NULL AND k.due <= ? "
         "ORDER BY leads DESC, k.due",
         profile_id, now,
     )
@@ -1129,7 +1168,7 @@ def update_error(error_id: int, note: str | None, pinned: bool | None, resolved:
 def graded_answers(profile_id: int) -> list[dict]:
     return rows(
         "SELECT a.confidence, a.correct, a.created, k.question FROM answers a JOIN cards k ON k.id = a.card_id "
-        "JOIN courses c ON c.id = k.course_id WHERE c.profile_id = ? AND a.correct IS NOT NULL ORDER BY a.created, a.id",
+        "JOIN courses c ON c.id = k.course_id WHERE c.profile_id = ? AND a.correct IS NOT NULL AND a.stated = 1 ORDER BY a.created, a.id",
         profile_id,
     )
 
@@ -1141,7 +1180,7 @@ def concept_mastery(course_id: int) -> dict[int, float]:
         for r in rows(
             "SELECT k.concept_id, AVG(a.correct) AS mastery FROM cards k JOIN answers a ON a.id = "
             "(SELECT MAX(id) FROM answers WHERE card_id = k.id AND correct IS NOT NULL) "
-            "WHERE k.course_id = ? AND k.concept_id IS NOT NULL GROUP BY k.concept_id",
+            "WHERE k.course_id = ? AND k.concept_id IS NOT NULL AND k.retired = 0 GROUP BY k.concept_id",
             course_id,
         )
     }
