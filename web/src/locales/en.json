@@ -210,7 +210,10 @@
       "answer": "Answer",
       "several": "Pick all that apply.",
       "done_one": "Done, {{count}} picked",
-      "done_other": "Done, {{count}} picked"
+      "done_other": "Done, {{count}} picked",
+      "goals": "Tap once for a goal, twice if you do not want it.",
+      "notWanted": "Not wanted: {{option}}",
+      "doneRuled": "Done, {{count}} picked, {{ruled}} ruled out"
     },
     "challenge": {
       "compare": "Compare the two",
@@ -394,7 +397,8 @@
       "quickCheck": "Quick check",
       "dontKnow": "I don't know",
       "key": "Key",
-      "translation": "Translation"
+      "translation": "Translation",
+      "numbered": "{{number}}/{{of}}"
     },
     "review": {
       "skipWarmup": "Skip the warm-up and go to the lesson",

@@ -214,7 +214,10 @@
       "several": "Cochez tout ce qui s'applique.",
       "done_one": "Valider, {{count}} choix",
       "done_other": "Valider, {{count}} choix",
-      "done_many": "Valider, {{count}} choix"
+      "done_many": "Valider, {{count}} choix",
+      "goals": "Touchez une fois pour un objectif, deux fois si vous n'en voulez pas.",
+      "notWanted": "Pas voulu : {{option}}",
+      "doneRuled": "Valider, {{count}} choix, {{ruled}} écartés"
     },
     "challenge": {
       "compare": "Comparez les deux",
@@ -405,7 +408,8 @@
       "quickCheck": "Question rapide",
       "dontKnow": "Je ne sais pas",
       "key": "Clé",
-      "translation": "Traduction"
+      "translation": "Traduction",
+      "numbered": "{{number}}/{{of}}"
     },
     "review": {
       "skipWarmup": "Passer l'échauffement et aller à la leçon",
@@ -673,6 +677,7 @@
     "that approach is not in the plan": "cette approche n'est pas dans le plan",
     "message is empty": "le message est vide",
     "answer is empty": "la réponse est vide",
+    "non-goals are options of a goal question": "les objectifs écartés sont des options d'une question sur les objectifs",
     "already answered": "déjà répondu",
     "try the unit's opening first": "essayez d'abord l'ouverture de l'unité",
     "a prepared course has no pace": "un cours préparé n'a pas de rythme",

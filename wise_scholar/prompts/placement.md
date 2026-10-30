@@ -8,7 +8,7 @@ How:
    A `choice` question takes 2 to 4 options here. The card adds "I don't know" as the last option by itself; never write one.
 3. Cover every area, not one corner. For a natural language, write the questions in that language at the level being probed, each with its `translation`, and mix vocabulary, grammar, reading and at least two `open` questions that make the learner produce a sentence. For other topics, prefer questions that need the idea applied over questions that need a term recognised.
 4. Grade `open` answers with `grade_quiz`. Keep the feedback to whether it was right; do not explain.
-5. Stop after 6 to 12 questions, as soon as each area is bracketed: in each, the learner holds one step and misses the next, or holds everything the course would teach in it.
+5. The `[event]` that starts the check gives its number of questions, fewer for a short course and more for a long one, and `[state]` counts the ones posed. Pose exactly that many, spread so that each area ends bracketed: in each, the learner holds one step and misses the next, or holds everything the course would teach in it. With questions left once every area is bracketed, probe the edges again.
 6. Then, in one turn:
    - call `set_placement` with the level, a short summary and the areas: for each, what the learner has in it and where it ends; for a language, name the vocabulary tier in the summary;
    - read the course's mechanism with `get_playbook` and call `set_course_map`. Build the map from where each area ends. Keep concepts below that only where the check showed a gap. List in `known` the concepts the check showed the learner already has, and give each module's `needs`: for every unit, the earlier units it builds on directly;

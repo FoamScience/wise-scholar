@@ -196,20 +196,25 @@ def pretest_blocker(lesson: dict) -> str | None:
 
 
 @mcp.tool()
-async def ask(lesson_id: int, question: str, options: list[str], multiple: bool = False) -> str:
+async def ask(lesson_id: int, question: str, options: list[str], multiple: bool = False, non_goals: bool = False) -> str:
     """Show the learner one question card with 2 to 5 short answer options.
 
     multiple: more than one option may be true (what they already know, what they want to do,
     what equipment there is): the learner picks any number and the answer arrives as the picks
     joined by "; ". The learner can also answer in their own words. This returns at once: end your
     turn after calling it, and the answer arrives as the next turn.
+    non_goals: for the question about what the course should enable; implies multiple. The learner can
+    also mark options as not wanted, and the server records those as the course's non-goals.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     if not 2 <= len(options) <= 5:
         return "error: a question card takes 2 to 5 options"
-    _show(lesson, db.add_block(lesson_id, "question", question, {"options": options, "answer": None, "multiple": multiple}))
+    data = {"options": options, "answer": None, "multiple": multiple or non_goals}
+    if non_goals:
+        data["non_goals"] = []
+    _show(lesson, db.add_block(lesson_id, "question", question, data))
     return "shown; end the turn and wait for the answer"
 
 
@@ -1500,6 +1505,9 @@ async def pose_quiz(
     most = PLACEMENT_OPTIONS if lesson["phase"] == "placement" else 5
     if kind == "choice" and not (2 <= len(options) <= most and answer_key in options):
         return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
+    number = placement_posed(lesson_id) + 1 if lesson["questions"] else None
+    if number and number > lesson["questions"]:
+        return f"error: the placement check has {lesson['questions']} questions and all are posed; call set_placement"
     if lemma and not lesson["lang"]:
         return "error: lemma needs a language course; pose_vocab_check or add_reading sets the language"
     if pretest and not prepared(lesson) and (problem := _pretest_length_error("\n".join([question, *options]))):
@@ -1515,12 +1523,18 @@ async def pose_quiz(
     shown = {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest, "form": form.strip()}
     if translation:
         shown["translation"] = translation
+    if number:
+        shown.update({"number": number, "of": lesson["questions"]})
     if keyed(lesson):
         # Material for the teacher, or a card answered offline: the key and the explanation come with it.
         shown.update({"answer_key": answer_key, "explanation": explanation})
     block = db.add_block(lesson_id, "quiz", question, shown)
     _show(lesson, block)
     return f"shown as quiz {block['id']}; {'go on with the unit' if lesson['batch'] else 'end the turn and wait for the answer'}"
+
+
+def placement_posed(lesson_id: int) -> int:
+    return db.row("SELECT COUNT(*) AS n FROM blocks WHERE lesson_id = ? AND kind = 'quiz'", lesson_id)["n"]
 
 
 SORT_CATEGORIES = (2, 4)

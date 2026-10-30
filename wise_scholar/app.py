@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -48,6 +49,9 @@ _jobs: set[asyncio.Task] = set()
 # ponytail: on synthesized references right words score 0.97+ and wrong ones under 0.45; real accents are untested.
 WEAK_WORD = 0.5
 MISMATCH_SHARE = 0.5
+# placement questions for a course of an hour and for the longest; a course with no teaching time set gets the untimed count
+PLACEMENT_QUESTIONS = (4, 20)
+PLACEMENT_UNTIMED = 8
 backend = {"claude": claude, "opencode": opencode}[BACKEND]
 
 log = logging.getLogger("wise_scholar")
@@ -241,6 +245,7 @@ class Turn(BaseModel):
 
 class Answer(BaseModel):
     answer: str
+    non_goals: list[str] = []
 
 
 class ExerciseCheck(BaseModel):
@@ -470,6 +475,8 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         # every turn carries where the unit's counter stands, so step_done keeps up with the lesson
         steps, at = outline["data"]["steps"], outline["data"]["at"]
         state += f" outline=step {at + 1} of {len(steps)}: {steps[at]!r}" if at < len(steps) else f" outline=all {len(steps)} steps done"
+    if lesson["questions"]:
+        state += f" placement=question {tutor.placement_posed(lesson['id'])} of {lesson['questions']} posed"
     known = [
         f"[known] ({'this course' if f['course_id'] else 'learner'}) {_untrusted(' '.join(f['text'].split()))}" for f in db.facts(lesson["course_id"])
     ]
@@ -1100,14 +1107,23 @@ async def answer_question(block_id: int, body: Answer) -> dict:
         raise HTTPException(404, "no such question")
     _require_idle(block["lesson_id"])
     answer = body.answer.strip()
-    if not answer:
+    non_goals = list(dict.fromkeys(body.non_goals))
+    if non_goals and ("non_goals" not in block["data"] or not set(non_goals) <= set(block["data"]["options"])):
+        raise HTTPException(422, "non-goals are options of a goal question")
+    if not answer and not non_goals:
         raise HTTPException(422, "answer is empty")
     if block["data"]["answer"] is not None:
         raise HTTPException(409, "already answered")
     lesson = _lesson(block["lesson_id"])
-    block = db.set_block_data(block_id, {**block["data"], "answer": answer})
+    data = {**block["data"], "answer": answer}
+    said = f"[learner answered] question: {block['markdown']!r} answer: {answer!r}"
+    if non_goals:
+        data["non_goals"] = non_goals
+        db.add_fact(lesson["course_id"], f"Not goals of this course, for the plan and the course map to leave out: {'; '.join(non_goals)}", about_learner=False)
+        said += f" not wanted: {'; '.join(non_goals)!r}, recorded as the course's non-goals"
+    block = db.set_block_data(block_id, data)
     hub.publish(lesson["course_id"], {"type": "block.updated", "lesson_id": lesson["id"], "block": block})
-    _start_turn(lesson, f"[learner answered] question: {block['markdown']!r} answer: {answer!r}")
+    _start_turn(lesson, said)
     return block
 
 
@@ -1189,14 +1205,31 @@ async def start_placement(course_id: int) -> dict:
     if not course["mechanism"]:
         raise HTTPException(409, "there is no plan yet")
     _require_unplaced(course)
-    lesson_id = db.create_lesson(course_id, "Placement", "placement")
+    questions = placement_length(course["hours"])
+    lesson_id = db.create_lesson(course_id, "Placement", "placement", questions=questions)
     view = _lesson_view(lesson_id)
     hub.publish(course_id, {"type": "lesson.created", "lesson": view})
     _start_turn(
         _lesson(lesson_id),
-        f"[event] The learner accepted the plan with mechanism {course['mechanism']}. The placement check begins.",
+        f"[event] The learner accepted the plan with mechanism {course['mechanism']}. The placement check begins. "
+        f"It has {questions} questions.",
     )
     return view
+
+
+def placement_length(hours: float | None) -> int:
+    """Questions in a placement check: a few for a course of an hour or two, more the longer the course."""
+    if hours is None:
+        return PLACEMENT_UNTIMED
+    fewest, most = PLACEMENT_QUESTIONS
+    return max(fewest, min(most, round(fewest + 2 * math.log2(max(hours, 1)))))
+
+
+def _hours_left(course: dict) -> float | None:
+    """The course's teaching time still ahead: its hours, less the share of the map already mastered or placed out."""
+    if not course["hours"] or not course["concepts"]:
+        return course["hours"]
+    return course["hours"] * sum(1 - (c["mastery"] or 0) for c in course["concepts"]) / len(course["concepts"])
 
 
 @app.post("/api/courses/{course_id}/placement/retake")
@@ -1209,7 +1242,9 @@ async def retake_placement(course_id: int) -> dict:
     earlier = [lesson for lesson in course["lessons"] if lesson["phase"] == "placement"]
     for lesson in earlier:
         _require_idle(lesson["id"])
-    lesson_id = db.create_lesson(course_id, f"Placement · retake {len(earlier)}" if earlier else "Placement", "placement")
+    hours = _hours_left(course)
+    questions = placement_length(hours)
+    lesson_id = db.create_lesson(course_id, f"Placement · retake {len(earlier)}" if earlier else "Placement", "placement", questions=questions)
     view = _lesson_view(lesson_id)
     hub.publish(course_id, {"type": "lesson.created", "lesson": view})
     before = f"level {course['level']!r}: {course['placement']}" if course["level"] else "none; the check was skipped"
@@ -1218,7 +1253,8 @@ async def retake_placement(course_id: int) -> dict:
     _start_turn(
         _lesson(lesson_id),
         f"[event] The learner retakes the placement check. Earlier result: {before}. Run the check again from the start. "
-        "At the end call set_placement, then set_known for the existing course map instead of set_course_map.",
+        + (f"About {math.ceil(hours)} of the course's {course['hours']} hours are still ahead. " if hours is not None else "")
+        + f"It has {questions} questions. At the end call set_placement, then set_known for the existing course map instead of set_course_map.",
     )
     return view
 

@@ -1124,6 +1124,18 @@ a.btn.primary:hover {
   border-color: var(--teal);
 }
 
+.btn.option.ruled {
+  border-style: dashed;
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.chip.ruled {
+  background: none;
+  color: var(--muted);
+  font-weight: 400;
+}
+
 .question form {
   display: flex;
   flex-direction: column;
@@ -1502,6 +1514,12 @@ a.btn.primary:hover {
   align-items: center;
   gap: var(--space-sm);
   margin-bottom: 0;
+}
+
+.quiz .label .count {
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .quiz .row {

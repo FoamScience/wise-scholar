@@ -394,6 +394,7 @@ MIGRATIONS = [
         INSERT INTO passage_fts(passage_fts, rowid, title, text) VALUES ('delete', old.id, old.title, old.text);
     END;
     """,
+    "ALTER TABLE lessons ADD COLUMN questions INTEGER;",
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -683,10 +684,10 @@ def set_ranking(course_id: int, ranking: list[dict]) -> None:
     )
 
 
-def create_lesson(course_id: int, title: str, phase: str, concept_id: int | None = None) -> int:
+def create_lesson(course_id: int, title: str, phase: str, concept_id: int | None = None, questions: int | None = None) -> int:
     return conn.execute(
-        "INSERT INTO lessons (course_id, title, phase, concept_id, session_id) VALUES (?, ?, ?, ?, ?)",
-        (course_id, title, phase, concept_id, str(uuid.uuid4())),
+        "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, questions) VALUES (?, ?, ?, ?, ?, ?)",
+        (course_id, title, phase, concept_id, str(uuid.uuid4()), questions),
     ).lastrowid
 
 
