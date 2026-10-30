@@ -12,7 +12,7 @@ export type Course = {
   cover_alt: string | null
 }
 export type Message = { id: number; lesson_id: number; role: 'learner' | 'tutor'; text: string; created: string }
-export type QuestionData = { options: string[]; answer: string | null; multiple?: boolean }
+export type QuestionData = { options: string[]; answer: string | null; multiple?: boolean; non_goals?: string[] }
 export type ChallengeData = {
   attempts: string[]
   hints: string[]

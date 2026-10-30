@@ -48,6 +48,10 @@ This builds the web interface and serves everything at <http://127.0.0.1:8321>.
 
 A new course opens on its interview page. Before the first question you can say more about what the course should cover (for example "science class, second year of high school") and how many hours of teaching the whole course should take. Both are optional: the tutor keeps the course inside that scope and sizes the course map so its sittings add up to the time.
 
+When the interview asks what you want to be able to do, tap an option once to pick it as a goal and again to mark it as not wanted. The options you rule out are kept as the course's non-goals, and the course map leaves them out.
+
+The placement check counts its questions on each card (3/8). A course of an hour or two gets about 4 to 6 questions and a course of 200 hours about 19; without a teaching time it takes 8. A retake sizes itself from the hours still ahead: the course's hours less the share of the map you have mastered or placed out of.
+
 ## Choose the backend and model
 
 Set `WISE_SCHOLAR_AGENT` to `<backend>` or `<backend>/<model>`. The backend is `claude` or `opencode`.

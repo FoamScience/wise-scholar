@@ -451,19 +451,33 @@ function Skeleton() {
   )
 }
 
-function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answer: string) => void }) {
+function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answer: string, nonGoals?: string[]) => void }) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const [picked, setPicked] = useState<string[]>([])
-  const { options, answer, multiple } = props.block.data as QuestionData
+  const [ruled, setRuled] = useState<string[]>([])
+  const { options, answer, multiple, non_goals } = props.block.data as QuestionData
+  const goals = non_goals !== undefined
 
   if (answer !== null)
     return (
       <section id={`block-${props.block.id}`} className="block answered">
         <div className="muted" dir="auto">{props.block.markdown}</div>
-        <span className="chip" dir="auto">{answer}</span>
+        {answer && <span className="chip" dir="auto">{answer}</span>}
+        {non_goals?.map((o) => (
+          <span key={o} className="chip ruled" dir="auto">{t('question.notWanted', { option: o })}</span>
+        ))}
       </section>
     )
+
+  // on a goal card a tap picks an option, a second marks it not wanted, a third clears it
+  function toggle(o: string) {
+    if (picked.includes(o)) {
+      setPicked((all) => all.filter((x) => x !== o))
+      if (goals) setRuled((all) => [...all, o])
+    } else if (ruled.includes(o)) setRuled((all) => all.filter((x) => x !== o))
+    else setPicked((all) => [...all, o])
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -473,18 +487,19 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   return (
     <section id={`block-${props.block.id}`} className="block question">
       <h2 dir="auto">{props.block.markdown}</h2>
-      {multiple && <div className="small">{t('question.several')}</div>}
+      {multiple && <div className="small">{t(goals ? 'question.goals' : 'question.several')}</div>}
       <div className="options">
         {options.map((o) =>
           multiple ? (
             <button
               key={o}
               type="button"
-              className={picked.includes(o) ? 'btn option on' : 'btn option'}
-              aria-pressed={picked.includes(o)}
+              className={picked.includes(o) ? 'btn option on' : ruled.includes(o) ? 'btn option ruled' : 'btn option'}
+              aria-pressed={picked.includes(o) ? true : ruled.includes(o) ? 'mixed' : false}
+              aria-label={ruled.includes(o) ? t('question.notWanted', { option: o }) : undefined}
               dir="auto"
               disabled={props.disabled}
-              onClick={() => setPicked((all) => (all.includes(o) ? all.filter((x) => x !== o) : [...all, o]))}
+              onClick={() => toggle(o)}
             >
               {o}
             </button>
@@ -495,8 +510,13 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
           ),
         )}
         {multiple && (
-          <button type="button" className="btn primary" disabled={props.disabled || picked.length === 0} onClick={() => props.onAnswer(picked.join('; '))}>
-            {t('question.done', { count: picked.length })}
+          <button
+            type="button"
+            className="btn primary"
+            disabled={props.disabled || picked.length + ruled.length === 0}
+            onClick={() => props.onAnswer(picked.join('; '), goals ? ruled : undefined)}
+          >
+            {goals && ruled.length > 0 ? t('question.doneRuled', { count: picked.length, ruled: ruled.length }) : t('question.done', { count: picked.length })}
           </button>
         )}
       </div>
@@ -1618,7 +1638,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               key={b.id}
               block={b}
               disabled={lesson.running}
-              onAnswer={(answer) => post(`/api/blocks/${b.id}/answer`, { answer })}
+              onAnswer={(answer, nonGoals) => post(`/api/blocks/${b.id}/answer`, { answer, non_goals: nonGoals ?? [] })}
             />
           ) : b.kind === 'quiz' ? (
             <QuizCard

@@ -22,6 +22,8 @@ export type QuizData = {
   answer: string | null
   translation?: string
   pretest?: boolean
+  number?: number
+  of?: number
   unknown?: boolean
   confidence?: number
   correct?: boolean
@@ -273,7 +275,10 @@ export function QuizCard(props: {
   const { t } = useTranslation()
   return (
     <section id={`block-${props.id}`} className="block quiz">
-      <div className="label">{props.data.pretest ? t('quiz.pretest') : d.kind === 'sort' ? t('quiz.sort') : t('quiz.quickCheck')}</div>
+      <div className="label">
+        {props.data.pretest ? t('quiz.pretest') : d.kind === 'sort' ? t('quiz.sort') : t('quiz.quickCheck')}
+        {d.number !== undefined && <span className="count">{t('quiz.numbered', { number: d.number, of: d.of })}</span>}
+      </div>
       <Markdown>{props.question}</Markdown>
       <Translation text={d.translation} />
       {props.authored ? (

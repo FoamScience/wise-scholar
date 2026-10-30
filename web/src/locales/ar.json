@@ -226,7 +226,10 @@
       "done_two": "تم، خياران",
       "done_few": "تم، {{count}} خيارات",
       "done_many": "تم، {{count}} خيارًا",
-      "done_other": "تم، {{count}} خيار"
+      "done_other": "تم، {{count}} خيار",
+      "goals": "المس مرة لتختاره هدفًا، ومرتين إن لم تكن تريده.",
+      "notWanted": "غير مطلوب: {{option}}",
+      "doneRuled": "تم، {{count}} مختارة، {{ruled}} مستبعدة"
     },
     "challenge": {
       "compare": "قارن بين الحلّين",
@@ -438,7 +441,8 @@
       "quickCheck": "سؤال سريع",
       "dontKnow": "لا أعرف",
       "key": "المفتاح",
-      "translation": "الترجمة"
+      "translation": "الترجمة",
+      "numbered": "{{number}}/{{of}}"
     },
     "review": {
       "skipWarmup": "تخطَّ الإحماء وانتقل إلى الدرس",
@@ -718,6 +722,7 @@
     "that approach is not in the plan": "هذه الطريقة ليست في الخطة",
     "message is empty": "الرسالة فارغة",
     "answer is empty": "الإجابة فارغة",
+    "non-goals are options of a goal question": "الأهداف المستبعدة خيارات من سؤال عن الأهداف",
     "already answered": "أُجيب عنه من قبل",
     "try the unit's opening first": "جرّب افتتاحية الوحدة أولًا",
     "a prepared course has no pace": "الدورة المحضَّرة ليس لها وتيرة",

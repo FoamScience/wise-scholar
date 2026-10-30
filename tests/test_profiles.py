@@ -1265,6 +1265,68 @@ def test_a_question_card_may_take_several_answers():
     assert db.block(block["id"])["data"]["answer"] == "Excel; R" and "Excel; R" in turns[0]
 
 
+
+def test_a_goal_card_records_what_the_learner_rules_out_as_non_goals(monkeypatch):
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app, tutor
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Ruler')").lastrowid
+    course = db.create_course("Welding", who)["id"]
+    interview = db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]
+    asyncio.run(tutor.ask(interview, "What should you be able to do?", ["MIG", "TIG", "Stick"], non_goals=True))
+    goal = db.blocks(interview)[-1]
+    assert goal["data"]["multiple"] is True and goal["data"]["non_goals"] == []
+    asyncio.run(tutor.ask(interview, "Which tools?", ["Grinder", "Clamp"], multiple=True))
+    plain = db.blocks(interview)[-1]
+
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(app.answer_question(plain["id"], app.Answer(answer="Clamp", non_goals=["Grinder"])))
+    assert refused.value.status_code == 422
+    with pytest.raises(HTTPException):
+        asyncio.run(app.answer_question(goal["id"], app.Answer(answer="MIG", non_goals=["Gas"])))
+
+    asyncio.run(app.answer_question(goal["id"], app.Answer(answer="", non_goals=["Stick", "TIG", "Stick"])))
+    data = db.block(goal["id"])["data"]
+    assert data["answer"] == "" and data["non_goals"] == ["Stick", "TIG"]
+    assert "not wanted: 'Stick; TIG'" in turns[0]
+    assert db.facts(course)[-1]["text"].endswith("leave out: Stick; TIG")
+    assert "leave out: Stick; TIG" in app._turn_prompt(db.lesson(interview), "[event] x")
+
+
+def test_placement_length_follows_the_hours_ahead_and_numbers_its_questions(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, tutor
+
+    assert [app.placement_length(h) for h in (None, 0.5, 1, 2, 10, 200, 5000)] == [8, 4, 4, 6, 11, 19, 20]
+
+    lines = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: lines.append(line))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Counted')").lastrowid
+    course = db.create_course("Sailing", who)["id"]
+    db.conn.execute("UPDATE courses SET hours = 2 WHERE id = ?", (course,))
+    db.set_ranking(course, [{"mechanism": "concept-map", "rationale": "x"}])
+    placement = asyncio.run(app.start_placement(course))["id"]
+    assert "It has 6 questions." in lines[-1] and db.lesson(placement)["questions"] == 6
+    for n in range(6):
+        assert f"placement=question {n} of 6 posed" in app._turn_prompt(db.lesson(placement), "[event] x")
+        assert asyncio.run(tutor.pose_quiz(placement, f"Q{n}?", "open", [], "a", "")).startswith("shown")
+        assert {k: db.blocks(placement)[-1]["data"][k] for k in ("number", "of")} == {"number": n + 1, "of": 6}
+    assert asyncio.run(tutor.pose_quiz(placement, "Q7?", "open", [], "a", "")).startswith("error: the placement check has 6 questions")
+
+    db.conn.execute("UPDATE courses SET hours = 200 WHERE id = ?", (course,))
+    db.set_concepts(course, [{"title": "Rigging", "concepts": ["Knots", "Sails", "Wind", "Tides"], "known": ["Knots", "Sails"]}])
+    monkeypatch.setattr(app, "_require_idle", lambda lesson_id: None)
+    retake = asyncio.run(app.retake_placement(course))["id"]
+    assert "About 100 of the course's 200 hours are still ahead." in lines[-1] and "It has 17 questions." in lines[-1]
+    assert db.lesson(retake)["questions"] == 17
+
 def test_sketch_is_a_profile_choice_on_by_default():
     from wise_scholar import app
 
