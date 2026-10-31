@@ -822,12 +822,12 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
 function Remark({ message }: { message: Message }) {
   if (message.role === 'learner')
     return (
-      <div className="bubble learner" dir={textDirection(message.text)}>
+      <div id={`msg-${message.id}`} className="bubble learner" dir={textDirection(message.text)}>
         {message.text}
       </div>
     )
   return (
-    <div className="bubble">
+    <div id={`msg-${message.id}`} className="bubble">
       <Markdown>{message.text}</Markdown>
     </div>
   )
@@ -1082,9 +1082,10 @@ function Plan(props: {
   )
 }
 
-function Workspace({ courseId, speech, commands, crafted, sketched, concept, start }: { courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null }) {
+function Workspace({ courseId, speech, commands, crafted, sketched, concept, start, found }: { courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null; found: { lesson: number; at: string } | null }) {
   const { t } = useTranslation()
   const [course, setCourse] = useState<CourseDetail | null>(null)
+  const foundLesson = found?.lesson ?? null
   const [sources, setSources] = useState<Source[]>([])
   const [lessonId, setLessonId] = useState<number | null>(null)
   const [streaming, setStreaming] = useState('')
@@ -1111,7 +1112,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   const lesson = course?.lessons.find((l) => l.id === lessonId) ?? null
   useArrivals(lessonBox, lesson?.id)
   useArrivals(messagesBox, lesson?.id)
-  const open = lesson ? (asking ?? lesson.phase === 'interview') : false
+  const open = lesson ? (asking ?? (lesson.phase === 'interview' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))) : false
   const lastTutor = lesson?.messages.findLast((m) => m.role === 'tutor')?.id ?? 0
 
   // the open chat shows every message: the badge counts the tutor's from after the last one it showed; a lesson
@@ -1262,9 +1263,9 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
         if (!ev.ok && ev.error !== 'stopped') setError(ev.error ?? i18n.t('chat.turnFailed'))
       }
     }
-    // a sitting opens with a few due reviews before the lesson
+    // a sitting opens with a few due reviews before the lesson; a card looked up by search opens straight away
     const here = location.hash
-    if (!start && navigator.onLine)
+    if (!start && foundLesson === null && navigator.onLine)
       api<{ due: number }>(`/api/courses/${courseId}/warmup`).then(
         (w) => {
           // only from the page that asked: a second answer, or one arriving after the learner moved on, does nothing
@@ -1277,7 +1278,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
     api<CourseDetail>(`/api/courses/${courseId}`).then(
       (c) => {
         setCourse(c)
-        const wanted = concept === null ? undefined : c.lessons.find((l) => l.concept_id === concept)
+        const wanted = foundLesson !== null ? c.lessons.find((l) => l.id === foundLesson) : concept === null ? undefined : c.lessons.find((l) => l.concept_id === concept)
         setLessonId(wanted ? wanted.id : c.lessons[c.lessons.length - 1].id)
         if (start)
           api<Lesson>(`/api/courses/${courseId}/${start}`, {}).then(
@@ -1306,7 +1307,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
       (e) => setError(e.message),
     )
     return () => source.close()
-  }, [courseId, concept, start])
+  }, [courseId, concept, start, foundLesson])
 
   useEffect(() => {
     // back at an unfinished unit after days away: the server decides whether it opens with a recap. Asked once the
@@ -1330,6 +1331,17 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
   useEffect(() => {
     if (messagesBox.current) messagesBox.current.scrollTop = messagesBox.current.scrollHeight
   }, [lesson?.messages.length, open])
+
+  // a card or message found by search: its lesson opens on it, the chat too for a message, and it is marked a moment
+  const shown = useRef<string | null>(null)
+  useEffect(() => {
+    if (!found || shown.current === found.at || lesson?.id !== found.lesson) return
+    const target = document.getElementById(found.at)
+    if (!target) return
+    shown.current = found.at
+    target.scrollIntoView({ block: 'center' })
+    target.classList.add('found')
+  }, [found, lesson])
 
   // a streamed reply carries along only a learner already at the end; one reading back stays where they are
   useEffect(() => {
@@ -1704,7 +1716,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
           ) : b.kind === 'figure' ? (
             <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={sketched} disabled={lesson.running} onRestore={() => post(`/api/blocks/${b.id}/restore`, {})} onRedraw={crafted ? (notes) => post(`/api/blocks/${b.id}/redraw`, { notes }) : undefined} />
           ) : b.kind === 'placement' ? (
-            <section key={b.id} className="block">
+            <section key={b.id} id={`block-${b.id}`} className="block">
               <div className="label">
                 {t('block.placementResult')} <span className="chip">{(b.data as { level: string }).level}</span>
               </div>
@@ -1729,7 +1741,7 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
               onError={setError}
             />
           ) : (
-            <section key={b.id} className="block">
+            <section key={b.id} id={`block-${b.id}`} className="block">
               <div className="label">{lookup(`block.${b.kind}`, b.kind)}</div>
               <Markdown>{b.markdown}</Markdown>
             </section>
@@ -2041,7 +2053,7 @@ export default function App() {
       () => {},
     )
   }, [])
-  const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing))?$/)
+  const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing)|\?lesson=(\d+)&(card|chat)=(\d+))?$/)
   const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
   const book = hash.match(/^#\/course\/(\d+)\/book$/)
   const found = hash.match(/^#\/course\/(\d+)\/search\?(.*)$/)
@@ -2073,6 +2085,7 @@ export default function App() {
           sketched={current.sketch}
           concept={match[2] ? Number(match[2]) : null}
           start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
+          found={match[4] ? { lesson: Number(match[4]), at: `${match[5] === 'chat' ? 'msg' : 'block'}-${match[6]}` } : null}
         />
       )
     if (found) {

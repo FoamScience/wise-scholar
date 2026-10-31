@@ -2963,6 +2963,19 @@ pre {
   text-decoration: none;
 }
 
+/* the card or message a search result opened, marked a moment so the eye finds it */
+.found {
+  animation: found 2.4s ease-out;
+}
+
+@keyframes found {
+  0%,
+  50% {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 4px;
+  }
+}
+
 .hit {
   display: flex;
   flex-direction: column;

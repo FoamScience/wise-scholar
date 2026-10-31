@@ -589,7 +589,8 @@
       "kinds": "What to search",
       "searching": "Searching…",
       "none": "Nothing found. Try other words, or say what you are looking for in a sentence.",
-      "openLesson": "Open the lesson",
+      "openCard": "Open the card",
+      "openMessage": "Open the message",
       "showPassage": "Show the passage",
       "kind": {
         "all": "All",

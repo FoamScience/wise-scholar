@@ -603,7 +603,8 @@
       "kinds": "Où chercher",
       "searching": "Recherche…",
       "none": "Rien trouvé. Essayez d'autres mots, ou décrivez ce que vous cherchez en une phrase.",
-      "openLesson": "Ouvrir la leçon",
+      "openCard": "Ouvrir la carte",
+      "openMessage": "Ouvrir le message",
       "showPassage": "Afficher le passage",
       "kind": {
         "all": "Tout",
