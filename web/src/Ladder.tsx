@@ -54,6 +54,18 @@ export function HintList({ data: d }: { data: ChallengeData }) {
   )
 }
 
+/** What the task needs that the learner has not met yet, folded away until they want it. */
+export function Helper({ data, open = false }: { data: ChallengeData; open?: boolean }) {
+  const { t } = useTranslation()
+  if (!data.helper) return null
+  return (
+    <details className="helper" open={open}>
+      <summary>{t('challenge.helper')}</summary>
+      <Markdown>{data.helper}</Markdown>
+    </details>
+  )
+}
+
 export function Comparison({ data }: { data: ChallengeData }) {
   const { t } = useTranslation()
   const c = data.comparison

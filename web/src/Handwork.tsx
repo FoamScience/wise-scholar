@@ -89,8 +89,18 @@ export function PhotoTray(props: { blockId: number; task: string; data: Challeng
             e.target.value = ''
           }}
         />
-        <button type="button" className="btn" disabled={props.disabled} onClick={() => input.current?.click()}>
-          {t(phone() ? 'hand.takePhoto' : 'hand.addPhoto')}
+        <button
+          type="button"
+          className="btn icon"
+          disabled={props.disabled}
+          aria-label={t(phone() ? 'hand.takePhoto' : 'hand.addPhoto')}
+          title={t(phone() ? 'hand.takePhoto' : 'hand.addPhoto')}
+          onClick={() => input.current?.click()}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" />
+            <circle cx="12" cy="13" r="3" />
+          </svg>
         </button>
         {touchscreen() && (
           <button type="button" className="btn" disabled={props.disabled} onClick={() => setWriting(true)}>
@@ -100,8 +110,10 @@ export function PhotoTray(props: { blockId: number; task: string; data: Challeng
         {!phone() && (
           <button
             type="button"
-            className="btn"
+            className="btn icon"
             disabled={props.disabled}
+            aria-label={t('hand.usePhone')}
+            title={t('hand.usePhone')}
             onClick={() =>
               api<{ token: string }>(`/api/blocks/${props.blockId}/handoff`, {}).then(
                 ({ token }) => setLink(`${location.origin}/#/hand/${token}`),
@@ -109,7 +121,10 @@ export function PhotoTray(props: { blockId: number; task: string; data: Challeng
               )
             }
           >
-            {t('hand.usePhone')}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="6" y="2" width="12" height="20" rx="2" />
+              <path d="M11 18h2" />
+            </svg>
           </button>
         )}
         <span className="small muted">{sending > 0 ? t('hand.sending') : pending.length > 0 ? t('hand.waiting', { count: pending.length }) : t('hand.hint')}</span>

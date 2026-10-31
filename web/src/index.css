@@ -141,6 +141,11 @@ pre {
   border-radius: var(--radius-input);
 }
 
+pre ::selection {
+  background: color-mix(in oklab, var(--code-ink) 30%, transparent);
+  color: var(--code-ink);
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -1945,6 +1950,11 @@ td {
   border-radius: 0;
 }
 
+.btn.icon {
+  min-width: 44px;
+  padding: 0 var(--space-sm);
+}
+
 .btn.theme {
   padding: var(--space-xs) var(--space-xs);
 }
@@ -2223,7 +2233,8 @@ mark {
 }
 
 .podcast details summary,
-.translation summary {
+.translation summary,
+.helper summary {
   cursor: pointer;
   color: var(--muted);
   font-size: var(--text-sm);

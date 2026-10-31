@@ -30,6 +30,7 @@ export type ChallengeData = {
   milestone?: boolean
   transfer?: boolean
   comparison?: { left: string; right: string; question: string }
+  helper?: string
   lang?: string
   words?: [number, number] | null
   structure?: string

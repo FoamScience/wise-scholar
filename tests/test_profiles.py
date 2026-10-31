@@ -770,6 +770,25 @@ def test_a_long_pretest_is_refused_and_a_short_one_shown():
     assert asyncio.run(tutor.pose_comparison(lesson, "p", "a", "b", ask)) == "error: a comparison is for technical subjects, not a language course"
     db.conn.execute("UPDATE courses SET lang = NULL WHERE id = ?", (course,))
 
+
+def test_a_task_carries_the_knowledge_it_needs_folded_under_it_and_into_the_export():
+    import asyncio
+
+    from wise_scholar import obsidian, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Helped')").lastrowid
+    course = db.create_course("Lean", who)["id"]
+    lesson = db.create_lesson(course, "Equality", "lesson")
+    helper = "`h.symm` turns `h : a = b` into a proof of `b = a`."
+    assert asyncio.run(tutor.pose_challenge(lesson, "Given h : a = b, prove b = a.", helper=f"  {helper}\n")).startswith("shown as challenge")
+    task = db.blocks(lesson)[-1]
+    assert task["data"]["helper"] == helper
+    note = obsidian.Vault(course)._card_body(db.lesson(lesson), task)
+    assert "> [!info]- What you need to know" in note and helper in note
+    asyncio.run(tutor.pose_challenge(lesson, "Prove a = a."))
+    plain = db.blocks(lesson)[-1]
+    assert plain["data"]["helper"] == "" and "What you need to know" not in obsidian.Vault(course)._card_body(db.lesson(lesson), plain)
+
 # Obsidian export: seeds profiles, so it lives here with the other profile-creating tests.
 
 
