@@ -220,6 +220,7 @@
       "doneRuled": "Valider, {{count}} choix, {{ruled}} écartés"
     },
     "challenge": {
+      "helper": "Ce qu'il faut savoir",
       "compare": "Comparez les deux",
       "solution": "Solution {{n}}",
       "transfer": "Transfert : même idée, nouveau terrain, sans indice",

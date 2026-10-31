@@ -13,7 +13,7 @@ import { Correction } from './Diff'
 import type { Entry } from './Errors'
 import { Credits, Drawing } from './Figure'
 import type { FigureData } from './Figure'
-import { Comparison, HintList, Ladder } from './Ladder'
+import { Comparison, Helper, HintList, Ladder } from './Ladder'
 import { day, lookup, percent } from './i18n'
 import { TIER_WORDS } from './Language'
 import type { ReadingData, VocabData } from './Language'
@@ -121,6 +121,7 @@ function ExerciseBlock({ block, files }: { block: Block; files: ExerciseFile[] }
   return (
     <Card label={d.milestone ? t('challenge.milestone') : t('exercise.label')} className="challenge">
       <Markdown>{block.markdown}</Markdown>
+      <Helper data={d} open />
       {files.map((f) => (
         <div key={f.path} className="file">
           <div className="file-head">
@@ -189,6 +190,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
       >
         <Markdown>{block.markdown}</Markdown>
         <Comparison data={d} />
+        <Helper data={d} open />
         <Ladder data={d} />
       </Card>
     )

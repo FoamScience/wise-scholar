@@ -216,6 +216,7 @@
       "doneRuled": "Done, {{count}} picked, {{ruled}} ruled out"
     },
     "challenge": {
+      "helper": "What you need to know",
       "compare": "Compare the two",
       "solution": "Solution {{n}}",
       "transfer": "Transfer: same idea, new ground, no hints",

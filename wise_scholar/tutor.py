@@ -746,7 +746,8 @@ async def add_plot(lesson_id: int, title: str, spec: dict, alt: str) -> str:
 
 @mcp.tool()
 async def pose_challenge(
-    lesson_id: int, markdown: str, pretest: bool = False, milestone: bool = False, transfer: bool = False, form: str = "", variant_of: int | None = None
+    lesson_id: int, markdown: str, pretest: bool = False, milestone: bool = False, transfer: bool = False, form: str = "", variant_of: int | None = None,
+    helper: str = "",
 ) -> str:
     """Show something the learner must work out themselves: a prediction, a question, a problem.
 
@@ -761,6 +762,8 @@ async def pose_challenge(
     variant_of: in a practice unit, the id of the earlier task this one varies (new numbers or a new
     situation, same idea); each task is varied once in a course, and a miss on the variant brings that
     unit's review cards forward.
+    helper: Markdown with the knowledge the task needs that the learner has not met (a definition, notation,
+    a call's syntax, a formula); the card shows it collapsed under the task. Never a solution step or a hint.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
@@ -769,7 +772,7 @@ async def pose_challenge(
         return problem
     if variant_of is not None and (problem := _variant_error(lesson, variant_of)):
         return problem
-    data = {**challenge.new(), "pretest": pretest, "milestone": milestone, "transfer": transfer, "form": form.strip()}
+    data = {**challenge.new(), "pretest": pretest, "milestone": milestone, "transfer": transfer, "form": form.strip(), "helper": helper.strip()}
     if variant_of is not None:
         data["variant_of"] = variant_of
     if transfer:
@@ -909,7 +912,9 @@ async def read_file(lesson_id: int, path: str) -> str:
     return text[: sandbox.OUTPUT_LIMIT]
 
 
-async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile], run: str, milestone: bool = False, form: str = "") -> str:
+async def pose_exercise(
+    lesson_id: int, markdown: str, files: list[ExerciseFile], run: str, milestone: bool = False, form: str = "", helper: str = ""
+) -> str:
     """Show a hands-on exercise: starter files the learner edits in their own editor, and a command that runs them.
 
     files: paths relative to the course workspace, with the starter
@@ -923,6 +928,7 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
     `[learner attempt]` turns for an exercise carry the current files, the last run output and
     the written answer, when there is one.
     form: when the exercise opens the lesson, which of the lesson rules' forms it is.
+    helper: as for pose_challenge, the knowledge the exercise needs that the learner has not met, shown collapsed.
     End your turn after posing it.
     """
     lesson = db.lesson(lesson_id)
@@ -936,7 +942,10 @@ async def pose_exercise(lesson_id: int, markdown: str, files: list[ExerciseFile]
     if outside := [f.path for f in files if not course_files.write_text(workspace, f.path, f.content)]:
         return f"error: paths {outside} are not file paths inside the course workspace"
     _files_back(lesson)
-    data = {**challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone, "form": form.strip()}
+    data = {
+        **challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone, "form": form.strip(),
+        "helper": helper.strip(),
+    }
     block = db.add_block(lesson_id, "exercise", markdown, data)
     _show(lesson, block)
     return f"shown as exercise {block['id']}; end the turn and wait for the learner"

@@ -22,7 +22,7 @@ import { GraphPage } from './Graph'
 import { SittingPage } from './Sitting'
 import { SearchPage } from './Search'
 import { HandPage, PhotoTray } from './Handwork'
-import { Comparison, HintList, Ladder } from './Ladder'
+import { Comparison, Helper, HintList, Ladder } from './Ladder'
 import type { Area, Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
 import { FigureCard } from './Figure'
 import { NetworkCard } from './Network'
@@ -567,6 +567,7 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
       </div>
       {!(d.spoken && d.lang) && <Markdown>{props.block.markdown}</Markdown>}
       <Comparison data={d} />
+      <Helper data={d} />
       {player.error && <div className="error">{player.error}</div>}
 
       <Ladder data={d} blockId={props.block.id} onError={props.onError} />
@@ -681,14 +682,19 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
 function HintButton(props: { data: ChallengeData; disabled: boolean; onAct: Act }) {
   const { t } = useTranslation()
   const { hints, max_hints } = props.data
+  const label = hints.length ? t('challenge.nextHint') : t('challenge.hint')
   return (
     <button
       type="button"
-      className="btn"
+      className="btn icon"
       disabled={props.disabled || hints.length >= max_hints}
+      aria-label={label}
+      title={label}
       onClick={() => props.onAct('hint')}
     >
-      {hints.length ? t('challenge.nextHint') : t('challenge.hint')}
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4" />
+      </svg>
     </button>
   )
 }
@@ -749,6 +755,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
         {d.solved && <span className="chip">{t('common.solved')}</span>}
       </div>
       <Markdown>{props.block.markdown}</Markdown>
+      <Helper data={d} />
 
       {files.map((f) => (
         <div key={f.path} className="file">
@@ -1825,13 +1832,17 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
           <button
             type="button"
             id="ask"
-            className="btn primary ask"
+            className="btn primary icon ask"
+            aria-label={t('chat.ask')}
+            title={t('chat.ask')}
             onClick={() => {
               setAsking(true)
               requestAnimationFrame(() => document.getElementById('chat')?.focus())
             }}
           >
-            {t('chat.ask')}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+            </svg>
             {unread > 0 && (
               <span className="badge">
                 <span aria-hidden="true">{unread}</span>
