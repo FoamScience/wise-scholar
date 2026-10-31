@@ -198,7 +198,7 @@ pre ::selection {
   border-radius: var(--radius-input);
   color: var(--color-ink-2);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -260,7 +260,7 @@ pre ::selection {
 /* a label names what follows it: the body face, a step smaller, in sentence case */
 .label {
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.4;
   color: var(--color-ink-2);
 }
@@ -273,7 +273,7 @@ pre ::selection {
 
 .status.live {
   color: var(--teal);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .lesson-next {
@@ -299,7 +299,7 @@ pre ::selection {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-input);
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
   cursor: pointer;
@@ -441,7 +441,7 @@ a.btn.primary:hover {
 
 .topic-form label {
   font-size: var(--text-section);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.3;
 }
 
@@ -497,7 +497,7 @@ a.btn.primary:hover {
 
 .course-card strong {
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.35;
 }
 
@@ -763,6 +763,17 @@ a.btn.primary:hover {
   overflow-y: auto;
 }
 
+/* on a wide pane the tutor button rides in its own gutter, clear of the answer box */
+@media (min-width: 1101px) {
+  .lesson {
+    padding-inline-end: calc(var(--space-lg) * 2 + 44px);
+  }
+
+  .lesson .ask {
+    margin-inline-end: calc(-1 * (var(--space-lg) + 44px));
+  }
+}
+
 /* the cards use the whole pane, so code, figures and run output get the room; running text keeps a reading measure */
 .lesson p:not([class]),
 .lesson li {
@@ -794,7 +805,7 @@ a.btn.primary:hover {
   gap: var(--space-xs);
 }
 .areas dt {
-  font-weight: 600;
+  font-weight: 500;
 }
 .areas dd {
   margin: 0;
@@ -860,7 +871,7 @@ a.btn.primary:hover {
   align-items: center;
   justify-content: flex-start;
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
 }
 
@@ -1176,7 +1187,7 @@ a.btn.primary:hover {
   background: var(--teal-tint);
   border-radius: var(--radius-inner);
   color: var(--teal-dark);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .plan {
@@ -1473,7 +1484,7 @@ a.btn.primary:hover {
   border: 1px solid transparent;
   border-radius: var(--radius-input);
   color: var(--color-ink-2);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
   cursor: pointer;
@@ -1511,7 +1522,7 @@ a.btn.primary:hover {
 
 .quiz > p {
   margin: 0;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .quiz .label {
@@ -1696,7 +1707,7 @@ a.btn.primary:hover {
 }
 
 .confidence label {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .confidence input {
@@ -2303,7 +2314,7 @@ mark {
 
 .today .plan-steps > li:not(.muted) {
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.4;
 }
 
@@ -2393,6 +2404,11 @@ pre:has(> .mermaid) {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
+}
+
+.notebook > .entry > .label:first-child {
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .notebook > .entry .katex-display,
@@ -2634,7 +2650,7 @@ pre {
 
 .book-cover h1 {
   margin: 0;
-  font-size: 46px;
+  font-size: 48px;
   line-height: 1.1;
 }
 
@@ -2804,7 +2820,7 @@ pre {
 }
 
 .book-glossary dt {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .book-glossary dd {

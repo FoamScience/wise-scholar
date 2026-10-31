@@ -599,7 +599,7 @@
     },
     "search": {
       "label": "Chercher dans ce cours",
-      "placeholder": "Chercher cartes, échanges, code…",
+      "placeholder": "Chercher",
       "go": "Chercher",
       "kinds": "Où chercher",
       "searching": "Recherche…",

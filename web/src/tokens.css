@@ -24,7 +24,7 @@
   --font-display: 'Instrument Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;
   --font-body: 'Instrument Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;
   --font-outlier: 'JetBrains Mono', 'IBM Plex Sans Arabic', ui-monospace, monospace;
-  --display-weight: 650;
+  --display-weight: 600;
   --radius-card: 10px; --radius-input: 6px; --radius-inner: 4px; --radius-pill: 999px; --rule-hair: 1px;
   --shadow-card: none; --shadow-float: 0 8px 24px var(--color-shadow);
   --tracking-display: -0.015em;
