@@ -99,7 +99,7 @@ Each course runs at the pace the learner picks, momentum by default. Momentum ke
 
 ### How sure against how right, at the end of a sitting
 
-"End sitting" shows one line for the sitting's quick checks, how sure the learner said they were on average against how often they were right, and lists the questions they were sure of and missed. It builds on the confidence ratings and the hypercorrection source under "Confidence-rated quick checks", which make the confident misses worth a second look. Whether showing the gap itself makes learners better calibrated is not tested by any source read here; it is an experiment, to drop if the learner's confidence and accuracy do not move closer over sittings.
+"Stop for today", offered under a finished unit once the sitting has answers, shows one line for the sitting's quick checks, how sure the learner said they were on average against how often they were right, and lists the questions they were sure of and missed. It builds on the confidence ratings and the hypercorrection source under "Confidence-rated quick checks", which make the confident misses worth a second look. Whether showing the gap itself makes learners better calibrated is not tested by any source read here; it is an experiment, to drop if the learner's confidence and accuracy do not move closer over sittings.
 
 ### The opening interview
 

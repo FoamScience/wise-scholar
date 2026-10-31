@@ -15,7 +15,7 @@ import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
-import { challengeLabel, lessonTitle, outlineOf, pendingPhotos, practiceTitle, searchHref } from './course'
+import { challengeLabel, lessonTitle, outlineOf, pendingPhotos, practiceTitle, searchHref, type TodayPlan, unitTitle } from './course'
 import { OutlineCard } from './Outline'
 import { PlacementAreas } from './Areas'
 import { GraphPage } from './Graph'
@@ -88,21 +88,6 @@ function useHash(): string {
     return () => removeEventListener('hashchange', onChange)
   }, [])
   return hash
-}
-
-type TodayPlan = {
-  due: number
-  warmup: number
-  review_minutes: number
-  units: { course_id: number; topic: string; concept_id: number | null; title: string; started?: boolean }[]
-  cast: { id: number; lesson_id: number; title: string; course_id: number } | null
-  errors: number
-  extras: { course_id: number; topic: string; kind: 'episode' | 'writing' }[]
-}
-
-function unitTitle(u: TodayPlan['units'][number], t: TFunction): string {
-  if (u.concept_id !== null) return u.title
-  return u.started ? t('today.finishInterview') : t('scope.start')
 }
 
 function unitHash(u: TodayPlan['units'][number]): string {
@@ -1089,7 +1074,7 @@ function Plan(props: {
   )
 }
 
-function Workspace({ courseId, speech, commands, crafted, sketched, concept, start, found }: { courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null; found: { lesson: number; at: string } | null }) {
+function Workspace({ profile, courseId, speech, commands, crafted, sketched, concept, start, found }: { profile: number; courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null; found: { lesson: number; at: string } | null }) {
   const { t } = useTranslation()
   const [course, setCourse] = useState<CourseDetail | null>(null)
   const foundLesson = found?.lesson ?? null
@@ -1379,6 +1364,14 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
       send()
     }
   }
+
+  // "Stop for today" after a finished unit, only once this sitting has answers to sum up
+  const lessonDone = lesson?.blocks.some((b) => b.kind === 'done') ?? false
+  const [answeredToday, setAnsweredToday] = useState(false)
+  useEffect(() => {
+    if (!lessonDone) return
+    api<{ answers: number; current?: boolean }>(`/api/sitting?profile=${profile}`).then((s) => setAnsweredToday(Boolean(s.current && s.answers)), () => {})
+  }, [lessonDone, profile])
 
   if (!course || !lesson) return <main className="home">{error && <div className="error">{error}</div>}</main>
 
@@ -1821,9 +1814,11 @@ function Workspace({ courseId, speech, commands, crafted, sketched, concept, sta
             <button className="btn primary" onClick={() => openConcept(nextUnit)}>
               {t('lesson.nextUnit', { title: nextUnit.title })}
             </button>
-            <a className="btn as-link" href="#/sitting">
-              {t('sitting.end')}
-            </a>
+            {answeredToday && (
+              <a className="btn as-link" href="#/sitting">
+                {t('sitting.stop')}
+              </a>
+            )}
           </div>
         )}
         {error && <div className="error">{error}</div>}
@@ -2089,6 +2084,7 @@ export default function App() {
       return (
         <Workspace
           key={match[1]}
+          profile={current.id}
           courseId={Number(match[1])}
           speech={speech}
           commands={commands}
@@ -2124,7 +2120,6 @@ export default function App() {
         {current && (
           <nav className="topnav">
             <a href="#/graph">{t('graph.link')}</a>
-            <a href="#/sitting">{t('sitting.end')}</a>
           </nav>
         )}
         <span className="grow" />

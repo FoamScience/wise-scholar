@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
 import { api } from './api'
+import { type TodayPlan, unitTitle } from './course'
 import { day, percent } from './i18n'
 
 type Summary = { answers: number; sure?: number; right?: number; misses?: string[]; ended?: string; current?: boolean }
@@ -36,13 +37,34 @@ export function SittingSummary({ profile }: { profile: number }) {
   )
 }
 
-/** The page "End sitting" opens: the sitting's summary, then the way home. */
+/** What the next sitting opens with: the reviews due by then and the next unit. */
+function NextTime({ profile }: { profile: number }) {
+  const { t } = useTranslation()
+  const [plan, setPlan] = useState<TodayPlan | null>(null)
+  useEffect(() => {
+    api<TodayPlan>(`/api/today?profile=${profile}`).then(setPlan, () => {})
+  }, [profile])
+  if (!plan || (plan.due === 0 && plan.units.length === 0)) return null
+  const unit = plan.units[0]
+  return (
+    <section className="block">
+      <div className="label">{t('sitting.next')}</div>
+      <ul>
+        {plan.due > 0 && <li>{t('today.reviews', { count: plan.warmup })}</li>}
+        {unit && <li>{t('today.unit', { topic: unit.topic, title: unitTitle(unit, t) })}</li>}
+      </ul>
+    </section>
+  )
+}
+
+/** The page "Stop for today" opens: the sitting's summary, what comes next time, then the way home. */
 export function SittingPage({ profile }: { profile: number }) {
   const { t } = useTranslation()
   return (
     <main className="home">
       <h1>{t('sitting.ended')}</h1>
       <SittingSummary profile={profile} />
+      <NextTime profile={profile} />
       <a className="btn as-link" href="#/">{t('review.back')}</a>
     </main>
   )
