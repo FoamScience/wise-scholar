@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Core } from 'cytoscape'
+import type { Core, Position } from 'cytoscape'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { useTheme } from './theme'
@@ -12,8 +12,12 @@ type Edge = { from_id: number; to_id: number; kind: 'follows' | 'supports' | 'co
 type Graph = { claims: Claim[]; edges: Edge[] }
 
 const STATE_COLOR: Record<State, string> = { held: '--teal', fading: '--amber-line', shaky: '--danger', unseen: '--mastery-off' }
-const LABEL_CHARS = 70
+const CARD_TEXT = 180
+const CARD_PAD = 8
+const FONT_SIZE = 11
+const LINE_HEIGHT = 1.3
 const MERGE_CHOICES = 8
+const PADDING = 16
 
 function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -24,8 +28,50 @@ function plain(markdown: string): string {
   return markdown.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim()
 }
 
-function short(text: string): string {
-  return text.length <= LABEL_CHARS ? text : `${text.slice(0, LABEL_CHARS - 1)}…`
+/** The size of a card that holds the whole claim, wrapped the way cytoscape wraps a label: at spaces, within CARD_TEXT. */
+function cardSize(ctx: CanvasRenderingContext2D, text: string): { w: number; h: number } {
+  let lines = 1
+  let line = ''
+  for (const word of text.split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word
+    if (line && ctx.measureText(next).width > CARD_TEXT) {
+      lines++
+      line = word
+    } else line = next
+  }
+  const w = Math.min(CARD_TEXT, ctx.measureText(text).width)
+  return { w: w + 2 * CARD_PAD, h: lines * FONT_SIZE * LINE_HEIGHT + 2 * CARD_PAD }
+}
+
+/** The claims the chosen one rests on and those that rest on it; everything else is hidden and the chain laid out down to its foundations. */
+function focus(c: Core, id: number | null, home: Map<string, Position>) {
+  c.resize()
+  c.elements().removeClass('away')
+  const node = id === null ? c.collection() : c.getElementById(String(id))
+  if (node.empty()) {
+    if (home.size) c.nodes('[?claim]').positions((n) => home.get(n.id()) ?? n.position())
+    home.clear()
+    c.fit(c.elements(), PADDING)
+    return
+  }
+  if (!home.size) c.nodes('[?claim]').forEach((n) => void home.set(n.id(), { ...n.position() }))
+  const nodes = node.union(node.predecessors()).union(node.successors()).union(node.neighborhood()).nodes()
+  const keep = nodes.union(nodes.edgesWith(nodes)).union(nodes.parents())
+  c.elements().not(keep).addClass('away')
+  const roots = nodes.filter((n) => n.incomers('edge').intersection(keep).empty())
+  keep
+    .layout({
+      name: 'breadthfirst',
+      directed: true,
+      roots: (roots.empty() ? node : roots).map((n) => n.id()),
+      boundingBox: { x1: 0, y1: 0, w: c.width(), h: c.height() },
+      nodeDimensionsIncludeLabels: true,
+      spacingFactor: 1.1,
+      padding: PADDING,
+      animate: true,
+      animationDuration: 250,
+    })
+    .run()
 }
 
 /** The learner's claims from every course as a network: coloured by where they stand, linked by how they follow. */
@@ -36,8 +82,10 @@ export function GraphPage({ profile, course }: { profile: number; course: number
   const [filter, setFilter] = useState<number | null>(course)
   const [selected, setSelected] = useState<number | null>(null)
   const [error, setError] = useState('')
+  const [built, setBuilt] = useState(0)
   const box = useRef<HTMLDivElement>(null)
   const cy = useRef<Core | null>(null)
+  const home = useRef(new Map<string, Position>())
 
   const reload = () => api<Graph>(`/api/claims?profile=${profile}`)
 
@@ -64,6 +112,9 @@ export function GraphPage({ profile, course }: { profile: number; course: number
       if (gone || !box.current) return
       const ink = token('--ink')
       const grouped = filter === null && courses.length > 1
+      const font = getComputedStyle(document.body).fontFamily
+      const ctx = document.createElement('canvas').getContext('2d')!
+      ctx.font = `${FONT_SIZE}px ${font}`
       cy.current = cytoscape({
         container: box.current,
         elements: [
@@ -71,7 +122,8 @@ export function GraphPage({ profile, course }: { profile: number; course: number
           ...shown.claims.map((c) => ({
             data: {
               id: String(c.id),
-              label: short(c.text),
+              label: c.text,
+              ...cardSize(ctx, c.text),
               claim: true,
               color: token(STATE_COLOR[c.state]),
               ...(grouped && c.sources[0] ? { parent: `course-${c.sources[0].course_id}` } : {}),
@@ -83,17 +135,23 @@ export function GraphPage({ profile, course }: { profile: number; course: number
           {
             selector: 'node[?claim]',
             style: {
+              shape: 'round-rectangle',
+              width: 'data(w)',
+              height: 'data(h)',
               'background-color': 'data(color)',
+              'background-opacity': 0.16,
+              'border-color': 'data(color)',
+              'border-width': 2,
               label: 'data(label)',
               color: ink,
-              'font-size': 11,
+              'font-family': font,
+              'font-size': FONT_SIZE,
+              'line-height': LINE_HEIGHT,
               'min-zoomed-font-size': 7,
               'text-wrap': 'wrap',
-              'text-max-width': '120px',
-              'text-valign': 'bottom',
-              'text-margin-y': 4,
-              width: 18,
-              height: 18,
+              'text-max-width': `${CARD_TEXT}px`,
+              'text-valign': 'center',
+              'text-halign': 'center',
             },
           },
           {
@@ -109,21 +167,24 @@ export function GraphPage({ profile, course }: { profile: number; course: number
             },
           },
           { selector: 'node:selected', style: { 'border-width': 3, 'border-color': ink } },
+          { selector: '.away', style: { display: 'none' } },
           { selector: 'edge', style: { width: 1.2, 'line-color': token('--line-strong'), 'target-arrow-color': token('--line-strong'), 'curve-style': 'bezier' } },
           { selector: 'edge[kind = "follows"]', style: { 'target-arrow-shape': 'triangle' } },
           { selector: 'edge[kind = "supports"]', style: { 'line-style': 'dashed', 'target-arrow-shape': 'triangle' } },
           { selector: 'edge[kind = "contrasts"]', style: { 'line-style': 'dotted', 'line-color': token('--danger') } },
         ],
-        layout: { name: 'cose', animate: false, nodeDimensionsIncludeLabels: true, componentSpacing: 30, padding: 16 },
+        layout: { name: 'cose', animate: false, nodeDimensionsIncludeLabels: true, componentSpacing: 30, padding: PADDING },
       })
+      home.current.clear()
       cy.current.on('tap', 'node[?claim]', (e) => setSelected(Number(e.target.id())))
       cy.current.on('tap', (e) => e.target === cy.current && setSelected(null))
       fit.observe(box.current)
+      setBuilt((n) => n + 1)
     })
     // the layout runs against the box as first measured; a box that settles or changes size afterwards gets the graph refitted
     const fit = new ResizeObserver(() => {
       cy.current?.resize()
-      cy.current?.fit(undefined, 16)
+      cy.current?.fit(cy.current.elements(':visible'), PADDING)
     })
     return () => {
       fit.disconnect()
@@ -132,6 +193,10 @@ export function GraphPage({ profile, course }: { profile: number; course: number
       cy.current = null
     }
   }, [shown, courses, filter, theme])
+
+  useEffect(() => {
+    if (cy.current) focus(cy.current, selected, home.current)
+  }, [selected, built])
 
   function apply(next: Promise<Graph>) {
     next.then(
