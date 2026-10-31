@@ -585,7 +585,7 @@
     },
     "search": {
       "label": "Search this course",
-      "placeholder": "Search cards, chats, code…",
+      "placeholder": "Search",
       "go": "Search",
       "kinds": "What to search",
       "searching": "Searching…",
