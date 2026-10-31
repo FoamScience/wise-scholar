@@ -98,6 +98,21 @@ export type CourseDetail = Course & {
 }
 
 /** The server names its own lessons in English; a concept's lesson carries the tutor's title. */
+export type TodayPlan = {
+  due: number
+  warmup: number
+  review_minutes: number
+  units: { course_id: number; topic: string; concept_id: number | null; title: string; started?: boolean }[]
+  cast: { id: number; lesson_id: number; title: string; course_id: number } | null
+  errors: number
+  extras: { course_id: number; topic: string; kind: 'episode' | 'writing' }[]
+}
+
+export function unitTitle(u: TodayPlan['units'][number], t: TFunction): string {
+  if (u.concept_id !== null) return u.title
+  return u.started ? t('today.finishInterview') : t('scope.start')
+}
+
 export function practiceTitle(title: string, t: TFunction): string {
   return t('lesson.practice', { n: title.match(/\d+$/)?.[0] })
 }

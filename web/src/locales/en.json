@@ -83,8 +83,9 @@
       "speedHint": "Longer units; test out of what you already know"
     },
     "sitting": {
-      "end": "End sitting",
-      "ended": "Sitting ended",
+      "stop": "Stop for today",
+      "ended": "Done for today",
+      "next": "Next time",
       "this": "This sitting",
       "last": "Your last sitting",
       "line_one": "{{count}} answer: you were {{sure}} sure on average and right {{right}} of the time.",

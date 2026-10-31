@@ -83,8 +83,9 @@
       "speedHint": "Unités plus longues ; sautez par un test ce que vous savez déjà"
     },
     "sitting": {
-      "end": "Terminer la séance",
-      "ended": "Séance terminée",
+      "stop": "Arrêter pour aujourd'hui",
+      "ended": "Fini pour aujourd'hui",
+      "next": "La prochaine fois",
       "this": "Cette séance",
       "last": "Votre dernière séance",
       "line_one": "{{count}} réponse : vous étiez sûr à {{sure}} en moyenne et juste {{right}} du temps.",
