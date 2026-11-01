@@ -16,6 +16,7 @@ import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
 import { UsagePage } from './Usage'
+import { PublishPage } from './Publish'
 import { challengeLabel, lessonTitle, outlineOf, pendingPhotos, practiceTitle, searchHref, type TodayPlan, unitTitle } from './course'
 import { OutlineCard } from './Outline'
 import { PlacementAreas } from './Areas'
@@ -161,6 +162,7 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
   const [url, setUrl] = useState('')
   const [starting, setStarting] = useState('')
   const picker = useRef<HTMLInputElement | null>(null)
+  const bundlePicker = useRef<HTMLInputElement | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -196,6 +198,23 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
       setTopic('')
       setMaterials([])
       setUrl('')
+    } finally {
+      setStarting('')
+    }
+  }
+
+  async function importBundle(file: File) {
+    setError('')
+    setStarting(t('home.importing', { name: file.name }))
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`/api/import?profile=${profile}`, { method: 'POST', body: form })
+      if (!res.ok) throw await failure(res)
+      const course = (await res.json()) as Course
+      location.hash = `#/course/${course.id}`
+    } catch (err) {
+      setError((err as Error).message)
     } finally {
       setStarting('')
     }
@@ -248,6 +267,23 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
           </button>
         </div>
         <div className="muted">{t('home.topicHelp')}</div>
+        <div className="row">
+          <button type="button" className="btn" disabled={starting !== ''} onClick={() => bundlePicker.current?.click()}>
+            {t('home.import')}
+          </button>
+          <span className="small grow">{t('home.importHelp')}</span>
+          <input
+            ref={bundlePicker}
+            type="file"
+            hidden
+            accept=".zip,application/zip"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) importBundle(file)
+            }}
+          />
+        </div>
         <details className="block materials">
           <summary className="label">{t('home.materials')}</summary>
           <div className="stack">
@@ -1447,6 +1483,9 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
             <a className="btn as-link" href={`/api/courses/${course.id}/obsidian.zip`} download>
               {t('book.obsidian')}
             </a>
+            <a className="btn as-link" href={`#/course/${course.id}/publish`}>
+              {t('publish.link')}
+            </a>
             {course.mode === 'learner' && (
               <a className="btn as-link" href={`#/graph?course=${course.id}`}>
                 {t('graph.courseLink')}
@@ -2063,6 +2102,7 @@ export default function App() {
   const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing)|\?lesson=(\d+)&(card|chat)=(\d+))?$/)
   const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
   const book = hash.match(/^#\/course\/(\d+)\/book$/)
+  const publishing = hash.match(/^#\/course\/(\d+)\/publish$/)
   const found = hash.match(/^#\/course\/(\d+)\/search\?(.*)$/)
   const hand = hash.match(/^#\/hand\/([\w-]+)$/)
   const graph = hash.match(/^#\/graph(?:\?course=(\d+))?$/)
@@ -2108,6 +2148,7 @@ export default function App() {
     if (hash === '#/sitting') return <SittingPage profile={current.id} />
     if (hash === '#/commands') return <CommandsPage profile={current.id} />
     if (hash === '#/usage') return <UsagePage profile={current.id} />
+    if (publishing) return <PublishPage key={publishing[1]} courseId={Number(publishing[1])} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} locale={locale} onSelect={select} onChanged={reload} />
     return <Home key={current.id} profile={current.id} teacher={current.mode === 'teacher'} />

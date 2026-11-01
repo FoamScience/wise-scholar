@@ -216,7 +216,10 @@
       "adding": "جارٍ إضافة {{name}}…",
       "starting": "جارٍ البدء…",
       "prepared": "مُعدّة",
-      "duplicate": "نسخ لصفّ آخر"
+      "duplicate": "نسخ لصفّ آخر",
+      "import": "استيراد دورة",
+      "importHelp": "ملف نسخة شاركه أحدهم معك.",
+      "importing": "جارٍ استيراد {{name}}…"
     },
     "question": {
       "own": "أو قلها بكلماتك",
@@ -738,6 +741,39 @@
         "graph": "مخطط المعارف",
         "cards": "بطاقات المراجعة"
       }
+    },
+    "publish": {
+      "link": "نشر نسخة",
+      "back": "العودة إلى الدورة",
+      "heading": "نشر نسخة",
+      "intro": "النسخة تجمّد الدورة كما هي الآن في ملف يستطيع أي أحد استيراده. تحمل الخريطة والدروس المكتملة وبطاقاتها، ولا تحمل أبدًا إجاباتك أو المحادثة أو تحديد مستواك أو ما يعرفه المعلّم عنك.",
+      "forkOf": "مأخوذة من {{topic}}، النسخة {{number}}؛ النسخة التي تنشرها تنسب الفضل إليها.",
+      "locked": "مأخوذة من {{topic}}، النسخة {{number}}، ومؤلفها لا يسمح بنسخ جديدة منها.",
+      "written": "{{written}} من {{units}} وحدات مكتوبة",
+      "writtenHelp": "تُعدّ الوحدة مكتوبة حين يكتمل درسها. بقية الخريطة تُرسل أيضًا موسومة بأنها قادمة في نسخة لاحقة.",
+      "sources": "موادك",
+      "sourcesHelp": "مستبعدة ما لم تحدّدها. لا تُدرج إلا ما يحق لك مشاركته.",
+      "fromWorkspace": "ملفات تمارين مأخوذة كما هي الآن",
+      "fromWorkspaceHelp": "هذه التمارين أقدم من حفظ ملفات البداية، فتُرسل ملفاتها كما هي في مساحة العمل. تأكد أنها لا تحمل حلّك.",
+      "setup": "أوامر الإعداد",
+      "setupHelp": "التثبيتات التي سمحت لها بالإنترنت. يُسأل من يستورد الدورة قبل تشغيل أيٍّ منها.",
+      "notes": "ما الذي تغيّر (اختياري)",
+      "licence": "الترخيص",
+      "forkable": "يمكن للآخرين نشر نسخ مأخوذة من هذه",
+      "publish": "نشر النسخة {{number}}",
+      "publishing": "جارٍ النشر…",
+      "versions": "النسخ",
+      "none": "لا نسخة بعد.",
+      "version": "النسخة {{number}}، {{date}}",
+      "writtenShort": "{{written}}/{{units}} مكتوبة",
+      "noForks": "لا نسخ جديدة منها",
+      "download": "تنزيل",
+      "licences": {
+        "CC-BY-SA-4.0": "CC BY-SA 4.0: مشاركة وتعديل مع النسبة وبالترخيص نفسه",
+        "CC-BY-4.0": "CC BY 4.0: مشاركة وتعديل مع النسبة",
+        "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0: لا للاستخدام التجاري",
+        "all-rights-reserved": "جميع الحقوق محفوظة"
+      }
     }
   },
   "server": {
@@ -807,6 +843,10 @@
     "at most 6 photos go with one answer": "تُرفق 6 صور على الأكثر مع إجابة واحدة",
     "a photo is limited to 25 MB": "حجم الصورة محدود بـ 25 ميغابايت",
     "that file is not a photo this server can read (JPEG, PNG or WebP)": "هذا الملف ليس صورة يستطيع هذا الخادم قراءتها (JPEG أو PNG أو WebP)",
-    "this link has expired; show the QR code again on the card": "انتهت صلاحية هذا الرابط؛ اعرض رمز QR مرة أخرى على البطاقة"
+    "this link has expired; show the QR code again on the card": "انتهت صلاحية هذا الرابط؛ اعرض رمز QR مرة أخرى على البطاقة",
+    "the author of this course does not allow versions made from it": "مؤلف هذه الدورة لا يسمح بنشر نسخ منها",
+    "wait for the tutor to finish before publishing": "انتظر حتى ينتهي المعلّم قبل النشر",
+    "that file is not a course bundle this app can read": "هذا الملف ليس حزمة دورة يستطيع التطبيق قراءتها",
+    "no lesson of this course is finished yet, so there is nothing to publish": "لم يكتمل أي درس من هذه الدورة بعد، فلا شيء للنشر"
   }
 }

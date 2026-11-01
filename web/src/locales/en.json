@@ -204,7 +204,10 @@
       "adding": "Adding {{name}}…",
       "starting": "Starting…",
       "prepared": "prepared",
-      "duplicate": "Duplicate for another class"
+      "duplicate": "Duplicate for another class",
+      "import": "Import a course",
+      "importHelp": "A version file someone shared with you.",
+      "importing": "Importing {{name}}…"
     },
     "question": {
       "own": "Or say it in your own words",
@@ -673,6 +676,39 @@
         "practice": "Practice",
         "graph": "Claims graph",
         "cards": "Review cards"
+      }
+    },
+    "publish": {
+      "link": "Publish a version",
+      "back": "Back to the course",
+      "heading": "Publish a version",
+      "intro": "A version freezes the course as it is now, as a file anyone can import. It carries the map, finished lessons and their cards; never your answers, chat, placement or what the tutor knows about you.",
+      "forkOf": "Made from {{topic}}, version {{number}}; a version you publish credits it.",
+      "locked": "Made from {{topic}}, version {{number}}, whose author does not allow new versions made from it.",
+      "written": "{{written}} of {{units}} units written",
+      "writtenHelp": "A unit is written once its lesson is finished. The rest of the map ships too, marked as coming in a later version.",
+      "sources": "Your materials",
+      "sourcesHelp": "Left out unless you tick them. Include only what you may share.",
+      "fromWorkspace": "Exercise files taken as they are now",
+      "fromWorkspaceHelp": "These exercises are older than starter files were kept, so their files ship as they are in the workspace. Check they do not hold your own solution.",
+      "setup": "Setup commands",
+      "setupHelp": "Installs you allowed internet for. Whoever imports the course is asked before any of them runs.",
+      "notes": "What changed (optional)",
+      "licence": "Licence",
+      "forkable": "Others may publish versions made from this one",
+      "publish": "Publish version {{number}}",
+      "publishing": "Publishing…",
+      "versions": "Versions",
+      "none": "No version yet.",
+      "version": "Version {{number}}, {{date}}",
+      "writtenShort": "{{written}}/{{units}} written",
+      "noForks": "no new versions from it",
+      "download": "Download",
+      "licences": {
+        "CC-BY-SA-4.0": "CC BY-SA 4.0: share and adapt, credit and share alike",
+        "CC-BY-4.0": "CC BY 4.0: share and adapt with credit",
+        "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0: not for commercial use",
+        "all-rights-reserved": "All rights reserved"
       }
     }
   },

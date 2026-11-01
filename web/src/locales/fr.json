@@ -207,7 +207,10 @@
       "adding": "Ajout de {{name}}…",
       "starting": "Démarrage…",
       "prepared": "préparé",
-      "duplicate": "Dupliquer pour une autre classe"
+      "duplicate": "Dupliquer pour une autre classe",
+      "import": "Importer un cours",
+      "importHelp": "Un fichier de version que quelqu'un vous a partagé.",
+      "importing": "Import de {{name}}…"
     },
     "question": {
       "own": "Ou dites-le avec vos propres mots",
@@ -690,6 +693,39 @@
         "graph": "Graphe des affirmations",
         "cards": "Cartes de révision"
       }
+    },
+    "publish": {
+      "link": "Publier une version",
+      "back": "Retour au cours",
+      "heading": "Publier une version",
+      "intro": "Une version fige le cours tel qu'il est, dans un fichier que chacun peut importer. Elle contient la carte, les leçons terminées et leurs cartes ; jamais vos réponses, la discussion, votre positionnement ni ce que le tuteur sait de vous.",
+      "forkOf": "Tiré de {{topic}}, version {{number}} ; une version que vous publiez le crédite.",
+      "locked": "Tiré de {{topic}}, version {{number}}, dont l'auteur n'autorise pas de nouvelles versions.",
+      "written": "{{written}} unités écrites sur {{units}}",
+      "writtenHelp": "Une unité est écrite quand sa leçon est terminée. Le reste de la carte est livré aussi, marqué comme à venir dans une prochaine version.",
+      "sources": "Vos documents",
+      "sourcesHelp": "Exclus sauf si vous les cochez. N'incluez que ce que vous pouvez partager.",
+      "fromWorkspace": "Fichiers d'exercice pris tels quels",
+      "fromWorkspaceHelp": "Ces exercices datent d'avant la conservation des fichiers de départ : leurs fichiers partent tels qu'ils sont dans l'espace de travail. Vérifiez qu'ils ne contiennent pas votre solution.",
+      "setup": "Commandes d'installation",
+      "setupHelp": "Les installations pour lesquelles vous avez autorisé internet. Qui importe le cours est consulté avant chacune.",
+      "notes": "Ce qui a changé (facultatif)",
+      "licence": "Licence",
+      "forkable": "D'autres peuvent publier des versions tirées de celle-ci",
+      "publish": "Publier la version {{number}}",
+      "publishing": "Publication…",
+      "versions": "Versions",
+      "none": "Aucune version pour l'instant.",
+      "version": "Version {{number}}, {{date}}",
+      "writtenShort": "{{written}}/{{units}} écrites",
+      "noForks": "pas de nouvelles versions",
+      "download": "Télécharger",
+      "licences": {
+        "CC-BY-SA-4.0": "CC BY-SA 4.0 : partage et adaptation, crédit et même licence",
+        "CC-BY-4.0": "CC BY 4.0 : partage et adaptation avec crédit",
+        "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0 : pas d'usage commercial",
+        "all-rights-reserved": "Tous droits réservés"
+      }
     }
   },
   "server": {
@@ -759,6 +795,10 @@
     "at most 6 photos go with one answer": "au plus 6 photos accompagnent une réponse",
     "a photo is limited to 25 MB": "une photo est limitée à 25 Mo",
     "that file is not a photo this server can read (JPEG, PNG or WebP)": "ce fichier n'est pas une photo que ce serveur sait lire (JPEG, PNG ou WebP)",
-    "this link has expired; show the QR code again on the card": "ce lien a expiré ; affichez à nouveau le code QR sur la carte"
+    "this link has expired; show the QR code again on the card": "ce lien a expiré ; affichez à nouveau le code QR sur la carte",
+    "the author of this course does not allow versions made from it": "L'auteur de ce cours n'autorise pas d'en publier de nouvelles versions",
+    "wait for the tutor to finish before publishing": "Attendez que le tuteur ait fini avant de publier",
+    "that file is not a course bundle this app can read": "Ce fichier n'est pas un paquet de cours que l'application sait lire",
+    "no lesson of this course is finished yet, so there is nothing to publish": "Aucune leçon de ce cours n'est encore terminée : il n'y a rien à publier"
   }
 }

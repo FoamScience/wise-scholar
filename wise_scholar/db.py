@@ -418,6 +418,45 @@ MIGRATIONS = [
     );
     CREATE INDEX usage_course ON usage(course_id, lesson_id);
     """,
+    """
+    ALTER TABLE concepts ADD COLUMN key TEXT;
+    UPDATE concepts SET key = lower(hex(randomblob(16)));
+    CREATE TRIGGER concepts_key AFTER INSERT ON concepts WHEN new.key IS NULL BEGIN
+        UPDATE concepts SET key = lower(hex(randomblob(16))) WHERE id = new.id;
+    END;
+    ALTER TABLE lessons ADD COLUMN key TEXT;
+    UPDATE lessons SET key = lower(hex(randomblob(16)));
+    CREATE TRIGGER lessons_key AFTER INSERT ON lessons WHEN new.key IS NULL BEGIN
+        UPDATE lessons SET key = lower(hex(randomblob(16))) WHERE id = new.id;
+    END;
+    ALTER TABLE blocks ADD COLUMN key TEXT;
+    UPDATE blocks SET key = lower(hex(randomblob(16)));
+    CREATE TRIGGER blocks_key AFTER INSERT ON blocks WHEN new.key IS NULL BEGIN
+        UPDATE blocks SET key = lower(hex(randomblob(16))) WHERE id = new.id;
+    END;
+    ALTER TABLE cards ADD COLUMN key TEXT;
+    UPDATE cards SET key = lower(hex(randomblob(16)));
+    CREATE TRIGGER cards_key AFTER INSERT ON cards WHEN new.key IS NULL BEGIN
+        UPDATE cards SET key = lower(hex(randomblob(16))) WHERE id = new.id;
+    END;
+    ALTER TABLE courses ADD COLUMN source_version TEXT;
+    ALTER TABLE concepts ADD COLUMN unwritten INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE versions (
+        hash TEXT PRIMARY KEY,
+        course_id INTEGER REFERENCES courses(id),
+        number INTEGER NOT NULL,
+        topic TEXT NOT NULL,
+        notes TEXT NOT NULL,
+        licence TEXT NOT NULL,
+        forkable INTEGER NOT NULL,
+        credits TEXT NOT NULL,
+        setup TEXT NOT NULL,
+        written INTEGER NOT NULL,
+        units INTEGER NOT NULL,
+        published TEXT NOT NULL,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -552,8 +591,8 @@ def copy_course(course_id: int, topic: str) -> dict:
         concept_map = {}
         for c in concepts(course_id):
             concept_map[c["id"]] = conn.execute(
-                "INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, ?, ?, ?, ?, ?)",
-                (new_id, c["module"], c["title"], c["known"], c["position"], c["kind"]),
+                "INSERT INTO concepts (course_id, module, title, known, position, kind, key) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (new_id, c["module"], c["title"], c["known"], c["position"], c["kind"], c["key"]),
             ).lastrowid
         conn.executemany(
             "INSERT INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
@@ -572,17 +611,17 @@ def copy_course(course_id: int, topic: str) -> dict:
         # a copy starts its reviews afresh from the lesson cards; the short parts made for reviews stay behind
         for k in rows("SELECT * FROM cards WHERE course_id = ? AND parent_id IS NULL ORDER BY id", course_id):
             card_map[k["id"]] = conn.execute(
-                "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, key) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (new_id, concept_map.get(k["concept_id"]), k["question"], k["kind"], k["options"], k["answer_key"], k["explanation"],
-                 k["scheduled"], k["vocab"], k["lemma"], k["lang"], k["translation"]),
+                 k["scheduled"], k["vocab"], k["lemma"], k["lang"], k["translation"], k["key"]),
             ).lastrowid
         for lesson_row in rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", course_id):
             if lesson_row["concept_id"] and lesson_row["concept_id"] not in concept_map:
                 continue
             lesson_id = conn.execute(
-                "INSERT INTO lessons (course_id, title, phase, concept_id, session_id) VALUES (?, ?, ?, ?, ?)",
-                (new_id, lesson_row["title"], lesson_row["phase"], concept_map.get(lesson_row["concept_id"]), str(uuid.uuid4())),
+                "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key) VALUES (?, ?, ?, ?, ?, ?)",
+                (new_id, lesson_row["title"], lesson_row["phase"], concept_map.get(lesson_row["concept_id"]), str(uuid.uuid4()), lesson_row["key"]),
             ).lastrowid
             for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson_row["id"]):
                 if b["kind"] in ("podcast", "network"):
@@ -591,8 +630,8 @@ def copy_course(course_id: int, topic: str) -> dict:
                 if data and data.get("card_id") in card_map:
                     data = {**data, "card_id": card_map[data["card_id"]]}
                 copied = conn.execute(
-                    "INSERT INTO blocks (lesson_id, kind, markdown, data, created) VALUES (?, ?, ?, ?, ?)",
-                    (lesson_id, b["kind"], b["markdown"], json.dumps(data) if data else None, b["created"]),
+                    "INSERT INTO blocks (lesson_id, kind, markdown, data, created, key) VALUES (?, ?, ?, ?, ?, ?)",
+                    (lesson_id, b["kind"], b["markdown"], json.dumps(data) if data else None, b["created"], b["key"]),
                 ).lastrowid
                 conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (copied, copied))
             conn.executemany(
@@ -696,6 +735,7 @@ def delete_course(course_id: int) -> None:
         for sql in (
             "DELETE FROM commands WHERE course_id = ?",
             "DELETE FROM usage WHERE course_id = ?",
+            "UPDATE versions SET course_id = NULL WHERE course_id = ?",
             "DELETE FROM answers WHERE card_id IN (SELECT id FROM cards WHERE course_id = ?)",
             "DELETE FROM cards WHERE course_id = ?",
             f"DELETE FROM blocks WHERE lesson_id IN ({lessons})",
