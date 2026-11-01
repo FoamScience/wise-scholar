@@ -86,6 +86,7 @@ class Lesson(BaseModel):
     unit: KeyStr | None = None
     title: str = Field(min_length=1, max_length=300)
     phase: Literal[LESSON_PHASES]  # type: ignore[valid-type]
+    summary: str = Field(default="", max_length=4000)
     blocks: list[Block] = Field(max_length=500)
 
 
@@ -266,8 +267,10 @@ def build(course_id: int, *, notes: str, licence: str, forkable: bool, sources: 
     for lesson in db.rows("SELECT * FROM lessons WHERE course_id = ? AND phase IN ('lesson', 'practice') ORDER BY id", course_id):
         if lesson["concept_id"] not in written and not (lesson["concept_id"] is None and lesson["id"] in finished_lessons(course_id)):
             continue
-        blocks = []
+        blocks, summary = [], ""
         for b in db.rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson["id"]):
+            if b["kind"] == "done":
+                summary = b["markdown"]
             if b["kind"] not in BLOCK_KINDS:
                 continue
             data = _block_data(b, card_keys)
@@ -276,7 +279,7 @@ def build(course_id: int, *, notes: str, licence: str, forkable: bool, sources: 
                 files.update(starters)
                 data.pop("starter", None)
             blocks.append({"key": b["key"], "kind": b["kind"], "markdown": b["markdown"], "data": data})
-        lessons.append({"key": lesson["key"], "unit": unit_keys.get(lesson["concept_id"]), "title": lesson["title"], "phase": lesson["phase"], "blocks": blocks})
+        lessons.append({"key": lesson["key"], "unit": unit_keys.get(lesson["concept_id"]), "title": lesson["title"], "phase": lesson["phase"], "summary": summary, "blocks": blocks})
     card_rows = [
         {"key": k["key"], "unit": unit_keys.get(k["concept_id"]), "question": k["question"], "kind": k["kind"],
          "options": json.loads(k["options"]), "answer_key": k["answer_key"], "explanation": k["explanation"],
@@ -430,10 +433,11 @@ def install(profile_id: int, version_hash: str, manifest: Manifest, assets: dict
             )
         slug = db._free_slug(c.topic)
         course_id = db.conn.execute(
-            "INSERT INTO courses (topic, slug, profile_id, mechanism, lang, ranking, details, hours, started, mode, prerequisites, cover, cover_alt, source_version) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'replay', ?, ?, ?, ?)",
+            "INSERT INTO courses (topic, slug, profile_id, mechanism, lang, ranking, details, hours, started, mode, prerequisites, cover, cover_alt, source_version, setup) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'replay', ?, ?, ?, ?, ?)",
             (c.topic, slug, profile_id, c.mechanism, c.lang, json.dumps(c.ranking) if c.ranking else None, c.details, c.hours,
-             int(c.prerequisites), cover, c.cover_alt if cover else None, version_hash),
+             int(c.prerequisites), cover, c.cover_alt if cover else None, version_hash,
+             json.dumps([{"command": command, "status": "asked"} for command in manifest.setup])),
         ).lastrowid
         db.create_lesson(course_id, "Interview", "interview")
         unit_ids = {}
@@ -465,8 +469,8 @@ def install(profile_id: int, version_hash: str, manifest: Manifest, assets: dict
             ).lastrowid
         for lesson in manifest.lessons:
             lesson_id = db.conn.execute(
-                "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key) VALUES (?, ?, ?, ?, ?, ?)",
-                (course_id, lesson.title, lesson.phase, unit_ids.get(lesson.unit), str(uuid.uuid4()), lesson.key),
+                "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (course_id, lesson.title, lesson.phase, unit_ids.get(lesson.unit), str(uuid.uuid4()), lesson.key, lesson.summary),
             ).lastrowid
             for b in lesson.blocks:
                 data = _clean_block(b, card_ids)

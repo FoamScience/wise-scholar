@@ -774,6 +774,18 @@
         "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0: لا للاستخدام التجاري",
         "all-rights-reserved": "جميع الحقوق محفوظة"
       }
+    },
+    "replay": {
+      "later": "لم تُكتب بعد: ستأتي في نسخة لاحقة من هذه الدورة. يمكن لمعلّمك أن يدرّسها لك الآن.",
+      "laterShort": "في نسخة لاحقة",
+      "teachNow": "ليدرّسها معلّمي",
+      "place": "تحقّق مما تعرفه مسبقًا",
+      "setup": "تطلب هذه الدورة إعداد أدواتها",
+      "setupHelp": "شغّل المؤلف هذه الأوامر بالإنترنت. لا يعمل أيٌّ منها في بيئة الدورة المعزولة إلا إذا سمحت به.",
+      "running": "قيد التشغيل…",
+      "failed": "فشل (رمز الخروج {{code}}). يمكنك المحاولة مجددًا.",
+      "done": "تم",
+      "refused": "مرفوض"
     }
   },
   "server": {
@@ -847,6 +859,9 @@
     "the author of this course does not allow versions made from it": "مؤلف هذه الدورة لا يسمح بنشر نسخ منها",
     "wait for the tutor to finish before publishing": "انتظر حتى ينتهي المعلّم قبل النشر",
     "that file is not a course bundle this app can read": "هذا الملف ليس حزمة دورة يستطيع التطبيق قراءتها",
-    "no lesson of this course is finished yet, so there is nothing to publish": "لم يكتمل أي درس من هذه الدورة بعد، فلا شيء للنشر"
+    "no lesson of this course is finished yet, so there is nothing to publish": "لم يكتمل أي درس من هذه الدورة بعد، فلا شيء للنشر",
+    "this answer is not waiting for your own grade": "هذه الإجابة لا تنتظر تقييمك الذاتي",
+    "only an imported course places you from its cards": "الدورة المستوردة وحدها تحدد مستواك من بطاقاتها",
+    "this course has no cards left to place you with": "لم تبق في هذه الدورة بطاقات لتحديد مستواك"
   }
 }

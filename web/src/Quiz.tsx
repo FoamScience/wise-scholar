@@ -268,6 +268,7 @@ export function QuizCard(props: {
   authored?: boolean
   offline?: { given?: Given; onGive: (given: Given) => void }
   onUnknown?: () => void
+  onSelfGrade?: (correct: boolean) => void
   onSubmit: (answer: string, confidence: number) => void
 }) {
   const d = props.data
@@ -322,6 +323,26 @@ export function QuizCard(props: {
           onUnknown={props.onUnknown}
           onSubmit={props.onSubmit}
         />
+      ) : d.correct === undefined && props.onSelfGrade && d.answer_key !== undefined ? (
+        <div className="quiz-result">
+          <div className="attempt">
+            <span className="label">{t('quiz.answerSure', { percent: percent(d.confidence!) })}</span>
+            {d.answer}
+          </div>
+          <div className="solution">
+            <div className="label">{t('review.model')}</div>
+            <Markdown>{d.answer_key}</Markdown>
+            <Markdown>{d.explanation ?? ''}</Markdown>
+          </div>
+          <div className="row">
+            <button className="btn" disabled={props.disabled} onClick={() => props.onSelfGrade!(false)}>
+              {t('review.missed')}
+            </button>
+            <button className="btn primary" disabled={props.disabled} onClick={() => props.onSelfGrade!(true)}>
+              {t('review.right')}
+            </button>
+          </div>
+        </div>
       ) : d.correct === undefined ? (
         <div className="attempt">
           <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
