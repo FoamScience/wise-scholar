@@ -726,6 +726,18 @@
         "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0 : pas d'usage commercial",
         "all-rights-reserved": "Tous droits réservés"
       }
+    },
+    "replay": {
+      "later": "Pas encore écrite : elle viendra dans une prochaine version de ce cours. Votre propre tuteur peut l'enseigner dès maintenant.",
+      "laterShort": "dans une prochaine version",
+      "teachNow": "La faire enseigner par mon tuteur",
+      "place": "Vérifier ce que vous savez déjà",
+      "setup": "Ce cours demande à installer ses outils",
+      "setupHelp": "L'auteur a lancé ces commandes avec internet. Chacune s'exécute dans le bac à sable du cours seulement si vous l'autorisez.",
+      "running": "En cours…",
+      "failed": "Échec (code de sortie {{code}}). Vous pouvez réessayer.",
+      "done": "Fait",
+      "refused": "Refusé"
     }
   },
   "server": {
@@ -799,6 +811,9 @@
     "the author of this course does not allow versions made from it": "L'auteur de ce cours n'autorise pas d'en publier de nouvelles versions",
     "wait for the tutor to finish before publishing": "Attendez que le tuteur ait fini avant de publier",
     "that file is not a course bundle this app can read": "Ce fichier n'est pas un paquet de cours que l'application sait lire",
-    "no lesson of this course is finished yet, so there is nothing to publish": "Aucune leçon de ce cours n'est encore terminée : il n'y a rien à publier"
+    "no lesson of this course is finished yet, so there is nothing to publish": "Aucune leçon de ce cours n'est encore terminée : il n'y a rien à publier",
+    "this answer is not waiting for your own grade": "Cette réponse n'attend pas votre propre note",
+    "only an imported course places you from its cards": "Seul un cours importé vous positionne avec ses cartes",
+    "this course has no cards left to place you with": "Ce cours n'a plus de cartes pour vous positionner"
   }
 }

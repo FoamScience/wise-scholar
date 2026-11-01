@@ -17,7 +17,7 @@ import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
 import { UsagePage } from './Usage'
 import { PublishPage } from './Publish'
-import { challengeLabel, lessonTitle, outlineOf, pendingPhotos, practiceTitle, searchHref, type TodayPlan, unitTitle } from './course'
+import { challengeLabel, lessonTitle, outlineOf, pendingPhotos, practiceTitle, replayShown, searchHref, type TodayPlan, unitTitle } from './course'
 import { OutlineCard } from './Outline'
 import { PlacementAreas } from './Areas'
 import { GraphPage } from './Graph'
@@ -25,7 +25,7 @@ import { SittingPage } from './Sitting'
 import { SearchPage } from './Search'
 import { HandPage, PhotoTray } from './Handwork'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
-import type { Area, Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SpeakingData } from './course'
+import type { Area, Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SetupStep, SpeakingData } from './course'
 import { FigureCard } from './Figure'
 import { NetworkCard } from './Network'
 import { PlotCard } from './PlotCard'
@@ -57,6 +57,7 @@ type TutorEvent =
   | { type: 'source.updated'; source: Source }
   | { type: 'source.removed'; id: number }
   | { type: 'lesson.created'; lesson: Lesson }
+  | { type: 'setup.updated'; setup: SetupStep[] }
   | { type: 'turn.done'; lesson_id: number; ok: boolean; error: string | null; message: Message | null }
 
 const LESSON_AREA_TOOLS = [
@@ -1215,6 +1216,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
   function openConcept(concept: Concept, anyway = false) {
     const existing = course?.lessons.find((l) => l.concept_id === concept.id)
     if (existing) return showLesson(existing.id)
+    if (!anyway && concept.unwritten) return setHeld(concept.id)
     if (!anyway && course?.mode !== 'teacher' && unmetNeeds(concept).length > 0) return setHeld(concept.id)
     setHeld(null)
     api<Lesson>(`/api/concepts/${concept.id}/lesson`, {}).then(
@@ -1283,6 +1285,8 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
         setCourse((c) => c && { ...c, concepts: ev.concepts, capstones: ev.capstones ?? c.capstones })
       } else if (ev.type === 'lesson.created') {
         addLesson(ev.lesson)
+      } else if (ev.type === 'setup.updated') {
+        setCourse((c) => c && { ...c, setup: ev.setup })
       } else if (ev.type === 'turn.done') {
         const { message } = ev
         patchLesson(ev.lesson_id, (l) => ({
@@ -1428,7 +1432,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
   const unitsDone = units.filter((c) => unitDone(c, course.lessons.find((l) => l.concept_id === c.id))).length
   const reviewDue = units.filter((c) => c.due).length
   const empty = lesson.blocks.length === 0 && !showPlan
-  const canPrepare = lesson.phase === 'lesson' && lesson.concept_id !== null && course.mode !== 'teacher' && !lesson.batch && !finished
+  const canPrepare = lesson.phase === 'lesson' && lesson.concept_id !== null && course.mode !== 'teacher' && !lesson.batch && !lesson.replay && !finished
   const batchCards = lesson.batch ? lesson.blocks.filter((b) => b.kind === 'quiz' && (b.data as QuizData).answer === null) : []
   const ready = batchCards.filter((b) => given[b.id] && ((b.data as QuizData).kind !== 'open' || given[b.id].self_correct !== undefined))
 
@@ -1501,7 +1505,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
                 className="btn"
                 disabled={lesson.running}
                 onClick={() =>
-                  api<Lesson>(`/api/courses/${course.id}/placement/retake`, {}).then(
+                  api<Lesson>(`/api/courses/${course.id}/placement/${course.mode === 'replay' ? 'cards' : 'retake'}`, {}).then(
                     (created) => {
                       addLesson(created)
                       showLesson(created.id)
@@ -1511,7 +1515,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
                   )
                 }
               >
-                {course.level ? t('map.retake') : t('map.take')}
+                {course.mode === 'replay' ? t('replay.place') : course.level ? t('map.retake') : t('map.take')}
               </button>
             )}
             {course.concepts.length > 0 && (
@@ -1621,7 +1625,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
                         </span>
                       )}
                     </span>
-                    <span className="stats">{conceptStats(c, conceptLesson, t, course.mode === 'teacher')}</span>
+                    <span className="stats">{c.unwritten && !conceptLesson ? t('replay.laterShort') : conceptStats(c, conceptLesson, t, course.mode === 'teacher')}</span>
                     {c.needs.length > 0 && !unitDone(c, conceptLesson) && (
                       <span className="stats needs" dir="auto">
                         {t('map.needs')}{' '}
@@ -1633,7 +1637,16 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
                       </span>
                     )}
                   </button>
-                  {held === c.id && (
+                  {held === c.id && c.unwritten && !conceptLesson ? (
+                    <div className="held small" role="status">
+                      <span>{t('replay.later')}</span>
+                      <div className="row">
+                        <button type="button" className="btn primary" onClick={() => openConcept(c, true)}>
+                          {t('replay.teachNow')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : held === c.id && (
                     <div className="held small" role="status">
                       <span dir="auto">{t('map.needsFirst', { titles: unmetNeeds(c).map((u) => u.title).join(', ') })}</span>
                       <div className="row">
@@ -1655,6 +1668,34 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
       </nav>
 
       <main ref={lessonBox} className="lesson">
+        {course.setup.some((step) => step.status !== 'done' && step.status !== 'refused') && (
+          <section className="block setup">
+            <div className="label">{t('replay.setup')}</div>
+            <div className="small">{t('replay.setupHelp')}</div>
+            {course.setup.map((step, i) => (
+              <div key={i} className="setup-step">
+                <pre dir="ltr">{step.command}</pre>
+                <div className="row">
+                  {step.status === 'running' ? (
+                    <span className="small">{t('replay.running')}</span>
+                  ) : step.status === 'asked' || step.status === 'failed' ? (
+                    <>
+                      {step.status === 'failed' && <span className="small">{t('replay.failed', { code: step.exit_code ?? '–' })}</span>}
+                      <button type="button" className="btn primary" onClick={() => api(`/api/courses/${course.id}/setup/${i}`, { allow: true }).catch((e: Error) => setError(e.message))}>
+                        {t('network.allow')}
+                      </button>
+                      <button type="button" className="btn" onClick={() => api(`/api/courses/${course.id}/setup/${i}`, { allow: false }).catch((e: Error) => setError(e.message))}>
+                        {t('network.refuse')}
+                      </button>
+                    </>
+                  ) : (
+                    <span className="small">{t(`replay.${step.status}`)}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
         {/* first, wherever the tutor posted it: the plan and the counter belong under the title */}
         {outline && (
@@ -1688,7 +1729,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
             />
           ))}
         {lesson.blocks.map((b, i) => {
-          if (b.kind === 'outline') return null
+          if (b.kind === 'outline' || (lesson.replay && i >= replayShown(lesson.blocks))) return null
           const card = b.kind === 'question' ? (
             <QuestionCard
               key={b.id}
@@ -1706,6 +1747,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
               authored={course.mode === 'teacher'}
               offline={lesson.batch ? { given: given[b.id], onGive: (answer) => give(b.id, answer) } : undefined}
               onUnknown={lesson.phase === 'placement' ? () => post(`/api/blocks/${b.id}/quiz/unknown`, {}) : undefined}
+              onSelfGrade={lesson.replay ? (correct) => post(`/api/blocks/${b.id}/self-grade`, { correct }) : undefined}
               onSubmit={(answer, confidence) => post(`/api/blocks/${b.id}/quiz`, { answer, confidence })}
             />
           ) : b.kind === 'reading' ? (

@@ -7,7 +7,7 @@ export type Course = {
   mechanism: string | null
   level: string | null
   archived: number
-  mode: 'learner' | 'teacher'
+  mode: 'learner' | 'teacher' | 'replay'
   cover: number
   cover_alt: string | null
 }
@@ -51,7 +51,7 @@ export type Scored = { word: string; score: number }
 export type SpeakingData = ChallengeData & { speaking: 'read' | 'shadow'; lang: string; scores: { words: Scored[]; heard: string | null; score: number }[] }
 export type Block = { id: number; lesson_id: number; kind: string; markdown: string; data: unknown; created: string; position: number }
 export type Area = { title: string; holds: string; lacks: string }
-export type Concept = { id: number; module: string; title: string; known: number; mastery: number | null; kind: 'concept' | 'practice'; due: number; needs: number[] }
+export type Concept = { id: number; module: string; title: string; known: number; mastery: number | null; kind: 'concept' | 'practice'; due: number; needs: number[]; unwritten?: number }
 export type Lesson = {
   id: number
   title: string
@@ -61,6 +61,7 @@ export type Lesson = {
   blocks: Block[]
   running: boolean
   batch?: number
+  replay?: boolean
 }
 export type Ranked = {
   mechanism: string
@@ -79,7 +80,7 @@ export type Capstone = {
   milestones: { id: number; concept_id: number; concept: string; deliverable: string; done: number }[]
 }
 export type CourseDetail = Course & {
-  mode: 'learner' | 'teacher'
+  mode: 'learner' | 'teacher' | 'replay'
   pace: 'momentum' | 'speed'
   cleaned: string | null
   details: string
@@ -95,7 +96,9 @@ export type CourseDetail = Course & {
   lessons: Lesson[]
   strands: { input: number; output: number; language: number; fluency: number } | null
   vocabulary: { total: number; due: number; tier?: number; tier_size?: number; tier_known?: number; tier_words?: number }
+  setup: SetupStep[]
 }
+export type SetupStep = { command: string; status: 'asked' | 'running' | 'done' | 'failed' | 'refused'; exit_code?: number | null }
 
 /** The server names its own lessons in English; a concept's lesson carries the tutor's title. */
 export type TodayPlan = {
@@ -165,4 +168,18 @@ export function searchHref(courseId: number, query: string, kind: SearchKind | '
   const params = new URLSearchParams({ q: query })
   if (kind) params.set('kind', kind)
   return `#/course/${courseId}/search?${params}`
+}
+
+const CHECKS = ['challenge', 'exercise', 'speaking']
+
+/** How many blocks of a replayed unit are shown: everything up to and including the first check not yet behind the
+ * learner. A try-first task is behind them once tried, any other task once solved or given up, a quiz once graded. */
+export function replayShown(blocks: Block[]): number {
+  const open = blocks.findIndex((b) => {
+    const d = (b.data ?? {}) as { correct?: boolean | null; attempts?: string[]; pretest?: boolean; solved?: boolean; gave_up?: boolean }
+    if (b.kind === 'quiz') return d.correct === undefined || d.correct === null
+    if (CHECKS.includes(b.kind)) return d.pretest ? !d.attempts?.length : !(d.solved || d.gave_up)
+    return false
+  })
+  return open === -1 ? blocks.length : open + 1
 }

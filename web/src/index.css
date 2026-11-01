@@ -2419,6 +2419,21 @@ pre:has(> .mermaid) {
   gap: var(--space-sm);
 }
 
+.block.setup,
+.setup-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.block.setup {
+  gap: var(--space-sm);
+}
+
+.setup-step pre {
+  margin: 0;
+}
+
 .publish-page > a.link {
   align-self: flex-start;
 }

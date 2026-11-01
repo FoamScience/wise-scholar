@@ -189,6 +189,10 @@ def test_the_endpoints_publish_download_and_import_a_version(places, monkeypatch
     data = (places["store"] / f"{v['hash']}.zip").read_bytes()
     made = asyncio.run(app.import_course(reader, UploadFile(io.BytesIO(data), filename="x.zip")))
     assert made["mode"] == "replay" and db.course(made["id"])["profile_id"] == reader
+    assert app._course(made["id"])["setup"] == [{"command": "uv pip install plotly", "status": "asked"}]
+    assert asyncio.run(app.decide_setup(made["id"], 0, app.Decision(allow=False)))["setup"][0]["status"] == "refused"
+    with pytest.raises(HTTPException, match="already decided"):
+        asyncio.run(app.decide_setup(made["id"], 0, app.Decision(allow=True)))
     empty = db.create_course("Nothing yet", reader)["id"]
     with pytest.raises(HTTPException, match="nothing to publish"):
         app.publish_version(empty, app.Publish())
@@ -196,3 +200,65 @@ def test_the_endpoints_publish_download_and_import_a_version(places, monkeypatch
         app.publish_version(made["id"], app.Publish())
     with pytest.raises(HTTPException, match="not a course bundle"):
         asyncio.run(app.import_course(reader, UploadFile(io.BytesIO(b"nope"), filename="x.zip")))
+
+
+def test_a_replayed_unit_runs_as_written_and_calls_the_tutor_only_on_misses(places, monkeypatch):
+    import asyncio
+
+    from wise_scholar import app
+
+    started = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: started.append((lesson["id"], line)))
+    author = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Writer {uuid.uuid4().hex[:6]}",)).lastrowid
+    course = db.create_course("Lofting", author)["id"]
+    db.set_concepts(course, [{"title": "Blades", "concepts": ["Loft", "Fillet"], "known": []}])
+    loft, fillet = db.concepts(course)
+    lesson = db.create_lesson(course, "Loft", "lesson", loft["id"])
+    choice = db.add_card(course, loft["id"], "Which call lofts?", "choice", ["ThruSections", "MakePipe"], "ThruSections", "It lofts.", scheduled=True)
+    open_card = db.add_card(course, loft["id"], "Why sections?", "open", [], "They bound the surface.", "Sections bound it.", scheduled=True)
+    db.add_block(lesson, "prose", "Lofting joins sections.")
+    db.add_block(lesson, "challenge", "Guess first: what joins two wires?", {"attempts": ["a guess"], "hints": [], "gave_up": False, "solved": False,
+                                                                             "solution": None, "reveal_after": 3, "max_hints": 3, "pretest": True})
+    db.add_block(lesson, "quiz", "Which call lofts?", {"card_id": choice, "kind": "choice", "options": ["ThruSections", "MakePipe"], "answer": None})
+    db.add_block(lesson, "quiz", "Why sections?", {"card_id": open_card, "kind": "open", "options": [], "answer": None})
+    db.add_block(lesson, "done", "You can loft two wires.", {})
+    v = bundle.publish(course, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], **places)
+    reader = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Learner {uuid.uuid4().hex[:6]}",)).lastrowid
+    version_hash, manifest, assets = bundle.unpack((places["store"] / f"{v['hash']}.zip").read_bytes())
+    mine = bundle.install(reader, version_hash, manifest, assets, places["source_dir"])["id"]
+    replayed = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", mine)["id"]
+    view = app._lesson_view(replayed)
+    assert view["replay"] is True and [b["kind"] for b in view["blocks"]] == ["prose", "challenge", "quiz", "quiz"]
+    pretest, right, open_quiz = view["blocks"][1:]
+
+    asyncio.run(app.attempt(pretest["id"], app.Answer(answer="two wires make a surface")))
+    asyncio.run(app.answer_quiz(right["id"], app.QuizAnswer(answer="ThruSections", confidence=0.8)))
+    asyncio.run(app.answer_quiz(open_quiz["id"], app.QuizAnswer(answer="no idea really", confidence=0.3)))
+    assert started == [] and db.block(open_quiz["id"])["data"]["answer_key"] == "They bound the surface."
+    assert not any(b["kind"] == "done" for b in db.blocks(replayed))
+
+    asyncio.run(app.self_grade_quiz(open_quiz["id"], app.SelfGrade(correct=False)))
+    [(where, line)] = started
+    assert where == replayed and app.REPLAY_MISS in line and "marked it wrong" in line
+    assert db.blocks(replayed)[-1]["kind"] == "done" and db.blocks(replayed)[-1]["markdown"] == "You can loft two wires."
+
+    prompt = app._turn_prompt(db.lesson(replayed), "[learner] why?")
+    assert "[replay]" in prompt and "Lofting joins sections." in prompt
+
+    unwritten = next(c for c in db.concepts(mine) if c["unwritten"])
+    live = asyncio.run(app.open_concept(unwritten["id"]))
+    assert live["replay"] is False and "The lesson begins" in started[-1][1]
+
+    with pytest.raises(app.HTTPException, match="cards left"):
+        app.card_placement(mine)  # the one written unit is finished already
+    fresh = bundle.install(reader, version_hash, manifest, assets, places["source_dir"])["id"]
+    placement = app.card_placement(fresh)
+    [card] = placement["blocks"]
+    assert card["data"]["kind"] == "choice" and card["data"].get("answer_key") is None
+    asyncio.run(app.answer_quiz(card["id"], app.QuizAnswer(answer="ThruSections", confidence=0.9)))
+    assert db.blocks(placement["id"])[-1]["kind"] == "done" and db.concepts(fresh)[0]["known"] == 1
+    assert len(started) == 2
+    with pytest.raises(app.HTTPException, match="cards left"):
+        app.card_placement(fresh)
+    with pytest.raises(app.HTTPException, match="only an imported course"):
+        app.card_placement(course)

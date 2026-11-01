@@ -710,6 +710,18 @@
         "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0: not for commercial use",
         "all-rights-reserved": "All rights reserved"
       }
+    },
+    "replay": {
+      "later": "Not written yet: it comes in a later version of this course. Your own tutor can teach it now instead.",
+      "laterShort": "coming in a later version",
+      "teachNow": "Have my tutor teach it",
+      "place": "Check what you already know",
+      "setup": "This course asks to set up its tools",
+      "setupHelp": "The author ran these commands with internet. Each runs in this course's sandbox only if you allow it.",
+      "running": "Running…",
+      "failed": "Failed (exit code {{code}}). You can try again.",
+      "done": "Done",
+      "refused": "Refused"
     }
   },
   "server": {}

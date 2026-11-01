@@ -457,6 +457,10 @@ MIGRATIONS = [
         created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     """,
+    """
+    ALTER TABLE courses ADD COLUMN setup TEXT;
+    ALTER TABLE lessons ADD COLUMN summary TEXT;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -1014,7 +1018,7 @@ def _rehome_capstones(course_id: int) -> list[str]:
 
 def lesson(lesson_id: int) -> dict | None:
     return row(
-        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, c.details, c.hours, c.started, c.mode, c.pace, p.name AS profile, p.locale, k.title AS concept, k.module "
+        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, c.details, c.hours, c.started, c.mode, c.pace, p.name AS profile, p.locale, k.title AS concept, k.module, k.unwritten "
         "FROM lessons l JOIN courses c ON c.id = l.course_id JOIN profiles p ON p.id = c.profile_id "
         "LEFT JOIN concepts k ON k.id = l.concept_id "
         "WHERE l.id = ?",
