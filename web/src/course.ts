@@ -97,7 +97,9 @@ export type CourseDetail = Course & {
   strands: { input: number; output: number; language: number; fluency: number } | null
   vocabulary: { total: number; due: number; tier?: number; tier_size?: number; tier_known?: number; tier_words?: number }
   setup: SetupStep[]
+  upgrade: UpgradeOffer | null
 }
+export type UpgradeOffer = { hash: string; number: number; notes: string; published: string; kept: string[]; restarted: string[]; added: string[]; removed: string[] }
 export type SetupStep = { command: string; status: 'asked' | 'running' | 'done' | 'failed' | 'refused'; exit_code?: number | null }
 
 /** The server names its own lessons in English; a concept's lesson carries the tutor's title. */

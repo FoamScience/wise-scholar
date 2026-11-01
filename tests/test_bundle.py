@@ -392,3 +392,60 @@ def test_a_check_starts_in_the_background_and_blocks_publishing_until_it_ends(pl
     state = app.publish_check(a["course"])
     assert not state["running"] and state["failed"]
     app._checks_failed.discard(a["course"])
+
+
+def test_an_upgrade_keeps_unchanged_units_restarts_changed_ones_and_is_offered_on_import(places, monkeypatch):
+    import asyncio
+
+    from fastapi import HTTPException, UploadFile
+
+    from wise_scholar import app
+
+    monkeypatch.setattr(app, "SOURCES", places["source_dir"])
+    monkeypatch.setattr(app, "VERSIONS", places["store"])
+    a = _authored(places)
+    fitting, lofting = a["units"]
+    v1 = app.publish_version(a["course"], app.Publish())
+    data1 = (places["store"] / f"{v1['hash']}.zip").read_bytes()
+    readers = [db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Reader {uuid.uuid4().hex[:6]}",)).lastrowid for _ in range(2)]
+    course = asyncio.run(app.import_course(readers[0], UploadFile(io.BytesIO(data1), filename="v1.zip")))["id"]
+    assert app._course(course)["upgrade"] is None
+
+    # The reader works through the written unit, and the course holds a unit the next version no longer has.
+    mine = {c["key"]: c for c in db.concepts(course)}
+    card = db.row("SELECT id FROM cards WHERE course_id = ? AND concept_id = ?", course, mine[lofting["key"]]["id"])["id"]
+    db.conn.execute("INSERT INTO answers (card_id, answer, confidence, correct) VALUES (?, 'ThruSections', 0.9, 1)", (card,))
+    db.conn.execute("UPDATE concepts SET known = 1 WHERE id = ?", (mine[lofting["key"]]["id"],))
+    gone = db.conn.execute("INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, 'Old', 'Dropped', 0, 9, 'concept')", (course,)).lastrowid
+    db.create_lesson(course, "Dropped", "lesson", gone)
+
+    # The author finishes the other unit and adds one, then publishes again.
+    begun = db.row("SELECT id FROM lessons WHERE course_id = ? AND concept_id = ?", a["course"], fitting["id"])["id"]
+    db.add_block(begun, "done", "", {})
+    db.conn.execute("INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, 'Sections', 'Trimming', 0, 5, 'concept')", (a["course"],))
+    v2 = app.publish_version(a["course"], app.Publish(notes="fitting written"))
+
+    offer = app._course(course)["upgrade"]
+    assert offer["number"] == 2 and offer["notes"] == "fitting written"
+    assert (offer["kept"], offer["restarted"], offer["added"], offer["removed"]) == (["Lofting"], ["Fitting"], ["Trimming"], ["Dropped"])
+    assert app.skip_upgrade(course, app.Upgrade(hash=v2["hash"]))["upgrade"] is None
+    with pytest.raises(HTTPException, match="not the one"):
+        app.upgrade_course(course, app.Upgrade(hash=v1["hash"]))
+
+    # Importing the newer bundle again brings the offer back on the course already played, instead of a second course.
+    data2 = (places["store"] / f"{v2['hash']}.zip").read_bytes()
+    again = asyncio.run(app.import_course(readers[0], UploadFile(io.BytesIO(data2), filename="v2.zip")))
+    assert again["id"] == course and again["upgrade"] == 2 and app._course(course)["upgrade"]["number"] == 2
+    assert asyncio.run(app.import_course(readers[1], UploadFile(io.BytesIO(data2), filename="v2.zip")))["id"] != course
+
+    done = app.upgrade_course(course, app.Upgrade(hash=v2["hash"]))
+    assert done["upgraded"]["kept"] == [lofting["key"]] and done["upgrade"] is None and db.course(course)["source_version"] == v2["hash"]
+    after = {c["key"]: c for c in db.concepts(course)}
+    assert [c["title"] for c in db.concepts(course)] == ["Fitting", "Lofting", "Trimming"]
+    assert after[lofting["key"]]["known"] == 1 and db.row("SELECT COUNT(*) AS n FROM answers WHERE card_id = ?", card)["n"] == 1
+    [trimming] = [c for k, c in after.items() if k not in mine]
+    assert after[fitting["key"]]["unwritten"] == 0 and trimming["unwritten"] == 1
+    written = db.row("SELECT id FROM lessons WHERE course_id = ? AND concept_id = ?", course, after[fitting["key"]]["id"])
+    assert [b["markdown"] for b in db.blocks(written["id"])] == ["Half a lesson on fitting."]
+    assert db.rows("SELECT id FROM lessons WHERE concept_id = ?", gone) == [] and db.concept_view(course)
+    assert db.needs(course) == {after[lofting["key"]]["id"]: [after[fitting["key"]]["id"]]}
