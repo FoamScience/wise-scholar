@@ -739,7 +739,8 @@
         "lesson": "التدريس",
         "practice": "التمرين",
         "graph": "مخطط المعارف",
-        "cards": "بطاقات المراجعة"
+        "cards": "بطاقات المراجعة",
+        "cleanup": "فحص قبل النشر"
       }
     },
     "publish": {
@@ -773,7 +774,29 @@
         "CC-BY-4.0": "CC BY 4.0: مشاركة وتعديل مع النسبة",
         "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0: لا للاستخدام التجاري",
         "all-rights-reserved": "جميع الحقوق محفوظة"
-      }
+      },
+      "check": "البحث عن التفاصيل الشخصية",
+      "checkHelp": "يقرأ معلّمك النسخة بحثًا عن اسمك ومكان عملك ومساراتك وكل ما قيل لك وحدك، ويقترح تعديلات. التعديل المقبول يغيّر النسخة المنشورة فقط، ولا يغيّر دورتك أبدًا.",
+      "checkRun": "افحص هذه النسخة",
+      "checkAgain": "افحص مجددًا",
+      "checking": "جارٍ الفحص… يمكنك مغادرة هذه الصفحة.",
+      "checkFailed": "لم يكتمل الفحص. حاول مجددًا، أو انشر دونه.",
+      "checked": "فُحصت في {{date}}.",
+      "checkNone": "لم يُعثر على شيء شخصي.",
+      "checkSkip": "الفحص اختياري؛ يمكنك النشر دونه.",
+      "accept": "قبول",
+      "reject": "رفض",
+      "undo": "تراجع",
+      "accepted": "مقبول",
+      "rejected": "مرفوض",
+      "targets": {
+        "block": "درس",
+        "card": "بطاقة مراجعة",
+        "file": "ملف تمرين",
+        "course": "الدورة",
+        "summary": "الجملة الختامية"
+      },
+      "stale": "{{count}} من التعديلات المقبولة لم تعد تطابق الدورة فتُركت."
     },
     "replay": {
       "later": "لم تُكتب بعد: ستأتي في نسخة لاحقة من هذه الدورة. يمكن لمعلّمك أن يدرّسها لك الآن.",
@@ -862,6 +885,9 @@
     "no lesson of this course is finished yet, so there is nothing to publish": "لم يكتمل أي درس من هذه الدورة بعد، فلا شيء للنشر",
     "this answer is not waiting for your own grade": "هذه الإجابة لا تنتظر تقييمك الذاتي",
     "only an imported course places you from its cards": "الدورة المستوردة وحدها تحدد مستواك من بطاقاتها",
-    "this course has no cards left to place you with": "لم تبق في هذه الدورة بطاقات لتحديد مستواك"
+    "this course has no cards left to place you with": "لم تبق في هذه الدورة بطاقات لتحديد مستواك",
+    "this course is already being checked": "هذه الدورة قيد الفحص بالفعل.",
+    "no lesson of this course is finished yet, so there is nothing to check": "لم يكتمل أي درس من هذه الدورة بعد، فلا شيء لفحصه.",
+    "wait for the check of this course to finish before publishing": "انتظر انتهاء فحص هذه الدورة قبل النشر."
   }
 }

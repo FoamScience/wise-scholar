@@ -114,7 +114,7 @@ def test_a_published_version_carries_the_content_and_none_of_the_author(places):
 
 def test_the_same_content_packs_to_the_same_bytes_and_a_fork_credits_its_origin(places):
     a = _authored(places)
-    manifest, assets = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    manifest, assets, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
     assert bundle.pack(manifest, assets) == bundle.pack(manifest, assets)
     first = bundle.publish(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], **places)
     version_hash, m, assets = bundle.unpack((places["store"] / f"{first['hash']}.zip").read_bytes())
@@ -138,7 +138,7 @@ def _zip(files: dict[str, bytes]) -> bytes:
 
 def test_a_bundle_from_anyone_is_checked_before_anything_is_written(places):
     a = _authored(places)
-    manifest, assets = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[a["kept"]], source_dir=places["source_dir"])
+    manifest, assets, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[a["kept"]], source_dir=places["source_dir"])
     body = bundle.canonical(manifest)
     good = {"manifest.json": body, **{f"assets/{h}": d for h, d in assets.items()}}
 
@@ -262,3 +262,133 @@ def test_a_replayed_unit_runs_as_written_and_calls_the_tutor_only_on_misses(plac
         app.card_placement(fresh)
     with pytest.raises(app.HTTPException, match="only an imported course"):
         app.card_placement(course)
+
+
+def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_only(places, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    from wise_scholar import app, tutor
+    from wise_scholar.backends import TURN_HEADER
+
+    monkeypatch.setattr(app, "SOURCES", places["source_dir"])
+    monkeypatch.setattr(app, "VERSIONS", places["store"])
+    monkeypatch.setattr(app, "CHECK_CHARS", 200)
+    a = _authored(places)
+    prose, quiz_block = db.blocks(a["lesson"])[:2]
+    card_key = db.card(a["card"])["key"]
+    prompts, replies = [], []
+
+    async def turn(lesson, prompt, kind, what):
+        assert kind == "cleanup" and lesson["course_id"] == a["course"]
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            replies.append(await tutor.propose_edits(a["course"], [
+                tutor.Edit(target="block", ref=prose["key"], old="**sections**", new="**profiles**", reason="r"),
+                tutor.Edit(target="card", ref=card_key, old="ThruSections", new="Loft", reason="r"),
+                tutor.Edit(target="file", ref="loft/new.py", old="TODO", new="FIXME", reason="r"),
+                tutor.Edit(target="block", ref=prose["key"], old="not in it", new="x", reason="r"),
+                tutor.Edit(target="summary", ref="nope", old="a", new="b", reason="r"),
+                tutor.Edit(target="block", ref=prose["key"], old="**sections**", new="**rings**", reason="r"),
+            ]))
+        return True
+
+    monkeypatch.setattr(app, "_background_turn", turn)
+    asyncio.run(app._check(a["course"]))
+    assert len(prompts) > 1 and all("[author]" in p and "pump maker" in p for p in prompts)
+    assert f"[block {prose['key']}, lesson \"Lofting\"]" in "".join(prompts) and "[file loft/new.py]" in "".join(prompts)
+    assert replies[0].splitlines() == ["1: proposed", "2: proposed", "3: proposed", "4: error: old is not in that block; copy it exactly",
+                                      "5: error: there is no summary 'nope' in this version", "6: already proposed"]
+    check = app.publish_check(a["course"])
+    assert check["checked"] and not check["running"] and [e["lesson"] for e in check["edits"]] == ["Lofting", None, None]
+    block_edit, card_edit, file_edit = check["edits"]
+    app.decide_edit(a["course"], block_edit["id"], app.EditStatus(status="accepted"))
+    app.decide_edit(a["course"], card_edit["id"], app.EditStatus(status="accepted"))
+    app.decide_edit(a["course"], file_edit["id"], app.EditStatus(status="rejected"))
+    with pytest.raises(HTTPException, match="no such edit"):
+        app.decide_edit(a["course"], 10**9, app.EditStatus(status="accepted"))
+
+    plain, _, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    v = app.publish_version(a["course"], app.Publish())
+    assert v["stale"] == 0
+    _, manifest, assets = bundle.unpack((places["store"] / f"{v['hash']}.zip").read_bytes())
+    [lesson] = manifest.lessons
+    assert lesson.blocks[0].markdown == "Lofting joins **profiles**." and lesson.blocks[1].data["options"] == ["Loft", "MakePipe"]
+    [card] = manifest.cards
+    assert (card.question, card.options, card.answer_key) == ("Which call lofts wires?", ["Loft", "MakePipe"], "Loft")
+    assert {f.path: assets[f.asset].decode() for f in manifest.files}["loft/new.py"] == "# TODO loft"
+    assert manifest.units[1].hash != plain["units"][1]["hash"] and manifest.units[0].hash == plain["units"][0]["hash"]
+    assert db.block(prose["id"])["markdown"] == "Lofting joins **sections**." and db.card(a["card"])["answer_key"] == "ThruSections"
+    assert db.block(quiz_block["id"])["data"]["options"] == ["ThruSections", "MakePipe"]
+
+    # A rerun keeps the author's decisions and reads the course with the accepted edits already made.
+    prompts.clear()
+    asyncio.run(app._check(a["course"]))
+    assert "**profiles**" in "".join(prompts) and [e["status"] for e in app.publish_check(a["course"])["edits"]] == ["accepted", "accepted", "rejected"]
+
+    db.conn.execute("UPDATE blocks SET markdown = 'Rewritten.' WHERE id = ?", (prose["id"],))
+    assert app.publish_version(a["course"], app.Publish())["stale"] == 1
+
+    lesson_turn = db.lesson(a["lesson"])
+    context = SimpleNamespace(request_context=SimpleNamespace(request=SimpleNamespace(headers={TURN_HEADER: "tok-lesson"})))
+    tutor.turn_started(lesson_turn, "tok-lesson")
+    try:
+        with pytest.raises(ToolError, match="not available in this turn"):
+            asyncio.run(tutor.mcp._tool_manager.call_tool("propose_edits", {"course_id": a["course"], "edits": []}, context))
+    finally:
+        tutor.turn_ended(lesson_turn["id"])
+    assert asyncio.run(tutor.propose_edits(a["course"], [])) == f"error: course {a['course']} is not being checked"
+
+
+def test_an_edit_to_a_quiz_block_reaches_its_card_and_a_broken_sort_key_is_refused(places):
+    a = _authored(places)
+    quiz_block = db.blocks(a["lesson"])[1]
+    edit = {"id": 1, "target": "block", "ref": quiz_block["key"], "old": "lofts wires", "new": "joins wires"}
+    manifest, assets, stale = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"], edits=[edit])
+    assert stale == [] and manifest["cards"][0]["question"] == "Which call joins wires?"
+    assert manifest["lessons"][0]["blocks"][1]["markdown"] == "Which call joins wires?"
+
+    sort = {"key": "f" * 32, "unit": None, "question": "Sort", "kind": "sort", "options": [{"text": "a", "category": "Left"}],
+            "answer_key": '["Left", "Right"]', "explanation": "", "scheduled": True, "vocab": False, "lemma": None, "lang": None, "translation": ""}
+    manifest["cards"].append(sort)
+    assert not bundle.apply_edit(manifest, assets, {"target": "card", "ref": sort["key"], "old": "Left", "new": 'Le"ft'})
+    assert bundle.apply_edit(manifest, assets, {"target": "card", "ref": sort["key"], "old": "Left", "new": "Port"})
+    assert sort["answer_key"] == '["Port", "Right"]' and sort["options"] == [{"text": "a", "category": "Port"}]
+
+
+def test_a_check_starts_in_the_background_and_blocks_publishing_until_it_ends(places, monkeypatch):
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from wise_scholar import app
+
+    monkeypatch.setattr(app, "SOURCES", places["source_dir"])
+    monkeypatch.setattr(app, "VERSIONS", places["store"])
+    a = _authored(places)
+    release = None
+
+    async def check(course_id):
+        await release.wait()
+        raise RuntimeError("the agent went away")
+
+    monkeypatch.setattr(app, "_check", check)
+
+    async def scenario():
+        nonlocal release
+        release = asyncio.Event()
+        assert (await app.start_publish_check(a["course"]))["running"]
+        with pytest.raises(HTTPException, match="already being checked"):
+            await app.start_publish_check(a["course"])
+        with pytest.raises(HTTPException, match="wait for the check"):
+            app.publish_version(a["course"], app.Publish())
+        release.set()
+        await app._checks[a["course"]]
+
+    asyncio.run(scenario())
+    state = app.publish_check(a["course"])
+    assert not state["running"] and state["failed"]
+    app._checks_failed.discard(a["course"])

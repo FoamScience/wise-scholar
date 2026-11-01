@@ -675,7 +675,8 @@
         "lesson": "Teaching",
         "practice": "Practice",
         "graph": "Claims graph",
-        "cards": "Review cards"
+        "cards": "Review cards",
+        "cleanup": "Publish check"
       }
     },
     "publish": {
@@ -709,7 +710,29 @@
         "CC-BY-4.0": "CC BY 4.0: share and adapt with credit",
         "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0: not for commercial use",
         "all-rights-reserved": "All rights reserved"
-      }
+      },
+      "check": "Check for personal details",
+      "checkHelp": "Your tutor reads the version for your name, workplace, paths and anything said only to you, and proposes edits. Accepted edits change the published version only, never your course.",
+      "checkRun": "Check this version",
+      "checkAgain": "Check again",
+      "checking": "Checking… you can leave this page.",
+      "checkFailed": "The check did not finish. Try again, or publish without it.",
+      "checked": "Checked {{date}}.",
+      "checkNone": "Nothing personal found.",
+      "checkSkip": "The check is optional; you can publish without it.",
+      "accept": "Accept",
+      "reject": "Reject",
+      "undo": "Undo",
+      "accepted": "Accepted",
+      "rejected": "Rejected",
+      "targets": {
+        "block": "Lesson",
+        "card": "Review card",
+        "file": "Exercise file",
+        "course": "Course",
+        "summary": "Closing line"
+      },
+      "stale": "{{count}} accepted edits no longer matched the course and were left out."
     },
     "replay": {
       "later": "Not written yet: it comes in a later version of this course. Your own tutor can teach it now instead.",

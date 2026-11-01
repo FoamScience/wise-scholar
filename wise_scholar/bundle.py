@@ -245,8 +245,11 @@ def versions(course_id: int) -> list[dict]:
     ]
 
 
-def build(course_id: int, *, notes: str, licence: str, forkable: bool, sources: list[int], source_dir: Path) -> tuple[dict, dict[str, bytes]]:
-    """The manifest of the course as it is now and the assets it names."""
+def build(
+    course_id: int, *, notes: str, licence: str, forkable: bool, sources: list[int], source_dir: Path, edits: list[dict] = (),
+) -> tuple[dict, dict[str, bytes], list[int]]:
+    """The manifest of the course as it is now with the author's accepted edits made, the assets it names, and the
+    ids of the edits whose text the course no longer holds."""
     course = db.course(course_id)
     assets: dict[str, bytes] = {}
 
@@ -286,15 +289,11 @@ def build(course_id: int, *, notes: str, licence: str, forkable: bool, sources: 
          "scheduled": bool(k["scheduled"]), "vocab": bool(k["vocab"]), "lemma": k["lemma"], "lang": k["lang"], "translation": k["translation"] or ""}
         for k in cards
     ]
-    unit_rows = []
-    for u in units:
-        content = {
-            "unit": {k: u[k] for k in ("module", "title", "kind")},
-            "lessons": [{k: v for k, v in lesson.items() if k != "key"} for lesson in lessons if lesson["unit"] == u["key"]],
-            "cards": [{k: v for k, v in c.items() if k != "key"} for c in card_rows if c["unit"] == u["key"]],
-        }
-        unit_rows.append({"key": u["key"], "module": u["module"], "title": u["title"], "kind": u["kind"], "written": u["id"] in written,
-                          "needs": [unit_keys[n] for n in needs.get(u["id"], []) if n in unit_keys], "hash": sha(canonical(content))})
+    unit_rows = [
+        {"key": u["key"], "module": u["module"], "title": u["title"], "kind": u["kind"], "written": u["id"] in written,
+         "needs": [unit_keys[n] for n in needs.get(u["id"], []) if n in unit_keys]}
+        for u in units
+    ]
     chosen = []
     for s in db.sources(course_id):
         if s["id"] not in sources or s["status"] != "ready":
@@ -326,13 +325,112 @@ def build(course_id: int, *, notes: str, licence: str, forkable: bool, sources: 
         "sources": chosen,
         "setup": setup_commands(course_id),
     }
+    stale = [e["id"] for e in edits if not apply_edit(manifest, assets, e)]
+    for u in manifest["units"]:
+        u["hash"] = sha(canonical({
+            "unit": {k: u[k] for k in ("module", "title", "kind")},
+            "lessons": [{k: v for k, v in x.items() if k != "key"} for x in manifest["lessons"] if x["unit"] == u["key"]],
+            "cards": [{k: v for k, v in c.items() if k != "key"} for c in manifest["cards"] if c["unit"] == u["key"]],
+        }))
     Manifest.model_validate(manifest)
-    return manifest, assets
+    return manifest, assets, stale
+
+
+# --- Edits: exact replacements the author accepted for the version, never made in the course itself -----------------
+EDIT_TARGETS = ("block", "card", "file", "course", "summary")
+COURSE_FIELDS = ("topic", "details", "cover_alt")
+_NOT_TEXT = ("svg", "card")  # a figure's drawing and a quiz's card key are not read or edited as text
+
+
+def _strings(value) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    if isinstance(value, dict):
+        return [s for k, v in value.items() if k not in _NOT_TEXT for s in _strings(v)]
+    return []
+
+
+def _swap(value, old: str, new: str):
+    if isinstance(value, str):
+        return value.replace(old, new)
+    if isinstance(value, list):
+        return [_swap(v, old, new) for v in value]
+    if isinstance(value, dict):
+        return {k: v if k in _NOT_TEXT else _swap(v, old, new) for k, v in value.items()}
+    return value
+
+
+def _json(text: str) -> bool:
+    try:
+        json.loads(text)
+    except ValueError:
+        return False
+    return True
+
+
+def _card_text(card: dict) -> dict:
+    return {k: card[k] for k in ("question", "options", "answer_key", "explanation", "translation")}
+
+
+def texts(manifest: dict, assets: dict[str, bytes]) -> dict[tuple[str, str], str]:
+    """Every piece of the version an edit may touch, by (target, ref), with the text it holds."""
+    out = {("course", f): manifest["course"][f] for f in COURSE_FIELDS if manifest["course"].get(f)}
+    for lesson in manifest["lessons"]:
+        if lesson["summary"]:
+            out["summary", lesson["key"]] = lesson["summary"]
+        for b in lesson["blocks"]:
+            out["block", b["key"]] = "\n".join(_strings([b["markdown"], b["data"]]))
+    for c in manifest["cards"]:
+        out["card", c["key"]] = "\n".join(_strings(_card_text(c)))
+    for f in manifest["files"]:
+        out["file", f["path"]] = assets[f["asset"]].decode(errors="replace")
+    return out
+
+
+def apply_edit(manifest: dict, assets: dict[str, bytes], edit: dict) -> bool:
+    """Make one edit everywhere in its piece; False when the piece is gone or no longer holds the old text."""
+    target, ref, old, new = edit["target"], edit["ref"], edit["old"], edit["new"]
+    if old not in texts(manifest, assets).get((target, ref), ""):
+        return False
+    if target == "course":
+        manifest["course"][ref] = manifest["course"][ref].replace(old, new)
+    elif target == "summary":
+        lesson = next(x for x in manifest["lessons"] if x["key"] == ref)
+        lesson["summary"] = lesson["summary"].replace(old, new)
+    elif target in ("block", "card"):
+        # A quiz block shows its card, so the two change together.
+        blocks = [b for x in manifest["lessons"] for b in x["blocks"]]
+        card_key = ref if target == "card" else (next(b for b in blocks if b["key"] == ref)["data"] or {}).get("card")
+        cards = [c for c in manifest["cards"] if c["key"] == card_key]
+        changed = [_swap(_card_text(c), old, new) for c in cards]
+        if any(c["kind"] == "sort" and not _json(x["answer_key"]) for c, x in zip(cards, changed)):
+            return False
+        for c, x in zip(cards, changed):
+            c.update(x)
+        for b in blocks:
+            if b["key"] == ref or (card_key and (b["data"] or {}).get("card") == card_key):
+                b["markdown"], b["data"] = _swap([b["markdown"], b["data"]], old, new)
+    else:
+        f = next(x for x in manifest["files"] if x["path"] == ref)
+        content = assets[f["asset"]].decode(errors="replace").replace(old, new).encode()
+        before, f["asset"] = f["asset"], sha(content)
+        assets[f["asset"]] = content
+        if all(x["asset"] != before for x in [*manifest["files"], *manifest["sources"]]):
+            del assets[before]
+    return True
+
+
+def accepted_edits(course_id: int) -> list[dict]:
+    return db.rows("SELECT * FROM publish_edits WHERE course_id = ? AND status = 'accepted' ORDER BY id", course_id)
 
 
 def publish(course_id: int, *, notes: str, licence: str, forkable: bool, sources: list[int], source_dir: Path, store: Path) -> dict:
-    """Freeze the course as its next version: the bundle lands in store, named by the version id."""
-    manifest, assets = build(course_id, notes=notes, licence=licence, forkable=forkable, sources=sources, source_dir=source_dir)
+    """Freeze the course as its next version, with the edits the author accepted: the bundle lands in store, named by
+    the version id."""
+    manifest, assets, stale = build(course_id, notes=notes, licence=licence, forkable=forkable, sources=sources,
+                                    source_dir=source_dir, edits=accepted_edits(course_id))
     version_hash, data = pack(manifest, assets)
     store.mkdir(parents=True, exist_ok=True)
     (store / f"{version_hash}.zip").write_bytes(data)
@@ -343,7 +441,7 @@ def publish(course_id: int, *, notes: str, licence: str, forkable: bool, sources
         (version_hash, course_id, v["number"], manifest["course"]["topic"], v["notes"], licence, int(forkable), json.dumps(v["credits"]),
          json.dumps(manifest["setup"]), sum(u["written"] for u in manifest["units"]), len(manifest["units"]), v["published"]),
     )
-    return {"hash": version_hash, "number": v["number"], "size": len(data)}
+    return {"hash": version_hash, "number": v["number"], "size": len(data), "stale": len(stale)}
 
 
 def pack(manifest: dict, assets: dict[str, bytes]) -> tuple[str, bytes]:

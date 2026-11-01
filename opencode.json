@@ -83,6 +83,15 @@
         "scholar_*": "allow"
       }
     },
+    "tutor-cleanup": {
+      "mode": "primary",
+      "description": "wise-scholar: personal references before publishing",
+      "prompt": "{file:./wise_scholar/prompts/cleanup.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
+    },
     "tutor-lesson-teacher": {
       "mode": "primary",
       "description": "wise-scholar course designer: lesson for a teacher",

@@ -15,6 +15,10 @@ type Preview = {
   forked_from: { topic: string; number: number; forkable: boolean } | null
   licences: Licence[]
 }
+type EditTarget = 'block' | 'card' | 'file' | 'course' | 'summary'
+type EditStatus = 'proposed' | 'accepted' | 'rejected'
+type Edit = { id: number; target: EditTarget; ref: string; old: string; new: string; reason: string; status: EditStatus; lesson: string | null }
+type Check = { running: boolean; failed: boolean; checked: string | null; edits: Edit[] }
 
 /** Freeze the course as a version anyone can import, after checking what it carries; and its earlier versions. */
 export function PublishPage({ courseId }: { courseId: number }) {
@@ -26,16 +30,43 @@ export function PublishPage({ courseId }: { courseId: number }) {
   const [sources, setSources] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [check, setCheck] = useState<Check | null>(null)
+  const [stale, setStale] = useState(0)
 
   useEffect(() => {
     api<Preview>(`/api/courses/${courseId}/publish`).then(setPreview, (e: Error) => setError(e.message))
+    api<Check>(`/api/courses/${courseId}/check`).then(setCheck, (e: Error) => setError(e.message))
   }, [courseId])
+
+  useEffect(() => {
+    if (!check?.running) return
+    const timer = setTimeout(() => api<Check>(`/api/courses/${courseId}/check`).then(setCheck, (e: Error) => setError(e.message)), 2000)
+    return () => clearTimeout(timer)
+  }, [courseId, check])
+
+  async function startCheck() {
+    setError('')
+    try {
+      setCheck(await api<Check>(`/api/courses/${courseId}/check`, {}))
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  async function decide(edit: Edit, status: EditStatus) {
+    try {
+      setCheck(await api<Check>(`/api/courses/${courseId}/check/${edit.id}`, { status }))
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
 
   async function publish() {
     setBusy(true)
     setError('')
     try {
-      await api(`/api/courses/${courseId}/versions`, { notes, licence, forkable, sources })
+      const published = await api<{ stale: number }>(`/api/courses/${courseId}/versions`, { notes, licence, forkable, sources })
+      setStale(published.stale)
       setNotes('')
       setPreview(await api<Preview>(`/api/courses/${courseId}/publish`))
     } catch (e) {
@@ -56,6 +87,7 @@ export function PublishPage({ courseId }: { courseId: number }) {
       <h1>{t('publish.heading')}</h1>
       <div className="muted">{t('publish.intro')}</div>
       {error && <div className="error">{error}</div>}
+      {stale > 0 && <div className="small">{t('publish.stale', { count: stale })}</div>}
       {preview.forked_from && (
         <div className="small">{t(blocked ? 'publish.locked' : 'publish.forkOf', { topic: preview.forked_from.topic, number: preview.forked_from.number })}</div>
       )}
@@ -105,6 +137,75 @@ export function PublishPage({ courseId }: { courseId: number }) {
             </div>
           )}
 
+          {check && (
+            <div className="stack publish-check">
+              <div className="label">{t('publish.check')}</div>
+              <div className="small">{t('publish.checkHelp')}</div>
+              {check.running ? (
+                <div className="muted">{t('publish.checking')}</div>
+              ) : (
+                <>
+                  {check.failed && <div className="error">{t('publish.checkFailed')}</div>}
+                  {check.checked && !check.failed && (
+                    <div className="small">
+                      {t('publish.checked', { date: day(check.checked.slice(0, 10)) })}{' '}
+                      {check.edits.length === 0 && t('publish.checkNone')}
+                    </div>
+                  )}
+                  <div className="row">
+                    <button type="button" className="btn" disabled={preview.written === 0} onClick={startCheck}>
+                      {check.checked ? t('publish.checkAgain') : t('publish.checkRun')}
+                    </button>
+                    {!check.checked && <span className="small">{t('publish.checkSkip')}</span>}
+                  </div>
+                </>
+              )}
+              {check.edits.map((edit) => (
+                <div key={edit.id} className={`block entry edit ${edit.status}`}>
+                  <div className="label">
+                    {t(`publish.targets.${edit.target}`)}
+                    {edit.lesson && (
+                      <span dir="auto">
+                        {': '}
+                        {edit.lesson}
+                      </span>
+                    )}
+                    {edit.target === 'file' && (
+                      <code className="small" dir="ltr">
+                        {' '}
+                        {edit.ref}
+                      </code>
+                    )}
+                    {edit.status !== 'proposed' && <span className="chip">{t(`publish.${edit.status}`)}</span>}
+                  </div>
+                  <div className="edit-change" dir="auto">
+                    <del>{edit.old}</del>
+                    <ins>{edit.new}</ins>
+                  </div>
+                  <div className="small" dir="auto">
+                    {edit.reason}
+                  </div>
+                  <div className="row">
+                    {edit.status === 'proposed' ? (
+                      <>
+                        <button type="button" className="btn primary" onClick={() => decide(edit, 'accepted')}>
+                          {t('publish.accept')}
+                        </button>
+                        <button type="button" className="btn" onClick={() => decide(edit, 'rejected')}>
+                          {t('publish.reject')}
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="btn" onClick={() => decide(edit, 'proposed')}>
+                        {t('publish.undo')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <label className="label" htmlFor="publish-notes">
             {t('publish.notes')}
           </label>
@@ -124,7 +225,7 @@ export function PublishPage({ courseId }: { courseId: number }) {
             <span>{t('publish.forkable')}</span>
           </label>
           <div className="row">
-            <button type="button" className="btn primary" disabled={busy || preview.written === 0} onClick={publish}>
+            <button type="button" className="btn primary" disabled={busy || preview.written === 0 || check?.running} onClick={publish}>
               {busy ? t('publish.publishing') : t('publish.publish', { number: (preview.versions[0]?.number ?? 0) + 1 })}
             </button>
           </div>
