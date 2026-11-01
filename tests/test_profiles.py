@@ -2004,3 +2004,35 @@ def test_a_cards_job_goes_on_while_turns_make_cards_short(monkeypatch):
     assert asyncio.run(app._shorten(("short", course))) == "more"
     assert asyncio.run(app._shorten(("short", course))) == "done" and len(seen) == 2
     assert all(db.card(c)["retired"] for c in longs) and tutor.card_jobs == {}
+
+
+def test_each_turn_records_its_tokens_and_cost_against_its_lesson_and_course(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app
+
+    used = {"model": "claude-opus-5-5", "input": 10, "output": 200, "cache_read": 5000, "cache_write": 800, "cost": 0.25}
+
+    async def run_turn(prompt, **kwargs):
+        yield {"type": "chat.delta", "text": "Hi"}
+        yield {"type": "turn.done", "ok": True, "error": None, "usage": used}
+
+    monkeypatch.setattr(app.backend, "run_turn", run_turn)
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Spender')").lastrowid
+    course = db.create_course("Impellers", who)["id"]
+    lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"])
+    for _ in range(2):
+        app._turns[lesson["id"]] = None
+        asyncio.run(app._run_turn(lesson, "[learner] go", quiet=True))
+    asyncio.run(app._background_turn(lesson, "record", "graph", "claims"))
+
+    [report] = app.list_usage(who)
+    assert report["topic"] == "Impellers" and report["turns"] == 3 and report["cost"] == 0.75
+    assert (report["input"], report["output"], report["cache_read"], report["cache_write"]) == (30, 600, 15000, 2400)
+    [row] = report["lessons"]
+    assert row["id"] == lesson["id"] and row["title"] == lesson["title"] and row["turns"] == 3
+    assert {k["kind"]: k["turns"] for k in report["kinds"]} == {lesson["phase"]: 2, "graph": 1}
+    assert app.list_usage(db.conn.execute("INSERT INTO profiles (name) VALUES ('Saver')").lastrowid) == []
+
+    db.delete_course(course)
+    assert app.list_usage(who) == [] and db.row("SELECT COUNT(*) AS n FROM usage WHERE course_id = ?", course)["n"] == 0

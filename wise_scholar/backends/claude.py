@@ -42,8 +42,26 @@ def parse_event(line: str) -> dict | None:
             return {"type": "activity", "tool": ev["content_block"]["name"].removeprefix(MCP_PREFIX).lower()}
     if kind == "result":
         ok = e.get("subtype") == "success" and not e.get("is_error")
-        return {"type": "turn.done", "ok": ok, "error": None if ok else str(e.get("result") or e.get("subtype"))}
+        return {"type": "turn.done", "ok": ok, "error": None if ok else str(e.get("result") or e.get("subtype")), "usage": usage(e)}
     return None
+
+
+def usage(result: dict) -> dict | None:
+    """What a run used, summed over its models; Claude Code prices it at the API list price."""
+    models = result.get("modelUsage") or {}
+    if not models:
+        return None
+    ranked = sorted(models.items(), key=lambda m: m[1].get("costUSD") or 0, reverse=True)
+    total = {key: sum(m.get(key) or 0 for m in models.values()) for key in
+             ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens", "costUSD")}
+    return {
+        "model": ", ".join(name for name, _ in ranked),
+        "input": total["inputTokens"],
+        "output": total["outputTokens"],
+        "cache_read": total["cacheReadInputTokens"],
+        "cache_write": total["cacheCreationInputTokens"],
+        "cost": result.get("total_cost_usd", total["costUSD"]),
+    }
 
 
 def mcp_config(token: str) -> Path:

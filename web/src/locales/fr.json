@@ -387,6 +387,9 @@
       "commandsHeading": "Commandes exécutées pour vous",
       "commandsScope": "Chaque commande lancée par le tuteur, chaque Exécuter que vous avez pressé, et chaque commande pour laquelle vous avez accordé ou refusé internet, dans tous vos cours.",
       "commands": "Journal des commandes",
+      "usageHeading": "Consommation de l'agent",
+      "usageScope": "Jetons et coût équivalent API du tuteur et de ses tâches de fond, par cours et par leçon.",
+      "usage": "Consommation",
       "modeHeading": "Votre usage de wise-scholar",
       "learner": "J'apprends",
       "teacher": "J'enseigne",
@@ -663,6 +666,30 @@
       "send_one": "Ajouter {{count}} page à la réponse",
       "send_many": "Ajouter {{count}} pages à la réponse",
       "send_other": "Ajouter {{count}} pages à la réponse"
+    },
+    "usage": {
+      "heading": "Consommation de l'agent",
+      "intro": "Jetons et coût de chaque tour de l'agent, par cours et par leçon, y compris les tâches de fond comme les cartes de révision et le graphe des affirmations. Le coût suit le tarif public de l'API, quelle que soit la formule de l'agent.",
+      "empty": "Aucun tour d'agent enregistré.",
+      "total": "Tous les cours : {{cost}}",
+      "archived": "archivé",
+      "summary": "{{cost}}, {{input}} jetons en entrée (dont {{cached}} en cache), {{output}} en sortie, dernier tour {{last}}",
+      "lesson": "Leçon",
+      "noLesson": "Sans leçon",
+      "kind": "Travail",
+      "byKind": "Par type de travail",
+      "turns": "Tours",
+      "input": "Jetons en entrée",
+      "output": "Jetons en sortie",
+      "cost": "Coût",
+      "kinds": {
+        "interview": "Entretien",
+        "placement": "Positionnement",
+        "lesson": "Enseignement",
+        "practice": "Pratique",
+        "graph": "Graphe des affirmations",
+        "cards": "Cartes de révision"
+      }
     }
   },
   "server": {

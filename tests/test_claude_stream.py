@@ -22,8 +22,18 @@ def test_parse_event_maps_stream_lines_to_ui_events():
     ) == {"type": "activity", "tool": "add_block"}
     assert parse_event(json.dumps({"type": "assistant", "message": {"content": []}})) is None
     assert parse_event(json.dumps({"type": "result", "subtype": "success", "is_error": False})) == {
-        "type": "turn.done", "ok": True, "error": None,
+        "type": "turn.done", "ok": True, "error": None, "usage": None,
     }
     assert parse_event(json.dumps({"type": "result", "subtype": "error_max_turns", "is_error": True})) == {
-        "type": "turn.done", "ok": False, "error": "error_max_turns",
+        "type": "turn.done", "ok": False, "error": "error_max_turns", "usage": None,
+    }
+
+
+def test_a_result_reports_the_tokens_and_list_price_of_every_model_it_used():
+    result = {"type": "result", "subtype": "success", "is_error": False, "total_cost_usd": 0.05, "modelUsage": {
+        "claude-haiku-5-5": {"inputTokens": 10, "outputTokens": 5, "cacheReadInputTokens": 100, "cacheCreationInputTokens": 0, "costUSD": 0.01},
+        "claude-opus-5-5": {"inputTokens": 2, "outputTokens": 40, "cacheReadInputTokens": 900, "cacheCreationInputTokens": 3000, "costUSD": 0.04},
+    }}
+    assert parse_event(json.dumps(result))["usage"] == {
+        "model": "claude-opus-5-5, claude-haiku-5-5", "input": 12, "output": 45, "cache_read": 1000, "cache_write": 3000, "cost": 0.05,
     }

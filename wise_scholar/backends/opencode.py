@@ -92,10 +92,24 @@ class EventParser:
 
     def __init__(self, session_id: str):
         self.session_id = session_id
+        self.used = {"model": MODEL or "opencode", "input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "cost": 0.0}
+
+    def count(self, d: dict) -> None:
+        """Add one step's tokens and cost, priced by opencode from its provider's rates."""
+        tokens = d.get("tokens") or {}
+        cache = tokens.get("cache") or {}
+        self.used["input"] += tokens.get("input") or 0
+        self.used["output"] += (tokens.get("output") or 0) + (tokens.get("reasoning") or 0)
+        self.used["cache_read"] += cache.get("read") or 0
+        self.used["cache_write"] += cache.get("write") or 0
+        self.used["cost"] += d.get("cost") or 0
 
     def feed(self, event: dict) -> list[dict]:
         kind, d = event["type"], event.get("data") or {}
         if d.get("sessionID") != self.session_id:
+            return []
+        if kind in ("session.step.ended", "session.step.failed", "session.usage.recorded"):
+            self.count(d)
             return []
         if kind == "session.text.started":
             return [{"type": "chat.break"}]
@@ -104,12 +118,12 @@ class EventParser:
         if kind == "session.tool.input.started":
             return [{"type": "activity", "tool": d["name"].removeprefix(MCP_PREFIX).lower()}]
         if kind == "session.execution.succeeded":
-            return [{"type": "turn.done", "ok": True, "error": None}]
+            return [{"type": "turn.done", "ok": True, "error": None, "usage": self.used}]
         if kind in ("session.execution.failed", "session.error"):
             error = d.get("error") or {}
-            return [{"type": "turn.done", "ok": False, "error": error.get("message") or error.get("type") or "opencode reported an error"}]
+            return [{"type": "turn.done", "ok": False, "error": error.get("message") or error.get("type") or "opencode reported an error", "usage": self.used}]
         if kind == "session.execution.interrupted":
-            return [{"type": "turn.done", "ok": False, "error": "the turn was interrupted"}]
+            return [{"type": "turn.done", "ok": False, "error": "the turn was interrupted", "usage": self.used}]
         return []
 
 

@@ -2379,6 +2379,22 @@ pre:has(> .mermaid) {
   gap: var(--space-sm);
 }
 
+.usage-page .table-scroll {
+  overflow-x: auto;
+}
+
+.usage-page table {
+  width: 100%;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.usage-page :is(th, td):not(:first-child) {
+  text-align: end;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* the notebook spreads its entries across the page: one column on a phone, two or three on a wide screen */
 .home.notebook-page {
   max-width: none;

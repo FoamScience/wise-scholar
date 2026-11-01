@@ -401,6 +401,23 @@ MIGRATIONS = [
     ALTER TABLE cards ADD COLUMN retired INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE answers ADD COLUMN stated INTEGER NOT NULL DEFAULT 1;
     """,
+    """
+    CREATE TABLE usage (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id),
+        lesson_id INTEGER REFERENCES lessons(id),
+        kind TEXT NOT NULL,
+        backend TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input INTEGER NOT NULL,
+        output INTEGER NOT NULL,
+        cache_read INTEGER NOT NULL,
+        cache_write INTEGER NOT NULL,
+        cost REAL,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX usage_course ON usage(course_id, lesson_id);
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -634,6 +651,43 @@ def commands(profile_id: int) -> list[dict]:
     )
 
 
+def add_usage(course_id: int, lesson_id: int | None, kind: str, backend: str, used: dict) -> None:
+    conn.execute(
+        "INSERT INTO usage (course_id, lesson_id, kind, backend, model, input, output, cache_read, cache_write, cost) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (course_id, lesson_id, kind, backend, used["model"], used["input"], used["output"], used["cache_read"],
+         used["cache_write"], used["cost"]),
+    )
+
+
+USAGE_SUMS = (
+    "COUNT(u.id) AS turns, COALESCE(SUM(u.input), 0) AS input, COALESCE(SUM(u.output), 0) AS output, "
+    "COALESCE(SUM(u.cache_read), 0) AS cache_read, COALESCE(SUM(u.cache_write), 0) AS cache_write, "
+    "SUM(u.cost) AS cost, MAX(u.created) AS last"
+)
+
+
+def usage(profile_id: int) -> list[dict]:
+    """The profile's courses that used an agent, costliest first, each with its lessons and the turns no lesson
+    owns."""
+    courses = rows(
+        f"SELECT k.id, k.topic, k.archived, {USAGE_SUMS} FROM courses k JOIN usage u ON u.course_id = k.id "
+        "WHERE k.profile_id = ? GROUP BY k.id ORDER BY COALESCE(SUM(u.cost), 0) DESC, k.id",
+        profile_id,
+    )
+    for c in courses:
+        c["lessons"] = rows(
+            f"SELECT u.lesson_id AS id, l.title, l.phase, {USAGE_SUMS} FROM usage u LEFT JOIN lessons l ON l.id = u.lesson_id "
+            "WHERE u.course_id = ? GROUP BY u.lesson_id ORDER BY MIN(u.id)",
+            c["id"],
+        )
+        c["kinds"] = rows(
+            f"SELECT u.kind, {USAGE_SUMS} FROM usage u WHERE u.course_id = ? GROUP BY u.kind ORDER BY COALESCE(SUM(u.cost), 0) DESC",
+            c["id"],
+        )
+    return courses
+
+
 def delete_course(course_id: int) -> None:
     """Remove a course and everything stored under it, all or nothing."""
     lessons = "SELECT id FROM lessons WHERE course_id = ?"
@@ -641,6 +695,7 @@ def delete_course(course_id: int) -> None:
     try:
         for sql in (
             "DELETE FROM commands WHERE course_id = ?",
+            "DELETE FROM usage WHERE course_id = ?",
             "DELETE FROM answers WHERE card_id IN (SELECT id FROM cards WHERE course_id = ?)",
             "DELETE FROM cards WHERE course_id = ?",
             f"DELETE FROM blocks WHERE lesson_id IN ({lessons})",
