@@ -2379,6 +2379,10 @@ pre:has(> .mermaid) {
   gap: var(--space-sm);
 }
 
+.publish-page > a.link {
+  align-self: flex-start;
+}
+
 .usage-page .table-scroll {
   overflow-x: auto;
 }

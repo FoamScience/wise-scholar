@@ -944,7 +944,7 @@ async def pose_exercise(
     _files_back(lesson)
     data = {
         **challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone, "form": form.strip(),
-        "helper": helper.strip(),
+        "helper": helper.strip(), "starter": {f.path: f.content for f in files},
     }
     block = db.add_block(lesson_id, "exercise", markdown, data)
     _show(lesson, block)

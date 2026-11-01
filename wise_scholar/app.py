@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 import httpx
 import simplemma
 
-from . import art, book, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, handwork, history, hub, obsidian, quiz, review, sandbox, search, sources, speech, tutor, vault, vocab
+from . import art, book, bundle, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, handwork, history, hub, obsidian, quiz, review, sandbox, search, sources, speech, tutor, vault, vocab
 from .backends import AGENT, BACKEND, MCP_SECRET, claude, opencode
 from .playbooks import describe
 
@@ -45,6 +45,7 @@ _turn_slots = asyncio.Semaphore(TURN_SLOTS)
 _turn_clock: deque[float] = deque()
 _mcp_clock: deque[float] = deque()
 SOURCES = db.DB_PATH.parent / "sources"
+VERSIONS = db.DB_PATH.parent / "versions"
 _jobs: set[asyncio.Task] = set()
 # ponytail: on synthesized references right words score 0.97+ and wrong ones under 0.45; real accents are untested.
 WEAK_WORD = 0.5
@@ -1000,6 +1001,65 @@ def _copy_name(course: dict) -> str:
     while db.row("SELECT 1 FROM courses WHERE profile_id = ? AND topic = ?", course["profile_id"], f"{base} ({n})"):
         n += 1
     return f"{base} ({n})"
+
+
+@app.get("/api/courses/{course_id}/publish")
+def publish_preview(course_id: int) -> dict:
+    """What a new version would carry, for the author to check before publishing."""
+    if not db.course(course_id):
+        raise HTTPException(404, "no such course")
+    return bundle.preview(course_id)
+
+
+class Publish(BaseModel):
+    notes: str = Field(default="", max_length=4000)
+    licence: Literal[bundle.LICENCES] = "CC-BY-SA-4.0"  # type: ignore[valid-type]
+    forkable: bool = True
+    sources: list[int] = []
+
+
+@app.post("/api/courses/{course_id}/versions")
+def publish_version(course_id: int, body: Publish) -> dict:
+    """Freeze the course as its next version, a bundle anyone can import."""
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    if (origin := bundle.preview(course_id)["forked_from"]) and not origin["forkable"]:
+        raise HTTPException(409, "the author of this course does not allow versions made from it")
+    if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
+        raise HTTPException(409, "wait for the tutor to finish before publishing")
+    if not bundle.finished_lessons(course_id):
+        raise HTTPException(409, "no lesson of this course is finished yet, so there is nothing to publish")
+    return bundle.publish(course_id, notes=body.notes, licence=body.licence, forkable=body.forkable, sources=body.sources,
+                          source_dir=SOURCES, store=VERSIONS)
+
+
+@app.get("/api/versions/{version_hash}/bundle")
+def version_bundle(version_hash: str) -> FileResponse:
+    v = db.row("SELECT * FROM versions WHERE hash = ?", version_hash) if re.fullmatch(r"[0-9a-f]{64}", version_hash) else None
+    path = VERSIONS / f"{version_hash}.zip"
+    if not v or not path.exists():
+        raise HTTPException(404, "no such version")
+    name = f"{re.sub(r'[^a-z0-9]+', '-', v['topic'].lower()).strip('-')[:60] or 'course'}-v{v['number']}.zip"
+    return FileResponse(path, media_type="application/zip", filename=name)
+
+
+@app.post("/api/import")
+async def import_course(profile: int, file: UploadFile) -> dict:
+    """A course from a version bundle, in replay mode for the profile; the bundle comes from anyone, so it is
+    checked whole before anything is written."""
+    _profile(profile)
+    data = await file.read(bundle.BUNDLE_LIMIT + 1)
+    try:
+        version_hash, manifest, assets = bundle.unpack(data)
+        course = bundle.install(profile, version_hash, manifest, assets, SOURCES)
+    except ValueError as e:
+        log.warning("bundle not imported: %s", e)
+        raise HTTPException(422, "that file is not a course bundle this app can read") from None
+    VERSIONS.mkdir(parents=True, exist_ok=True)
+    if not (VERSIONS / f"{version_hash}.zip").exists():
+        (VERSIONS / f"{version_hash}.zip").write_bytes(data)
+    return {k: course[k] for k in ("id", "topic", "slug", "mode", "refused_files")}
 
 
 @app.post("/api/courses/{course_id}/archive")
