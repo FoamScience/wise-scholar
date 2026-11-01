@@ -376,6 +376,9 @@
       "commandsHeading": "Commands run for you",
       "commandsScope": "Every command the tutor ran, every Run you pressed, and every command you allowed or refused internet for, across your courses.",
       "commands": "Command log",
+      "usageHeading": "Agent usage",
+      "usageScope": "Tokens and API-equivalent cost of the tutor and its background jobs, per course and lesson.",
+      "usage": "Usage",
       "modeHeading": "How you use wise-scholar",
       "learner": "I learn",
       "teacher": "I teach",
@@ -647,6 +650,30 @@
       "close": "Close",
       "send_one": "Add {{count}} page to the answer",
       "send_other": "Add {{count}} pages to the answer"
+    },
+    "usage": {
+      "heading": "Agent usage",
+      "intro": "Tokens and cost of every agent turn, per course and lesson, including background jobs such as review cards and the claims graph. Cost is the API list price, whatever plan the agent runs on.",
+      "empty": "No agent turn recorded yet.",
+      "total": "All courses: {{cost}}",
+      "archived": "archived",
+      "summary": "{{cost}}, {{input}} tokens in ({{cached}} from cache), {{output}} out, last turn {{last}}",
+      "lesson": "Lesson",
+      "noLesson": "No lesson",
+      "kind": "Work",
+      "byKind": "By kind of work",
+      "turns": "Turns",
+      "input": "Tokens in",
+      "output": "Tokens out",
+      "cost": "Cost",
+      "kinds": {
+        "interview": "Interview",
+        "placement": "Placement",
+        "lesson": "Teaching",
+        "practice": "Practice",
+        "graph": "Claims graph",
+        "cards": "Review cards"
+      }
     }
   },
   "server": {}

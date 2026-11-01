@@ -15,6 +15,7 @@ import { LevelPanel, ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
 import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
+import { UsagePage } from './Usage'
 import { challengeLabel, lessonTitle, outlineOf, pendingPhotos, practiceTitle, searchHref, type TodayPlan, unitTitle } from './course'
 import { OutlineCard } from './Outline'
 import { PlacementAreas } from './Areas'
@@ -2106,6 +2107,7 @@ export default function App() {
     if (graph) return <GraphPage key={hash} profile={current.id} course={graph[1] ? Number(graph[1]) : null} />
     if (hash === '#/sitting') return <SittingPage profile={current.id} />
     if (hash === '#/commands') return <CommandsPage profile={current.id} />
+    if (hash === '#/usage') return <UsagePage profile={current.id} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} locale={locale} onSelect={select} onChanged={reload} />
     return <Home key={current.id} profile={current.id} teacher={current.mode === 'teacher'} />

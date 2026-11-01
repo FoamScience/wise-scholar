@@ -535,6 +535,11 @@ def _turn_prompt(lesson: dict, line: str) -> str:
     return "\n".join([state, *known, fmt, language, *tools, line])
 
 
+def _record_usage(lesson: dict, kind: str, final: dict) -> None:
+    if used := final.get("usage"):
+        db.add_usage(lesson["course_id"], lesson["id"], kind, BACKEND, used)
+
+
 async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
     lesson_id, course_id = lesson["id"], lesson["course_id"]
     reply = ""
@@ -575,6 +580,7 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
             await events.aclose()
         tutor.turn_ended(lesson_id)
         del _turns[lesson_id]
+    _record_usage(lesson, lesson["phase"], final)
     if quiet:
         if not final["ok"]:
             log.warning("quiet turn in lesson %s failed: %s", lesson_id, final["error"])
@@ -673,6 +679,7 @@ async def _background_turn(lesson: dict, prompt: str, kind: str, what: str) -> b
                         break
     finally:
         tutor.turn_ended((kind, lesson["id"]))
+    _record_usage(lesson, kind, final)
     if not final["ok"]:
         log.warning("%s, lesson %s: %s", what, lesson["id"], final["error"])
     return final["ok"]
@@ -2225,6 +2232,12 @@ def merge_claim(claim_id: int, body: ClaimMerge) -> dict:
         raise HTTPException(404, "pick two different claims of the same learner")
     db.merge_claims(claim_id, body.into)
     return db.graph(into["profile_id"], _now())
+
+
+@app.get("/api/usage")
+def list_usage(profile: int) -> list[dict]:
+    _profile(profile)
+    return db.usage(profile)
 
 
 @app.get("/api/commands")

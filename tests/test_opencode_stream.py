@@ -27,11 +27,18 @@ def test_parser_streams_only_assistant_text_of_its_session():
 
     other = {"id": "evt_2", "type": "session.execution.succeeded", "data": {"sessionID": "ses_other"}}
     assert p.feed(other) == []
-    assert p.feed(ev("session.execution.succeeded")) == [{"type": "turn.done", "ok": True, "error": None}]
+    tokens = {"input": 100, "output": 20, "reasoning": 5, "cache": {"read": 300, "write": 40}}
+    assert p.feed(ev("session.step.ended", assistantMessageID="msg_a", cost=0.002, tokens=tokens)) == []
+    assert p.feed(ev("session.usage.recorded", source="title", cost=0.001, tokens={"input": 10, "output": 3})) == []
+    assert p.feed({"id": "evt_3", "type": "session.step.ended", "data": {"sessionID": "ses_other", "cost": 9, "tokens": tokens}}) == []
+    assert p.feed(ev("session.execution.succeeded")) == [{"type": "turn.done", "ok": True, "error": None, "usage": {
+        "model": "opencode", "input": 110, "output": 28, "cache_read": 300, "cache_write": 40, "cost": 0.003,
+    }}]
 
 
 def test_parser_reports_failed_and_interrupted_turns():
     p = EventParser(SID)
     failed = ev("session.execution.failed", error={"type": "provider.no-route", "message": "Model unavailable: openrouter/x"})
-    assert p.feed(failed) == [{"type": "turn.done", "ok": False, "error": "Model unavailable: openrouter/x"}]
-    assert p.feed(ev("session.execution.interrupted")) == [{"type": "turn.done", "ok": False, "error": "the turn was interrupted"}]
+    nothing = {"model": "opencode", "input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "cost": 0.0}
+    assert p.feed(failed) == [{"type": "turn.done", "ok": False, "error": "Model unavailable: openrouter/x", "usage": nothing}]
+    assert p.feed(ev("session.execution.interrupted")) == [{"type": "turn.done", "ok": False, "error": "the turn was interrupted", "usage": nothing}]

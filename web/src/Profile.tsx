@@ -128,6 +128,14 @@ export function ProfilePage(props: {
       </section>
 
       <section className="block stack">
+        <div className="label">{t('profile.usageHeading')}</div>
+        <div className="small">{t('profile.usageScope')}</div>
+        <a className="btn as-link" href="#/usage">
+          {t('profile.usage')}
+        </a>
+      </section>
+
+      <section className="block stack">
         <div className="label">{t('profile.nameHeading')}</div>
         <NameForm
           key={current.id}
