@@ -267,11 +267,10 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
           </button>
         </div>
         <div className="muted">{t('home.topicHelp')}</div>
-        <div className="row">
-          <button type="button" className="btn" disabled={starting !== ''} onClick={() => bundlePicker.current?.click()}>
+        <div className="topic-more">
+          <button type="button" className="link" disabled={starting !== ''} title={t('home.importHelp')} onClick={() => bundlePicker.current?.click()}>
             {t('home.import')}
           </button>
-          <span className="small grow">{t('home.importHelp')}</span>
           <input
             ref={bundlePicker}
             type="file"
@@ -283,37 +282,37 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
               if (file) importBundle(file)
             }}
           />
-        </div>
-        <details className="block materials">
-          <summary className="label">{t('home.materials')}</summary>
-          <div className="stack">
-            <div className="muted">{t('home.materialsHelp')}</div>
-            <div className="row">
-              <button type="button" className="btn" onClick={() => picker.current?.click()}>
-                {t('sources.add')}
-              </button>
-              <span className="small grow">{materials.map((f) => f.name).join(', ')}</span>
+          <details className="materials">
+            <summary className="link">{t('home.materials')}</summary>
+            <div className="stack">
+              <div className="muted">{t('home.materialsHelp')}</div>
+              <div className="row">
+                <button type="button" className="btn" onClick={() => picker.current?.click()}>
+                  {t('sources.add')}
+                </button>
+                <span className="small grow">{materials.map((f) => f.name).join(', ')}</span>
+              </div>
+              <input
+                ref={picker}
+                type="file"
+                multiple
+                hidden
+                accept={SOURCE_TYPES}
+                onChange={(e) => setMaterials(Array.from(e.target.files ?? []))}
+              />
+              <input
+                className="field"
+                type="text"
+                inputMode="url"
+                dir="ltr"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder={t('home.urlPlaceholder')}
+              />
             </div>
-            <input
-              ref={picker}
-              type="file"
-              multiple
-              hidden
-              accept={SOURCE_TYPES}
-              onChange={(e) => setMaterials(Array.from(e.target.files ?? []))}
-            />
-            <input
-              className="field"
-              type="text"
-              inputMode="url"
-              dir="ltr"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder={t('home.urlPlaceholder')}
-            />
-            {starting && <div className="small">{starting}</div>}
-          </div>
-        </details>
+          </details>
+        </div>
+        {starting && <div className="small">{starting}</div>}
       </form>
   )
 
@@ -321,8 +320,14 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
     <main className={teacher ? 'home' : 'home desk'}>
       <div className="desk-main">
         {error && <div className="error">{error}</div>}
-        {!teacher && <Today profile={profile} />}
-        {(teacher || active.length === 0) && form}
+        {teacher ? (
+          form
+        ) : (
+          <div className="desk-top">
+            <Today profile={profile} />
+            {form}
+          </div>
+        )}
         {active.length > 0 && (
           <section className="stack">
             <h2>{t('home.courses')}</h2>
@@ -333,7 +338,6 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
             </div>
           </section>
         )}
-        {!teacher && active.length > 0 && form}
         {archived.length > 0 && (
           <details className="archived">
             <summary className="label">{t('home.archived', { n: archived.length })}</summary>

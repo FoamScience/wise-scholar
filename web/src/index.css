@@ -432,11 +432,50 @@ a.btn.primary:hover {
   }
 }
 
+/* today leads the first row; the new-course form sits beside it */
+.desk-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+@media (min-width: 48rem) {
+  .desk-top:has(> .today) {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+
 .topic-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
   max-width: var(--measure);
+}
+
+.desk-top .topic-form {
+  padding: var(--space-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.topic-form .topic-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-md);
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--line);
+}
+
+/* the quiet actions line up with the text above; their hover fill reaches into the gutter */
+.topic-more > .link,
+.topic-more > .materials > summary {
+  margin-inline-start: calc(-1 * var(--space-sm));
+}
+
+.topic-more > .materials[open] {
+  flex-basis: 100%;
 }
 
 .topic-form label {
@@ -447,6 +486,7 @@ a.btn.primary:hover {
 
 .topic-form .row {
   display: flex;
+  flex-wrap: nowrap;
   gap: var(--space-xs);
 }
 
