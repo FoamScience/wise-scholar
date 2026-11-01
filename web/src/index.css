@@ -141,6 +141,7 @@ pre {
   border-radius: var(--radius-input);
 }
 
+pre::selection,
 pre ::selection {
   background: color-mix(in oklab, var(--code-ink) 30%, transparent);
   color: var(--code-ink);
