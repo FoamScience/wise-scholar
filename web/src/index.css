@@ -257,6 +257,13 @@ pre ::selection {
   flex-grow: 1;
 }
 
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
 /* a label names what follows it: the body face, a step smaller, in sentence case */
 .label {
   font-size: var(--text-sm);
@@ -278,7 +285,9 @@ pre ::selection {
 
 .lesson-next {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  gap: var(--space-xs);
   padding: var(--space-xs) 0 var(--space-lg);
 }
 
