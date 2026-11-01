@@ -1174,13 +1174,19 @@ def graded_answers(profile_id: int) -> list[dict]:
 
 
 def concept_mastery(course_id: int) -> dict[int, float]:
-    """Per concept, the share of its cards whose latest graded answer was right."""
+    """Per concept, the share of its cards whose latest graded answer was right. A card made short still counts
+    until one of its parts is answered; a missed card replaced by its parts does not."""
     return {
         r["concept_id"]: r["mastery"]
         for r in rows(
+            "WITH RECURSIVE answered(id) AS ("
+            "SELECT k.parent_id FROM cards k JOIN answers a ON a.card_id = k.id WHERE a.correct IS NOT NULL AND k.parent_id IS NOT NULL "
+            "UNION SELECT k.parent_id FROM cards k JOIN answered ON k.id = answered.id WHERE k.parent_id IS NOT NULL) "
             "SELECT k.concept_id, AVG(a.correct) AS mastery FROM cards k JOIN answers a ON a.id = "
             "(SELECT MAX(id) FROM answers WHERE card_id = k.id AND correct IS NOT NULL) "
-            "WHERE k.course_id = ? AND k.concept_id IS NOT NULL AND k.retired = 0 GROUP BY k.concept_id",
+            "WHERE k.course_id = ? AND k.concept_id IS NOT NULL AND (k.retired = 0 OR ("
+            "EXISTS (SELECT 1 FROM cards p WHERE p.parent_id = k.id AND p.origin = 'short') AND k.id NOT IN answered)) "
+            "GROUP BY k.concept_id",
             course_id,
         )
     }

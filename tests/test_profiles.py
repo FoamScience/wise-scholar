@@ -1977,6 +1977,10 @@ def test_reviews_are_short_cards_and_a_missed_one_is_broken_into_parts(monkeypat
     asyncio.run(tutor.split_card(course, long, [tutor.ShortCard(question="Short?", kind="open", answer_key="a")]))
     kept = db.row("SELECT * FROM cards WHERE parent_id = ?", long)
     assert kept["origin"] == "short" and kept["due"] == db.card(long)["due"] and kept["fsrs"] == db.card(long)["fsrs"]
+    # a card made short keeps its answer in the mastery until its part is answered
+    assert db.concept_mastery(course) == {concept: 0.5}
+    app.self_grade(app.review_card(kept["id"], app.ReviewAnswer())["answer_id"], app.SelfGrade(correct=False))
+    assert db.concept_mastery(course) == {concept: 0.0}
 
 
 def test_a_cards_job_goes_on_while_turns_make_cards_short(monkeypatch):
