@@ -1102,8 +1102,113 @@ def publish_version(course_id: int, body: Publish) -> dict:
         raise HTTPException(409, "wait for the tutor to finish before publishing")
     if not bundle.finished_lessons(course_id):
         raise HTTPException(409, "no lesson of this course is finished yet, so there is nothing to publish")
+    if course_id in _checks:
+        raise HTTPException(409, "wait for the check of this course to finish before publishing")
     return bundle.publish(course_id, notes=body.notes, licence=body.licence, forkable=body.forkable, sources=body.sources,
                           source_dir=SOURCES, store=VERSIONS)
+
+
+# --- Publish check: before a version goes out, the tutor reads it for what points at its author -------------------
+CHECK_CHARS = 40000
+CHECK_PIECE_CHARS = 12000
+_checks: dict[int, asyncio.Task] = {}
+_checks_failed: set[int] = set()
+
+
+def _check_prompts(course: dict, lesson: dict, pieces: dict[tuple[str, str], str], manifest: dict) -> list[str]:
+    """The version's pieces cut into turns of about CHECK_CHARS, each opened by the same header lines."""
+    titles = {b["key"]: x["title"] for x in manifest["lessons"] for b in x["blocks"]} | {x["key"]: x["title"] for x in manifest["lessons"]}
+    header = "\n".join([
+        f"[state] course_id={course['id']} course={course['topic']!r}",
+        f"[language] Write the edits in {LOCALE_NAMES[lesson['locale']]}; code, commands and identifiers stay as they are.",
+        f"[author] {lesson['profile']!r}",
+        *(f"[known of the author] {_untrusted(f['text'])}" for f in db.facts(course["id"])),
+    ])
+    turns, lines, size = [], [], 0
+    for (target, ref), text in pieces.items():
+        head = f"[{target} {ref}" + (f', lesson "{titles[ref]}"' if ref in titles else "") + "]"
+        line = f"{head}\n{_untrusted(_cut(text, CHECK_PIECE_CHARS))}"
+        if lines and size + len(line) > CHECK_CHARS:
+            turns.append("\n\n".join([header, *lines]))
+            lines, size = [], 0
+        lines.append(line)
+        size += len(line)
+    return turns + (["\n\n".join([header, *lines])] if lines else [])
+
+
+async def _check(course_id: int) -> None:
+    """Read the version as it would be published now, accepted edits made, and leave the edits proposed for the author."""
+    course = db.course(course_id)
+    lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ? ORDER BY id LIMIT 1", course_id)["id"])
+    manifest, assets, _ = bundle.build(course_id, notes="", licence=bundle.LICENCES[0], forkable=True, sources=[], source_dir=SOURCES,
+                                       edits=bundle.accepted_edits(course_id))
+    pieces = bundle.texts(manifest, assets)
+    db.conn.execute("DELETE FROM publish_edits WHERE course_id = ? AND status = 'proposed'", (course_id,))
+    tutor.cleanup_jobs[course_id] = pieces
+    try:
+        for prompt in _check_prompts(course, lesson, pieces, manifest):
+            if not await _background_turn(lesson, prompt, "cleanup", "publish check"):
+                _checks_failed.add(course_id)
+                return
+    finally:
+        tutor.cleanup_jobs.pop(course_id, None)
+    db.conn.execute("UPDATE courses SET checked = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(timespec="seconds"), course_id))
+
+
+def _edit_view(edit: dict) -> dict:
+    where = None
+    if edit["target"] == "block":
+        where = db.row("SELECT l.title FROM blocks b JOIN lessons l ON l.id = b.lesson_id WHERE b.key = ? AND l.course_id = ?",
+                       edit["ref"], edit["course_id"])
+    elif edit["target"] == "summary":
+        where = db.row("SELECT title FROM lessons WHERE key = ? AND course_id = ?", edit["ref"], edit["course_id"])
+    return {**{k: edit[k] for k in ("id", "target", "ref", "old", "new", "reason", "status")}, "lesson": where and where["title"]}
+
+
+@app.get("/api/courses/{course_id}/check")
+def publish_check(course_id: int) -> dict:
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    edits = db.rows("SELECT * FROM publish_edits WHERE course_id = ? ORDER BY id", course_id)
+    return {"running": course_id in _checks, "failed": course_id in _checks_failed, "checked": course["checked"], "edits": list(map(_edit_view, edits))}
+
+
+@app.post("/api/courses/{course_id}/check")
+async def start_publish_check(course_id: int) -> dict:
+    """Have the tutor read the version for the author's name, places, paths and personal context, and propose edits."""
+    if not db.course(course_id):
+        raise HTTPException(404, "no such course")
+    if course_id in _checks:
+        raise HTTPException(409, "this course is already being checked")
+    if not bundle.finished_lessons(course_id):
+        raise HTTPException(409, "no lesson of this course is finished yet, so there is nothing to check")
+    _checks_failed.discard(course_id)
+
+    async def run() -> None:
+        try:
+            await _check(course_id)
+        except Exception:
+            log.exception("publish check of course %s", course_id)
+            _checks_failed.add(course_id)
+        finally:
+            _checks.pop(course_id, None)
+
+    _checks[course_id] = asyncio.create_task(run())
+    return publish_check(course_id)
+
+
+class EditStatus(BaseModel):
+    status: Literal["proposed", "accepted", "rejected"]
+
+
+@app.post("/api/courses/{course_id}/check/{edit_id}")
+def decide_edit(course_id: int, edit_id: int, body: EditStatus) -> dict:
+    """The author's say on one proposed edit; an accepted one changes every version published from now on, never the course."""
+    if not db.row("SELECT 1 FROM publish_edits WHERE id = ? AND course_id = ?", edit_id, course_id):
+        raise HTTPException(404, "no such edit")
+    db.conn.execute("UPDATE publish_edits SET status = ? WHERE id = ?", (body.status, edit_id))
+    return publish_check(course_id)
 
 
 @app.get("/api/versions/{version_hash}/bundle")

@@ -1838,6 +1838,52 @@ async def record_claims(lesson_id: int, claims: list[NewClaim], links: list[Clai
     return "recorded: " + ", ".join(f"{k} = claim {i}" for k, i in ids.items())
 
 
+CLEANUP_TOOLS = ("propose_edits",)
+EDIT_CHARS = 2000
+REASON_CHARS = 300
+cleanup_jobs: dict[int, dict[tuple[str, str], str]] = {}  # course id -> (target, ref) -> text the running cleanup turn reads
+
+
+class Edit(BaseModel):
+    target: Literal["block", "card", "file", "course", "summary"]
+    ref: str
+    old: str
+    new: str
+    reason: str
+
+
+@mcp.tool()
+async def propose_edits(course_id: int, edits: list[Edit]) -> str:
+    """Propose exact replacements in the version about to be published; the author accepts or rejects each one.
+
+    target and ref: as in the header of the piece, e.g. [block 3f…] is target block, ref 3f…; [course details] is
+    target course, ref details. old: text copied exactly from that piece, under 2000 characters; every occurrence
+    of it in the piece is replaced. new: the replacement, in the same language and register. reason: under 300
+    characters, what the old text says about the author.
+    """
+    pieces = cleanup_jobs.get(course_id)
+    if pieces is None:
+        return f"error: course {course_id} is not being checked"
+    out = []
+    for n, e in enumerate(edits, start=1):
+        text = pieces.get((e.target, e.ref))
+        if text is None:
+            out.append(f"{n}: error: there is no {e.target} {e.ref!r} in this version")
+        elif not e.old or e.old not in text:
+            out.append(f"{n}: error: old is not in that {e.target}; copy it exactly")
+        elif e.old == e.new or max(len(e.old), len(e.new)) > EDIT_CHARS or not e.reason.strip() or len(e.reason) > REASON_CHARS:
+            out.append(f"{n}: error: old and new must differ, each under {EDIT_CHARS} characters, with a reason under {REASON_CHARS}")
+        elif db.row("SELECT 1 FROM publish_edits WHERE course_id = ? AND target = ? AND ref = ? AND old = ?", course_id, e.target, e.ref, e.old):
+            out.append(f"{n}: already proposed")
+        else:
+            db.conn.execute(
+                "INSERT INTO publish_edits (course_id, target, ref, old, new, reason) VALUES (?, ?, ?, ?, ?, ?)",
+                (course_id, e.target, e.ref, e.old, e.new, e.reason.strip()),
+            )
+            out.append(f"{n}: proposed")
+    return "\n".join(out) or "error: give at least one edit"
+
+
 @mcp.tool()
 async def set_placement(course_id: int, level: str, summary: str, areas: list[Area]) -> str:
     """Record the result of the placement check.
@@ -1895,8 +1941,9 @@ async def mark_solved(challenge_id: int) -> str:
 # may only touch that turn's lesson and course; opencode shares one connection, so its calls may touch any lesson
 # whose turn is running. Either way a tutor talked into it cannot reach another course, and a turn gets a bounded
 # number of calls.
-# A graph turn reads a finished lesson for its claims and a cards turn makes long or missed review cards short; each
-# may call only its own tools, and a lesson turn may call neither.
+# A graph turn reads a finished lesson for its claims, a cards turn makes long or missed review cards short and a
+# cleanup turn proposes edits to a version before it is published; each may call only its own tools, and a lesson
+# turn may call none of them.
 turns: dict[int | tuple[str, int], dict] = {}  # lesson_id, or (kind, lesson_id) -> {"token", "calls", "lesson_id", "course_id", "kind"}
 _ID_ARGUMENTS = ("lesson_id", "course_id", "challenge_id", "quiz_id", "block_id")
 
@@ -1945,7 +1992,7 @@ def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
 def _guard(call_tool):
     async def guarded(name: str, arguments: dict, context, convert_result: bool = False):
         targets = _targets(arguments)
-        kind = "graph" if name in GRAPH_TOOLS else "cards" if name in CARD_TOOLS else "lesson"
+        kind = "graph" if name in GRAPH_TOOLS else "cards" if name in CARD_TOOLS else "cleanup" if name in CLEANUP_TOOLS else "lesson"
         if token := _token(context):
             turn = next((t for t in turns.values() if t["token"] == token), None)
             if turn is None:

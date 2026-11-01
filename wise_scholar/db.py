@@ -461,6 +461,20 @@ MIGRATIONS = [
     ALTER TABLE courses ADD COLUMN setup TEXT;
     ALTER TABLE lessons ADD COLUMN summary TEXT;
     """,
+    """
+    CREATE TABLE publish_edits (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id),
+        target TEXT NOT NULL CHECK (target IN ('block', 'card', 'file', 'course', 'summary')),
+        ref TEXT NOT NULL,
+        old TEXT NOT NULL,
+        new TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed', 'accepted', 'rejected')),
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    ALTER TABLE courses ADD COLUMN checked TEXT;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -739,6 +753,7 @@ def delete_course(course_id: int) -> None:
         for sql in (
             "DELETE FROM commands WHERE course_id = ?",
             "DELETE FROM usage WHERE course_id = ?",
+            "DELETE FROM publish_edits WHERE course_id = ?",
             "UPDATE versions SET course_id = NULL WHERE course_id = ?",
             "DELETE FROM answers WHERE card_id IN (SELECT id FROM cards WHERE course_id = ?)",
             "DELETE FROM cards WHERE course_id = ?",

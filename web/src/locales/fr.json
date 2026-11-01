@@ -691,7 +691,8 @@
         "lesson": "Enseignement",
         "practice": "Pratique",
         "graph": "Graphe des affirmations",
-        "cards": "Cartes de révision"
+        "cards": "Cartes de révision",
+        "cleanup": "Vérification avant publication"
       }
     },
     "publish": {
@@ -725,7 +726,29 @@
         "CC-BY-4.0": "CC BY 4.0 : partage et adaptation avec crédit",
         "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0 : pas d'usage commercial",
         "all-rights-reserved": "Tous droits réservés"
-      }
+      },
+      "check": "Chercher les détails personnels",
+      "checkHelp": "Votre tuteur relit la version pour votre nom, votre employeur, vos chemins et tout ce qui ne s'adressait qu'à vous, et propose des modifications. Une modification acceptée change seulement la version publiée, jamais votre cours.",
+      "checkRun": "Vérifier cette version",
+      "checkAgain": "Vérifier à nouveau",
+      "checking": "Vérification… vous pouvez quitter cette page.",
+      "checkFailed": "La vérification n'a pas abouti. Réessayez, ou publiez sans elle.",
+      "checked": "Vérifiée le {{date}}.",
+      "checkNone": "Rien de personnel trouvé.",
+      "checkSkip": "La vérification est facultative ; vous pouvez publier sans elle.",
+      "accept": "Accepter",
+      "reject": "Refuser",
+      "undo": "Annuler",
+      "accepted": "Acceptée",
+      "rejected": "Refusée",
+      "targets": {
+        "block": "Leçon",
+        "card": "Carte de révision",
+        "file": "Fichier d'exercice",
+        "course": "Cours",
+        "summary": "Phrase de clôture"
+      },
+      "stale": "{{count}} modifications acceptées ne correspondaient plus au cours et ont été laissées de côté."
     },
     "replay": {
       "later": "Pas encore écrite : elle viendra dans une prochaine version de ce cours. Votre propre tuteur peut l'enseigner dès maintenant.",
@@ -814,6 +837,9 @@
     "no lesson of this course is finished yet, so there is nothing to publish": "Aucune leçon de ce cours n'est encore terminée : il n'y a rien à publier",
     "this answer is not waiting for your own grade": "Cette réponse n'attend pas votre propre note",
     "only an imported course places you from its cards": "Seul un cours importé vous positionne avec ses cartes",
-    "this course has no cards left to place you with": "Ce cours n'a plus de cartes pour vous positionner"
+    "this course has no cards left to place you with": "Ce cours n'a plus de cartes pour vous positionner",
+    "this course is already being checked": "Ce cours est déjà en cours de vérification.",
+    "no lesson of this course is finished yet, so there is nothing to check": "Aucune leçon de ce cours n'est encore terminée, il n'y a donc rien à vérifier.",
+    "wait for the check of this course to finish before publishing": "Attendez la fin de la vérification de ce cours avant de publier."
   }
 }

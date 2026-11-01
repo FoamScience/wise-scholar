@@ -2438,6 +2438,29 @@ pre:has(> .mermaid) {
   align-self: flex-start;
 }
 
+.publish-check .edit.rejected {
+  opacity: 0.6;
+}
+
+.edit-change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.edit-change del {
+  color: var(--danger);
+}
+
+.edit-change ins {
+  text-decoration: none;
+  background: var(--teal-tint);
+  border-radius: var(--radius-inner);
+  padding: 0 var(--space-xs);
+}
+
 .usage-page .table-scroll {
   overflow-x: auto;
 }
