@@ -760,7 +760,15 @@
       "running": "En cours…",
       "failed": "Échec (code de sortie {{code}}). Vous pouvez réessayer.",
       "done": "Fait",
-      "refused": "Refusé"
+      "refused": "Refusé",
+      "upgrade": "La version {{number}} de ce cours est sortie ({{date}})",
+      "kept": "Votre progression est gardée : {{units}}",
+      "restarted": "Modifiées, elles recommencent : {{units}}",
+      "added": "Nouveau : {{units}}",
+      "removed": "Ne fait plus partie du cours : {{units}}",
+      "upgradeNow": "Passer à la nouvelle version",
+      "upgrading": "Passage…",
+      "stay": "Rester sur cette version"
     }
   },
   "server": {
@@ -840,6 +848,8 @@
     "this course has no cards left to place you with": "Ce cours n'a plus de cartes pour vous positionner",
     "this course is already being checked": "Ce cours est déjà en cours de vérification.",
     "no lesson of this course is finished yet, so there is nothing to check": "Aucune leçon de ce cours n'est encore terminée, il n'y a donc rien à vérifier.",
-    "wait for the check of this course to finish before publishing": "Attendez la fin de la vérification de ce cours avant de publier."
+    "wait for the check of this course to finish before publishing": "Attendez la fin de la vérification de ce cours avant de publier.",
+    "that version is not the one this course can move to": "Ce cours ne peut pas passer à cette version.",
+    "wait for the tutor to finish before upgrading": "Attendez que le tuteur ait fini avant de mettre à jour."
   }
 }

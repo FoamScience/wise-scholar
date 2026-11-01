@@ -2444,7 +2444,8 @@ pre:has(> .mermaid) {
   gap: var(--space-xs);
 }
 
-.block.setup {
+.block.setup,
+.block.upgrade {
   gap: var(--space-sm);
 }
 

@@ -808,7 +808,15 @@
       "running": "قيد التشغيل…",
       "failed": "فشل (رمز الخروج {{code}}). يمكنك المحاولة مجددًا.",
       "done": "تم",
-      "refused": "مرفوض"
+      "refused": "مرفوض",
+      "upgrade": "صدرت النسخة {{number}} من هذه الدورة ({{date}})",
+      "kept": "يبقى تقدّمك في: {{units}}",
+      "restarted": "تغيّرت وتبدأ من جديد: {{units}}",
+      "added": "جديد: {{units}}",
+      "removed": "لم تعد في الدورة: {{units}}",
+      "upgradeNow": "الانتقال إلى النسخة الجديدة",
+      "upgrading": "جارٍ الانتقال…",
+      "stay": "البقاء على هذه النسخة"
     }
   },
   "server": {
@@ -888,6 +896,8 @@
     "this course has no cards left to place you with": "لم تبق في هذه الدورة بطاقات لتحديد مستواك",
     "this course is already being checked": "هذه الدورة قيد الفحص بالفعل.",
     "no lesson of this course is finished yet, so there is nothing to check": "لم يكتمل أي درس من هذه الدورة بعد، فلا شيء لفحصه.",
-    "wait for the check of this course to finish before publishing": "انتظر انتهاء فحص هذه الدورة قبل النشر."
+    "wait for the check of this course to finish before publishing": "انتظر انتهاء فحص هذه الدورة قبل النشر.",
+    "that version is not the one this course can move to": "لا يمكن لهذه الدورة الانتقال إلى هذه النسخة.",
+    "wait for the tutor to finish before upgrading": "انتظر حتى ينتهي المعلّم قبل التحديث."
   }
 }

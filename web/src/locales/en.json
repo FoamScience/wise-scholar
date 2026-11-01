@@ -744,7 +744,15 @@
       "running": "Running…",
       "failed": "Failed (exit code {{code}}). You can try again.",
       "done": "Done",
-      "refused": "Refused"
+      "refused": "Refused",
+      "upgrade": "Version {{number}} of this course is out ({{date}})",
+      "kept": "Keeps your progress: {{units}}",
+      "restarted": "Changed, starts again: {{units}}",
+      "added": "New: {{units}}",
+      "removed": "No longer in the course: {{units}}",
+      "upgradeNow": "Move to the new version",
+      "upgrading": "Moving…",
+      "stay": "Stay on this version"
     }
   },
   "server": {}

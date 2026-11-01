@@ -1144,6 +1144,20 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
   const messagesBox = useRef<HTMLDivElement>(null)
 
   const lesson = course?.lessons.find((l) => l.id === lessonId) ?? null
+  const [upgrading, setUpgrading] = useState(false)
+
+  async function upgrade(hash: string) {
+    setUpgrading(true)
+    try {
+      const c = await api<CourseDetail>(`/api/courses/${courseId}/upgrade`, { hash })
+      setCourse(c)
+      setLessonId((id) => (c.lessons.some((l) => l.id === id) ? id : c.lessons[c.lessons.length - 1].id))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setUpgrading(false)
+    }
+  }
   useArrivals(lessonBox, lesson?.id)
   useArrivals(messagesBox, lesson?.id)
   const open = lesson ? (asking ?? (lesson.phase === 'interview' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))) : false
@@ -1668,6 +1682,37 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
       </nav>
 
       <main ref={lessonBox} className="lesson">
+        {course.upgrade && (
+          <section className="block upgrade">
+            <div className="label">{t('replay.upgrade', { number: course.upgrade.number, date: day(course.upgrade.published.slice(0, 10)) })}</div>
+            {course.upgrade.notes && (
+              <div className="small" dir="auto">
+                {course.upgrade.notes}
+              </div>
+            )}
+            {(['kept', 'restarted', 'added', 'removed'] as const).map(
+              (part) =>
+                course.upgrade![part].length > 0 && (
+                  <div key={part} className="small" dir="auto">
+                    {t(`replay.${part}`, { count: course.upgrade![part].length, units: course.upgrade![part].join(', ') })}
+                  </div>
+                ),
+            )}
+            <div className="row">
+              <button type="button" className="btn primary" disabled={upgrading} onClick={() => upgrade(course.upgrade!.hash)}>
+                {upgrading ? t('replay.upgrading') : t('replay.upgradeNow')}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={upgrading}
+                onClick={() => api<CourseDetail>(`/api/courses/${course.id}/upgrade/skip`, { hash: course.upgrade!.hash }).then(setCourse, (e: Error) => setError(e.message))}
+              >
+                {t('replay.stay')}
+              </button>
+            </div>
+          </section>
+        )}
         {course.setup.some((step) => step.status !== 'done' && step.status !== 'refused') && (
           <section className="block setup">
             <div className="label">{t('replay.setup')}</div>

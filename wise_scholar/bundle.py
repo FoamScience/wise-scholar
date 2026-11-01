@@ -119,6 +119,7 @@ class Version(BaseModel):
     forkable: bool
     published: str = Field(max_length=40)
     credits: list[Credit] = Field(max_length=100)
+    lineage: KeyStr | None = None
 
 
 class Course(BaseModel):
@@ -312,7 +313,7 @@ def build(
                    "mechanism": course["mechanism"], "ranking": course["ranking"], "prerequisites": bool(course["prerequisites"]),
                    "cover": course["cover"], "cover_alt": course["cover_alt"]},
         "version": {"number": number, "notes": notes.strip(), "licence": licence, "forkable": forkable,
-                    "published": datetime.now(timezone.utc).isoformat(timespec="seconds"), "credits": credits},
+                    "published": datetime.now(timezone.utc).isoformat(timespec="seconds"), "credits": credits, "lineage": course["key"]},
         "units": unit_rows,
         "capstones": [
             {"module": c["module"], "title": c["title"], "brief": c["brief"], "folder": c["folder"],
@@ -436,10 +437,10 @@ def publish(course_id: int, *, notes: str, licence: str, forkable: bool, sources
     (store / f"{version_hash}.zip").write_bytes(data)
     v = manifest["version"]
     db.conn.execute(
-        "INSERT INTO versions (hash, course_id, number, topic, notes, licence, forkable, credits, setup, written, units, published) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO versions (hash, course_id, number, topic, notes, licence, forkable, credits, setup, written, units, published, lineage) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (version_hash, course_id, v["number"], manifest["course"]["topic"], v["notes"], licence, int(forkable), json.dumps(v["credits"]),
-         json.dumps(manifest["setup"]), sum(u["written"] for u in manifest["units"]), len(manifest["units"]), v["published"]),
+         json.dumps(manifest["setup"]), sum(u["written"] for u in manifest["units"]), len(manifest["units"]), v["published"], v["lineage"]),
     )
     return {"hash": version_hash, "number": v["number"], "size": len(data), "stale": len(stale)}
 
@@ -515,20 +516,89 @@ def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
     return data
 
 
+def record_version(version_hash: str, manifest: Manifest) -> None:
+    """The versions row of a bundle from elsewhere, once."""
+    if db.row("SELECT 1 FROM versions WHERE hash = ?", version_hash):
+        return
+    v, c = manifest.version, manifest.course
+    db.conn.execute(
+        "INSERT INTO versions (hash, course_id, number, topic, notes, licence, forkable, credits, setup, written, units, published, lineage) "
+        "VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (version_hash, v.number, c.topic, v.notes, v.licence, int(v.forkable), json.dumps([x.model_dump() for x in v.credits]),
+         json.dumps(manifest.setup), sum(u.written for u in manifest.units), len(manifest.units), v.published, v.lineage),
+    )
+
+
+def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | None, unit_ids: dict[str, int]) -> None:
+    """The cards and lessons of the given units (None stands for those of no unit; units None for all of them)."""
+    card_ids = {r["key"]: r["id"] for r in db.rows("SELECT id, key FROM cards WHERE course_id = ?", course_id)}
+    for k in manifest.cards:
+        if units is not None and k.unit not in units:
+            continue
+        card_ids[k.key] = db.conn.execute(
+            "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, origin, key) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported', ?)",
+            (course_id, unit_ids.get(k.unit), k.question, k.kind, json.dumps(k.options), k.answer_key, k.explanation,
+             int(k.scheduled), int(k.vocab), k.lemma, k.lang, k.translation, k.key),
+        ).lastrowid
+    for lesson in manifest.lessons:
+        if units is not None and lesson.unit not in units:
+            continue
+        lesson_id = db.conn.execute(
+            "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (course_id, lesson.title, lesson.phase, unit_ids.get(lesson.unit), str(uuid.uuid4()), lesson.key, lesson.summary),
+        ).lastrowid
+        for b in lesson.blocks:
+            block_id = db.conn.execute(
+                "INSERT INTO blocks (lesson_id, kind, markdown, data, key) VALUES (?, ?, ?, ?, ?)",
+                (lesson_id, b.kind, b.markdown, json.dumps(_clean_block(b, card_ids)), b.key),
+            ).lastrowid
+            db.conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (block_id, block_id))
+
+
+def _add_capstones(course_id: int, manifest: Manifest, unit_ids: dict[str, int], done: set[str] = frozenset()) -> None:
+    for k in manifest.capstones:
+        capstone_id = db.conn.execute(
+            "INSERT INTO capstones (course_id, module, title, brief, folder) VALUES (?, ?, ?, ?, ?)",
+            (course_id, k.module, k.title, k.brief, k.folder),
+        ).lastrowid
+        db.conn.executemany(
+            "INSERT INTO milestones (capstone_id, concept_id, deliverable, done) VALUES (?, ?, ?, ?)",
+            [(capstone_id, unit_ids[m.unit], m.deliverable, int(m.unit in done)) for m in k.milestones],
+        )
+
+
+def _add_sources(course_id: int, manifest: Manifest, assets: dict[str, bytes], source_dir: Path, have: set[str] = frozenset()) -> list[tuple[Path, bytes]]:
+    """The sources' rows, but for the names the course has already; returns the files to write once the rows hold."""
+    files = []
+    for s in manifest.sources:
+        name = Path(s.name).name
+        if name in have:
+            continue
+        source_id = db.conn.execute(
+            "INSERT INTO sources (course_id, name, size, status, sections) VALUES (?, ?, ?, 'ready', ?)",
+            (course_id, name, len(assets[s.asset]), len(s.sections)),
+        ).lastrowid
+        db.conn.executemany(
+            "INSERT INTO source_sections (source_id, title, text) VALUES (?, ?, ?)", [(source_id, x.title, x.text) for x in s.sections],
+        )
+        files.append((source_dir / str(course_id) / f"{source_id}-{name}", assets[s.asset]))
+    return files
+
+
+def _write_sources(files: list[tuple[Path, bytes]]) -> None:
+    for path, content in files:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+
 def install(profile_id: int, version_hash: str, manifest: Manifest, assets: dict[str, bytes], source_dir: Path) -> dict:
     """A new course of the profile in replay mode, made from the bundle, all or nothing for the rows; returns it."""
     c = manifest.course
     cover = figures.clean(c.cover) if c.cover else None
     db.conn.execute("BEGIN")
     try:
-        if not db.row("SELECT 1 FROM versions WHERE hash = ?", version_hash):
-            v = manifest.version
-            db.conn.execute(
-                "INSERT INTO versions (hash, course_id, number, topic, notes, licence, forkable, credits, setup, written, units, published) "
-                "VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (version_hash, v.number, c.topic, v.notes, v.licence, int(v.forkable), json.dumps([x.model_dump() for x in v.credits]),
-                 json.dumps(manifest.setup), sum(u.written for u in manifest.units), len(manifest.units), v.published),
-            )
+        record_version(version_hash, manifest)
         slug = db._free_slug(c.topic)
         course_id = db.conn.execute(
             "INSERT INTO courses (topic, slug, profile_id, mechanism, lang, ranking, details, hours, started, mode, prerequisites, cover, cover_alt, source_version, setup) "
@@ -548,46 +618,9 @@ def install(profile_id: int, version_hash: str, manifest: Manifest, assets: dict
             "INSERT OR IGNORE INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
             [(unit_ids[u.key], unit_ids[n]) for u in manifest.units for n in u.needs],
         )
-        for k in manifest.capstones:
-            capstone_id = db.conn.execute(
-                "INSERT INTO capstones (course_id, module, title, brief, folder) VALUES (?, ?, ?, ?, ?)",
-                (course_id, k.module, k.title, k.brief, k.folder),
-            ).lastrowid
-            db.conn.executemany(
-                "INSERT INTO milestones (capstone_id, concept_id, deliverable) VALUES (?, ?, ?)",
-                [(capstone_id, unit_ids[m.unit], m.deliverable) for m in k.milestones],
-            )
-        card_ids = {}
-        for k in manifest.cards:
-            card_ids[k.key] = db.conn.execute(
-                "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, origin, key) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported', ?)",
-                (course_id, unit_ids.get(k.unit), k.question, k.kind, json.dumps(k.options), k.answer_key, k.explanation,
-                 int(k.scheduled), int(k.vocab), k.lemma, k.lang, k.translation, k.key),
-            ).lastrowid
-        for lesson in manifest.lessons:
-            lesson_id = db.conn.execute(
-                "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (course_id, lesson.title, lesson.phase, unit_ids.get(lesson.unit), str(uuid.uuid4()), lesson.key, lesson.summary),
-            ).lastrowid
-            for b in lesson.blocks:
-                data = _clean_block(b, card_ids)
-                block_id = db.conn.execute(
-                    "INSERT INTO blocks (lesson_id, kind, markdown, data, key) VALUES (?, ?, ?, ?, ?)",
-                    (lesson_id, b.kind, b.markdown, json.dumps(data), b.key),
-                ).lastrowid
-                db.conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (block_id, block_id))
-        source_files = []
-        for s in manifest.sources:
-            name = Path(s.name).name
-            source_id = db.conn.execute(
-                "INSERT INTO sources (course_id, name, size, status, sections) VALUES (?, ?, ?, 'ready', ?)",
-                (course_id, name, len(assets[s.asset]), len(s.sections)),
-            ).lastrowid
-            db.conn.executemany(
-                "INSERT INTO source_sections (source_id, title, text) VALUES (?, ?, ?)", [(source_id, x.title, x.text) for x in s.sections],
-            )
-            source_files.append((source_dir / str(course_id) / f"{source_id}-{name}", assets[s.asset]))
+        _add_capstones(course_id, manifest, unit_ids)
+        _add_content(course_id, manifest, None, unit_ids)
+        source_files = _add_sources(course_id, manifest, assets, source_dir)
         db.conn.execute("COMMIT")
     except Exception:
         db.conn.execute("ROLLBACK")
@@ -595,7 +628,122 @@ def install(profile_id: int, version_hash: str, manifest: Manifest, assets: dict
     course = db.course(course_id)
     workspace = db.workspace(course["slug"])
     refused = [f.path for f in manifest.files if not course_files.write_text(workspace, f.path, assets[f.asset].decode(errors="replace"))]
-    for path, content in source_files:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
+    _write_sources(source_files)
     return {**course, "refused_files": refused}
+
+
+# --- Upgrades: a course played from a version moves to a newer one of the same line, keeping what did not change ----
+_stored: dict[str, Manifest] = {}
+
+
+def stored(store: Path, version_hash: str) -> Manifest | None:
+    """The manifest of a bundle in the store; it was checked when it came in, and a version never changes."""
+    if version_hash not in _stored:
+        path = store / f"{version_hash}.zip"
+        if not path.exists():
+            return None
+        with zipfile.ZipFile(path) as z:
+            _stored[version_hash] = Manifest.model_validate_json(z.read("manifest.json"))
+    return _stored[version_hash]
+
+
+def newer(course: dict, store: Path) -> dict | None:
+    """The newest version of the line the course plays, past the one it plays, when its bundle is in the store."""
+    if course["mode"] != "replay" or not course["source_version"]:
+        return None
+    current = db.row("SELECT * FROM versions WHERE hash = ?", course["source_version"])
+    if not current or not current["lineage"]:
+        return None
+    v = db.row("SELECT * FROM versions WHERE lineage = ? AND number > ? ORDER BY number DESC LIMIT 1", current["lineage"], current["number"])
+    return v if v and (store / f"{v['hash']}.zip").exists() else None
+
+
+def _loose(manifest: Manifest | None) -> bytes | None:
+    """The lessons and cards of no unit, as one piece: they are kept or replaced together."""
+    if manifest is None:
+        return None
+    return canonical({"lessons": [x.model_dump() for x in manifest.lessons if x.unit is None],
+                      "cards": [x.model_dump() for x in manifest.cards if x.unit is None]})
+
+
+def changes(course_id: int, old: Manifest | None, new: Manifest) -> dict:
+    """Which units an upgrade keeps (same key, same content), restarts (changed), adds and removes, by key."""
+    have = {c["key"] for c in db.concepts(course_id)}
+    before = {u.key: u.hash for u in old.units} if old else {}
+    plan = {"kept": [], "restarted": [], "added": [], "removed": sorted(have - {u.key for u in new.units})}
+    for u in new.units:
+        plan["added" if u.key not in have else "kept" if before.get(u.key) == u.hash else "restarted"].append(u.key)
+    plan["loose"] = _loose(old) == _loose(new)
+    return plan
+
+
+def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, bytes], old: Manifest | None, source_dir: Path) -> dict:
+    """Move a replayed course to a newer version: kept units keep their lessons, cards, answers and marks; changed units
+    start again from the new version; new ones are added and removed ones go. All or nothing for the rows."""
+    course = db.course(course_id)
+    plan = changes(course_id, old, new)
+    concepts = {c["key"]: c for c in db.concepts(course_id)}
+    redo = {*plan["restarted"], *plan["added"]}
+    dropped = [concepts[k]["id"] for k in [*plan["restarted"], *plan["removed"]]]
+    marks = ",".join("?" * len(dropped))
+    lesson_ids = [r["id"] for r in db.rows(f"SELECT id FROM lessons WHERE concept_id IN ({marks})", *dropped)] if dropped else []
+    card_ids = [r["id"] for r in db.rows(f"SELECT id FROM cards WHERE concept_id IN ({marks})", *dropped)] if dropped else []
+    if not plan["loose"] and old:
+        keys = [x.key for x in old.lessons if x.unit is None], [x.key for x in old.cards if x.unit is None]
+        lesson_ids += [r["id"] for r in db.rows("SELECT id, key FROM lessons WHERE course_id = ? AND concept_id IS NULL", course_id) if r["key"] in keys[0]]
+        card_ids += [r["id"] for r in db.rows("SELECT id, key FROM cards WHERE course_id = ? AND concept_id IS NULL", course_id) if r["key"] in keys[1]]
+    done = {r["key"] for r in db.rows(
+        "SELECT c.key FROM milestones m JOIN concepts c ON c.id = m.concept_id WHERE c.course_id = ? AND m.done = 1", course_id,
+    ) if r["key"] in plan["kept"]}
+    c, before = new.course, old.course if old else None
+    db.conn.execute("BEGIN")
+    try:
+        record_version(version_hash, new)
+        db.drop_content(lesson_ids, card_ids)
+        db.conn.execute("DELETE FROM capstones WHERE course_id = ?", (course_id,))
+        db.conn.executemany("DELETE FROM concepts WHERE id = ?", [(concepts[k]["id"],) for k in plan["removed"]])
+        unit_ids = {}
+        for position, u in enumerate(new.units):
+            if u.key in concepts:
+                unit_ids[u.key] = concepts[u.key]["id"]
+                db.conn.execute(
+                    "UPDATE concepts SET module = ?, title = ?, kind = ?, position = ?, unwritten = ?, known = CASE WHEN ? THEN 0 ELSE known END WHERE id = ?",
+                    (u.module, u.title, u.kind, position, int(not u.written), u.key in redo, unit_ids[u.key]),
+                )
+            else:
+                unit_ids[u.key] = db.conn.execute(
+                    "INSERT INTO concepts (course_id, module, title, known, position, kind, key, unwritten) VALUES (?, ?, ?, 0, ?, ?, ?, ?)",
+                    (course_id, u.module, u.title, position, u.kind, u.key, int(not u.written)),
+                ).lastrowid
+        db.conn.execute("DELETE FROM concept_needs WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = ?)", (course_id,))
+        db.conn.executemany(
+            "INSERT OR IGNORE INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
+            [(unit_ids[u.key], unit_ids[n]) for u in new.units for n in u.needs],
+        )
+        _add_capstones(course_id, new, unit_ids, done)
+        _add_content(course_id, new, redo | (set() if plan["loose"] else {None}), unit_ids)
+        steps = json.loads(course["setup"]) if course["setup"] else []
+        steps += [{"command": command, "status": "asked"} for command in new.setup if command not in {s["command"] for s in steps}]
+        cover = figures.clean(c.cover) if c.cover else None
+        db.conn.execute(
+            "UPDATE courses SET topic = ?, details = ?, hours = ?, mechanism = ?, ranking = ?, prerequisites = ?, cover = ?, cover_alt = ?, "
+            "setup = ?, source_version = ?, skipped_version = NULL WHERE id = ?",
+            (c.topic if before is None or course["topic"] == before.topic else course["topic"], c.details, c.hours, c.mechanism,
+             json.dumps(c.ranking) if c.ranking else None, int(c.prerequisites), cover, c.cover_alt if cover else None,
+             json.dumps(steps), version_hash, course_id),
+        )
+        source_files = _add_sources(course_id, new, assets, source_dir, {s["name"] for s in db.sources(course_id)})
+        db.conn.execute("COMMIT")
+    except Exception:
+        db.conn.execute("ROLLBACK")
+        raise
+    # A restarted unit's exercises start from their new starter files; the rest are written only where nothing is.
+    workspace = db.workspace(course["slug"])
+    fresh = {path for x in new.lessons if x.unit in redo for b in x.blocks if b.kind == "exercise" for path in (b.data or {}).get("files", [])}
+    refused = [
+        f.path for f in new.files
+        if (f.path in fresh or course_files.read_text(workspace, f.path) is None)
+        and not course_files.write_text(workspace, f.path, assets[f.asset].decode(errors="replace"))
+    ]
+    _write_sources(source_files)
+    return {**{k: plan[k] for k in ("kept", "restarted", "added", "removed")}, "refused_files": refused}

@@ -475,6 +475,17 @@ MIGRATIONS = [
     );
     ALTER TABLE courses ADD COLUMN checked TEXT;
     """,
+    """
+    ALTER TABLE courses ADD COLUMN key TEXT;
+    UPDATE courses SET key = lower(hex(randomblob(16)));
+    CREATE TRIGGER courses_key AFTER INSERT ON courses WHEN new.key IS NULL BEGIN
+        UPDATE courses SET key = lower(hex(randomblob(16))) WHERE id = new.id;
+    END;
+    ALTER TABLE courses ADD COLUMN skipped_version TEXT;
+    ALTER TABLE versions ADD COLUMN lineage TEXT;
+    UPDATE versions SET lineage = (SELECT key FROM courses WHERE courses.id = versions.course_id);
+    CREATE INDEX versions_lineage ON versions(lineage, number);
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -743,6 +754,25 @@ def usage(profile_id: int) -> list[dict]:
             c["id"],
         )
     return courses
+
+
+def drop_content(lesson_ids: list[int], card_ids: list[int]) -> None:
+    """Lessons and cards gone with everything recorded on them, the short cards split from them too; the caller holds
+    the transaction."""
+    lessons, cards = ",".join(map(str, lesson_ids)) or "NULL", ",".join(map(str, card_ids)) or "NULL"
+    split = f"WITH RECURSIVE tree(id) AS (SELECT id FROM cards WHERE id IN ({cards}) UNION SELECT c.id FROM cards c JOIN tree ON c.parent_id = tree.id) SELECT id FROM tree"
+    family = [r["id"] for r in rows(split)]
+    family_ids = ",".join(map(str, family)) or "NULL"
+    for sql in (
+        f"DELETE FROM answers WHERE card_id IN ({family_ids})",
+        f"DELETE FROM cards WHERE id IN ({family_ids})",
+        f"DELETE FROM commands WHERE lesson_id IN ({lessons})",
+        f"UPDATE usage SET lesson_id = NULL WHERE lesson_id IN ({lessons})",
+        f"DELETE FROM blocks WHERE lesson_id IN ({lessons})",
+        f"DELETE FROM messages WHERE lesson_id IN ({lessons})",
+        f"DELETE FROM lessons WHERE id IN ({lessons})",
+    ):
+        conn.execute(sql)
 
 
 def delete_course(course_id: int) -> None:

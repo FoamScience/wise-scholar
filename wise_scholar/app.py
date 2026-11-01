@@ -329,7 +329,20 @@ def _course(course_id: int) -> dict:
         "vocabulary": {**db.vocabulary(course_id, _now()), **_tier_view(course)},
         "lessons": [_lesson_view(lesson["id"]) for lesson in lessons],
         "setup": json.loads(course["setup"]) if course["setup"] else [],
+        "upgrade": _upgrade_view(course),
     }
+
+
+def _upgrade_view(course: dict) -> dict | None:
+    """The newer version a replayed course may move to, with what moving would keep, restart, add and remove."""
+    v = bundle.newer(course, VERSIONS)
+    new = v and v["hash"] != course["skipped_version"] and bundle.stored(VERSIONS, v["hash"])
+    if not new:
+        return None
+    plan = bundle.changes(course["id"], bundle.stored(VERSIONS, course["source_version"]), new)
+    titles = {u.key: u.title for u in new.units} | {c["key"]: c["title"] for c in db.concepts(course["id"])}
+    return {"hash": v["hash"], "number": v["number"], "notes": v["notes"], "published": v["published"],
+            **{k: [titles[key] for key in plan[k]] for k in ("kept", "restarted", "added", "removed")}}
 
 
 def _tier_view(course: dict) -> dict:
@@ -1229,14 +1242,57 @@ async def import_course(profile: int, file: UploadFile) -> dict:
     data = await file.read(bundle.BUNDLE_LIMIT + 1)
     try:
         version_hash, manifest, assets = bundle.unpack(data)
-        course = bundle.install(profile, version_hash, manifest, assets, SOURCES)
     except ValueError as e:
         log.warning("bundle not imported: %s", e)
         raise HTTPException(422, "that file is not a course bundle this app can read") from None
     VERSIONS.mkdir(parents=True, exist_ok=True)
     if not (VERSIONS / f"{version_hash}.zip").exists():
         (VERSIONS / f"{version_hash}.zip").write_bytes(data)
+    # A newer version of a course the profile already plays is offered on that course rather than added beside it.
+    if older := manifest.version.lineage and db.row(
+        "SELECT c.id, c.topic, c.slug, c.mode FROM courses c JOIN versions v ON v.hash = c.source_version "
+        "WHERE c.profile_id = ? AND c.mode = 'replay' AND v.lineage = ? AND v.number < ? ORDER BY v.number DESC LIMIT 1",
+        profile, manifest.version.lineage, manifest.version.number,
+    ):
+        bundle.record_version(version_hash, manifest)
+        db.conn.execute("UPDATE courses SET skipped_version = NULL WHERE id = ?", (older["id"],))
+        return {**older, "refused_files": [], "upgrade": manifest.version.number}
+    try:
+        course = bundle.install(profile, version_hash, manifest, assets, SOURCES)
+    except ValueError as e:
+        log.warning("bundle not imported: %s", e)
+        raise HTTPException(422, "that file is not a course bundle this app can read") from None
     return {k: course[k] for k in ("id", "topic", "slug", "mode", "refused_files")}
+
+
+class Upgrade(BaseModel):
+    hash: str
+
+
+@app.post("/api/courses/{course_id}/upgrade")
+def upgrade_course(course_id: int, body: Upgrade) -> dict:
+    """Move a replayed course to the newer version it was offered: unchanged units keep the learner's progress."""
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    v = bundle.newer(course, VERSIONS)
+    if not v or v["hash"] != body.hash:
+        raise HTTPException(409, "that version is not the one this course can move to")
+    if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
+        raise HTTPException(409, "wait for the tutor to finish before upgrading")
+    _, new, assets = bundle.unpack((VERSIONS / f"{v['hash']}.zip").read_bytes())
+    done = bundle.upgrade(course_id, v["hash"], new, assets, bundle.stored(VERSIONS, course["source_version"]), SOURCES)
+    hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id)})
+    return {**_course(course_id), "upgraded": done}
+
+
+@app.post("/api/courses/{course_id}/upgrade/skip")
+def skip_upgrade(course_id: int, body: Upgrade) -> dict:
+    """Stay on the version played; the offer comes back when a still newer one arrives."""
+    if not db.course(course_id):
+        raise HTTPException(404, "no such course")
+    db.conn.execute("UPDATE courses SET skipped_version = ? WHERE id = ?", (body.hash, course_id))
+    return _course(course_id)
 
 
 @app.post("/api/courses/{course_id}/placement/cards")
