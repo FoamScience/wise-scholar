@@ -98,6 +98,12 @@ def test_the_tool_shows_the_widget_and_an_imported_one_is_evaluated_again():
         block = db.block(block["id"])
         assert "| tried: Driver teeth = 24 teeth" in app._record_line(block)
         assert "tried" not in bundle._block_data({**block, "data": json.dumps(block["data"])}, {})
+        assert asyncio.run(tutor.add_widget(lesson, "Teeth", DRAWN, "a gear growing", teaches)).startswith("shown as widget ")
+        drawn = db.blocks(lesson)[-1]
+        vault = obsidian.Vault(course)
+        note = vault._block_text(db.lesson(lesson), drawn)
+        assert note.startswith(f"![[{vault.root}/attachments/widget-{drawn['id']}.svg]]\n**Teeth**")
+        assert b'r="24"' in vault.files[f"{vault.root}/attachments/widget-{drawn['id']}.svg"]
         forged = {**block["data"], "widget": {"states": "anything"}}
         clean = bundle._clean_block(bundle.Block(kind="widget", markdown="Idlers", data=forged, key="a" * 32), {})
         assert clean["widget"] == widgets.resolve(GEARS) and clean["teaches"]["limits"] == "Ideal gears." and clean["imported"] is True
@@ -106,3 +112,31 @@ def test_the_tool_shows_the_widget_and_an_imported_one_is_evaluated_again():
     finally:
         db.delete_course(course)
         db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
+
+
+DRAWN = {
+    "controls": [{"name": "teeth", "label": "Teeth", "min": 12, "max": 36, "step": 12, "value": 24}],
+    "readouts": [{"label": "Turns", "expr": "12/teeth"}],
+    "figure": '<svg viewBox="0 0 200 100"><circle id="g" cx="50" cy="50" r="{{teeth}}"/><text x="120" y="50">{{12/teeth|2}} turns</text><use href="#g"/></svg>',
+}
+
+
+def test_a_drawing_follows_the_sliders_through_places_the_server_fills():
+    w = widgets.resolve(DRAWN)
+    assert "__w0__" in w["figure"] and "{{" not in w["figure"] and 'href="#w' in w["figure"]
+    assert [s["figure"] for s in w["states"]] == [[12.0, 1.0], [24.0, 0.5], [36.0, 0.33]]
+    assert 'r="36"' in widgets.filled(w, [2]) and ">0.33 turns<" in widgets.filled(w, [2])
+    assert widgets.extremes(w) == [[1], [0], [2]]
+    assert widgets.extremes(widgets.resolve({**DRAWN, "controls": [{**DRAWN["controls"][0], "value": 12}]})) == [[0], [2]]
+
+
+@pytest.mark.parametrize("figure, reason", [
+    ('<svg viewBox="0 0 1 1"><rect width="1" height="1"/></svg>', "figure needs 1 to 30 places"),
+    ('<svg viewBox="0 0 1 1"><foreignObject>{{teeth}}</foreignObject><rect width="1" height="1"/></svg>', "sit where the figure's scrub removed them"),
+    ('<svg viewBox="0 0 1 1"><rect width="{{teeth}}" onclick="{{teeth}}"/></svg>', "event attributes are not allowed"),
+    ('<svg viewBox="0 0 1 1"><rect width="{{x}}"/></svg>', "uses something outside teeth"),
+    ('<svg viewBox="0 0 1 1"><rect width="{{teeth}}"/><text>__w3__</text></svg>', "may not contain text like __w0__"),
+])
+def test_a_drawing_is_refused_with_a_reason(figure, reason):
+    with pytest.raises(ValueError, match=reason):
+        widgets.resolve({**DRAWN, "figure": figure})

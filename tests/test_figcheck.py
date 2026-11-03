@@ -51,3 +51,23 @@ def test_the_tool_refuses_a_figure_with_overlapping_labels_and_shows_nothing():
     finally:
         db.delete_course(course)
         db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
+
+
+@looks
+def test_a_widget_drawing_is_checked_where_the_sliders_take_it():
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Slider')").lastrowid
+    course = db.create_course("Gears", who)["id"]
+    db.conn.execute("UPDATE courses SET started = 1 WHERE id = ?", (course,))
+    try:
+        lesson = db.create_lesson(course, "Teeth", "lesson", None)
+        spec = {
+            "controls": [{"name": "w", "label": "Width", "min": 10, "max": 290, "step": 140, "value": 10}],
+            "readouts": [{"label": "w", "expr": "w"}],
+            "figure": '<svg viewBox="0 0 300 100"><rect width="300" height="100" fill="none"/><text x="{{w}}" y="50" font-size="14">Label</text></svg>',
+        }
+        reply = asyncio.run(tutor.add_widget(lesson, "Width", spec, "a label sliding right", figures.Teaches(claim="c", notice="n")))
+        assert reply == 'error: the figure was not shown; fix these and draw it again: with Width = 290: the label "Label" runs past the edge of the viewBox'
+        assert db.blocks(lesson) == []
+    finally:
+        db.delete_course(course)
+        db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))

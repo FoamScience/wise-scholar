@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Limits } from './Figure'
+import { Drawing, Limits } from './Figure'
 import type { Teaches } from './Figure'
 import { PlotBox } from './PlotCard'
 import type { Mark, PlotSpec } from './PlotCard'
@@ -8,9 +8,9 @@ import type { Mark, PlotSpec } from './PlotCard'
 type Control = { name: string; label: string; unit: string; values: number[]; start: number }
 type Readout = { label: string; unit: string; digits: number }
 type WidgetMark = { type: 'line' | 'area' | 'rule'; label: string; xs?: number[]; axis?: 'x' | 'y' }
-type State = { readouts: (number | null)[]; marks: ((number | null)[] | number | null)[] }
+type State = { readouts: (number | null)[]; marks: ((number | null)[] | number | null)[]; figure?: (number | null)[] }
 export type WidgetData = {
-  widget: { controls: Control[]; readouts: Readout[]; states: State[]; plot?: { x: PlotSpec['x']; y: PlotSpec['y']; marks: WidgetMark[] } }
+  widget: { controls: Control[]; readouts: Readout[]; states: State[]; plot?: { x: PlotSpec['x']; y: PlotSpec['y']; marks: WidgetMark[] }; figure?: string }
   alt: string
   teaches?: Teaches
 }
@@ -37,6 +37,11 @@ function plotOf(plot: NonNullable<WidgetData['widget']['plot']>, state: State): 
 
 // A setting counts as tried once the sliders have stood still this long.
 const SETTLE_MS = 1200
+
+/** The server's scrubbed drawing with this setting's numbers in its places; only numbers go in. */
+function filled(template: string, values: (number | null)[]): string {
+  return template.replace(/__w(\d+)__/g, (_, i: string) => String(values[Number(i)] ?? 0))
+}
 
 /** A model the learner operates: sliders pick a setting, readouts and the plot show what the server computed for it.
  * onTry hears each setting the learner stops at. */
@@ -68,6 +73,7 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
     <section id={`block-${props.id}`} className="block widget">
       <div className="label">{t('block.widget')}</div>
       {props.title && <h2>{props.title}</h2>}
+      {d.figure && <Drawing className="figure-box" svg={filled(d.figure, state.figure ?? [])} alt={(props.data as WidgetData).alt} sketched={false} />}
       {plot && <PlotBox spec={plot} alt={(props.data as WidgetData).alt} />}
       <dl className="readouts" aria-live="polite">
         {d.readouts.map((r, i) => (
