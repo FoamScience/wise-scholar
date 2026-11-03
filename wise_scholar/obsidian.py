@@ -105,6 +105,14 @@ def _credits(credits: list[dict]) -> str:
     return "*Art: " + ", ".join(f"{_plain(c['name'])} ({_plain(c['author'])}, {c['licence']})" for c in credits) + f" · {packs}*\n"
 
 
+PART_LINK = re.compile(r"\[([^\]\n]+)\]\(#part-[-\w]+\)")
+
+
+def _unlink_parts(text: str) -> str:
+    """A term linked to a figure part (`[term](#part-id)`) as the bare term: on paper and in a vault it links nowhere."""
+    return PART_LINK.sub(r"\1", text)
+
+
 def _plain(text: str) -> str:
     """Text that stays text inside Markdown emphasis and links."""
     return re.sub(r"([*_\[\]()`\\])", r"\\\1", text)
@@ -502,10 +510,10 @@ class Vault:
         for item in self._timeline(lesson):
             if "kind" in item:
                 if kinds is None or item["kind"] in kinds:
-                    body.append(self._block_text(lesson, item))
+                    body.append(_unlink_parts(self._block_text(lesson, item)))
             elif chat:
                 who = t["you"] if item["role"] == "learner" else t["tutor"]
-                body.append(_callout("quote", who, item["text"], folded=item["role"] == "tutor", plain=self.inline))
+                body.append(_callout("quote", who, _unlink_parts(item["text"]), folded=item["role"] == "tutor", plain=self.inline))
         return body
 
     def _outcome(self, block: dict) -> str:
