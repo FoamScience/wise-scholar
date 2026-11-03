@@ -2662,7 +2662,8 @@ pre:has(> .mermaid) {
   color: var(--muted);
 }
 
-.plot {
+.plot,
+.widget {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
@@ -2680,6 +2681,67 @@ pre:has(> .mermaid) {
 .plot-box svg {
   max-width: 100%;
   height: auto;
+}
+
+.widget h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.readouts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+  margin: 0;
+}
+
+.readouts dt {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.readouts dd {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.widget .controls {
+  display: flex;
+  flex-direction: column;
+}
+
+.widget .btn {
+  align-self: flex-start;
+}
+
+.widget .control {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) 1fr minmax(4rem, auto);
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.widget .control input {
+  accent-color: var(--teal);
+  height: 44px;
+  min-width: 0;
+}
+
+.widget .control output {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .widget .control {
+    grid-template-columns: 1fr auto;
+  }
+
+  .widget .control input {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 /* Arabic letters join, so spacing them apart breaks the words. */
@@ -2973,7 +3035,8 @@ pre {
   }
 
   .topbar,
-  .book-bar {
+  .book-bar,
+  .widget .btn {
     display: none;
   }
 
@@ -3080,6 +3143,7 @@ pre {
   .book .block.quiz,
   .book .block.figure,
   .book .block.plot,
+  .book .block.widget,
   .book .block.entry {
     break-inside: avoid;
   }

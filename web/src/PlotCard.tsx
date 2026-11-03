@@ -4,9 +4,9 @@ import { useTheme } from './theme'
 import { Limits } from './Figure'
 import type { Teaches } from './Figure'
 
-type Mark = { type: 'line' | 'dot' | 'bar' | 'area' | 'rule' | 'text' | 'rect'; data?: Record<string, unknown>[]; [k: string]: unknown }
+export type Mark = { type: 'line' | 'dot' | 'bar' | 'area' | 'rule' | 'text' | 'rect'; data?: Record<string, unknown>[]; [k: string]: unknown }
 type Axis = { label?: string; domain?: [number, number]; grid?: boolean; type?: 'linear' | 'log' | 'sqrt' | 'point' | 'band' }
-type PlotSpec = { x?: Axis; y?: Axis; marks: Mark[]; height?: number }
+export type PlotSpec = { x?: Axis; y?: Axis; marks: Mark[]; height?: number }
 type PlotData = { spec: PlotSpec; alt: string; teaches?: Teaches }
 
 function palette(): string[] {
@@ -19,6 +19,19 @@ function palette(): string[] {
 export function PlotCard(props: { id: number; title: string; data: unknown }) {
   const { t } = useTranslation()
   const d = props.data as PlotData
+  return (
+    <section id={`block-${props.id}`} className="block plot">
+      <div className="label">{t('block.plot')}</div>
+      {props.title && <h2>{props.title}</h2>}
+      <PlotBox spec={d.spec} alt={d.alt} />
+      <Limits teaches={d.teaches} />
+    </section>
+  )
+}
+
+/** The drawing of a resolved spec, with the spec shown when Observable Plot cannot draw it. */
+export function PlotBox({ spec, alt }: { spec: PlotSpec; alt: string }) {
+  const { t } = useTranslation()
   const box = useRef<HTMLDivElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const theme = useTheme()
@@ -28,7 +41,7 @@ export function PlotCard(props: { id: number; title: string; data: unknown }) {
     import('@observablehq/plot').then((Plot) => {
       if (!live || !box.current) return
       try {
-        const marks = d.spec.marks.map((m) => {
+        const marks = spec.marks.map((m) => {
           const { type, data = [], ...options } = m
           const opts = options as Record<string, unknown>
           switch (type) {
@@ -50,12 +63,12 @@ export function PlotCard(props: { id: number; title: string; data: unknown }) {
         })
         const svg = Plot.plot({
           width: Math.min(640, box.current.clientWidth || 640),
-          height: d.spec.height ?? 320,
+          height: spec.height ?? 320,
           marginLeft: 48,
           style: { background: 'transparent', color: 'currentColor', fontFamily: 'inherit' },
-          color: { range: palette(), legend: d.spec.marks.some((m) => 'stroke' in m || 'fill' in m) },
-          x: { grid: true, ...d.spec.x },
-          y: { grid: true, ...d.spec.y },
+          color: { range: palette(), legend: spec.marks.some((m) => 'stroke' in m || 'fill' in m) },
+          x: { grid: true, ...spec.x },
+          y: { grid: true, ...spec.y },
           marks,
         })
         box.current.replaceChildren(svg)
@@ -68,20 +81,17 @@ export function PlotCard(props: { id: number; title: string; data: unknown }) {
     return () => {
       live = false
     }
-  }, [d, theme])
+  }, [spec, theme])
 
   return (
-    <section id={`block-${props.id}`} className="block plot">
-      <div className="label">{t('block.plot')}</div>
-      {props.title && <h2>{props.title}</h2>}
-      <div ref={box} className="plot-box" role="img" aria-label={d.alt} style={error ? undefined : { minHeight: d.spec.height ?? 320 }} />
+    <>
+      <div ref={box} className="plot-box" role="img" aria-label={alt} style={error ? undefined : { minHeight: spec.height ?? 320 }} />
       {error && (
         <div className="mermaid-error">
-          <pre>{JSON.stringify(d.spec, null, 1).slice(0, 2000)}</pre>
+          <pre>{JSON.stringify(spec, null, 1).slice(0, 2000)}</pre>
           <div className="error">{t('block.plotFailed', { error })}</div>
         </div>
       )}
-      <Limits teaches={d.teaches} />
-    </section>
+    </>
   )
 }

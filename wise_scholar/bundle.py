@@ -18,11 +18,11 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
-from . import course_files, crafted, db, figures
+from . import course_files, crafted, db, figures, widgets
 
 SCHEMA = 1
 LICENCES = ("CC-BY-SA-4.0", "CC-BY-4.0", "CC-BY-NC-SA-4.0", "all-rights-reserved")
-BLOCK_KINDS = ("prose", "example", "quiz", "challenge", "exercise", "figure", "plot", "outline", "reading", "vocab")
+BLOCK_KINDS = ("prose", "example", "quiz", "challenge", "exercise", "figure", "plot", "widget", "outline", "reading", "vocab")
 LESSON_PHASES = ("lesson", "practice")
 # What a bundle may weigh, packed and unpacked; a source alone may be 50 MB and a course holds 200 MB of them.
 BUNDLE_LIMIT = 256 * 1024 * 1024
@@ -508,7 +508,9 @@ def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
     if block.kind == "figure":
         data = {"svg": figures.clean(str(data.get("svg", "")), limit=FIGURE_LIMIT), "alt": str(data.get("alt", ""))[:2000],
                 "credits": data.get("credits") if isinstance(data.get("credits"), list) else []}
-    if block.kind in ("figure", "plot") and isinstance(teaches, dict):
+    if block.kind == "widget":
+        data = {"spec": data.get("spec"), "widget": widgets.resolve(data.get("spec")), "alt": str(data.get("alt", ""))[:2000]}
+    if block.kind in ("figure", "plot", "widget") and isinstance(teaches, dict):
         data["teaches"] = {k: str(teaches.get(k, ""))[:figures.TEACHES_CHARS] for k in figures.Teaches.model_fields}
     if block.kind == "quiz":
         key = data.pop("card", None)

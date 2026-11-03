@@ -16,7 +16,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.utilities.types import Image
 from pydantic import BaseModel
 
-from . import art, challenge, course_files, crafted, db, diagrams, figures, handwork, hub, plots, quiz, sandbox, search, speech, vocab
+from . import art, challenge, course_files, crafted, db, diagrams, figures, handwork, hub, plots, quiz, sandbox, search, speech, vocab, widgets
 from .backends import TURN_HEADER
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
@@ -763,6 +763,39 @@ async def add_plot(lesson_id: int, title: str, spec: dict, alt: str, teaches: fi
     block = db.add_block(lesson_id, "plot", title, {"spec": resolved, "alt": alt.strip(), "teaches": purpose})
     _show(lesson, block)
     return f"shown as plot {block['id']}"
+
+
+@mcp.tool()
+async def add_widget(lesson_id: int, title: str, spec: dict, alt: str, teaches: figures.Teaches) -> str:
+    """Show a model the learner operates: sliders set its inputs, readouts and a plot follow at once. Use it after
+    the learner has predicted (a pose_challenge prediction), so moving a slider tests what they said.
+
+    spec: {"controls": [{"name": "teeth", "label": "Output gear teeth", "min": 12, "max": 48, "step": 12, "value": 24,
+    "unit"?: "teeth"}, ...] (1 to 3 sliders, at most 400 settings together; name is a short lowercase identifier),
+    "readouts": [{"label": "Output turns per input turn", "expr": "-12/teeth", "unit"?: "turns", "digits"?: 2}, ...]
+    (1 to 4; expr uses the slider names, numbers, + - * / ** and the plot functions), "plot"?: {"x": {"label",
+    "domain"?}, "y": {"label", "domain"?}, "marks": [{"type": "line"|"area", "fn": "a*x**2", "domain": [-3, 3],
+    "label"?}, {"type": "rule", "x"|"y": "expr of the sliders"}]} (1 to 4 marks; fn uses x and the slider names)}.
+    The server evaluates every setting; you never compute values yourself. The y range stays fixed across settings
+    unless you give one. Start the sliders where the learner's prediction can be checked with one move; the first
+    comparison changes one slider. alt: what the widget shows and what moving each slider changes. teaches as for
+    add_figure: notice names the slider to move and what to watch.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if not alt.strip():
+        return "error: alt text is required"
+    if problem := pretest_blocker(lesson):
+        return f"refused: {problem}"
+    try:
+        purpose = figures.teaching(teaches)
+        resolved = widgets.resolve(spec)
+    except ValueError as e:
+        return f"error: {e}"
+    block = db.add_block(lesson_id, "widget", title, {"spec": spec, "widget": resolved, "alt": alt.strip(), "teaches": purpose})
+    _show(lesson, block)
+    return f"shown as widget {block['id']}"
 
 
 @mcp.tool()

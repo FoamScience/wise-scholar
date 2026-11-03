@@ -12,6 +12,7 @@ import type { Area, Block, ChallengeData, Concept, CourseDetail, ExerciseData, E
 import { Correction } from './Diff'
 import type { Entry } from './Errors'
 import { Credits, Drawing, Limits } from './Figure'
+import { WidgetCard } from './Widget'
 import type { FigureData } from './Figure'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
 import { day, lookup, percent } from './i18n'
@@ -160,6 +161,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
   if (block.kind === 'reading') return <ReadingBlock block={block} />
   if (block.kind === 'exercise') return <ExerciseBlock block={block} files={files.get(block.id) ?? []} />
   if (block.kind === 'plot') return <PlotCard id={block.id} title={block.markdown} data={block.data} />
+  if (block.kind === 'widget') return <WidgetCard id={block.id} title={block.markdown} data={block.data} />
   if (block.kind === 'network') return <NetworkCard id={block.id} reason={block.markdown} data={block.data} disabled />
   if (block.kind === 'question') {
     const d = block.data as QuestionData
