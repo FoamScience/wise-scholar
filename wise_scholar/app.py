@@ -710,7 +710,8 @@ def _record_line(block: dict) -> str:
             else "did not know" if d.get("unknown")
             else f"{_untrusted(_cut(str(d.get('answer')), 400))!r} at {d.get('confidence', 0):.0%} sure: {'right' if d['correct'] else 'wrong'}"
         )
-        return f"{head} {text}{options} | key: {d.get('answer_key', '')} | {d.get('explanation', '')} | learner: {given}"
+        belief = f" | belief: {d['misconception']}" if d.get("misconception") else ""
+        return f"{head} {text}{options} | key: {d.get('answer_key', '')} | {d.get('explanation', '')} | learner: {given}{belief}"
     if block["kind"] in ("challenge", "exercise"):
         last = f", last: {_untrusted(_cut(d['attempts'][-1], 400))!r}" if d.get("attempts") else ""
         outcome = "solved" if d.get("solved") else "gave up" if d.get("gave_up") else "left open"
@@ -1918,6 +1919,19 @@ async def writing_session(course_id: int) -> dict:
     return view
 
 
+def _notebook_brief(profile_id: int, course_id: int) -> str:
+    """The open entries of the learner's error notebook, with the beliefs behind them, for a lesson's first turn."""
+    open_errors = db.errors(profile_id, course_id, open_only=True, limit=5)
+    if not open_errors:
+        return ""
+    return "\nOpen entries in the learner's error notebook (revisit in new material, do not repeat the item): " + "; ".join(
+        f"said {e['said'][:80]!r} for {e['prompt'][:80]!r}, right: {e['correct'][:80]!r}"
+        + (f", from the belief {e['misconception'][:120]!r}" if e["misconception"] else "")
+        + (f" (learner's note: {e['note'][:80]})" if e["note"] else "")
+        for e in open_errors
+    )
+
+
 @app.post("/api/concepts/{concept_id}/lesson")
 async def open_concept(concept_id: int) -> dict:
     concept = db.row("SELECT * FROM concepts WHERE id = ?", concept_id)
@@ -1949,11 +1963,7 @@ async def open_concept(concept_id: int) -> dict:
         strands += "\nThe learner's own sources (search_sources, then read_source one section at a time): " + ", ".join(
             f"{f['name']} ({f['sections']} sections)" for f in ready
         )
-    if open_errors := db.errors(lesson["profile_id"], concept["course_id"], open_only=True, limit=5):
-        strands += "\nOpen entries in the learner's error notebook (revisit in new material, do not repeat the item): " + "; ".join(
-            f"said {e['said'][:80]!r} for {e['prompt'][:80]!r}, right: {e['correct'][:80]!r}" + (f" (learner's note: {e['note'][:80]})" if e["note"] else "")
-            for e in open_errors
-        )
+    strands += _notebook_brief(lesson["profile_id"], concept["course_id"])
     earlier = history.digest([
         _lesson_view(row["id"])
         for row in db.rows(
@@ -2444,6 +2454,8 @@ def _record_answer(block: dict, card: dict, answer: str, confidence: float, extr
         verdict = "correct" if correct else "wrong; misplaced: " + ", ".join(repr(i) for i in result["misplaced"])
     else:
         verdict = "correct" if correct else f"wrong, the right answer is {card['answer_key']!r}"
+        if result.get("misconception"):
+            verdict += f"; this option comes from the belief {result['misconception']!r}"
     if result["confident_miss"] and lesson["phase"] != "placement":
         verdict += "; a confident miss: re-teach it now"
     return lesson, verdict, said

@@ -405,6 +405,7 @@
       "notQuite": "Not quite",
       "answerKey": "**Answer:** {{answer}}",
       "confidentMiss": "You were {{percent}} sure. This one comes back first in your reviews.",
+      "belief": "Behind this answer: {{belief}}",
       "pretest": "First, a quick check",
       "quickCheck": "Quick check",
       "dontKnow": "I don't know",

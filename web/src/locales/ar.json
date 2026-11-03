@@ -449,6 +449,7 @@
       "notQuite": "ليس تمامًا",
       "answerKey": "**الإجابة:** {{answer}}",
       "confidentMiss": "كانت ثقتك {{percent}}. سيعود هذا السؤال أولًا في مراجعاتك.",
+      "belief": "وراء هذه الإجابة: {{belief}}",
       "pretest": "أولًا، سؤال سريع",
       "quickCheck": "سؤال سريع",
       "dontKnow": "لا أعرف",

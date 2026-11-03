@@ -14,6 +14,7 @@ export type Entry = {
   said: string
   correct: string
   explanation: string
+  misconception: string
   note: string
   pinned: number
   resolved: number
@@ -70,6 +71,7 @@ export function ErrorsPage({ profile }: { profile: number }) {
               <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
               {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
               {e.explanation && <Markdown>{e.explanation}</Markdown>}
+              {e.misconception && <p className="belief">{t('quiz.belief', { belief: e.misconception })}</p>}
             </div>
             <label className="small" htmlFor={`note-${e.id}`}>
               {t('notebook.note')}

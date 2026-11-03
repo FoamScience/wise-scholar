@@ -486,6 +486,10 @@ MIGRATIONS = [
     UPDATE versions SET lineage = (SELECT key FROM courses WHERE courses.id = versions.course_id);
     CREATE INDEX versions_lineage ON versions(lineage, number);
     """,
+    """
+    ALTER TABLE cards ADD COLUMN misconceptions TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE errors ADD COLUMN misconception TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -1144,14 +1148,15 @@ def set_block(block_id: int, markdown: str, data: dict) -> dict:
 
 def add_card(course_id: int, concept_id: int | None, question: str, kind: str, options: list[str],
              answer_key: str, explanation: str, scheduled: bool, due: str | None = None, vocab: bool = False,
-             translation: str = "") -> int:
+             translation: str = "", misconceptions: dict[str, str] | None = None) -> int:
     """due makes the card reviewable from that moment without a first answer; vocab marks a vocabulary card;
-    translation is the question in the learner's own language when it is written in the one being learned."""
+    translation is the question in the learner's own language when it is written in the one being learned;
+    misconceptions names, for a wrong option, the belief that leads to it."""
     return conn.execute(
         "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, "
-        "vocab, due, translation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "vocab, due, translation, misconceptions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (course_id, concept_id, question, kind, json.dumps(options), answer_key, explanation, int(scheduled),
-         int(vocab), due, translation),
+         int(vocab), due, translation, json.dumps(misconceptions or {})),
     ).lastrowid
 
 
@@ -1186,6 +1191,7 @@ def strand_counts(course_id: int) -> dict[str, int]:
 def _card(c: dict | None) -> dict | None:
     if c:
         c["options"] = json.loads(c["options"])
+        c["misconceptions"] = json.loads(c["misconceptions"])
     return c
 
 
@@ -1268,16 +1274,20 @@ def last_activity(profile_id: int) -> datetime | None:
 
 
 def add_error(profile_id: int, course_id: int, kind: str, prompt: str, said: str, correct: str, explanation: str = "",
-              card_id: int | None = None) -> int:
-    """One open entry per card: a repeated miss updates what was said instead of adding a row."""
+              card_id: int | None = None, misconception: str = "") -> int:
+    """One open entry per card: a repeated miss updates what was said, and the belief behind it when one is named,
+    instead of adding a row."""
     if card_id is not None:
         existing = row("SELECT id FROM errors WHERE card_id = ? AND resolved = 0", card_id)
         if existing:
-            conn.execute("UPDATE errors SET said = ?, created = CURRENT_TIMESTAMP WHERE id = ?", (said, existing["id"]))
+            conn.execute(
+                "UPDATE errors SET said = ?, misconception = COALESCE(NULLIF(?, ''), misconception), created = CURRENT_TIMESTAMP WHERE id = ?",
+                (said, misconception, existing["id"]),
+            )
             return existing["id"]
     return conn.execute(
-        "INSERT INTO errors (profile_id, course_id, card_id, kind, prompt, said, correct, explanation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (profile_id, course_id, card_id, kind, prompt, said, correct, explanation),
+        "INSERT INTO errors (profile_id, course_id, card_id, kind, prompt, said, correct, explanation, misconception) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (profile_id, course_id, card_id, kind, prompt, said, correct, explanation, misconception),
     ).lastrowid
 
 

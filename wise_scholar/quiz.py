@@ -106,10 +106,12 @@ def dont_know(card: dict) -> dict:
     }
 
 
-def grade(answer_id: int, correct: bool) -> dict:
-    """Finalize a stored answer: record correctness, reschedule the card, disclose the key."""
+def grade(answer_id: int, correct: bool, misconception: str = "") -> dict:
+    """Finalize a stored answer: record correctness, reschedule the card, disclose the key. A wrong answer carries the
+    belief behind it: the one the grader named, else the one the card names for the option chosen."""
     answer = db.row("SELECT * FROM answers WHERE id = ?", answer_id)
     card = db.card(answer["card_id"])
+    belief = "" if correct else misconception.strip() or card["misconceptions"].get(answer["answer"], "")
     miss = review.is_confident_miss(correct, answer["confidence"])
     db.conn.execute("UPDATE answers SET correct = ? WHERE id = ?", (int(correct), answer_id))
     profile = _profile(card)
@@ -124,7 +126,7 @@ def grade(answer_id: int, correct: bool) -> dict:
     # Pretests and placement cards are unscheduled: their misses measure, they are not errors to fix.
     if miss and card["scheduled"]:
         db.add_error(profile, card["course_id"], "quiz", card["question"], said(card, answer["answer"], only_wrong=True),
-                     key(card, answer["answer"]), card["explanation"], card_id=card["id"])
+                     key(card, answer["answer"]), card["explanation"], card_id=card["id"], misconception=belief)
     due = None
     if card["scheduled"]:
         fsrs, due = review.schedule(card["fsrs"], correct, answer["confidence"], days)
@@ -138,4 +140,5 @@ def grade(answer_id: int, correct: bool) -> dict:
         "explanation": card["explanation"],
         "due": due,
         **({"misplaced": misplaced(card, answer["answer"])} if card["kind"] == "sort" else {}),
+        **({"misconception": belief} if belief else {}),
     }

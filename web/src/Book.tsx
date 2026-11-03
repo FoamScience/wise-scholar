@@ -393,6 +393,7 @@ function Notebook({ entries }: { entries: Entry[] }) {
             <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
             {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
             {e.explanation && <Markdown>{e.explanation}</Markdown>}
+            {e.misconception && <p className="belief">{t('quiz.belief', { belief: e.misconception })}</p>}
           </div>
           {e.note && (
             <div className="hint">

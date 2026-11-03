@@ -416,6 +416,7 @@
       "notQuite": "Pas tout à fait",
       "answerKey": "**Réponse :** {{answer}}",
       "confidentMiss": "Votre certitude était de {{percent}}. Cette question reviendra en premier dans vos révisions.",
+      "belief": "Derrière cette réponse : {{belief}}",
       "pretest": "D'abord, une question rapide",
       "quickCheck": "Question rapide",
       "dontKnow": "Je ne sais pas",
