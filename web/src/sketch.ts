@@ -5,7 +5,7 @@ import type { RoughSVG } from 'roughjs/bin/svg'
 const SHAPES = new Set(['rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'path'])
 // Art pack symbols, markers and clip shapes stay as drawn; only the tutor's own shapes get the hand-drawn look.
 const KEPT = new Set(['defs', 'symbol', 'marker', 'clipPath', 'mask', 'pattern', 'linearGradient', 'radialGradient'])
-const CARRIED = ['transform', 'opacity', 'fill-opacity', 'stroke-opacity', 'clip-path', 'mask', 'id']
+const CARRIED = ['transform', 'opacity', 'fill-opacity', 'stroke-opacity', 'clip-path', 'mask', 'id', 'data-part']
 // On the outline only, so the hachure fill keeps its own stroke.
 const OUTLINE = ['marker-start', 'marker-mid', 'marker-end', 'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin']
 const REFERENCE_WIDTH = 600

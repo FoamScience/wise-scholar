@@ -517,6 +517,8 @@ async def add_figure(lesson_id: int, svg: str, caption: str, alt: str, teaches: 
     #e1f0ee, amber #6b3a00, amber tint #fbebd3, line #8794a1; text and outlines in currentColor so both themes
     read it. No script, style element, image, foreignObject or external links; they are stripped or refused.
     caption: one sentence under the figure. alt: what the figure shows, for a reader who cannot see it.
+    Wrap each part the lesson text talks about in `<g data-part="id">` (a short lowercase id); the text names it as
+    `[left ventricle](#part-id)`, and pointing at the term or the part lights up both while the other parts dim.
 
     Icons from an installed art pack (see the [tools] line) go in as `<use href="art:ID" x="" y="" width="" height=""/>`
     with an ID from find_art, sized by its ratio; the server inlines the drawing and credits its author under the

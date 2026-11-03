@@ -109,3 +109,9 @@ test('each block takes the direction most of its prose is written in, ignoring c
   assert.match(html, /<p><span class="katex/)
   assert.ok(html.includes('<pre>'))
 })
+
+test('a link to #part-id names a figure part and other links stay links', () => {
+  const html = renderToStaticMarkup(createElement(Markdown, { children: 'The [left ventricle](#part-ventricle) pumps; see [docs](https://example.org).' }))
+  assert.ok(html.includes('<span class="term" data-ref="ventricle" tabindex="0">left ventricle</span>'))
+  assert.ok(html.includes('<a href="https://example.org">docs</a>'))
+})

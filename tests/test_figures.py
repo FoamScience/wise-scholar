@@ -66,3 +66,14 @@ def test_an_animation_may_only_move_size_colour_or_fade_on_a_fixed_clock():
         '<animate dur="1s"/>',
     ):
         assert "<animate" not in figures.clean(f'<svg viewBox="0 0 1 1"><use href="#m">{bad}</use></svg>')
+
+
+def test_named_parts_keep_their_ids_through_the_scrub_and_the_prefix():
+    svg = figures.prefix_ids(figures.clean('<svg viewBox="0 0 2 1"><g id="a" data-part="heart"><rect width="1" height="1"/></g></svg>'), "f1-")
+    assert '<g id="f1-a" data-part="heart">' in svg
+
+
+def test_a_term_linked_to_a_part_is_exported_as_the_bare_term():
+    from wise_scholar import obsidian
+
+    assert obsidian._unlink_parts("The [left ventricle](#part-ventricle) pumps; [docs](#intro) stay.") == "The left ventricle pumps; [docs](#intro) stay."

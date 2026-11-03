@@ -2627,6 +2627,30 @@ pre:has(> .mermaid) {
   display: block;
 }
 
+/* A term naming a figure part, and the part, light up together; the figure's other parts step back. */
+.term {
+  border-bottom: 1px dotted var(--teal);
+  border-radius: 2px;
+  transition: background-color var(--motion-fast) var(--ease);
+}
+
+.term.term-on,
+.term:focus-visible {
+  background: var(--teal-tint);
+}
+
+.figure-box [data-part] {
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.figure-box.parts-focus [data-part]:not(.part-on) {
+  opacity: 0.25;
+}
+
+.figure-box [data-part].part-on {
+  color: var(--teal);
+}
+
 .figure .caption,
 .limits {
   font-size: var(--text-sm);

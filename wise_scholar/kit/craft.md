@@ -209,6 +209,10 @@ of a lesson. Parts that have no role stay unpainted. Nested paints work: a teal 
 `groupSvg([body, groupSvg([nucleus], { "data-paint": "dark" })], { "data-paint": "teal" })`. A name that is
 not in the table paints nothing.
 
+A part the lesson text names gets an id: `groupSvg(ventricle, { "data-part": "ventricle" })`. The text then
+writes `[left ventricle](#part-ventricle)`, and pointing at either lights both up while the figure's other named
+parts step back. Use short lowercase ids, one per part, the same id in every stage.
+
 ```js
 const chromatids = pieces.map(({ piece, n }) => k.groupSvg([tubeSvg(piece)], { "data-paint": n ? "teal" : "amber" }));
 ```

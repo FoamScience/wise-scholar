@@ -18,9 +18,26 @@ function imageOrSafe(url: string): string {
   return url.startsWith('data:image/svg+xml;base64,') ? url : defaultUrlTransform(url)
 }
 
+// `[term](#part-id)` names a part of a figure in the lesson: the term and the part light up together (see parts.ts).
+function Link(props: ComponentProps<'a'>) {
+  const { href, children, node: _, ...rest } = props as ComponentProps<'a'> & { node?: unknown }
+  const part = href?.match(/^#part-([-\w]+)$/)?.[1]
+  if (part)
+    return (
+      <span className="term" data-ref={part} tabIndex={0}>
+        {children}
+      </span>
+    )
+  return (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  )
+}
+
 export default function Markdown({ children }: { children: string }) {
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={{ code: Code }} urlTransform={imageOrSafe}>
+    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={{ code: Code, a: Link }} urlTransform={imageOrSafe}>
       {children}
     </ReactMarkdown>
   )
