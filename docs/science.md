@@ -1,6 +1,6 @@
 # The research behind wise-scholar
 
-This page lists what each teaching behaviour in the app relies on, what the cited source reports, and how far that finding reaches. It was checked on 2026-10-02; the practice forms on 2026-10-13.
+This page lists what each teaching behaviour in the app relies on, what the cited source reports, and how far that finding reaches. It was checked on 2026-10-02; the practice forms on 2026-10-13; figures and widgets on 2026-11-03.
 
 How each source was checked:
 
@@ -208,6 +208,43 @@ The count of activities per strand shown in the course map is this app's own rou
 | Chi, de Leeuw, Chiu & LaVancher 1994, *Cognitive Science* 18(3), 439–477. [doi:10.1207/s15516709cog1803_3](https://doi.org/10.1207/s15516709cog1803_3). Abstract read. | Fourteen eighth-graders prompted to explain each line of a text to themselves gained more from pretest to posttest than ten controls who read the text twice. | A very small sample. |
 | Chi & Wylie 2014, *Educational Psychologist* 49(4), 219–243. [doi:10.1080/00461520.2014.965823](https://doi.org/10.1080/00461520.2014.965823). Abstract read. | The ICAP hypothesis predicts that learning increases as engagement moves from passive to active to constructive to interactive, and supports this with laboratory and classroom studies. | A hypothesis with supporting evidence; the authors discuss its limits. No effect sizes in the abstract. |
 | Nesbit & Adesope 2006, *Review of Educational Research* 76(3), 413–448. [doi:10.3102/00346543076003413](https://doi.org/10.3102/00346543076003413). Abstract read. | A meta-analysis of 55 studies (5,818 participants, 67 effect sizes) found concept-map use associated with better knowledge retention, with effects from small to large depending on how the maps were used and what they were compared with. | The abstract states a retention benefit. A transfer benefit was not confirmed. |
+
+## Figures and widgets
+
+### A figure states what it teaches
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Mayer & Moreno 2003, *Educational Psychologist* 38(1), 43–52. [doi:10.1207/S15326985EP3801_6](https://doi.org/10.1207/S15326985EP3801_6). Abstract read. | Proposes that pictures and words are processed in separate channels of limited capacity, describes five ways multimedia material overloads them, and offers ways to reduce the load, each tested in the authors' own studies. | A review of one research group's work. The abstract gives no effect sizes. |
+| Mayer, Heiser & Lonn 2001, *Journal of Educational Psychology* 93(1), 187–198. [doi:10.1037/0022-0663.93.1.187](https://doi.org/10.1037/0022-0663.93.1.187). Abstract read. | In four experiments on an animated explanation of lightning, adding on-screen text that repeated the narration, or interesting but irrelevant details and video clips, lowered retention and transfer. | College students and one short scientific explanation. |
+
+Every figure, plot and widget the tutor shows carries the claim of the lesson it makes visible and what the learner should notice in it; a figure with no such claim is not drawn. The tutor also states where the picture stops matching the real thing, and the learner reads that under the caption. Before a drawn figure is shown, a headless browser lays it out at the lesson's width and sends it back to the tutor when nothing is drawn, a label runs past its edge, two labels overlap or a label is too small to read.
+
+### Terms and figure parts light up together
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Schneider, Beege, Nebel & Rey 2018, *Educational Research Review* 23, 1–24. [doi:10.1016/j.edurev.2017.11.001](https://doi.org/10.1016/j.edurev.2017.11.001). Record only. | Described as a meta-analysis finding that signaling (cues that point at what matters in a picture or text) improves learning with media. | The record was confirmed on 2026-11-03; the abstract was not retrieved, so the description comes from secondary sources, and no effect size is quoted here. |
+| Ginns 2006, *Learning and Instruction* 16(6), 511–525. [doi:10.1016/j.learninstruc.2006.10.001](https://doi.org/10.1016/j.learninstruc.2006.10.001). Record only. | Described as a meta-analysis finding that placing words next to the parts of a picture they describe, rather than apart from it, improves learning. | Record confirmed on 2026-11-03; abstract not retrieved. |
+| Clark & Paivio 1991, *Educational Psychology Review* 3(3), 149–210. [doi:10.1007/BF01320076](https://doi.org/10.1007/BF01320076). Record only. | Described as a review applying dual coding theory, that verbal and pictorial information are held in linked systems, to teaching. | Record confirmed on 2026-11-03; abstract not retrieved. A theoretical review. |
+
+When the lesson text names a part of a figure, pointing at the word, or moving the keyboard to it, lights up that part and dims the figure's other named parts; pointing at the part lights up the words that name it.
+
+### A widget after a prediction
+
+| Source | What it reports | Limits |
+|---|---|---|
+| de Jong & van Joolingen 1998, *Review of Educational Research* 68(2), 179–201. [doi:10.3102/00346543068002179](https://doi.org/10.3102/00346543068002179). Abstract read. | A review of discovery learning with computer simulations, in which learners infer the model behind a simulation by experimenting; it describes the problems learners meet doing so and how instructional support can overcome them. | A review. The abstract reports no effect size, and it presents simulations as needing support, not as effective on their own. |
+
+A widget is a model the learner operates: one to three sliders set its inputs, and readouts and a plot show what the server computed for that setting. The tutor shows it after the learner has predicted, so moving a slider tests the prediction, and the first comparison changes one slider. The prediction before it and the single first comparison are the support the review calls for; the widget does not yet tell the tutor which settings the learner tried.
+
+### The belief behind a wrong answer
+
+| Source | What it reports | Limits |
+|---|---|---|
+| Posner, Strike, Hewson & Gertzog 1982, *Science Education* 66(2), 211–227. [doi:10.1002/sce.3730660207](https://doi.org/10.1002/sce.3730660207). Record only. | Described as a theory of conceptual change: a learner gives up a belief when it stops explaining what they see and a plausible, useful alternative is available. | Record confirmed on 2026-11-03; abstract not retrieved. A theory paper, not an experiment. |
+
+A quick check's wrong options are written so each comes from a belief, and the tutor names that belief; for an open answer the tutor names it when grading. A learner who picks such an option is told the belief behind it, the error notebook keeps it beside the entry, and the next lesson's tutor is told which beliefs are still open, so it can set up a case where the belief stops working.
 
 ## Not confirmed, and not used as evidence
 
