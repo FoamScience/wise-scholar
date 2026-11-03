@@ -23,12 +23,31 @@ def _finite(value: float) -> float | None:
     return float(f"{value:.6g}") if math.isfinite(value) else None
 
 
-def start_index(widget: dict) -> int:
-    """The index in `states` of the setting the sliders start at: row-major, the first slider slowest."""
+def index_of(widget: dict, at: list[int]) -> int:
+    """The index in `states` of the sliders at these positions: row-major, the first slider slowest."""
+    if len(at) != len(widget["controls"]) or any(not 0 <= p < len(c["values"]) for c, p in zip(widget["controls"], at)):
+        raise ValueError("not a setting of this widget")
     index = 0
-    for c in widget["controls"]:
-        index = index * len(c["values"]) + c["start"]
+    for c, p in zip(widget["controls"], at):
+        index = index * len(c["values"]) + p
     return index
+
+
+def start_index(widget: dict) -> int:
+    return index_of(widget, [c["start"] for c in widget["controls"]])
+
+
+def describe(widget: dict, at: list[int]) -> str:
+    """One setting in words, for the tutor: each slider's value, then what the readouts showed."""
+    def unit(u: str) -> str:
+        return f" {u}" if u else ""
+    sliders = ", ".join(f"{c['label']} = {c['values'][p]:g}{unit(c['unit'])}" for c, p in zip(widget["controls"], at))
+    shown = widget["states"][index_of(widget, at)]["readouts"]
+    readouts = []
+    for r, value in zip(widget["readouts"], shown):
+        digits = r["digits"]
+        readouts.append(f"{r['label']} " + ("not defined" if value is None else f"{value:.{digits}f}{unit(r['unit'])}"))
+    return f"{sliders} -> {', '.join(readouts)}"
 
 
 def _controls(raw) -> list[dict]:

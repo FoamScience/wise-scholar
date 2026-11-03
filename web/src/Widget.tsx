@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Limits } from './Figure'
 import type { Teaches } from './Figure'
@@ -35,8 +35,12 @@ function plotOf(plot: NonNullable<WidgetData['widget']['plot']>, state: State): 
   return { x: plot.x, y: plot.y, marks }
 }
 
-/** A model the learner operates: sliders pick a setting, readouts and the plot show what the server computed for it. */
-export function WidgetCard(props: { id: number; title: string; data: unknown }) {
+// A setting counts as tried once the sliders have stood still this long.
+const SETTLE_MS = 1200
+
+/** A model the learner operates: sliders pick a setting, readouts and the plot show what the server computed for it.
+ * onTry hears each setting the learner stops at. */
+export function WidgetCard(props: { id: number; title: string; data: unknown; onTry?: (at: number[]) => void }) {
   const { t, i18n } = useTranslation()
   const d = (props.data as WidgetData).widget
   const starts = d.controls.map((c) => c.start)
@@ -45,6 +49,21 @@ export function WidgetCard(props: { id: number; title: string; data: unknown }) 
   const plot = useMemo(() => (d.plot ? plotOf(d.plot, state) : null), [d.plot, state])
   const format = (value: number, digits: number) => value.toLocaleString(i18n.language, { minimumFractionDigits: digits, maximumFractionDigits: digits })
   const moved = at.some((p, i) => p !== starts[i])
+  const touched = useRef(false)
+  // The page hands a new callback on every render; only a new setting restarts the wait.
+  const onTry = useRef(props.onTry)
+  useEffect(() => {
+    onTry.current = props.onTry
+  })
+  useEffect(() => {
+    if (!touched.current) return
+    const timer = setTimeout(() => onTry.current?.(at), SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [at])
+  const move = (next: number[]) => {
+    touched.current = true
+    setAt(next)
+  }
   return (
     <section id={`block-${props.id}`} className="block widget">
       <div className="label">{t('block.widget')}</div>
@@ -74,14 +93,14 @@ export function WidgetCard(props: { id: number; title: string; data: unknown }) 
                 step={1}
                 value={at[i]}
                 aria-valuetext={shown}
-                onChange={(e) => setAt(at.map((p, k) => (k === i ? Number(e.target.value) : p)))}
+                onChange={(e) => move(at.map((p, k) => (k === i ? Number(e.target.value) : p)))}
               />
               <output htmlFor={`${props.id}-${c.name}`}>{shown}</output>
             </div>
           )
         })}
       </div>
-      <button type="button" className="btn small" disabled={!moved} onClick={() => setAt(starts)}>
+      <button type="button" className="btn small" disabled={!moved} onClick={() => move(starts)}>
         {t('block.widgetReset')}
       </button>
       <Limits teaches={(props.data as WidgetData).teaches} />

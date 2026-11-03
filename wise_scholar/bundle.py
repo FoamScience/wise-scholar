@@ -167,7 +167,7 @@ def _block_data(block: dict, card_keys: dict[int, str]) -> dict | None:
     if not block["data"]:
         return None
     data = db._fresh(json.loads(block["data"]))
-    for gone in ("crafted", "previous", "answer_id", "due", "card_id"):
+    for gone in ("crafted", "previous", "answer_id", "due", "card_id", "tried", "told"):
         data.pop(gone, None)
     raw = json.loads(block["data"])
     if raw.get("card_id") is not None:

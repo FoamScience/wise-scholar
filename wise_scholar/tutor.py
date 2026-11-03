@@ -796,7 +796,8 @@ async def add_widget(lesson_id: int, title: str, spec: dict, alt: str, teaches: 
     The server evaluates every setting; you never compute values yourself. The y range stays fixed across settings
     unless you give one. Start the sliders where the learner's prediction can be checked with one move; the first
     comparison changes one slider. alt: what the widget shows and what moving each slider changes. teaches as for
-    add_figure: notice names the slider to move and what to watch.
+    add_figure: notice names the slider to move and what to watch. Each setting the learner stops at reaches you as a
+    `[widget ID]` line on your next turn, with what the readouts showed; ask for the explanation from what they saw.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
