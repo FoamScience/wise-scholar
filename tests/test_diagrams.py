@@ -6,7 +6,9 @@ import pytest
 
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
-from wise_scholar import db, diagrams, tutor  # noqa: E402
+from wise_scholar import db, diagrams, figures, tutor  # noqa: E402
+
+TEACHES = figures.Teaches(claim="Parts have a place.", notice="Where each part sits.")
 
 EXAMPLE = diagrams.help_text("cells").split("```")[1].strip()
 sidecar = pytest.mark.skipif(not diagrams.available(), reason="diagrams/node_modules not installed")
@@ -46,7 +48,7 @@ def test_a_sidecar_that_cannot_start_or_answer_is_an_error_for_the_tutor(monkeyp
     monkeypatch.setattr(diagrams.subprocess, "run", lambda *a, **k: Run())
     with pytest.raises(ValueError, match="renderer failed"):
         diagrams.render("cells", "Cell k")
-    assert asyncio.run(tutor.add_diagram(10**9, "cells", "Cell k", "c", "a")) == "error: no lesson with id 1000000000"
+    assert asyncio.run(tutor.add_diagram(10**9, "cells", "Cell k", "c", "a", TEACHES)) == "error: no lesson with id 1000000000"
 
 
 @sidecar
@@ -60,12 +62,12 @@ def test_the_example_lays_out_and_becomes_a_figure_block():
     try:
         course = db.create_course("Meiosis", who)["id"]
         lesson = db.create_lesson(course, "Metaphase", "lesson", None)
-        reply = asyncio.run(tutor.add_diagram(lesson, "cells", EXAMPLE, "Mitosis beside meiosis I.", "two cells with four chromosomes each"))
+        reply = asyncio.run(tutor.add_diagram(lesson, "cells", EXAMPLE, "Mitosis beside meiosis I.", "two cells with four chromosomes each", TEACHES))
         block = db.blocks(lesson)[-1]
         assert reply == f"shown as figure {block['id']}" and block["kind"] == "figure"
         assert block["data"]["diagram"] == {"domain": "cells", "substance": EXAMPLE} and block["data"]["credits"] == []
         assert block["data"]["svg"].startswith('<svg xmlns="http://www.w3.org/2000/svg"') and 'viewBox="' in block["data"]["svg"] and "<title>" not in block["data"]["svg"]
-        assert asyncio.run(tutor.add_diagram(lesson, "cells", EXAMPLE, "c", "")) == "error: alt text is required"
+        assert asyncio.run(tutor.add_diagram(lesson, "cells", EXAMPLE, "c", "", TEACHES)) == "error: alt text is required"
     finally:
         db.delete_course(course)
         db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
@@ -131,7 +133,7 @@ def test_stages_become_one_animated_figure_with_its_frames_kept_for_print():
     try:
         course = db.create_course("Meiosis", who)["id"]
         lesson = db.create_lesson(course, "Anaphase", "lesson", None)
-        reply = asyncio.run(tutor.add_animation(lesson, "cells", STAGES, "Meiosis I unfolds.", "a cell from metaphase I to late anaphase I"))
+        reply = asyncio.run(tutor.add_animation(lesson, "cells", STAGES, "Meiosis I unfolds.", "a cell from metaphase I to late anaphase I", TEACHES))
         block = db.blocks(lesson)[-1]
         assert reply == f"shown as figure {block['id']}, animated over 3 stages"
         assert block["data"]["diagram"] == {"domain": "cells", "stages": STAGES} and len(block["data"]["frames"]) == 3
@@ -140,7 +142,7 @@ def test_stages_become_one_animated_figure_with_its_frames_kept_for_print():
         note = "".join(vault.lesson_text(db.lesson(lesson) | {"blocks": db.blocks(lesson), "messages": []}, chat=False, kinds=("figure",)))
         assert note.count("![[") == 3 and f"attachments/figure-{block['id']}-3.svg" in note
         assert sum(1 for p in vault.files if f"figure-{block['id']}-" in p) == 3
-        assert asyncio.run(tutor.add_animation(lesson, "cells", STAGES[:1], "c", "a")) == "error: an animation has 2 to 6 stages"
+        assert asyncio.run(tutor.add_animation(lesson, "cells", STAGES[:1], "c", "a", TEACHES)) == "error: an animation has 2 to 6 stages"
     finally:
         db.delete_course(course)
         db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))

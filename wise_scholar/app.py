@@ -680,6 +680,7 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
 
 # --- Claims: a finished lesson is read once more, in a session of its own, for what it taught -----------------------
 RECORD_BLOCK_CHARS = 2000
+RECORD_TEACHES_CHARS = 400
 RECORD_MESSAGE_CHARS = 1000
 RECORD_CHARS = 40000
 _claims_queue: asyncio.Queue[int] = asyncio.Queue()
@@ -715,6 +716,8 @@ def _record_line(block: dict) -> str:
         outcome = "solved" if d.get("solved") else "gave up" if d.get("gave_up") else "left open"
         shown = f" | solution shown: {_cut(d['solution'], 600)}" if d.get("solution") is not None else ""
         return f"{head} {text} | attempts: {len(d.get('attempts', []))}{last} | {outcome}{shown}"
+    if teaches := d.get("teaches"):
+        return f"{head} {text} | " + " | ".join(f"{k}: {_cut(v, RECORD_TEACHES_CHARS)}" for k, v in teaches.items() if v)
     return f"{head} {text}"
 
 

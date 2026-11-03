@@ -11,8 +11,21 @@ export type FigureData = {
   diagram?: { domain: string; substance?: string; stages?: string[] }
   crafted?: { script: string }
   frames?: string[]
+  teaches?: Teaches
   previous?: FigureData & { caption: string }
   restored?: boolean
+}
+export type Teaches = { claim: string; notice: string; misconception: string; limits: string }
+
+/** Where a figure or plot stops matching the real thing, as the tutor stated it. */
+export function Limits({ teaches }: { teaches?: Teaches }) {
+  const { t } = useTranslation()
+  if (!teaches?.limits) return null
+  return (
+    <div className="limits" dir="auto">
+      {t('block.limits', { limits: teaches.limits })}
+    </div>
+  )
 }
 
 /** The attribution a figure owes the art pack: every icon with its author and licence, and the pack it came from. */
@@ -106,6 +119,7 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
       </button>
       {d.frames && d.frames.length > 1 && <Stages key={d.svg} box={box} count={d.frames.length} />}
       {props.caption && <div className="caption">{props.caption}</div>}
+      <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />
       {redraw && notes === null && (
         <button type="button" className="link small" disabled={props.disabled} onClick={() => setNotes('')}>

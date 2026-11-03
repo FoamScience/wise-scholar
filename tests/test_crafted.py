@@ -9,6 +9,8 @@ os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.
 
 from wise_scholar import crafted, db, figures, obsidian, tutor  # noqa: E402
 
+TEACHES = figures.Teaches(claim="Parts have a place.", notice="Where each part sits.")
+
 EXAMPLE, LIVING = [part.split("```")[0].strip() for part in crafted.help_text().split("```js")[1:3]]
 node = pytest.mark.skipif(not crafted.available(), reason="no sandbox or no node on this machine")
 STAGES = """import * as k from "./kit/iso-kit.mjs";
@@ -97,9 +99,9 @@ def test_the_tool_keeps_the_script_and_the_export_styles_the_figure():
     try:
         course = db.create_course("Mechanics", who)["id"]
         lesson = db.create_lesson(course, "A knob", "lesson", None)
-        assert asyncio.run(tutor.add_crafted_figure(lesson, EXAMPLE, "c", "")) == "error: alt text is required"
-        assert asyncio.run(tutor.add_crafted_figure(lesson, "nonsense(", "c", "a")).startswith("error: the script did not run: ")
-        reply = asyncio.run(tutor.add_crafted_figure(lesson, EXAMPLE, "A knob on a post.", "a post with a knob on a base plate"))
+        assert asyncio.run(tutor.add_crafted_figure(lesson, EXAMPLE, "c", "", TEACHES)) == "error: alt text is required"
+        assert asyncio.run(tutor.add_crafted_figure(lesson, "nonsense(", "c", "a", TEACHES)).startswith("error: the script did not run: ")
+        reply = asyncio.run(tutor.add_crafted_figure(lesson, EXAMPLE, "A knob on a post.", "a post with a knob on a base plate", TEACHES))
         block = db.blocks(lesson)[-1]
         assert reply == f"shown as figure {block['id']}" and block["data"]["crafted"] == {"script": EXAMPLE}
         assert block["data"]["svg"].startswith('<svg xmlns="http://www.w3.org/2000/svg" class="iso-svg"')
@@ -151,14 +153,14 @@ def test_a_figure_is_redrawn_in_place_as_an_animation_and_the_old_drawing_is_kep
     try:
         course = db.create_course("Mechanics", who)["id"]
         lesson = db.create_lesson(course, "A press", "lesson", None)
-        asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><rect width="4" height="4"/></svg>', "Flat.", "a square"))
+        asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><rect width="4" height="4"/></svg>', "Flat.", "a square", TEACHES))
         old = db.blocks(lesson)[-1]
         assert asyncio.run(tutor.replace_crafted_figure(lesson, old["id"] + 1000, STAGES, "c", "a")) == f"error: no figure with id {old['id'] + 1000} in this lesson"
         assert asyncio.run(tutor.replace_crafted_figure(lesson, old["id"], STAGES, "The press closes.", "a block lifting in three steps")) == f"figure {old['id']} redrawn, animated over 3 stages"
         block = db.block(old["id"])
         assert block["markdown"] == "The press closes." and len(block["data"]["frames"]) == 3 and 'data-stages="3"' in block["data"]["svg"]
         assert block["data"]["crafted"] == {"script": STAGES} and block["data"]["previous"]["svg"] == old["data"]["svg"] and block["data"]["previous"]["caption"] == "Flat."
-        reply = asyncio.run(tutor.add_crafted_figure(lesson, STAGES, "c", "a"))
+        reply = asyncio.run(tutor.add_crafted_figure(lesson, STAGES, "c", "a", TEACHES))
         assert reply == f"shown as figure {db.blocks(lesson)[-1]['id']}, animated over 3 stages"
         assert asyncio.run(tutor.replace_crafted_figure(lesson, old["id"], EXAMPLE, "Still.", "a knob")) == f"figure {old['id']} redrawn"
         block = db.block(old["id"])

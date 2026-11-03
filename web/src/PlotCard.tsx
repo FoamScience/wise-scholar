@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from './theme'
+import { Limits } from './Figure'
+import type { Teaches } from './Figure'
 
 type Mark = { type: 'line' | 'dot' | 'bar' | 'area' | 'rule' | 'text' | 'rect'; data?: Record<string, unknown>[]; [k: string]: unknown }
 type Axis = { label?: string; domain?: [number, number]; grid?: boolean; type?: 'linear' | 'log' | 'sqrt' | 'point' | 'band' }
 type PlotSpec = { x?: Axis; y?: Axis; marks: Mark[]; height?: number }
-type PlotData = { spec: PlotSpec; alt: string }
+type PlotData = { spec: PlotSpec; alt: string; teaches?: Teaches }
 
 function palette(): string[] {
   const css = getComputedStyle(document.documentElement)
@@ -79,6 +81,7 @@ export function PlotCard(props: { id: number; title: string; data: unknown }) {
           <div className="error">{t('block.plotFailed', { error })}</div>
         </div>
       )}
+      <Limits teaches={d.teaches} />
     </section>
   )
 }

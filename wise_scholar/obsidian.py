@@ -27,7 +27,7 @@ WORDS = {
         "glossary": "Glossary", "known": "known", "learning": "learning", "seen_in": "Seen in", "flashcards": "Review cards",
         "pretest": "Opening question", "gave_up": "gave up", "solved": "solved", "unanswered": "not answered", "cast": "Cast",
         "claims": "Claims", "follows_from": "Follows from", "leads_to": "Leads to", "grounded_by": "Grounded by", "grounds": "Grounds", "contrasts": "Looks like but differs from", "taught_in": "Taught in", "checked_by": "Checked by", "held": "held", "fading": "fading", "shaky": "shaky", "unseen": "not checked yet",
-        "map": "Course map", "quick_check": "Quick check", "exercise": "Exercise", "challenge": "Task", "solution_n": "Solution {}", "unknown": "I don't know", "helper": "What you need to know",
+        "map": "Course map", "quick_check": "Quick check", "exercise": "Exercise", "challenge": "Task", "solution_n": "Solution {}", "unknown": "I don't know", "helper": "What you need to know", "limits": "Where this stops matching the real thing: {}",
     },
     "fr": {
         "course": "Cours", "modules": "Modules", "units": "Unités", "lessons": "Leçons", "cards": "Cartes", "mistakes": "Erreurs",
@@ -41,7 +41,7 @@ WORDS = {
         "glossary": "Glossaire", "known": "connu", "learning": "en cours", "seen_in": "Vu dans", "flashcards": "Cartes de révision",
         "pretest": "Question d'ouverture", "gave_up": "abandon", "solved": "résolu", "unanswered": "sans réponse", "cast": "Émission",
         "claims": "Notions", "follows_from": "Découle de", "leads_to": "Mène à", "grounded_by": "Appuyée par", "grounds": "Appuie", "contrasts": "Ressemble à mais diffère de", "taught_in": "Vue dans", "checked_by": "Vérifiée par", "held": "acquise", "fading": "à revoir", "shaky": "fragile", "unseen": "pas encore vérifiée",
-        "map": "Plan du cours", "quick_check": "Question rapide", "exercise": "Exercice", "challenge": "Tâche", "solution_n": "Solution {}", "unknown": "Je ne sais pas", "helper": "Ce qu'il faut savoir",
+        "map": "Plan du cours", "quick_check": "Question rapide", "exercise": "Exercice", "challenge": "Tâche", "solution_n": "Solution {}", "unknown": "Je ne sais pas", "helper": "Ce qu'il faut savoir", "limits": "Là où cela cesse de correspondre au réel : {}",
     },
     "ar": {
         "course": "الدورة", "modules": "الوحدات الكبرى", "units": "الوحدات", "lessons": "الدروس", "cards": "البطاقات", "mistakes": "الأخطاء",
@@ -55,7 +55,7 @@ WORDS = {
         "glossary": "المسرد", "known": "معروف", "learning": "قيد التعلم", "seen_in": "ورد في", "flashcards": "بطاقات المراجعة",
         "pretest": "سؤال البداية", "gave_up": "استسلام", "solved": "محلول", "unanswered": "بلا إجابة", "cast": "حلقة",
         "claims": "المعارف", "follows_from": "تُستنتج من", "leads_to": "تؤدي إلى", "grounded_by": "تدعمها", "grounds": "تدعم", "contrasts": "تشبه لكنها تختلف عن", "taught_in": "دُرِّست في", "checked_by": "تحقق منها", "held": "مكتسبة", "fading": "تحتاج مراجعة", "shaky": "هشّة", "unseen": "لم تُختبر بعد",
-        "map": "خريطة الدورة", "quick_check": "سؤال سريع", "exercise": "تمرين", "challenge": "مهمة", "solution_n": "الحل {}", "unknown": "لا أعرف", "helper": "ما تحتاج إلى معرفته",
+        "map": "خريطة الدورة", "quick_check": "سؤال سريع", "exercise": "تمرين", "challenge": "مهمة", "solution_n": "الحل {}", "unknown": "لا أعرف", "helper": "ما تحتاج إلى معرفته", "limits": "حيث يتوقف عن مطابقة الواقع: {}",
     },
 }
 CARD_KINDS = ("challenge", "exercise", "quiz", "speaking")
@@ -225,6 +225,11 @@ class Vault:
         items = [*lesson["blocks"], *lesson["messages"]]
         return sorted(items, key=lambda i: (i["created"], rank(i), i["id"]))
 
+    def _limits(self, data: dict) -> str:
+        """Where a figure or plot stops matching the real thing, as a line under it."""
+        limits = (data.get("teaches") or {}).get("limits")
+        return f"*{self.t['limits'].format(_plain(limits))}*\n" if limits else ""
+
     def _block_text(self, lesson: dict, block: dict) -> str:
         t, d, kind = self.t, block["data"], block["kind"]
         if kind in CARD_KINDS:
@@ -232,7 +237,7 @@ class Vault:
                 return f"### {self._card_label(block)}\n\n{self._card_body(lesson, block)}\n"
             return self.embed(("card", block["id"]))
         if kind == "figure":
-            credits = _credits(d.get("credits", []))
+            credits = self._limits(d) + _credits(d.get("credits", []))
             # An animation is printed as its stages, one after the other.
             drawings = d["frames"] if len(d.get("frames", [])) > 1 else [d["svg"]]
             if d.get("crafted"):
@@ -251,8 +256,8 @@ class Vault:
         if kind == "plot":
             png = f"{self.root}/attachments/plot-{block['id']}.png"
             if png in self.files:
-                return f"![[{png}]]\n*{block['markdown']}*\n"
-            return f"**{block['markdown']}**\n\n" + _code(json.dumps(d["spec"], ensure_ascii=False, indent=2), "json")
+                return f"![[{png}]]\n*{block['markdown']}*\n" + self._limits(d)
+            return f"**{block['markdown']}**\n\n" + _code(json.dumps(d["spec"], ensure_ascii=False, indent=2), "json") + self._limits(d)
         if kind == "reading":
             gloss = "\n".join(f"- **{g['word']}**: {g['meaning']}" for g in d.get("glossary", []) if "word" in g and "meaning" in g)
             return f"### {d['title']}\n\n{block['markdown']}\n" + (f"\n**{t['glossary']}**\n{gloss}\n" if gloss else "")

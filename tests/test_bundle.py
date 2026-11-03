@@ -41,7 +41,8 @@ def _authored(places) -> dict:
     db.add_block(lesson_id, "prose", "Lofting joins **sections**.")
     db.add_block(lesson_id, "quiz", "Which call lofts wires?", {"card_id": card, "kind": "choice", "options": ["ThruSections", "MakePipe"],
                                                                  "answer": "MakePipe", "correct": False, "confidence": 0.9})
-    db.add_block(lesson_id, "figure", "Two wires", {"svg": SVG, "alt": "two wires", "credits": [], "previous": {"svg": SVG}})
+    db.add_block(lesson_id, "figure", "Two wires", {"svg": SVG, "alt": "two wires", "credits": [], "previous": {"svg": SVG},
+                                                 "teaches": {"claim": "A loft needs two wires.", "notice": "The two outlines.", "extra": "x"}})
     workspace = db.workspace(course["slug"])
     course_files.write_text(workspace, "loft/new.py", "print('mine, solved')")
     db.add_block(lesson_id, "exercise", "Loft it", {"files": ["loft/new.py"], "run": "python loft/new.py", "attempts": ["done"], "solved": True,
@@ -102,6 +103,7 @@ def test_a_published_version_carries_the_content_and_none_of_the_author(places):
     blocks = db.blocks(new_lesson["id"])
     new_card = db.card(blocks[1]["data"]["card_id"])
     assert new_card["course_id"] == course["id"] and new_card["key"] == db.card(a["card"])["key"]
+    assert blocks[2]["data"]["teaches"] == {"claim": "A loft needs two wires.", "notice": "The two outlines.", "misconception": "", "limits": ""}
     assert all(b["data"]["imported"] for b in blocks if b["data"]) and db.rows("SELECT * FROM messages WHERE lesson_id = ?", new_lesson["id"]) == []
     assert db.facts(course["id"]) == [] and db.rows("SELECT * FROM answers WHERE card_id = ?", new_card["id"]) == []
     workspace = db.WORKSPACE / course["slug"]

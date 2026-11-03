@@ -504,9 +504,12 @@ def unpack(data: bytes) -> tuple[str, Manifest, dict[str, bytes]]:
 def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
     """A block from someone else, made safe to show and to hand to the tutor."""
     data = dict(block.data or {})
+    teaches = data.pop("teaches", None)
     if block.kind == "figure":
         data = {"svg": figures.clean(str(data.get("svg", "")), limit=FIGURE_LIMIT), "alt": str(data.get("alt", ""))[:2000],
                 "credits": data.get("credits") if isinstance(data.get("credits"), list) else []}
+    if block.kind in ("figure", "plot") and isinstance(teaches, dict):
+        data["teaches"] = {k: str(teaches.get(k, ""))[:figures.TEACHES_CHARS] for k in figures.Teaches.model_fields}
     if block.kind == "quiz":
         key = data.pop("card", None)
         if key not in card_ids:

@@ -2627,7 +2627,8 @@ pre:has(> .mermaid) {
   display: block;
 }
 
-.figure .caption {
+.figure .caption,
+.limits {
   font-size: var(--text-sm);
   color: var(--muted);
 }

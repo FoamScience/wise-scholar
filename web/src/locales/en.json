@@ -149,6 +149,7 @@
       "prose": "Read",
       "example": "Example",
       "figure": "Figure",
+      "limits": "Where this stops matching the real thing: {{limits}}",
       "restoreDrawing": "Restore the earlier drawing",
       "backToRedrawn": "Back to the redrawn figure",
       "stage": "Stage {{n}}",

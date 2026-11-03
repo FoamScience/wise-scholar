@@ -1,9 +1,11 @@
 """Figures the tutor draws as SVG: an allowlist keeps them to shapes, paths and text before they are shown inline.
-A `<use href="art:...">` names an icon of an installed art pack, inlined by `art.inline` after the scrub."""
+A `<use href="art:...">` names an icon of an installed art pack, inlined by `art.inline` after the scrub.
+`Teaches` is the teaching spec every figure and plot carries."""
 import re
 from xml.etree import ElementTree as ET
 
 from defusedxml import ElementTree as safe
+from pydantic import BaseModel, Field
 
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK_NS = "http://www.w3.org/1999/xlink"
@@ -14,6 +16,7 @@ ELEMENTS = {
 }
 MAX_CHARS = 60_000
 MAX_DEPTH = 64
+TEACHES_CHARS = 1000
 LOCAL_REF = re.compile(r"url\(\s*#[-\w]+\s*\)")
 # A SMIL animation may only move, size, colour or fade a shape, on a fixed clock: no event triggers, no links.
 ANIMATED = {
@@ -21,6 +24,22 @@ ANIMATED = {
     "stroke-opacity", "stroke-width", "stroke-dashoffset", "font-size",
 }
 ANIMATE_ATTRIBUTES = {"attributeName", "values", "keyTimes", "keySplines", "calcMode", "dur", "repeatCount", "from", "to", "by", "fill"}
+
+
+class Teaches(BaseModel):
+    """What a figure or plot is for: the claim it makes visible, what shows it, the wrong belief it breaks, its limits."""
+    claim: str = Field(max_length=TEACHES_CHARS)
+    notice: str = Field(max_length=TEACHES_CHARS)
+    misconception: str = Field("", max_length=TEACHES_CHARS)
+    limits: str = Field("", max_length=TEACHES_CHARS)
+
+
+def teaching(teaches: Teaches) -> dict:
+    """The teaching spec as block data; raises ValueError without a claim or what to notice."""
+    spec = {k: v.strip() for k, v in teaches.model_dump().items()}
+    if not spec["claim"] or not spec["notice"]:
+        raise ValueError("teaches needs the claim and what the learner should notice")
+    return spec
 
 
 def clean(svg: str, limit: int = MAX_CHARS) -> str:

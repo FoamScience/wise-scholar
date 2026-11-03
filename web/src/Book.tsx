@@ -11,7 +11,7 @@ import { PlacementAreas } from './Areas'
 import type { Area, Block, ChallengeData, Concept, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
 import { Correction } from './Diff'
 import type { Entry } from './Errors'
-import { Credits, Drawing } from './Figure'
+import { Credits, Drawing, Limits } from './Figure'
 import type { FigureData } from './Figure'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
 import { day, lookup, percent } from './i18n'
@@ -264,6 +264,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
           <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram && !d.crafted} />
         )}
         {block.markdown && <div className="caption">{block.markdown}</div>}
+        <Limits teaches={d.teaches} />
         <Credits credits={d.credits} />
       </Card>
     )
