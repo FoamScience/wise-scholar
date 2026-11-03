@@ -36,7 +36,8 @@ def _authored(places) -> dict:
     db.add_block(begun, "prose", "Half a lesson on fitting.")
     db.add_card(course_id, fitting["id"], "Half-taught?", "open", [], "a", "e", scheduled=True)
     lesson_id = db.create_lesson(course_id, "Lofting", "lesson", lofting["id"])
-    card = db.add_card(course_id, lofting["id"], "Which call lofts wires?", "choice", ["ThruSections", "MakePipe"], "ThruSections", "It lofts.", scheduled=True)
+    card = db.add_card(course_id, lofting["id"], "Which call lofts wires?", "choice", ["ThruSections", "MakePipe"], "ThruSections", "It lofts.", scheduled=True,
+                       misconceptions={"MakePipe": "a pipe sweep joins sections"})
     db.conn.execute("INSERT INTO answers (card_id, answer, confidence, correct) VALUES (?, 'MakePipe', 0.9, 0)", (card,))
     db.add_block(lesson_id, "prose", "Lofting joins **sections**.")
     db.add_block(lesson_id, "quiz", "Which call lofts wires?", {"card_id": card, "kind": "choice", "options": ["ThruSections", "MakePipe"],
@@ -103,6 +104,7 @@ def test_a_published_version_carries_the_content_and_none_of_the_author(places):
     blocks = db.blocks(new_lesson["id"])
     new_card = db.card(blocks[1]["data"]["card_id"])
     assert new_card["course_id"] == course["id"] and new_card["key"] == db.card(a["card"])["key"]
+    assert new_card["misconceptions"] == {"MakePipe": "a pipe sweep joins sections"}
     assert blocks[2]["data"]["teaches"] == {"claim": "A loft needs two wires.", "notice": "The two outlines.", "misconception": "", "limits": ""}
     assert all(b["data"]["imported"] for b in blocks if b["data"]) and db.rows("SELECT * FROM messages WHERE lesson_id = ?", new_lesson["id"]) == []
     assert db.facts(course["id"]) == [] and db.rows("SELECT * FROM answers WHERE card_id = ?", new_card["id"]) == []
@@ -118,6 +120,9 @@ def test_the_same_content_packs_to_the_same_bytes_and_a_fork_credits_its_origin(
     a = _authored(places)
     manifest, assets, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
     assert bundle.pack(manifest, assets) == bundle.pack(manifest, assets)
+    # A card naming no beliefs packs as cards did before beliefs existed, so its unit's hash, and an upgrade over it, holds.
+    assert [c["misconceptions"] for c in manifest["cards"]] == [[{"option": "MakePipe", "belief": "a pipe sweep joins sections"}]]
+    assert bundle._beliefs({"misconceptions": "{}"}) == {}
     first = bundle.publish(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], **places)
     version_hash, m, assets = bundle.unpack((places["store"] / f"{first['hash']}.zip").read_bytes())
     reader = db.conn.execute("INSERT INTO profiles (name) VALUES ('Forker')").lastrowid

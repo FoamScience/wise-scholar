@@ -59,6 +59,12 @@ class Capstone(BaseModel):
     milestones: list[Milestone] = Field(max_length=100)
 
 
+class Misconception(BaseModel):
+    """A wrong option and the belief that leads to it; a pair, not a mapping, so an edit to the option's text reaches both."""
+    option: str = Field(max_length=20000)
+    belief: str = Field(max_length=2000)
+
+
 class Card(BaseModel):
     key: KeyStr
     unit: KeyStr | None = None
@@ -72,6 +78,7 @@ class Card(BaseModel):
     lemma: str | None = Field(default=None, max_length=200)
     lang: str | None = Field(default=None, max_length=20)
     translation: str = Field(default="", max_length=20000)
+    misconceptions: list[Misconception] = Field(default=[], max_length=50)
 
 
 class Block(BaseModel):
@@ -287,7 +294,7 @@ def build(
     card_rows = [
         {"key": k["key"], "unit": unit_keys.get(k["concept_id"]), "question": k["question"], "kind": k["kind"],
          "options": json.loads(k["options"]), "answer_key": k["answer_key"], "explanation": k["explanation"],
-         "scheduled": bool(k["scheduled"]), "vocab": bool(k["vocab"]), "lemma": k["lemma"], "lang": k["lang"], "translation": k["translation"] or ""}
+         "scheduled": bool(k["scheduled"]), "vocab": bool(k["vocab"]), "lemma": k["lemma"], "lang": k["lang"], "translation": k["translation"] or ""} | _beliefs(k)
         for k in cards
     ]
     unit_rows = [
@@ -343,6 +350,13 @@ COURSE_FIELDS = ("topic", "details", "cover_alt")
 _NOT_TEXT = ("svg", "card")  # a figure's drawing and a quiz's card key are not read or edited as text
 
 
+def _beliefs(card: dict) -> dict:
+    """A card's wrong-option beliefs as manifest pairs; only a card that names some carries the field, so a unit
+    without any hashes as it did before beliefs existed and an upgrade keeps it."""
+    beliefs = json.loads(card["misconceptions"])
+    return {"misconceptions": [{"option": o, "belief": b} for o, b in beliefs.items()]} if beliefs else {}
+
+
 def _strings(value) -> list[str]:
     if isinstance(value, str):
         return [value]
@@ -372,7 +386,7 @@ def _json(text: str) -> bool:
 
 
 def _card_text(card: dict) -> dict:
-    return {k: card[k] for k in ("question", "options", "answer_key", "explanation", "translation")}
+    return {k: card[k] for k in ("question", "options", "answer_key", "explanation", "translation", "misconceptions") if k in card}
 
 
 def texts(manifest: dict, assets: dict[str, bytes]) -> dict[tuple[str, str], str]:
@@ -541,10 +555,10 @@ def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | No
         if units is not None and k.unit not in units:
             continue
         card_ids[k.key] = db.conn.execute(
-            "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, origin, key) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported', ?)",
+            "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, "
+            "misconceptions, origin, key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported', ?)",
             (course_id, unit_ids.get(k.unit), k.question, k.kind, json.dumps(k.options), k.answer_key, k.explanation,
-             int(k.scheduled), int(k.vocab), k.lemma, k.lang, k.translation, k.key),
+             int(k.scheduled), int(k.vocab), k.lemma, k.lang, k.translation, json.dumps({m.option: m.belief for m in k.misconceptions}), k.key),
         ).lastrowid
     for lesson in manifest.lessons:
         if units is not None and lesson.unit not in units:

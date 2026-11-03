@@ -1545,6 +1545,7 @@ async def pose_quiz(
     pretest: bool = False,
     form: str = "",
     translation: str = "",
+    misconceptions: dict[str, str] | None = None,
 ) -> str:
     """Show a quick check that the learner answers together with how sure they are.
 
@@ -1562,11 +1563,17 @@ async def pose_quiz(
     the lesson rules say. form: for an opening, which of the lesson rules' forms this is.
     translation: when the question is written in the language being learned, what it asks in the learner's
     own language; the options stay as they are. The learner opens it under the question when they need it.
+    misconceptions: for a choice, each wrong option that a plausible wrong belief leads to, mapped to that belief
+    in a few words ("a heavier object falls faster"). Write the options so each wrong one comes from such a
+    belief; a learner who picks it is told the belief, and it is kept in their error notebook.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     translation = translation.strip()
+    misconceptions = {o: b.strip() for o, b in (misconceptions or {}).items() if b.strip()}
+    if misconceptions and (kind != "choice" or not set(misconceptions) <= set(options) - {answer_key}):
+        return "error: misconceptions maps wrong options of a choice quiz, each exactly as written, to the belief behind it"
     most = PLACEMENT_OPTIONS if lesson["phase"] == "placement" else 5
     if kind == "choice" and not (2 <= len(options) <= most and answer_key in options):
         return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
@@ -1581,6 +1588,7 @@ async def pose_quiz(
     card_id = db.add_card(
         lesson["course_id"], None if pretest else lesson["concept_id"], question, kind, options, answer_key, explanation,
         scheduled=lesson["phase"] != "placement" and not pretest and not prepared(lesson), translation=translation,
+        misconceptions=misconceptions,
     )
     if lemma:
         lemma = simplemma.lemmatize(lemma, lang=lesson["lang"]).lower()
@@ -1591,8 +1599,8 @@ async def pose_quiz(
     if number:
         shown.update({"number": number, "of": lesson["questions"]})
     if keyed(lesson):
-        # Material for the teacher, or a card answered offline: the key and the explanation come with it.
-        shown.update({"answer_key": answer_key, "explanation": explanation})
+        # Material for the teacher, or a card answered offline: the key, the explanation and the beliefs come with it.
+        shown.update({"answer_key": answer_key, "explanation": explanation} | ({"misconceptions": misconceptions} if misconceptions else {}))
     block = db.add_block(lesson_id, "quiz", question, shown)
     _show(lesson, block)
     return f"shown as quiz {block['id']}; {'go on with the unit' if lesson['batch'] else 'end the turn and wait for the answer'}"
@@ -1646,8 +1654,10 @@ async def pose_sort(lesson_id: int, question: str, categories: list[str], items:
 
 
 @mcp.tool()
-async def grade_quiz(quiz_id: int, correct: bool, feedback: str) -> str:
-    """Grade the learner's answer to an open quiz. Judge the substance against the model answer, not the wording."""
+async def grade_quiz(quiz_id: int, correct: bool, feedback: str, misconception: str = "") -> str:
+    """Grade the learner's answer to an open quiz. Judge the substance against the model answer, not the wording.
+    misconception: for a wrong answer, the belief that seems to produce it, in a few words, when the answer shows
+    one; it is kept in the learner's error notebook. Leave it empty for a slip or a gap with no belief behind it."""
     block = db.block(quiz_id)
     if not block or block["kind"] != "quiz":
         return f"error: no quiz with id {quiz_id}"
@@ -1656,7 +1666,7 @@ async def grade_quiz(quiz_id: int, correct: bool, feedback: str) -> str:
         return "refused: the learner has not answered yet"
     if data.get("correct") is not None:
         return "refused: this quiz is already graded"
-    result = quiz.grade(data["answer_id"], correct)
+    result = quiz.grade(data["answer_id"], correct, misconception)
     block = db.set_block_data(quiz_id, {**data, **result, "feedback": feedback})
     lesson = db.lesson(block["lesson_id"])
     _show(lesson, block, "block.updated")

@@ -29,10 +29,11 @@ export type QuizData = {
   confident_miss?: boolean
   answer_key?: string
   explanation?: string
+  misconceptions?: Record<string, string>
   feedback?: string
 }
 
-export type Graded = { correct: boolean; confident_miss: boolean; answer_key: string; explanation: string; misplaced?: string[] }
+export type Graded = { correct: boolean; confident_miss: boolean; answer_key: string; explanation: string; misplaced?: string[]; misconception?: string }
 type DueCard = {
   id: number
   topic: string
@@ -215,6 +216,7 @@ export function QuizResult(props: { answer: string; confidence: number; result: 
         <div className="label">{result.correct ? t('quiz.correct') : t('quiz.notQuite')}</div>
         {!result.correct && !props.items && <Markdown>{t('quiz.answerKey', { answer: result.answer_key })}</Markdown>}
         <Markdown>{props.feedback || result.explanation}</Markdown>
+        {result.misconception && <p className="belief">{t('quiz.belief', { belief: result.misconception })}</p>}
         {result.confident_miss && (
           <p>{t('quiz.confidentMiss', { percent: percent(props.confidence) })}</p>
         )}
@@ -298,6 +300,7 @@ export function QuizCard(props: {
                 {(d.options as string[]).map((o) => (
                   <li key={o} className={o === d.answer_key ? 'picked' : undefined}>
                     <Markdown>{o}</Markdown>
+                    {d.misconceptions?.[o] && <p className="belief">{t('quiz.belief', { belief: d.misconceptions[o] })}</p>}
                   </li>
                 ))}
               </ul>
@@ -470,6 +473,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
             {result && (
               <>
                 {!result.correct && <Markdown>{result.explanation}</Markdown>}
+                {result.misconception && <p className="belief">{t('quiz.belief', { belief: result.misconception })}</p>}
                 <div className="row">
                   <button className="btn primary" onClick={next}>
                     {t('common.next')}

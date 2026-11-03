@@ -2084,3 +2084,44 @@ def test_each_turn_records_its_tokens_and_cost_against_its_lesson_and_course(mon
 
     db.delete_course(course)
     assert app.list_usage(who) == [] and db.row("SELECT COUNT(*) AS n FROM usage WHERE course_id = ?", course)["n"] == 0
+
+
+def test_a_wrong_option_carries_the_belief_behind_it_into_the_feedback_the_notebook_and_the_next_lesson(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, obsidian, tutor
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Believer')").lastrowid
+    course = db.create_course("Physics", who)["id"]
+    db.set_concepts(course, [{"title": "Motion", "concepts": ["Falling"], "known": []}])
+    falling = db.concepts(course)[0]
+    lesson = db.create_lesson(course, "Falling", "lesson", falling["id"])
+    options = ["Both land together", "The heavy one first"]
+    pose = lambda **k: asyncio.run(tutor.pose_quiz(lesson, "Which lands first in a vacuum?", "choice", options, "Both land together", "Gravity accelerates both alike.", **k))  # noqa: E731
+    assert pose(misconceptions={"Both land together": "x"}).startswith("error: misconceptions maps wrong options")
+    assert pose(misconceptions={"The light one first": "x"}).startswith("error: misconceptions maps wrong options")
+    assert pose(misconceptions={"The heavy one first": "heavier objects fall faster"}).startswith("shown as quiz ")
+    block = db.blocks(lesson)[-1]
+    assert "misconceptions" not in block["data"] and db.card(block["data"]["card_id"])["misconceptions"] == {"The heavy one first": "heavier objects fall faster"}
+
+    asyncio.run(app.answer_quiz(block["id"], app.QuizAnswer(answer="The heavy one first", confidence=0.9)))
+    graded = db.block(block["id"])["data"]
+    assert graded["misconception"] == "heavier objects fall faster" and "from the belief 'heavier objects fall faster'" in turns[-1]
+    entry = db.errors(who)[-1]
+    assert entry["misconception"] == "heavier objects fall faster"
+    assert app._record_line(db.block(block["id"])).endswith("| belief: heavier objects fall faster")
+    card_id = block["data"]["card_id"]
+    db.add_error(who, course, "quiz", "q", "again", "right", card_id=card_id)
+    assert db.errors(who)[-1]["said"] == "again" and db.errors(who)[-1]["misconception"] == "heavier objects fall faster"
+
+    assert "from the belief 'heavier objects fall faster'" in app._notebook_brief(who, course)
+    vault = obsidian.Vault(course).build()
+    assert any(b"**Behind this answer**: heavier objects fall faster" in content for content in vault.values())
+
+    asyncio.run(tutor.pose_quiz(lesson, "Why does the feather lag in air?", "open", [], "Drag", "Air resists."))
+    open_block = db.blocks(lesson)[-1]
+    asyncio.run(app.answer_quiz(open_block["id"], app.QuizAnswer(answer="It is lighter", confidence=0.9)))
+    assert asyncio.run(tutor.grade_quiz(open_block["id"], False, "Not the weight.", " lighter things fall slower ")).startswith("graded")
+    assert db.block(open_block["id"])["data"]["misconception"] == "lighter things fall slower" and db.errors(who)[0]["misconception"] == "lighter things fall slower"
