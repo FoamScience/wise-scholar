@@ -53,7 +53,7 @@ def lock(pdf: bytes) -> bytes:
     return out.getvalue()
 
 
-async def _launch(chromium):
+async def launch(chromium):
     from playwright.async_api import Error
 
     try:
@@ -80,7 +80,7 @@ async def plots(course_id: int, profile_id: int, block_ids: list[int]) -> dict[i
         return {}
     out = {}
     async with _exporting, async_playwright() as p:
-        browser = await _launch(p.chromium)
+        browser = await launch(p.chromium)
         try:
             context = await browser.new_context(device_scale_factor=2)
             await context.add_init_script(f"localStorage.setItem('wise-scholar.profile', '{int(profile_id)}'); localStorage.setItem('theme', 'light')")
@@ -105,7 +105,7 @@ async def render(course_id: int, profile_id: int, theme: str, path: str | None =
     from playwright.async_api import async_playwright
 
     async with _exporting, async_playwright() as p:
-        browser = await _launch(p.chromium)
+        browser = await launch(p.chromium)
         try:
             context = await browser.new_context()
             # The page reads its profile, and through it the language, and its theme from the browser's storage.
