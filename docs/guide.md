@@ -112,6 +112,8 @@ make pdf
 
 installs Playwright and a headless Chromium, about 110 MB, and the book page gets a "Download PDF" button: the server prints that page itself. An installed Google Chrome is used when the Chromium download is skipped. Without `make pdf` the button opens the browser's print dialog instead; choose "Save as PDF" there.
 
+The same browser also looks at every figure the tutor draws before you see it, laid out at the lesson's width: a figure with nothing drawn, a label past its edge, labels on top of each other or labels too small to read goes back to the tutor with the reason, and the tutor draws it again. Without `make pdf` figures go out unchecked.
+
 The downloaded file is encrypted (AES-256) and opens without a password; readers that honour PDF permissions then allow printing only: no copying, text extraction, editing or annotation. That lock is advisory. A tool that ignores the permission bits still reads the text, so it keeps honest readers out, not determined ones. The browser's own "Save as PDF" is not locked.
 
 Under the topic on the start page you can hand the course its materials before the interview: files, or the address of a PDF, EPUB or web page that the server fetches (public web addresses on ports 80 and 443, connecting to the address it checked; 50 MB at most). The router's outer address is the one public address it cannot tell apart. They land in the course's sources, the interview plans around them and lessons read them a section at a time.

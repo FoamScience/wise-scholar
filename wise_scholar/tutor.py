@@ -16,7 +16,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.utilities.types import Image
 from pydantic import BaseModel
 
-from . import art, challenge, course_files, crafted, db, diagrams, figures, handwork, hub, plots, quiz, sandbox, search, speech, vocab, widgets
+from . import art, challenge, course_files, crafted, db, diagrams, figcheck, figures, handwork, hub, plots, quiz, sandbox, search, speech, vocab, widgets
 from .backends import TURN_HEADER
 from .playbooks import PLAYBOOKS, check_ranking, describe
 
@@ -517,6 +517,8 @@ async def add_figure(lesson_id: int, svg: str, caption: str, alt: str, teaches: 
     #e1f0ee, amber #6b3a00, amber tint #fbebd3, line #8794a1; text and outlines in currentColor so both themes
     read it. No script, style element, image, foreignObject or external links; they are stripped or refused.
     caption: one sentence under the figure. alt: what the figure shows, for a reader who cannot see it.
+    Before showing it the server lays it out 600 px wide and refuses it, saying why, when nothing is drawn, a label
+    runs past the viewBox, two labels overlap, or a label is under 9 px tall.
     Wrap each part the lesson text talks about in `<g data-part="id">` (a short lowercase id); the text names it as
     `[left ventricle](#part-id)`, and pointing at the term or the part lights up both while the other parts dim.
 
@@ -533,6 +535,8 @@ async def add_figure(lesson_id: int, svg: str, caption: str, alt: str, teaches: 
         data = _figure_data(svg, alt) | {"teaches": figures.teaching(teaches)}
     except ValueError as e:
         return f"error: {e}"
+    if found := await figcheck.problems([data["svg"]]):
+        return f"error: {figcheck.report(found)}"
     block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
     block = db.set_block_data(block["id"], {**data, "svg": figures.prefix_ids(data["svg"], f"f{block['id']}-")})
     _show(lesson, block)
@@ -551,6 +555,8 @@ async def replace_figure(lesson_id: int, block_id: int, svg: str, caption: str, 
         data = _figure_data(svg, alt) | _kept_teaches(block, teaches)
     except ValueError as e:
         return f"error: {e}"
+    if found := await figcheck.problems([data["svg"]]):
+        return f"error: {figcheck.report(found)}"
     # The drawing being replaced is kept, so the learner can go back to it.
     previous = {k: v for k, v in block["data"].items() if k not in ("previous", "restored")} | {"caption": block["markdown"]}
     block = db.set_block(block_id, caption, {**data, "svg": figures.prefix_ids(data["svg"], f"f{block_id}-"), "previous": previous})
@@ -654,6 +660,8 @@ async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str
         data = await _crafted_data(lesson, script, alt) | {"teaches": spec}
     except ValueError as e:
         return f"error: {e}"
+    if found := await _crafted_problems(data):
+        return f"error: {figcheck.report(found)}"
     block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
     block = db.set_block_data(block["id"], _prefixed(block["id"], data))
     _show(lesson, block)
@@ -680,6 +688,8 @@ async def replace_crafted_figure(lesson_id: int, block_id: int, script: str, cap
         data = await _crafted_data(lesson, script, alt) | kept
     except ValueError as e:
         return f"error: {e}"
+    if found := await _crafted_problems(data):
+        return f"error: {figcheck.report(found)}"
     previous = {k: v for k, v in block["data"].items() if k not in ("previous", "restored")} | {"caption": block["markdown"]}
     block = db.set_block(block_id, caption, _prefixed(block_id, data) | {"previous": previous})
     _show(lesson, block, "block.updated")
@@ -694,6 +704,11 @@ async def _crafted_data(lesson: dict, script: str, alt: str) -> dict:
         return _figure_data(stages[0], alt, limit=crafted.MAX_SVG) | {"crafted": {"script": script}}
     data = _figure_data(crafted.animate(stages), alt, limit=crafted.MAX_SVG * len(stages))
     return data | {"crafted": {"script": script}, "frames": [figures.clean(s, limit=crafted.MAX_SVG) for s in stages]}
+
+
+async def _crafted_problems(data: dict) -> list[str]:
+    """A crafted figure's stages checked one by one; its engraved face labels are small on purpose."""
+    return await figcheck.problems(data.get("frames") or [data["svg"]], small_text=False)
 
 
 def _prefixed(block_id: int, data: dict) -> dict:
