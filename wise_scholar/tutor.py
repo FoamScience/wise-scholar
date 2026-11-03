@@ -792,7 +792,11 @@ async def add_widget(lesson_id: int, title: str, spec: dict, alt: str, teaches: 
     "readouts": [{"label": "Output turns per input turn", "expr": "-12/teeth", "unit"?: "turns", "digits"?: 2}, ...]
     (1 to 4; expr uses the slider names, numbers, + - * / ** and the plot functions), "plot"?: {"x": {"label",
     "domain"?}, "y": {"label", "domain"?}, "marks": [{"type": "line"|"area", "fn": "a*x**2", "domain": [-3, 3],
-    "label"?}, {"type": "rule", "x"|"y": "expr of the sliders"}]} (1 to 4 marks; fn uses x and the slider names)}.
+    "label"?}, {"type": "rule", "x"|"y": "expr of the sliders"}]} (1 to 4 marks; fn uses x and the slider names),
+    "figure"?: an SVG drawn as for add_figure whose numbers follow the sliders: write `{{expr}}` in an attribute value
+    (`r="{{teeth/4}}"`, `transform="rotate({{360/teeth}} 50 50)"`) or in text, `{{expr|2}}` to show it with two
+    decimals; 1 to 30 places}. The drawing is checked as add_figure's is, at the starting setting and with every
+    slider at its least and at its most.
     The server evaluates every setting; you never compute values yourself. The y range stays fixed across settings
     unless you give one. Start the sliders where the learner's prediction can be checked with one move; the first
     comparison changes one slider. alt: what the widget shows and what moving each slider changes. teaches as for
@@ -811,6 +815,11 @@ async def add_widget(lesson_id: int, title: str, spec: dict, alt: str, teaches: 
         resolved = widgets.resolve(spec)
     except ValueError as e:
         return f"error: {e}"
+    if "figure" in resolved:
+        settings = widgets.extremes(resolved)
+        drawings, names = [widgets.filled(resolved, at) for at in settings], [f"with {widgets.setting(resolved, at)}" for at in settings]
+        if found := await figcheck.problems(drawings, where=names):
+            return f"error: {figcheck.report(found)}"
     block = db.add_block(lesson_id, "widget", title, {"spec": spec, "widget": resolved, "alt": alt.strip(), "teaches": purpose})
     _show(lesson, block)
     return f"shown as widget {block['id']}"

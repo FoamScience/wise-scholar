@@ -238,6 +238,18 @@ class Vault:
         limits = (data.get("teaches") or {}).get("limits")
         return f"*{self.t['limits'].format(_plain(limits))}*\n" if limits else ""
 
+    def _widget_drawing(self, block: dict, data: dict) -> str:
+        """A widget's drawing at its starting setting, embedded as a figure's is; nothing for a widget without one."""
+        w = data["widget"]
+        if "figure" not in w:
+            return ""
+        svg = widgets.filled(w, [c["start"] for c in w["controls"]])
+        if self.inline:
+            return f"![{_alt(data.get('alt', ''))}](data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()})\n"
+        path = f"{self.root}/attachments/widget-{block['id']}.svg"
+        self.files[path] = svg.encode()
+        return f"![[{path}]]\n"
+
     def _widget_text(self, title: str, data: dict) -> str:
         """A widget on paper: its sliders with their ranges, and the readouts at the starting setting."""
         w = data["widget"]
@@ -281,7 +293,7 @@ class Vault:
                 return f"![[{png}]]\n*{block['markdown']}*\n" + self._limits(d)
             return f"**{block['markdown']}**\n\n" + _code(json.dumps(d["spec"], ensure_ascii=False, indent=2), "json") + self._limits(d)
         if kind == "widget":
-            return self._widget_text(block["markdown"], d) + self._limits(d)
+            return self._widget_drawing(block, d) + self._widget_text(block["markdown"], d) + self._limits(d)
         if kind == "reading":
             gloss = "\n".join(f"- **{g['word']}**: {g['meaning']}" for g in d.get("glossary", []) if "word" in g and "meaning" in g)
             return f"### {d['title']}\n\n{block['markdown']}\n" + (f"\n**{t['glossary']}**\n{gloss}\n" if gloss else "")

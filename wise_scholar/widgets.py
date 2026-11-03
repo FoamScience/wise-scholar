@@ -1,11 +1,13 @@
-"""Widgets the learner operates: sliders that set a model's inputs, readouts and a plot that follow them. The tutor
-states the model as expressions; the server evaluates every reachable setting with the plots evaluator, so the
-browser only looks values up and runs nothing the tutor wrote."""
+"""Widgets the learner operates: sliders that set a model's inputs, readouts, a plot and a drawing that follow them.
+The tutor states the model as expressions; the server evaluates every reachable setting with the plots evaluator, so
+the browser only looks values up and runs nothing the tutor wrote. A drawing is a scrubbed SVG whose numbers the
+browser fills in from the setting's state."""
+import hashlib
 import itertools
 import math
 import re
 
-from . import plots
+from . import figures, plots
 
 MAX_CONTROLS = 3
 MAX_STEPS = 101
@@ -15,6 +17,10 @@ MAX_MARKS = 4
 SAMPLES = 100
 # Every sampled curve value of every setting together; it bounds the block sent to the browser.
 MAX_POINTS = 40_000
+# Places in a drawing that follow the sliders: `{{expr}}` in the tutor's SVG, a token after the scrub.
+MAX_PLACES = 30
+PLACE = re.compile(r"\{\{([^{}]{1,200})\}\}")
+TOKEN = re.compile(r"__w(\d+)__")
 NAME = re.compile(r"^[a-z][a-z0-9_]{0,15}$")
 RESERVED = {"x", *plots.NAMES, *plots.FUNCTIONS}
 
@@ -37,11 +43,16 @@ def start_index(widget: dict) -> int:
     return index_of(widget, [c["start"] for c in widget["controls"]])
 
 
+def setting(widget: dict, at: list[int]) -> str:
+    """The sliders' values at these positions, in words."""
+    return ", ".join(f"{c['label']} = {c['values'][p]:g}" + (f" {c['unit']}" if c["unit"] else "") for c, p in zip(widget["controls"], at))
+
+
 def describe(widget: dict, at: list[int]) -> str:
     """One setting in words, for the tutor: each slider's value, then what the readouts showed."""
     def unit(u: str) -> str:
         return f" {u}" if u else ""
-    sliders = ", ".join(f"{c['label']} = {c['values'][p]:g}{unit(c['unit'])}" for c, p in zip(widget["controls"], at))
+    sliders = setting(widget, at)
     shown = widget["states"][index_of(widget, at)]["readouts"]
     readouts = []
     for r, value in zip(widget["readouts"], shown):
@@ -125,6 +136,43 @@ def _axis(raw) -> dict:
     return {k: raw[k] for k in ("label", "domain", "type") if k in raw}
 
 
+def _drawing(svg, names: tuple[str, ...]) -> tuple[str, list]:
+    """The drawing scrubbed with a token for each `{{expr}}`, and the expressions in token order."""
+    if not isinstance(svg, str):
+        raise ValueError("figure must be an SVG string")
+    if TOKEN.search(svg):
+        raise ValueError("figure may not contain text like __w0__; the server uses it to mark the places")
+    exprs = PLACE.findall(svg)
+    if not 1 <= len(exprs) <= MAX_PLACES:
+        raise ValueError(f"figure needs 1 to {MAX_PLACES} places written {{{{expr}}}} that follow the sliders")
+    places = iter(range(len(exprs)))
+    template = figures.clean(PLACE.sub(lambda m: f"__w{next(places)}__", svg))
+    if missing := [exprs[i] for i in range(len(exprs)) if f"__w{i}__" not in template]:
+        raise ValueError(f"the places {missing} sit where the figure's scrub removed them; put places only in attribute values and text")
+    # Ids made unique to this drawing, so two widgets or a widget and a figure on one page stay apart.
+    template = figures.prefix_ids(template, f"w{hashlib.sha256(template.encode()).hexdigest()[:8]}-")
+    return template, [_place(e, names) for e in exprs]
+
+
+def _place(text: str, names: tuple[str, ...]):
+    """One place's value at a setting: `expr`, or `expr|2` rounded to two decimals for a number shown as text."""
+    expr, _, digits = text.rpartition("|") if re.search(r"\|\s*\d\s*$", text) else (text, "", "")
+    fn = plots.compile_fn(expr, names)
+    if not digits:
+        return fn
+
+    def rounded(*setting: float) -> float:
+        value = fn(*setting)
+        return round(value, int(digits)) if math.isfinite(value) else value
+    return rounded
+
+
+def filled(widget: dict, at: list[int]) -> str:
+    """The widget's drawing at one setting, as the browser shows it."""
+    values = widget["states"][index_of(widget, at)]["figure"]
+    return TOKEN.sub(lambda m: f"{values[int(m.group(1))] or 0:g}", widget["figure"])
+
+
 def _heights(marks: list[dict], states: list[dict]) -> list[float]:
     ys = []
     for state in states:
@@ -147,6 +195,7 @@ def resolve(spec: dict) -> dict:
     if plot is not None and not isinstance(plot, dict):
         raise ValueError("plot must be an object")
     marks = _marks(plot.get("marks"), names) if plot else []
+    drawing, places = _drawing(spec["figure"], names) if "figure" in spec else (None, [])
     settings = math.prod(len(c["values"]) for c in controls)
     if settings * SAMPLES * sum(m["type"] != "rule" for m in marks) > MAX_POINTS:
         raise ValueError(f"the curves over every setting pass {MAX_POINTS} points; use fewer slider positions or fewer curves")
@@ -158,6 +207,8 @@ def resolve(spec: dict) -> dict:
                 state["marks"].append(_finite(m["fn"](*setting)))
             else:
                 state["marks"].append([_finite(m["fn"](x, *setting)) for x in m["xs"]])
+        if drawing:
+            state["figure"] = [_finite(fn(*setting)) for fn in places]
         states.append(state)
     out = {
         "controls": [{k: c[k] for k in ("name", "label", "unit", "values", "start")} for c in controls],
@@ -170,4 +221,14 @@ def resolve(spec: dict) -> dict:
         if "domain" not in y and (ys := _heights(marks, states)):
             y["domain"] = [min(ys), max(ys)] if min(ys) < max(ys) else [min(ys) - 1, max(ys) + 1]
         out["plot"] = {"x": x, "y": y, "marks": [{k: m[k] for k in ("type", "label", "xs", "axis") if k in m} for m in marks]}
+    if drawing:
+        out["figure"] = drawing
     return out
+
+
+def extremes(widget: dict) -> list[list[int]]:
+    """The settings worth looking at before the learner does: the start, every slider at its least, at its most."""
+    start = [c["start"] for c in widget["controls"]]
+    least = [0] * len(widget["controls"])
+    most = [len(c["values"]) - 1 for c in widget["controls"]]
+    return [at for i, at in enumerate((start, least, most)) if at not in (start, least, most)[:i]]
