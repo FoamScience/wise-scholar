@@ -825,6 +825,7 @@
     }
   },
   "server": {
+    "not a setting of this widget": "هذا ليس ضبطًا لهذا النموذج",
     "a claim needs words": "المعرفة تحتاج إلى كلمات",
     "a course needs a name": "الدورة تحتاج إلى اسم",
     "another claim says this already; merge the two instead": "معرفة أخرى تقول هذا بالفعل؛ ادمج الاثنتين بدلًا من ذلك",

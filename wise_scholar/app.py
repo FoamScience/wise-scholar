@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 import httpx
 import simplemma
 
-from . import art, book, bundle, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, handwork, history, hub, obsidian, quiz, review, sandbox, search, sources, speech, tutor, vault, vocab
+from . import art, book, bundle, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, handwork, history, hub, obsidian, quiz, review, sandbox, search, sources, speech, tutor, vault, vocab, widgets
 from .backends import AGENT, BACKEND, MCP_SECRET, claude, opencode
 from .playbooks import describe
 
@@ -273,6 +273,10 @@ class ReviewAnswer(BaseModel):
 
 class SelfGrade(BaseModel):
     correct: bool
+
+
+class WidgetSetting(BaseModel):
+    at: list[int] = Field(max_length=widgets.MAX_CONTROLS)
 
 
 class BatchAnswer(QuizAnswer):
@@ -550,7 +554,20 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         ]
     if _replayed(lesson) and not (lesson["session_started"] and lesson["backend"] == BACKEND):
         line = f"{REPLAY}{_replay_record(lesson['id'])}\n{line}"
-    return "\n".join([state, *known, fmt, language, *tools, line])
+    return "\n".join([state, *known, fmt, language, *tools, *_widget_tries(lesson["id"]), line])
+
+
+def _widget_tries(lesson_id: int) -> list[str]:
+    """The settings the learner settled on in the lesson's widgets since the last turn, each told once."""
+    lines = []
+    for block in db.blocks(lesson_id):
+        d = block["data"]
+        if block["kind"] != "widget" or len(d.get("tried", [])) <= d.get("told", 0):
+            continue
+        fresh = d["tried"][d.get("told", 0):]
+        lines.append(f"[widget {block['id']}] The learner tried, in order: " + "; ".join(widgets.describe(d["widget"], at) for at in fresh))
+        db.set_block_data(block["id"], {**d, "told": len(d["tried"])})
+    return lines
 
 
 # --- Replay: a course imported from a version is worked through as its author wrote it -----------------------------
@@ -717,6 +734,8 @@ def _record_line(block: dict) -> str:
         outcome = "solved" if d.get("solved") else "gave up" if d.get("gave_up") else "left open"
         shown = f" | solution shown: {_cut(d['solution'], 600)}" if d.get("solution") is not None else ""
         return f"{head} {text} | attempts: {len(d.get('attempts', []))}{last} | {outcome}{shown}"
+    if block["kind"] == "widget" and d.get("tried"):
+        text += " | tried: " + _cut("; ".join(widgets.describe(d["widget"], at) for at in d["tried"]), RECORD_BLOCK_CHARS)
     if teaches := d.get("teaches"):
         return f"{head} {text} | " + " | ".join(f"{k}: {_cut(v, RECORD_TEACHES_CHARS)}" for k, v in teaches.items() if v)
     return f"{head} {text}"
@@ -2459,6 +2478,29 @@ def _record_answer(block: dict, card: dict, answer: str, confidence: float, extr
     if result["confident_miss"] and lesson["phase"] != "placement":
         verdict += "; a confident miss: re-teach it now"
     return lesson, verdict, said
+
+
+# Settings kept per widget; a learner who moves on and on is still told in full up to here.
+WIDGET_TRIES = 40
+
+
+@app.post("/api/blocks/{block_id}/widget")
+async def try_widget(block_id: int, body: WidgetSetting) -> dict:
+    """A setting the learner stopped at; the tutor reads the settings tried on its next turn. On the event loop, like
+    the turn that marks them told, so the two never interleave on the block."""
+    block = db.block(block_id)
+    if not block or block["kind"] != "widget":
+        raise HTTPException(404, "no such widget")
+    _require_answerable(block)
+    d = block["data"]
+    try:
+        widgets.index_of(d["widget"], body.at)
+    except ValueError:
+        raise HTTPException(422, "not a setting of this widget") from None
+    tried = d.get("tried", [])
+    if tried[-1:] != [body.at] and len(tried) < WIDGET_TRIES:
+        block = db.set_block_data(block_id, {**d, "tried": [*tried, body.at]})
+    return {"tried": len(block["data"].get("tried", []))}
 
 
 @app.post("/api/blocks/{block_id}/self-grade")

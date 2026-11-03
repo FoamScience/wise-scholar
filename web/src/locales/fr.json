@@ -777,6 +777,7 @@
     }
   },
   "server": {
+    "not a setting of this widget": "ce n'est pas un réglage de ce modèle",
     "a claim needs words": "une notion a besoin de mots",
     "a course needs a name": "un cours a besoin d'un nom",
     "another claim says this already; merge the two instead": "une autre notion dit déjà cela ; fusionnez plutôt les deux",

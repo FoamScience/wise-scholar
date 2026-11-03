@@ -1847,7 +1847,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
           ) : b.kind === 'plot' ? (
             <PlotCard key={b.id} id={b.id} title={b.markdown} data={b.data} />
           ) : b.kind === 'widget' ? (
-            <WidgetCard key={b.id} id={b.id} title={b.markdown} data={b.data} />
+            <WidgetCard key={b.id} id={b.id} title={b.markdown} data={b.data} onTry={course.mode === 'teacher' ? undefined : (at) => post(`/api/blocks/${b.id}/widget`, { at })} />
           ) : b.kind === 'figure' ? (
             <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={sketched} disabled={lesson.running} onRestore={() => post(`/api/blocks/${b.id}/restore`, {})} onRedraw={crafted ? (notes) => post(`/api/blocks/${b.id}/redraw`, { notes }) : undefined} />
           ) : b.kind === 'placement' ? (
