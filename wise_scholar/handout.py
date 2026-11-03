@@ -3,7 +3,7 @@ copy with the tasks and figures only. Markdown here; the PDF is the same page pr
 
 from . import db, obsidian
 
-STUDENT_KINDS = (*obsidian.CARD_KINDS, "figure")
+STUDENT_KINDS = (*obsidian.CARD_KINDS, "figure", "widget")
 
 
 def markdown(lesson_id: int, solutions: bool) -> str | None:

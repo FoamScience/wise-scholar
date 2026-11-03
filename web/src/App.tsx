@@ -27,6 +27,7 @@ import { HandPage, PhotoTray } from './Handwork'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
 import type { Area, Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SetupStep, SpeakingData } from './course'
 import { FigureCard } from './Figure'
+import { WidgetCard } from './Widget'
 import { NetworkCard } from './Network'
 import { PlotCard } from './PlotCard'
 import { ScopeCard, ScopeForm } from './Scope'
@@ -76,6 +77,7 @@ const LESSON_AREA_TOOLS = [
   'add_diagram',
   'add_animation',
   'add_plot',
+  'add_widget',
   'pose_writing',
   'pose_vocab_check',
   'pose_speaking',
@@ -1844,6 +1846,8 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
             />
           ) : b.kind === 'plot' ? (
             <PlotCard key={b.id} id={b.id} title={b.markdown} data={b.data} />
+          ) : b.kind === 'widget' ? (
+            <WidgetCard key={b.id} id={b.id} title={b.markdown} data={b.data} />
           ) : b.kind === 'figure' ? (
             <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={sketched} disabled={lesson.running} onRestore={() => post(`/api/blocks/${b.id}/restore`, {})} onRedraw={crafted ? (notes) => post(`/api/blocks/${b.id}/redraw`, { notes }) : undefined} />
           ) : b.kind === 'placement' ? (

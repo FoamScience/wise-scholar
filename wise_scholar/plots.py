@@ -23,8 +23,9 @@ OPERATORS = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b, ast.Mult:
              ast.Div: lambda a, b: a / b, ast.Pow: lambda a, b: float(a) ** float(b), ast.Mod: lambda a, b: a % b}
 
 
-def compile_fn(expression: str):
-    """A function of x from an expression using numbers, + - * / ** %, and the math names above; nothing else."""
+def compile_fn(expression: str, variables: tuple[str, ...] = ("x",)):
+    """A function of the variables (x by default) from an expression using numbers, + - * / ** %, and the math names
+    above; nothing else. It takes the variables' values in order."""
     try:
         tree = ast.parse(expression.replace("^", "**"), mode="eval")
     except SyntaxError as e:
@@ -35,7 +36,7 @@ def compile_fn(expression: str):
             check(node.body)
         elif isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
             pass
-        elif isinstance(node, ast.Name) and (node.id == "x" or node.id in NAMES):
+        elif isinstance(node, ast.Name) and (node.id in variables or node.id in NAMES):
             pass
         elif isinstance(node, ast.BinOp) and type(node.op) in OPERATORS:
             check(node.left)
@@ -46,33 +47,33 @@ def compile_fn(expression: str):
             for arg in node.args:
                 check(arg)
         else:
-            raise ValueError(f"the expression {expression!r} uses something outside x, numbers, + - * / ** and {sorted(FUNCTIONS)}")
+            raise ValueError(f"the expression {expression!r} uses something outside {', '.join(variables)}, numbers, + - * / ** and {sorted(FUNCTIONS)}")
 
     check(tree)
 
-    def evaluate(node: ast.AST, x: float) -> float:
+    def evaluate(node: ast.AST, env: dict[str, float]) -> float:
         if isinstance(node, ast.Expression):
-            return evaluate(node.body, x)
+            return evaluate(node.body, env)
         if isinstance(node, ast.Constant):
             return float(node.value)
         if isinstance(node, ast.Name):
-            return x if node.id == "x" else NAMES[node.id]
+            return env[node.id] if node.id in env else NAMES[node.id]
         if isinstance(node, ast.BinOp):
-            return OPERATORS[type(node.op)](evaluate(node.left, x), evaluate(node.right, x))
+            return OPERATORS[type(node.op)](evaluate(node.left, env), evaluate(node.right, env))
         if isinstance(node, ast.UnaryOp):
-            value = evaluate(node.operand, x)
+            value = evaluate(node.operand, env)
             return -value if isinstance(node.op, ast.USub) else value
-        return FUNCTIONS[node.func.id](*(evaluate(a, x) for a in node.args))
+        return FUNCTIONS[node.func.id](*(evaluate(a, env) for a in node.args))
 
-    def fn(x: float) -> float:
+    def fn(*values: float) -> float:
         try:
-            value = evaluate(tree, x)
+            value = evaluate(tree, dict(zip(variables, values)))
         except (ValueError, ZeroDivisionError, OverflowError):
             return math.nan
         return value if isinstance(value, (int, float)) and math.isfinite(value) else math.nan
 
     try:
-        evaluate(tree, 1.0)
+        evaluate(tree, dict.fromkeys(variables, 1.0))
     except TypeError:
         raise ValueError(f"a function in {expression!r} is called with the wrong number of arguments") from None
     except (ValueError, ZeroDivisionError, OverflowError):
