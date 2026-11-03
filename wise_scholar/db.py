@@ -54,6 +54,14 @@ def _rebuild_cards(connection) -> None:
     )""", CARD_COLUMNS)
 
 
+def _add_missed_columns(connection) -> None:
+    """A database that ran an early draft of the versions migration lacks three of its columns; one that ran the
+    final migration has them and is left as it is."""
+    for table, column in (("concepts", "unwritten"), ("versions", "written"), ("versions", "units")):
+        if column not in {r["name"] for r in connection.execute(f"PRAGMA table_info({table})").fetchall()}:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
+
+
 def _rebuild_errors(connection) -> None:
     """A miss in a practice unit is a notebook entry of its own kind."""
     _rebuild(connection, "errors", """(
@@ -490,6 +498,7 @@ MIGRATIONS = [
     ALTER TABLE cards ADD COLUMN misconceptions TEXT NOT NULL DEFAULT '{}';
     ALTER TABLE errors ADD COLUMN misconception TEXT NOT NULL DEFAULT '';
     """,
+    _add_missed_columns,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
