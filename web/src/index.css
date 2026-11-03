@@ -1179,9 +1179,17 @@ a.btn.primary:hover {
   gap: var(--space-sm);
 }
 
+/* An option may be a sentence: it wraps inside the card instead of running past it. */
 .btn.option {
+  max-width: 100%;
+  padding-block: var(--space-xs);
   border-color: var(--line-strong);
   font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+  justify-content: flex-start;
 }
 
 .btn.option:hover:enabled,
