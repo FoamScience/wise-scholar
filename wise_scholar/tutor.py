@@ -105,6 +105,7 @@ class Milestone(BaseModel):
     deliverable: str
 
 
+
 async def _logged(lesson: dict, origin: str, command: str, run, consent: str = "none") -> dict:
     """Run a command with a log row written before it starts and finished when it ends, however it ends."""
     row = db.log_command(lesson, origin, command, consent)
@@ -501,9 +502,15 @@ async def set_known(course_id: int, known: list[str], unknown: list[str]) -> str
 
 
 @mcp.tool()
-async def add_figure(lesson_id: int, svg: str, caption: str, alt: str) -> str:
+async def add_figure(lesson_id: int, svg: str, caption: str, alt: str, teaches: figures.Teaches) -> str:
     """Show a figure you draw yourself as SVG: a schematic, a labelled structure, an apparatus sketch, a force
     diagram, a small infographic.
+
+    teaches: what the figure is for, decided before drawing it. claim: the sentence of the lesson it makes
+    visible. notice: what the learner should see in it that shows the claim (a cause and its effect, a part and
+    where it sits). misconception: the wrong belief it shows failing, when there is one. limits: where the
+    drawing stops matching the real thing (scale, left-out parts, an idealised model); the learner sees it under
+    the caption. A figure with no claim to make visible is not drawn.
 
     svg: a complete <svg> with a viewBox (no wider than 3:2), transparent background, shapes and paths, labels
     as <text> elements readable at 600 px wide. Fills and strokes from the palette only: teal #0b5f5a, teal tint
@@ -521,7 +528,7 @@ async def add_figure(lesson_id: int, svg: str, caption: str, alt: str) -> str:
     if problem := pretest_blocker(lesson):
         return f"refused: {problem}"
     try:
-        data = _figure_data(svg, alt)
+        data = _figure_data(svg, alt) | {"teaches": figures.teaching(teaches)}
     except ValueError as e:
         return f"error: {e}"
     block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
@@ -531,14 +538,15 @@ async def add_figure(lesson_id: int, svg: str, caption: str, alt: str) -> str:
 
 
 @mcp.tool()
-async def replace_figure(lesson_id: int, block_id: int, svg: str, caption: str, alt: str) -> str:
+async def replace_figure(lesson_id: int, block_id: int, svg: str, caption: str, alt: str, teaches: figures.Teaches | None = None) -> str:
     """Draw an existing figure of this lesson again in its place: same block, same position in the lesson. Same
-    rules as add_figure. Use it when asked to redraw figures, or when a figure of yours turned out wrong."""
+    rules as add_figure; without teaches the figure keeps what it was for. Use it when asked to redraw figures, or
+    when a figure of yours turned out wrong."""
     block = db.block(block_id)
     if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
         return f"error: no figure with id {block_id} in this lesson"
     try:
-        data = _figure_data(svg, alt)
+        data = _figure_data(svg, alt) | _kept_teaches(block, teaches)
     except ValueError as e:
         return f"error: {e}"
     # The drawing being replaced is kept, so the learner can go back to it.
@@ -555,16 +563,23 @@ def _figure_data(svg: str, alt: str, limit: int = figures.MAX_CHARS) -> dict:
     return {"svg": drawing, "alt": alt.strip(), "credits": credits}
 
 
+def _kept_teaches(block: dict, teaches: figures.Teaches | None) -> dict:
+    """The teaching spec of a redrawn figure: the one given, else the one it had."""
+    if teaches is not None:
+        return {"teaches": figures.teaching(teaches)}
+    return {"teaches": block["data"]["teaches"]} if "teaches" in block["data"] else {}
+
+
 # A layout holds a core for up to a minute; two at a time, the rest wait.
 _layouts = asyncio.Semaphore(2)
 
 
 @mcp.tool()
-async def add_diagram(lesson_id: int, domain: str, substance: str, caption: str, alt: str) -> str:
+async def add_diagram(lesson_id: int, domain: str, substance: str, caption: str, alt: str, teaches: figures.Teaches) -> str:
     """Show a diagram the server lays out from what you state, in a domain listed on the [tools] line (read
     diagram_help first). substance: a Penrose Substance program for that domain: declare the objects, state the
     predicates, give labels with `Label x "text"`. The layout follows the domain's rules; an error names the rule
-    that cannot be met, then state fewer or smaller things. caption and alt as for add_figure."""
+    that cannot be met, then state fewer or smaller things. caption, alt and teaches as for add_figure."""
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
@@ -575,7 +590,7 @@ async def add_diagram(lesson_id: int, domain: str, substance: str, caption: str,
     try:
         async with _layouts:
             svg = await asyncio.to_thread(diagrams.render, domain.strip(), substance)
-        data = _figure_data(svg, alt) | {"diagram": {"domain": domain.strip(), "substance": substance}}
+        data = _figure_data(svg, alt) | {"diagram": {"domain": domain.strip(), "substance": substance}, "teaches": figures.teaching(teaches)}
     except ValueError as e:
         return f"error: {e}"
     block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
@@ -585,11 +600,12 @@ async def add_diagram(lesson_id: int, domain: str, substance: str, caption: str,
 
 
 @mcp.tool()
-async def add_animation(lesson_id: int, domain: str, stages: list[str], caption: str, alt: str) -> str:
+async def add_animation(lesson_id: int, domain: str, stages: list[str], caption: str, alt: str, teaches: figures.Teaches) -> str:
     """Show a phenomenon unfolding: 2 to 6 stages, each a Substance program of the same domain with the same
     objects (same names) and what changes between stages changed (a cell's type, a predicate, a label). The server
     lays the stages out one after the other and plays them as one animation; the book and the hand-outs show the
-    stages side by side. caption and alt as for add_figure; alt tells the whole sequence."""
+    stages side by side. caption, alt and teaches as for add_figure; alt tells the whole sequence, notice what
+    changes from stage to stage."""
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
@@ -603,6 +619,7 @@ async def add_animation(lesson_id: int, domain: str, stages: list[str], caption:
         data = _figure_data(svg, alt, limit=figures.MAX_CHARS * len(stages)) | {
             "diagram": {"domain": domain.strip(), "stages": stages},
             "frames": [figures.clean(f) for f in frames],
+            "teaches": figures.teaching(teaches),
         }
     except ValueError as e:
         return f"error: {e}"
@@ -613,14 +630,14 @@ async def add_animation(lesson_id: int, domain: str, stages: list[str], caption:
 
 
 @mcp.tool()
-async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str) -> str:
+async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str, teaches: figures.Teaches) -> str:
     """Show a crafted figure: a thing drawn as itself in volume and shade, from the kit's prisms, tubes, turned
     bodies and soft bodies: an apparatus, a machine, a chromosome, a cell, an organ, a structure. Read craft_help
     first. script: an ES module that imports the kit from "./kit/iso-kit.mjs" and exports as default the string
     figureSvg returns, or an array of 2 to 6 such strings for an animation: the same object, one state per stage,
     played as one animation and shown stage by stage in the book. The server runs it and shows the SVG; an error
     carries Node's message. The figure is coloured by the site's theme, so it carries no colours of its own.
-    caption and alt as for add_figure; for an animation, alt tells the whole sequence."""
+    caption, alt and teaches as for add_figure; for an animation, alt tells the whole sequence."""
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
@@ -631,7 +648,8 @@ async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str
     if not crafted.available():
         return "error: this server cannot run Node, so there are no crafted figures; draw it with add_figure"
     try:
-        data = await _crafted_data(lesson, script, alt)
+        spec = figures.teaching(teaches)
+        data = await _crafted_data(lesson, script, alt) | {"teaches": spec}
     except ValueError as e:
         return f"error: {e}"
     block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
@@ -642,11 +660,11 @@ async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str
 
 
 @mcp.tool()
-async def replace_crafted_figure(lesson_id: int, block_id: int, script: str, caption: str, alt: str) -> str:
+async def replace_crafted_figure(lesson_id: int, block_id: int, script: str, caption: str, alt: str, teaches: figures.Teaches | None = None) -> str:
     """Craft an existing figure of this lesson again in its place, whatever it was drawn with: same block, same
     position in the lesson, and the drawing it replaces kept for the learner to go back to. Same rules as
-    add_crafted_figure. Use it when asked to redraw figures as crafted ones, or when a crafted figure of yours
-    turned out wrong."""
+    add_crafted_figure; without teaches the figure keeps what it was for. Use it when asked to redraw figures as
+    crafted ones, or when a crafted figure of yours turned out wrong."""
     block = db.block(block_id)
     if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
         return f"error: no figure with id {block_id} in this lesson"
@@ -656,7 +674,8 @@ async def replace_crafted_figure(lesson_id: int, block_id: int, script: str, cap
         return "error: this server cannot run Node, so there are no crafted figures; draw it with replace_figure"
     lesson = db.lesson(lesson_id)
     try:
-        data = await _crafted_data(lesson, script, alt)
+        kept = _kept_teaches(block, teaches)
+        data = await _crafted_data(lesson, script, alt) | kept
     except ValueError as e:
         return f"error: {e}"
     previous = {k: v for k, v in block["data"].items() if k not in ("previous", "restored")} | {"caption": block["markdown"]}
@@ -713,7 +732,7 @@ async def find_art(query: str) -> str:
 
 
 @mcp.tool()
-async def add_plot(lesson_id: int, title: str, spec: dict, alt: str) -> str:
+async def add_plot(lesson_id: int, title: str, spec: dict, alt: str, teaches: figures.Teaches) -> str:
     """Show a plot: a function, a comparison of numbers, or data from a file in the workspace.
 
     spec: {"x": {"label": "t (s)", "domain"?: [a, b], "grid"?: true, "type"?: "log"}, "y": {...},
@@ -727,6 +746,7 @@ async def add_plot(lesson_id: int, title: str, spec: dict, alt: str) -> str:
       {"type": "rule", "y": 0} or {"type": "rule", "x": 0}; {"type": "text", "data": [{"x", "y", "text"}]};
       {"type": "rect", "data": [...], "x1", "x2", "y1", "y2"}.
     Name the quantity and unit on each axis label. One finding per plot. alt: what the plot shows, in words.
+    teaches as for add_figure: the claim is the finding, notice is where on the plot it shows.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
@@ -736,10 +756,11 @@ async def add_plot(lesson_id: int, title: str, spec: dict, alt: str) -> str:
     if problem := pretest_blocker(lesson):
         return f"refused: {problem}"
     try:
+        purpose = figures.teaching(teaches)
         resolved = plots.resolve(spec, db.workspace(lesson["slug"]))
     except ValueError as e:
         return f"error: {e}"
-    block = db.add_block(lesson_id, "plot", title, {"spec": resolved, "alt": alt.strip()})
+    block = db.add_block(lesson_id, "plot", title, {"spec": resolved, "alt": alt.strip(), "teaches": purpose})
     _show(lesson, block)
     return f"shown as plot {block['id']}"
 

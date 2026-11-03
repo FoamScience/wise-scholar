@@ -3,7 +3,9 @@ import tempfile
 
 os.environ["WISE_SCHOLAR_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
 
-from wise_scholar import db, search  # noqa: E402
+from wise_scholar import db, figures, search  # noqa: E402
+
+TEACHES = figures.Teaches(claim="Parts have a place.", notice="Where each part sits.")
 
 
 def test_facts_reviews_and_answers_stay_inside_their_profile():
@@ -815,7 +817,7 @@ def seed_vault(name: str) -> tuple[int, int]:
     pretest = db.blocks(lesson)[-1]
     db.set_block_data(pretest["id"], {**pretest["data"], "attempts": ["yes"], "hints": ["think of shells"], "solved": True})
     asyncio.run(tutor.add_block(lesson, "prose", "Atoms share electrons."))
-    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A pair", "two atoms"))
+    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A pair", "two atoms", TEACHES))
     asyncio.run(tutor.pose_quiz(lesson, "How many bonds does carbon form?", "choice", ["4", "2"], "4", "Four valence electrons."))
     q = db.blocks(lesson)[-1]
     card = db.card(q["data"]["card_id"])
@@ -1134,7 +1136,7 @@ def test_handouts_give_the_teacher_the_solutions_and_the_students_the_tasks(monk
     asyncio.run(tutor.give_hint(opening["id"], "Count valence electrons."))
     asyncio.run(tutor.reveal(opening["id"], "Four."))
     asyncio.run(tutor.pose_quiz(lesson, "Which is a noble gas?", "choice", ["Helium", "Oxygen"], "Helium", "Full outer shell."))
-    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A pair", "two atoms"))
+    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A pair", "two atoms", TEACHES))
 
     from wise_scholar import sandbox
 
@@ -1371,8 +1373,8 @@ def test_the_redraw_of_one_figure_asks_for_a_crafted_one_and_replace_figure_keep
     monkeypatch.setattr(art, "ART", tmp_path)
     art._manifests.clear()
     asyncio.run(tutor.add_block(lesson, "prose", "A cell."))
-    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A cell", "a circle"))
-    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><rect width="4" height="4"/></svg>', "A box", "a square"))
+    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><circle r="4"/></svg>', "A cell", "a circle", TEACHES))
+    asyncio.run(tutor.add_figure(lesson, '<svg viewBox="0 0 10 10"><rect width="4" height="4"/></svg>', "A box", "a square", TEACHES))
     first, second = [b for b in db.blocks(lesson) if b["kind"] == "figure"]
     assert first["data"]["credits"] == []
     for not_a_figure in (10**9, db.blocks(lesson)[0]["id"]):
@@ -1420,7 +1422,7 @@ def test_the_redraw_of_one_figure_asks_for_a_crafted_one_and_replace_figure_keep
     assert asyncio.run(tutor.replace_figure(lesson, 10**9, "<svg/>", "c", "a")) == "error: no figure with id 1000000000 in this lesson"
     other = db.create_lesson(course, "Elsewhere", "lesson", None)
     assert asyncio.run(tutor.replace_figure(other, first["id"], "<svg/>", "c", "a")) == f"error: no figure with id {first['id']} in this lesson"
-    assert asyncio.run(tutor.add_figure(lesson, "<svg viewBox='0 0 1 1'/>", "c", "")) == "error: alt text is required"
+    assert asyncio.run(tutor.add_figure(lesson, "<svg viewBox='0 0 1 1'/>", "c", "", TEACHES)) == "error: alt text is required"
 
     from wise_scholar import obsidian
 
@@ -1433,6 +1435,52 @@ def test_the_redraw_of_one_figure_asks_for_a_crafted_one_and_replace_figure_keep
     assert redrawn_twice == f"figure {first['id']} redrawn"
     third = db.block(first["id"])
     assert third["data"]["previous"]["caption"] == "A real cell" and "restored" not in third["data"] and "previous" not in third["data"]["previous"]
+
+
+def test_a_figure_or_plot_states_what_it_teaches_and_the_record_carries_it():
+    import asyncio
+
+    import pytest
+    from pydantic import ValidationError
+
+    from wise_scholar import app, obsidian, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Spec')").lastrowid
+    course = db.create_course("Gears", who)["id"]
+    db.conn.execute("UPDATE courses SET started = 1 WHERE id = ?", (course,))
+    lesson = db.create_lesson(course, "Idlers", "lesson", None)
+    svg = '<svg viewBox="0 0 10 10"><circle r="4"/></svg>'
+    vague = figures.Teaches(claim="An idler keeps the ratio.", notice=" ")
+    assert asyncio.run(tutor.add_figure(lesson, svg, "c", "a", vague)) == "error: teaches needs the claim and what the learner should notice"
+    assert asyncio.run(tutor.add_plot(lesson, "t", {"marks": []}, "a", vague)) == "error: teaches needs the claim and what the learner should notice"
+    assert [b for b in db.blocks(lesson) if b["kind"] in ("figure", "plot")] == []
+
+    spec = figures.Teaches(claim=" An idler keeps the ratio. ", notice="Both outputs make half a turn.", misconception="Every gear slows it.", limits="Ideal gears.")
+    asyncio.run(tutor.add_figure(lesson, svg, "Two trains", "two gear trains", spec))
+    figure = next(b for b in db.blocks(lesson) if b["kind"] == "figure")
+    stated = {"claim": "An idler keeps the ratio.", "notice": "Both outputs make half a turn.", "misconception": "Every gear slows it.", "limits": "Ideal gears."}
+    assert figure["data"]["teaches"] == stated
+    assert app._record_line(figure) == (
+        f"[block {figure['id']}, figure] Two trains | claim: An idler keeps the ratio. | notice: Both outputs make half a turn. "
+        "| misconception: Every gear slows it. | limits: Ideal gears."
+    )
+
+    asyncio.run(tutor.replace_figure(lesson, figure["id"], svg, "Redrawn", "a"))
+    assert db.block(figure["id"])["data"]["teaches"] == stated
+    asyncio.run(tutor.replace_figure(lesson, figure["id"], svg, "Redrawn", "a", figures.Teaches(claim="Direction flips.", notice="The arrows.")))
+    assert db.block(figure["id"])["data"]["teaches"] == {"claim": "Direction flips.", "notice": "The arrows.", "misconception": "", "limits": ""}
+    assert app._record_line(db.block(figure["id"])).endswith("| claim: Direction flips. | notice: The arrows.")
+
+    asyncio.run(tutor.add_plot(lesson, "Turns", {"marks": [{"type": "rule", "y": 0}]}, "a flat line", spec))
+    plot = next(b for b in db.blocks(lesson) if b["kind"] == "plot")
+    assert plot["data"]["teaches"] == stated
+    note = "".join(obsidian.Vault(course).lesson_text(db.lesson(lesson) | {"blocks": db.blocks(lesson), "messages": []}, chat=False, kinds=("figure", "plot")))
+    assert note.count("*Where this stops matching the real thing: Ideal gears.*") == 1
+
+    long = db.set_block_data(plot["id"], plot["data"] | {"teaches": stated | {"claim": "x" * 5000}})
+    assert len(app._record_line(long)) < 1000
+    with pytest.raises(ValidationError):
+        figures.Teaches(claim="x" * (figures.TEACHES_CHARS + 1), notice="n")
 
 
 def test_a_sort_check_is_graded_placement_by_placement(monkeypatch):
