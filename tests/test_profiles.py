@@ -2125,3 +2125,25 @@ def test_a_wrong_option_carries_the_belief_behind_it_into_the_feedback_the_noteb
     asyncio.run(app.answer_quiz(open_block["id"], app.QuizAnswer(answer="It is lighter", confidence=0.9)))
     assert asyncio.run(tutor.grade_quiz(open_block["id"], False, "Not the weight.", " lighter things fall slower ")).startswith("graded")
     assert db.block(open_block["id"])["data"]["misconception"] == "lighter things fall slower" and db.errors(who)[0]["misconception"] == "lighter things fall slower"
+
+
+def test_a_database_from_the_early_versions_migration_gets_the_columns_it_missed():
+    import sqlite3
+
+    early = sqlite3.connect(":memory:")
+    early.row_factory = sqlite3.Row
+    early.executescript("CREATE TABLE concepts (id INTEGER PRIMARY KEY); CREATE TABLE versions (hash TEXT PRIMARY KEY, units INTEGER NOT NULL DEFAULT 3);")
+    early.execute("INSERT INTO concepts (id) VALUES (1)")
+    db._add_missed_columns(early)
+    db._add_missed_columns(early)
+    assert [r["name"] for r in early.execute("PRAGMA table_info(concepts)")] == ["id", "unwritten"]
+    assert [r["name"] for r in early.execute("PRAGMA table_info(versions)")] == ["hash", "units", "written"]
+    assert early.execute("SELECT unwritten FROM concepts").fetchone()[0] == 0
+
+
+def test_every_route_is_bound_to_an_endpoint_and_none_to_a_private_helper():
+    from wise_scholar import app
+
+    named = {r.path: r.endpoint.__name__ for r in app.app.routes if hasattr(getattr(r, "endpoint", None), "__name__")}
+    assert named["/api/concepts/{concept_id}/lesson"] == "open_concept"
+    assert [path for path, name in named.items() if name.startswith("_")] == []
