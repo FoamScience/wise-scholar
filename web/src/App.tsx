@@ -20,6 +20,7 @@ import { PublishPage } from './Publish'
 import { challengeLabel, lessonTitle, outlineOf, pendingPhotos, practiceTitle, replayShown, searchHref, type TodayPlan, unitTitle } from './course'
 import { OutlineCard } from './Outline'
 import { PlacementAreas } from './Areas'
+import { FileEditor } from './FileEditor'
 import { GraphPage } from './Graph'
 import { SittingPage } from './Sitting'
 import { SearchPage } from './Search'
@@ -759,9 +760,25 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
   const open = !d.solved && d.solution === null && !props.authored
   const blockId = props.block.id
   const kept = files.length > 0 && files.every((f) => f.kept)
+  const editing = open && files.some((f) => f.editable)
+  // A read that began before a save ended may carry the old text; only the latest read counts.
+  const reads = useRef(0)
+  const flushes = useRef(new Map<string, () => Promise<boolean>>())
+
+  async function allSaved() {
+    const results = await Promise.all([...flushes.current.values()].map((flush) => flush()))
+    if (results.every(Boolean)) return true
+    setError(t('exercise.unsaved'))
+    return false
+  }
 
   useEffect(() => {
-    const load = () => api<ExerciseFile[]>(`/api/blocks/${blockId}/files`).then(setFiles, () => {})
+    const load = () => {
+      const read = ++reads.current
+      api<ExerciseFile[]>(`/api/blocks/${blockId}/files`).then((f) => {
+        if (read === reads.current) setFiles(f)
+      }, () => {})
+    }
     load()
     if (!open) return
     // ponytail: polls the files every 2 s; push changes over SSE from a file watcher if this lags or costs too much
@@ -769,12 +786,11 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
     return () => clearInterval(timer)
   }, [blockId, open])
 
-  function run() {
+  async function run() {
     setRunning(true)
     setError('')
-    api(`/api/blocks/${blockId}/run`, {})
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setRunning(false))
+    if (await allSaved()) await api(`/api/blocks/${blockId}/run`, {}).catch((err: Error) => setError(err.message))
+    setRunning(false)
   }
 
   return (
@@ -796,6 +812,17 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
           </div>
           {f.content === null ? (
             <pre>{t('exercise.missing')}</pre>
+          ) : open && f.editable ? (
+            <FileEditor
+              blockId={blockId}
+              file={f}
+              completions={d.completions ?? []}
+              onSaving={() => reads.current++}
+              register={(flush) => {
+                flushes.current.set(f.path, flush)
+                return () => flushes.current.delete(f.path)
+              }}
+            />
           ) : (
             <div className="file-body">
               <Markdown>{`\`\`\`\`${f.path.split('.').pop() ?? ''}\n${f.content}\n\`\`\`\``}</Markdown>
@@ -803,7 +830,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
           )}
         </div>
       ))}
-      <div className="small">{kept ? t('exercise.cleaned') : t('exercise.follows')}</div>
+      <div className="small">{kept ? t('exercise.cleaned') : editing ? t('exercise.editHere') : t('exercise.follows')}</div>
 
       {open && (
         <form onSubmit={(e) => e.preventDefault()}>
@@ -826,7 +853,9 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
             type="button"
             className="btn primary"
             disabled={props.disabled}
-            onClick={() => {
+            onClick={async () => {
+              setError('')
+              if (!(await allSaved())) return
               props.onAct('check', { answer: answer.trim() })
               setAnswer('')
             }}

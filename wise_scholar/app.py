@@ -2257,18 +2257,55 @@ def _read_files(block: dict, workspace: Path) -> list[dict]:
     """The exercise's files from disk, or the copies kept when the course's files were cleaned up."""
     files = []
     kept = block["data"].get("files_kept", {})
+    online = sandbox.online(workspace)
     for path in block["data"]["files"]:
         content = course_files.read_text(workspace, path)
+        location = sandbox.location(workspace, path)
         if content is None and path in kept:
-            files.append({"path": path, "location": sandbox.location(workspace, path), "content": kept[path], "kept": True})
+            files.append({"path": path, "location": location, "content": kept[path], "kept": True, "editable": False, "online": online})
         else:
-            files.append({"path": path, "location": sandbox.location(workspace, path), "content": content, "kept": False})
+            editable = course_files.editable_text(workspace, path) is not None
+            files.append({"path": path, "location": location, "content": content, "kept": False, "editable": editable, "online": online})
     return files
 
 
 @app.get("/api/blocks/{block_id}/files")
 def exercise_files(block_id: int) -> list[dict]:
     return _read_files(*_exercise(block_id))
+
+
+class SavedFile(BaseModel):
+    path: str
+    content: str
+    base: str
+
+
+@app.post("/api/blocks/{block_id}/files")
+async def save_exercise_file(block_id: int, body: SavedFile) -> dict:
+    """The card's editor saves a file, unless it changed on disk since the text the learner edited: their own editor
+    and the tutor write there too."""
+    block, workspace = _exercise(block_id)
+    data = block["data"]
+    if body.path not in data["files"]:
+        raise HTTPException(404, "no such file in this exercise")
+    if data.get("solved") or data.get("solution") is not None:
+        raise HTTPException(409, "this exercise is closed")
+    if sandbox.online(workspace):
+        raise HTTPException(409, "a command you allowed to use the internet is running in this course; its files stay as they are until it ends")
+    disk = course_files.editable_text(workspace, body.path)
+    if disk is None:
+        raise HTTPException(409, "this file cannot be edited here")
+    if disk != body.base:
+        return {"saved": False, "content": disk}
+    try:
+        size = len(body.content.encode())
+    except UnicodeEncodeError:
+        raise HTTPException(422, "this text cannot be saved")
+    if size > course_files.READ_LIMIT:
+        raise HTTPException(413, "this file is too large to save here")
+    if not course_files.write_text(workspace, body.path, body.content):
+        raise HTTPException(409, "this file cannot be edited here")
+    return {"saved": True}
 
 
 @app.post("/api/blocks/{block_id}/run")
