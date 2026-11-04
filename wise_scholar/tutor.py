@@ -785,7 +785,8 @@ async def add_plot(lesson_id: int, title: str, spec: dict, alt: str, teaches: fi
 @mcp.tool()
 async def add_widget(lesson_id: int, title: str, spec: dict, alt: str, teaches: figures.Teaches) -> str:
     """Show a model the learner operates: sliders set its inputs, readouts and a plot follow at once. Use it after
-    the learner has predicted (a pose_challenge prediction), so moving a slider tests what they said.
+    the learner has predicted (a pose_challenge prediction, or a block asking them to decide what they expect), so
+    moving a slider tests what they said.
 
     spec: {"controls": [{"name": "teeth", "label": "Output gear teeth", "min": 12, "max": 48, "step": 12, "value": 24,
     "unit"?: "teeth"}, ...] (1 to 3 sliders, at most 400 settings together; name is a short lowercase identifier),
