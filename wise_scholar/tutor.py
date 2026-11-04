@@ -995,9 +995,10 @@ async def read_file(lesson_id: int, path: str) -> str:
 
 
 async def pose_exercise(
-    lesson_id: int, markdown: str, files: list[ExerciseFile], run: str, milestone: bool = False, form: str = "", helper: str = ""
+    lesson_id: int, markdown: str, files: list[ExerciseFile], run: str, milestone: bool = False, form: str = "", helper: str = "",
+    completions: list[course_files.Completion] = [],
 ) -> str:
-    """Show a hands-on exercise: starter files the learner edits in their own editor, and a command that runs them.
+    """Show a hands-on exercise: starter files the learner edits on the card or in their own editor, and a command that runs them.
 
     files: paths relative to the course workspace, with the starter
     content; put each concept's files in its own subfolder. Existing files are overwritten.
@@ -1011,6 +1012,9 @@ async def pose_exercise(
     the written answer, when there is one.
     form: when the exercise opens the lesson, which of the lesson rules' forms it is.
     helper: as for pose_challenge, the knowledge the exercise needs that the learner has not met, shown collapsed.
+    completions: names the card's editor offers as the learner types, at most 30: label is the name as written
+    in code (`sqrt`, `math.sqrt`, `.append`), signature how it is called (`sqrt(x)`), doc one line on what it does.
+    After a dot the editor offers the part after the last dot. The lesson rules say which names belong here.
     End your turn after posing it.
     """
     lesson = db.lesson(lesson_id)
@@ -1018,6 +1022,8 @@ async def pose_exercise(
         return f"error: no lesson with id {lesson_id}"
     if not files:
         return "error: an exercise needs at least one file"
+    if len(completions) > 30:
+        return "error: at most 30 completions"
     workspace = db.workspace(lesson["slug"])
     if sandbox.online(workspace):
         return ONLINE_BUSY
@@ -1028,6 +1034,8 @@ async def pose_exercise(
         **challenge.new(), "files": [f.path for f in files], "run": run, "last_run": None, "milestone": milestone, "form": form.strip(),
         "helper": helper.strip(), "starter": {f.path: f.content for f in files},
     }
+    if completions:
+        data["completions"] = [c.model_dump() for c in completions]
     block = db.add_block(lesson_id, "exercise", markdown, data)
     _show(lesson, block)
     return f"shown as exercise {block['id']}; end the turn and wait for the learner"

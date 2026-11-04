@@ -3414,3 +3414,88 @@ dialog.handoff .qr {
   color: var(--ink);
   box-shadow: var(--shadow-float);
 }
+
+.code-editor .cm-editor {
+  max-height: 420px;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font-size: 0.875rem;
+}
+.code-editor .cm-editor.cm-focused {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.code-editor .cm-scroller {
+  font-family: var(--mono);
+  overflow: auto;
+}
+.code-editor .cm-gutters {
+  background: var(--code-bg);
+  color: var(--code-comment);
+  border: 0;
+}
+.code-editor .cm-content {
+  caret-color: var(--code-ink);
+}
+.code-editor .cm-cursor {
+  border-inline-start-color: var(--code-ink);
+}
+.code-editor .cm-activeLine,
+.code-editor .cm-activeLineGutter {
+  background: color-mix(in oklab, var(--code-ink) 8%, transparent);
+}
+.code-editor .cm-selectionBackground,
+.code-editor .cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
+.code-editor .cm-content ::selection {
+  background: color-mix(in oklab, var(--code-ink) 30%, transparent) !important;
+}
+.code-editor .tok-keyword,
+.code-editor .tok-meta {
+  color: var(--code-keyword);
+}
+.code-editor .tok-string,
+.code-editor .tok-string2 {
+  color: var(--code-string);
+}
+.code-editor .tok-number,
+.code-editor .tok-bool,
+.code-editor .tok-atom {
+  color: var(--code-number);
+}
+.code-editor .tok-comment {
+  color: var(--code-comment);
+  font-style: italic;
+}
+.code-editor .tok-variableName2,
+.code-editor .tok-definition,
+.code-editor .tok-propertyName {
+  color: var(--code-name);
+}
+.code-editor .tok-typeName,
+.code-editor .tok-className,
+.code-editor .tok-namespace {
+  color: var(--code-type);
+}
+.code-editor .cm-tooltip,
+.code-editor .cm-tooltip.cm-completionInfo {
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border: 1px solid var(--code-comment);
+}
+.code-editor .cm-completionDetail {
+  color: var(--code-comment);
+}
+.code-editor .cm-tooltip-autocomplete ul li[aria-selected] {
+  background: color-mix(in oklab, var(--code-ink) 22%, var(--code-bg));
+  color: var(--code-ink);
+}
+.file-conflict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-md);
+}
+.file > .small {
+  padding: var(--space-2xs) var(--space-md);
+}

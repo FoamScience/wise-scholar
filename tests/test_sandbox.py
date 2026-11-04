@@ -589,7 +589,7 @@ def test_cleanup_removes_an_old_courses_folders_and_keeps_its_record(place, monk
     block = db.blocks(lessons[old])[-1]
     assert block["data"]["files_kept"] == {"e/x.sh": "echo kept"}
     shown = app._read_files(block, db.WORKSPACE / course["slug"])
-    assert shown == [{"path": "e/x.sh", "location": sandbox.location(db.WORKSPACE / course["slug"], "e/x.sh"), "content": "echo kept", "kept": True}]
+    assert shown == [{"path": "e/x.sh", "location": sandbox.location(db.WORKSPACE / course["slug"], "e/x.sh"), "content": "echo kept", "kept": True, "editable": False, "online": False}]
     assert cleanup.stale() == []
     monkeypatch.setattr(sandbox, "commands", lambda: True)
     with pytest.raises(HTTPException) as refused:

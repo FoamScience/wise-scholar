@@ -4,8 +4,18 @@ import os
 import stat
 from pathlib import Path
 
+from pydantic import BaseModel, Field
+
 # A command can make a file of any size, also a sparse one that costs it nothing: the server reads only this much.
 READ_LIMIT = 2_000_000
+
+
+class Completion(BaseModel):
+    """A name the card's editor offers on an exercise file."""
+
+    label: str = Field(pattern=r"^\.?[^\W\d][\w$]*(\.[^\W\d][\w$]*)*$", max_length=80)
+    signature: str = Field(default="", max_length=200)
+    doc: str = Field(default="", max_length=300)
 
 
 def _open(workspace: Path, path: str, write: bool) -> int | None:
@@ -49,6 +59,21 @@ def read_text(workspace: Path, path: str) -> str | None:
         return None
     with os.fdopen(fd, "rb") as f:
         return f.read(READ_LIMIT).decode(errors="replace")
+
+
+def editable_text(workspace: Path, path: str) -> str | None:
+    """The text of a file that survives being edited and saved whole: not cut at READ_LIMIT and valid UTF-8."""
+    fd = _open(workspace, path, write=False)
+    if fd is None:
+        return None
+    with os.fdopen(fd, "rb") as f:
+        raw = f.read(READ_LIMIT + 1)
+    if len(raw) > READ_LIMIT:
+        return None
+    try:
+        return raw.decode()
+    except UnicodeDecodeError:
+        return None
 
 
 def write_text(workspace: Path, path: str, content: str) -> bool:

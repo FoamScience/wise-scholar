@@ -144,12 +144,14 @@ export function challengeLabel(d: ChallengeData, speech: boolean, t: TFunction):
   return t('challenge.workItOut')
 }
 
+export type Completion = { label: string; signature: string; doc: string }
 export type ExerciseData = ChallengeData & {
   files: string[]
   run: string
   last_run: { exit_code: number | null; output: string } | null
+  completions?: Completion[]
 }
-export type ExerciseFile = { path: string; location: string; content: string | null; kept: boolean }
+export type ExerciseFile = { path: string; location: string; content: string | null; kept: boolean; editable: boolean; online: boolean }
 
 export type SortItem = { text: string; category?: string }
 

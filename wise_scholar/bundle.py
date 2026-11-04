@@ -515,6 +515,18 @@ def unpack(data: bytes) -> tuple[str, Manifest, dict[str, bytes]]:
     return sha(body), manifest, assets
 
 
+def _clean_completions(completions: object) -> list[dict]:
+    if not isinstance(completions, list):
+        return []
+    clean = []
+    for c in completions[:30]:
+        try:
+            clean.append(course_files.Completion.model_validate(c).model_dump())
+        except ValidationError:
+            pass
+    return clean
+
+
 def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
     """A block from someone else, made safe to show and to hand to the tutor."""
     data = dict(block.data or {})
@@ -526,6 +538,8 @@ def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
         data = {"spec": data.get("spec"), "widget": widgets.resolve(data.get("spec")), "alt": str(data.get("alt", ""))[:2000]}
     if block.kind in ("figure", "plot", "widget") and isinstance(teaches, dict):
         data["teaches"] = {k: str(teaches.get(k, ""))[:figures.TEACHES_CHARS] for k in figures.Teaches.model_fields}
+    if block.kind == "exercise" and "completions" in data:
+        data["completions"] = _clean_completions(data["completions"])
     if block.kind == "quiz":
         key = data.pop("card", None)
         if key not in card_ids:
