@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { useTranslation } from 'react-i18next'
 import { sketch } from './sketch'
+import { InlineMarkdown } from './Md'
 
 export type Credit = { name: string; author: string; licence: string; pack: string; url: string }
 export type FigureData = {
@@ -23,7 +24,7 @@ export function Limits({ teaches }: { teaches?: Teaches }) {
   if (!teaches?.limits) return null
   return (
     <div className="limits" dir="auto">
-      {t('block.limits', { limits: teaches.limits })}
+      <InlineMarkdown>{t('block.limits', { limits: teaches.limits })}</InlineMarkdown>
     </div>
   )
 }
@@ -118,7 +119,7 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
         </div>
       </button>
       {d.frames && d.frames.length > 1 && <Stages key={d.svg} box={box} count={d.frames.length} />}
-      {props.caption && <div className="caption">{props.caption}</div>}
+      {props.caption && <div className="caption"><InlineMarkdown>{props.caption}</InlineMarkdown></div>}
       <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />
       {redraw && notes === null && (

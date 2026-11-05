@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { OutlineData } from './course'
+import { InlineMarkdown } from './Md'
 
 /** The unit's plan: steps done, the current one, and the one step the tutor added with its reason. */
 export function OutlineCard({ data, onTestOut }: { data: OutlineData; onTestOut?: (scope: 'step' | 'unit') => void }) {
@@ -12,7 +13,7 @@ export function OutlineCard({ data, onTestOut }: { data: OutlineData; onTestOut?
       <ol>
         {data.steps.map((step, i) => (
           <li key={step} className={i < data.at ? 'done' : i === data.at ? 'current' : undefined} aria-current={i === data.at ? 'step' : undefined}>
-            {step}
+            <InlineMarkdown>{step}</InlineMarkdown>
             {i < data.at && <span className="small"> ({t('common.done')})</span>}
           </li>
         ))}

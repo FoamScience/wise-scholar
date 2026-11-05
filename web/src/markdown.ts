@@ -15,7 +15,7 @@ import { common } from 'lowlight'
 import type { Root as Markdown } from 'mdast'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
-import type { PluggableList } from 'unified'
+import type { PluggableList, Processor } from 'unified'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { visit } from 'unist-util-visit'
@@ -40,6 +40,17 @@ function remarkDisplayMath() {
 }
 
 export const remarkPlugins: PluggableList = [remarkGfm, remarkMath, remarkDisplayMath]
+
+/** Text in a title or a label stays one line of text: `1. Intro` is not a list, `# x` is not a heading. */
+function remarkNoBlocks(this: Processor) {
+  const data = this.data() as { micromarkExtensions?: unknown[] }
+  data.micromarkExtensions ??= []
+  data.micromarkExtensions.push({
+    disable: { null: ['blockQuote', 'codeFenced', 'codeIndented', 'definition', 'headingAtx', 'htmlFlow', 'list', 'setextUnderline', 'table', 'thematicBreak'] },
+  })
+}
+
+export const inlineRemarkPlugins: PluggableList = [...remarkPlugins, remarkNoBlocks]
 
 /** A node's text without its code and math, which do not say what language the block is written in. */
 function prose(node: ElementContent): string {

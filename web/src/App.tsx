@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
-import Markdown from './Md'
+import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { api, failure } from './api'
 import { useArrivals } from './arrive'
 import i18n, { day, lookup, percent } from './i18n'
@@ -493,10 +493,10 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   if (answer !== null)
     return (
       <section id={`block-${props.block.id}`} className="block answered">
-        <div className="muted" dir="auto">{props.block.markdown}</div>
-        {answer && <span className="chip" dir="auto">{answer}</span>}
+        <div className="muted" dir="auto"><InlineMarkdown>{props.block.markdown}</InlineMarkdown></div>
+        {answer && <span className="chip"><AnswerText text={answer} picked={options.includes(answer)} /></span>}
         {non_goals?.map((o) => (
-          <span key={o} className="chip ruled" dir="auto">{t('question.notWanted', { option: o })}</span>
+          <span key={o} className="chip ruled" dir="auto"><InlineMarkdown>{t('question.notWanted', { option: o })}</InlineMarkdown></span>
         ))}
       </section>
     )
@@ -517,7 +517,7 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
 
   return (
     <section id={`block-${props.block.id}`} className="block question">
-      <h2 dir="auto">{props.block.markdown}</h2>
+      <h2 dir="auto"><InlineMarkdown>{props.block.markdown}</InlineMarkdown></h2>
       {multiple && <div className="small">{t(goals ? 'question.goals' : 'question.several')}</div>}
       <div className="options">
         {options.map((o) =>
@@ -532,11 +532,11 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
               disabled={props.disabled}
               onClick={() => toggle(o)}
             >
-              {o}
+              <InlineMarkdown>{o}</InlineMarkdown>
             </button>
           ) : (
             <button key={o} className="btn option" dir="auto" disabled={props.disabled} onClick={() => props.onAnswer(o)}>
-              {o}
+              <InlineMarkdown>{o}</InlineMarkdown>
             </button>
           ),
         )}

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { day } from './i18n'
 import { Correction } from './Diff'
-import Markdown from './Md'
+import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { textDirection } from './text'
 
 export type Entry = {
@@ -64,14 +64,14 @@ export function ErrorsPage({ profile }: { profile: number }) {
             <div className="attempt">
               <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
               <span className="said" dir={textDirection(e.said)}>
-                {e.said}
+                {e.kind === 'writing' ? e.said : <AnswerText text={e.said} />}
               </span>
             </div>
             <div className="solution">
               <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
               {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
               {e.explanation && <Markdown>{e.explanation}</Markdown>}
-              {e.misconception && <p className="belief">{t('quiz.belief', { belief: e.misconception })}</p>}
+              {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
             </div>
             <label className="small" htmlFor={`note-${e.id}`}>
               {t('notebook.note')}
