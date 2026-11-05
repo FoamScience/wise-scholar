@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
-import Markdown from './Md'
+import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { NetworkCard } from './Network'
 import { api, failure } from './api'
 import { parts, timeline } from './chapters'
@@ -78,10 +78,10 @@ function QuizBlock({ block }: { block: Block }) {
       ) : d.correct === undefined ? (
         <div className="attempt">
           <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
-          <span dir={textDirection(d.answer)}>{d.answer}</span>
+          <AnswerText text={d.answer} picked={d.kind === 'choice'} />
         </div>
       ) : (
-        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
+        <QuizResult picked={d.kind === 'choice'} answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
       )}
     </Card>
   )
@@ -167,12 +167,12 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
     const d = block.data as QuestionData
     return (
       <Card label={t('card.question')} className="question">
-        <h3 dir="auto">{block.markdown}</h3>
+        <h3 dir="auto"><InlineMarkdown>{block.markdown}</InlineMarkdown></h3>
         {d.answer === null ? (
           <div className="muted">{t('book.unanswered')}</div>
         ) : (
-          <span className="chip" dir="auto">
-            {d.answer}
+          <span className="chip">
+            <AnswerText text={d.answer} />
           </span>
         )}
       </Card>
@@ -265,7 +265,7 @@ function BookBlock({ block, files, sketched }: { block: Block; files: Files; ske
         ) : (
           <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram && !d.crafted} />
         )}
-        {block.markdown && <div className="caption">{block.markdown}</div>}
+        {block.markdown && <div className="caption"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>}
         <Limits teaches={d.teaches} />
         <Credits credits={d.credits} />
       </Card>
@@ -387,13 +387,13 @@ function Notebook({ entries }: { entries: Entry[] }) {
           {e.kind === 'quiz' && <Markdown>{e.prompt}</Markdown>}
           <div className="attempt">
             <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
-            <span dir={textDirection(e.said)}>{e.said}</span>
+            {e.kind === 'writing' ? <span dir={textDirection(e.said)}>{e.said}</span> : <AnswerText text={e.said} />}
           </div>
           <div className="solution">
             <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
             {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
             {e.explanation && <Markdown>{e.explanation}</Markdown>}
-            {e.misconception && <p className="belief">{t('quiz.belief', { belief: e.misconception })}</p>}
+            {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
           </div>
           {e.note && (
             <div className="hint">

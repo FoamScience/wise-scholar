@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import Markdown from './Md'
+import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { api } from './api'
 import { useArrivals } from './arrive'
 import { sortItems } from './course'
@@ -201,7 +201,7 @@ function QuizForm(props: {
   )
 }
 
-export function QuizResult(props: { answer: string; confidence: number; result: Graded; feedback?: string; unknown?: boolean; items?: SortItem[] }) {
+export function QuizResult(props: { answer: string; confidence: number; result: Graded; feedback?: string; unknown?: boolean; items?: SortItem[]; picked?: boolean }) {
   const { result } = props
   const { t } = useTranslation()
   return (
@@ -210,13 +210,13 @@ export function QuizResult(props: { answer: string; confidence: number; result: 
         <span className="label">
           {props.unknown ? t('common.yourAnswer') : t('quiz.answerSure', { percent: percent(props.confidence) })}
         </span>
-        {props.unknown ? t('quiz.dontKnow') : props.items ? <SortOutcome items={props.items} answer={props.answer} misplaced={result.misplaced} /> : props.answer}
+        {props.unknown ? t('quiz.dontKnow') : props.items ? <SortOutcome items={props.items} answer={props.answer} misplaced={result.misplaced} /> : <AnswerText text={props.answer} picked={props.picked} />}
       </div>
       <div className={result.correct ? 'solution' : 'hint'}>
         <div className="label">{result.correct ? t('quiz.correct') : t('quiz.notQuite')}</div>
         {!result.correct && !props.items && <Markdown>{t('quiz.answerKey', { answer: result.answer_key })}</Markdown>}
         <Markdown>{props.feedback || result.explanation}</Markdown>
-        {result.misconception && <p className="belief">{t('quiz.belief', { belief: result.misconception })}</p>}
+        {result.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: result.misconception })}</InlineMarkdown></p>}
         {result.confident_miss && (
           <p>{t('quiz.confidentMiss', { percent: percent(props.confidence) })}</p>
         )}
@@ -237,7 +237,7 @@ function OfflineAnswer(props: { id: number; data: QuizData; given?: Given; onGiv
       <div className="quiz-result">
         <div className="attempt">
           <span className="label">{t('quiz.answerSure', { percent: percent(given.confidence) })}</span>
-          {given.answer}
+          <AnswerText text={given.answer} />
         </div>
         <div className="solution">
           <div className="label">{t('review.model')}</div>
@@ -256,7 +256,7 @@ function OfflineAnswer(props: { id: number; data: QuizData; given?: Given; onGiv
     )
   return (
     <>
-      <QuizResult answer={given.answer} confidence={given.confidence} result={result} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
+      <QuizResult picked={d.kind === 'choice'} answer={given.answer} confidence={given.confidence} result={result} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
       <div className="small">{t('offline.kept')}</div>
     </>
   )
@@ -300,7 +300,7 @@ export function QuizCard(props: {
                 {(d.options as string[]).map((o) => (
                   <li key={o} className={o === d.answer_key ? 'picked' : undefined}>
                     <Markdown>{o}</Markdown>
-                    {d.misconceptions?.[o] && <p className="belief">{t('quiz.belief', { belief: d.misconceptions[o] })}</p>}
+                    {d.misconceptions?.[o] && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: d.misconceptions[o] })}</InlineMarkdown></p>}
                   </li>
                 ))}
               </ul>
@@ -330,7 +330,7 @@ export function QuizCard(props: {
         <div className="quiz-result">
           <div className="attempt">
             <span className="label">{t('quiz.answerSure', { percent: percent(d.confidence!) })}</span>
-            {d.answer}
+            <AnswerText text={d.answer!} />
           </div>
           <div className="solution">
             <div className="label">{t('review.model')}</div>
@@ -349,10 +349,10 @@ export function QuizCard(props: {
       ) : d.correct === undefined ? (
         <div className="attempt">
           <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
-          {d.answer}
+          <AnswerText text={d.answer!} picked={d.kind === 'choice'} />
         </div>
       ) : (
-        <QuizResult answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
+        <QuizResult picked={d.kind === 'choice'} answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
       )}
     </section>
   )
@@ -473,7 +473,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
             {result && (
               <>
                 {!result.correct && <Markdown>{result.explanation}</Markdown>}
-                {result.misconception && <p className="belief">{t('quiz.belief', { belief: result.misconception })}</p>}
+                {result.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: result.misconception })}</InlineMarkdown></p>}
                 <div className="row">
                   <button className="btn primary" onClick={next}>
                     {t('common.next')}

@@ -4,6 +4,7 @@ import { Drawing, Limits } from './Figure'
 import type { Teaches } from './Figure'
 import { PlotBox } from './PlotCard'
 import type { Mark, PlotSpec } from './PlotCard'
+import { InlineMarkdown } from './Md'
 
 type Control = { name: string; label: string; unit: string; values: number[]; start: number }
 type Readout = { label: string; unit: string; digits: number }
@@ -72,13 +73,13 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
   return (
     <section id={`block-${props.id}`} className="block widget">
       <div className="label">{t('block.widget')}</div>
-      {props.title && <h2>{props.title}</h2>}
+      {props.title && <h2><InlineMarkdown>{props.title}</InlineMarkdown></h2>}
       {d.figure && <Drawing className="figure-box" svg={filled(d.figure, state.figure ?? [])} alt={(props.data as WidgetData).alt} sketched={false} />}
       {plot && <PlotBox spec={plot} alt={(props.data as WidgetData).alt} />}
       <dl className="readouts" aria-live="polite">
         {d.readouts.map((r, i) => (
           <div key={i}>
-            <dt>{r.label}</dt>
+            <dt><InlineMarkdown>{r.label}</InlineMarkdown></dt>
             <dd>
               <output>{state.readouts[i] === null ? t('block.widgetUndefined') : `${format(state.readouts[i] as number, r.digits)}${r.unit ? ` ${r.unit}` : ''}`}</output>
             </dd>
@@ -90,7 +91,7 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
           const shown = `${c.values[at[i]].toLocaleString(i18n.language, { maximumFractionDigits: 6 })}${c.unit ? ` ${c.unit}` : ''}`
           return (
             <div key={c.name} className="control">
-              <label htmlFor={`${props.id}-${c.name}`}>{c.label}</label>
+              <label htmlFor={`${props.id}-${c.name}`}><InlineMarkdown>{c.label}</InlineMarkdown></label>
               <input
                 id={`${props.id}-${c.name}`}
                 type="range"

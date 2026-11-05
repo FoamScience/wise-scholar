@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useTheme } from './theme'
 import { Limits } from './Figure'
 import type { Teaches } from './Figure'
+import { InlineMarkdown } from './Md'
 
 export type Mark = { type: 'line' | 'dot' | 'bar' | 'area' | 'rule' | 'text' | 'rect'; data?: Record<string, unknown>[]; [k: string]: unknown }
 type Axis = { label?: string; domain?: [number, number]; grid?: boolean; type?: 'linear' | 'log' | 'sqrt' | 'point' | 'band' }
@@ -22,7 +23,7 @@ export function PlotCard(props: { id: number; title: string; data: unknown }) {
   return (
     <section id={`block-${props.id}`} className="block plot">
       <div className="label">{t('block.plot')}</div>
-      {props.title && <h2>{props.title}</h2>}
+      {props.title && <h2><InlineMarkdown>{props.title}</InlineMarkdown></h2>}
       <PlotBox spec={d.spec} alt={d.alt} />
       <Limits teaches={d.teaches} />
     </section>

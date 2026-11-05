@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ReactMarkdown from 'react-markdown'
-import Markdown from '../src/Md.tsx'
+import Markdown, { AnswerText, InlineMarkdown } from '../src/Md.tsx'
 import { rehypePlugins, remarkPlugins } from '../src/markdown.ts'
 import i18n from '../src/i18n.ts'
 import { splitSentences } from '../src/text.ts'
@@ -114,4 +114,28 @@ test('a link to #part-id names a figure part and other links stay links', () => 
   const html = renderToStaticMarkup(createElement(Markdown, { children: 'The [left ventricle](#part-ventricle) pumps; see [docs](https://example.org).' }))
   assert.ok(html.includes('<span class="term" data-ref="ventricle" tabindex="0">left ventricle</span>'))
   assert.ok(html.includes('<a href="https://example.org">docs</a>'))
+})
+
+test('inline text renders math with no paragraph around it', () => {
+  const html = renderToStaticMarkup(createElement(InlineMarkdown, { children: 'about $44.73^\\circ$ or `x`' }))
+  assert.match(html, /^about <span class="katex">/)
+  assert.ok(html.includes('<code>x</code>'))
+  assert.ok(!html.includes('<p>'))
+})
+
+test('inline text is not read as blocks', () => {
+  const inline = (text: string) => renderToStaticMarkup(createElement(InlineMarkdown, { children: text }))
+  assert.equal(inline('1. Intro'), '1. Intro')
+  assert.equal(inline('- x'), '- x')
+  assert.equal(inline('# x'), '# x')
+  assert.ok(inline('1. $x^2$').startsWith('1. <span class="katex">'))
+})
+
+test('a picked option renders as the tutor wrote it; a typed answer stays verbatim unless it holds math', () => {
+  const answer = (text: string, picked?: boolean) => renderToStaticMarkup(createElement(AnswerText, { text, picked }))
+  assert.ok(answer('It is at least about $44.73^\\circ$, and may be larger', true).includes('class="katex"'))
+  assert.ok(answer('call `len(x)`', true).includes('<code>len(x)</code>'))
+  assert.equal(answer('a*b*c and # not a heading'), '<span dir="auto">a*b*c and # not a heading</span>')
+  assert.equal(answer('costs $5'), '<span dir="auto">costs $5</span>')
+  assert.ok(answer('so $x^2$ grows').includes('class="katex"'))
 })
