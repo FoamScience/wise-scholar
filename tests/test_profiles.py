@@ -404,6 +404,12 @@ def test_pretest_gates_explanations_and_stays_out_of_reviews_and_mastery():
     own, traits = db.concepts(course)
     lesson = db.create_lesson(course, "Ownership", "lesson", own["id"])
     assert asyncio.run(tutor.add_block(lesson, "prose", "Ownership means…")).startswith("refused: the lesson has no attempted opening")
+    svg = '<svg viewBox="0 0 10 10"><circle r="4"/></svg>'
+    assert asyncio.run(tutor.add_figure(lesson, svg, "c", "a", TEACHES)).startswith("refused: the lesson has no attempted opening")
+    assert not asyncio.run(tutor.add_figure(lesson, svg, "c", "a", TEACHES, setup=True)).startswith(("refused", "error"))
+    assert asyncio.run(tutor.add_plot(lesson, "t", {"marks": [{"type": "rule", "y": 0}]}, "a", TEACHES)).startswith("refused: the lesson has no attempted opening")
+    assert asyncio.run(tutor.add_plot(lesson, "t", {"marks": [{"type": "rule", "y": 0}]}, "a", TEACHES, setup=True)).startswith("refused: an opening has one setup figure")
+    assert asyncio.run(tutor.add_block(lesson, "prose", "Ownership means…")).startswith("refused: the lesson has no attempted opening")
     asyncio.run(tutor.pose_quiz(lesson, "What happens to s after let t = s;?", "open", [], "s is moved", "", pretest=True))
     block = db.blocks(lesson)[-1]
     card = db.card(block["data"]["card_id"])
