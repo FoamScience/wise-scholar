@@ -40,6 +40,7 @@ import { usePlayer } from './player'
 import { splitBy, textDirection } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
 import { useProfiles } from './profiles'
+import { clearTabMark, markTab } from './tabMark'
 import { LOCALES, browserLocale, rememberLocale } from './locale'
 import type { Locale } from './locale'
 
@@ -1284,6 +1285,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
       const ev: TutorEvent = JSON.parse(raw.data)
       if (ev.type === 'turn.started') {
         patchLesson(ev.lesson_id, (l) => ({ ...l, running: true }))
+        clearTabMark()
         setActivity('thinking')
         setError('')
       } else if (ev.type === 'chat.delta') {
@@ -1342,7 +1344,11 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
         setStreaming('')
         setActivity('')
         setWriting(false)
-        if (!ev.ok && ev.error !== 'stopped') setError(ev.error ?? i18n.t('chat.turnFailed'))
+        if (ev.ok) markTab('✓')
+        else if (ev.error !== 'stopped') {
+          markTab('✕')
+          setError(ev.error ?? i18n.t('chat.turnFailed'))
+        }
       }
     }
     // a sitting opens with a few due reviews before the lesson; a card looked up by search opens straight away
