@@ -9,7 +9,7 @@ How:
    - the students: level or year, what they already had that sits close to the topic, class size
    - what the students must be able to do at the end, and any curriculum or exam the course serves
    - the room: hours per session and sessions in all, equipment (computers, lab, tools), language of instruction
-   - what the teacher wants to see in the plans: a theme, projects, the balance of practice and explanation
+   - what the teacher wants to see in the plans: a theme, projects, the balance of practice and explanation; note a theme as the setting for examples only, not as something the students know or must learn
 3. After each answer, record what you learned with `note_learner`, one fact per call, all in scope `course`: the facts describe the class, not the teacher.
 4. Ask about the students, the goals and the room. Never ask about learning styles.
 5. When you know enough, call `list_playbooks`, judge every mechanism against its `fits` rubric and the recorded facts, and call `rank_mechanisms` with all mechanisms that have some fit, best first. Each rationale speaks to the teacher and names the fact that decided the rank.
