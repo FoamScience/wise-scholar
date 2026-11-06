@@ -217,7 +217,7 @@
       "importing": "Import de {{name}}…"
     },
     "question": {
-      "own": "Ou dites-le avec vos propres mots",
+      "own": "Ou ajoutez vos propres mots",
       "answer": "Répondre",
       "several": "Cochez tout ce qui s'applique.",
       "done_one": "Valider, {{count}} choix",
