@@ -503,25 +503,28 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
 
   // on a goal card a tap picks an option, a second marks it not wanted, a third clears it
   function toggle(o: string) {
-    if (picked.includes(o)) {
+    if (!multiple) setPicked(picked.includes(o) ? [] : [o])
+    else if (picked.includes(o)) {
       setPicked((all) => all.filter((x) => x !== o))
       if (goals) setRuled((all) => [...all, o])
     } else if (ruled.includes(o)) setRuled((all) => all.filter((x) => x !== o))
     else setPicked((all) => [...all, o])
   }
 
+  const given = [...picked, text.trim()].filter(Boolean).join('; ')
+
   function submit(e: FormEvent) {
     e.preventDefault()
-    if (text.trim()) props.onAnswer(text.trim())
+    if (given || ruled.length) props.onAnswer(given, goals ? ruled : undefined)
   }
 
   return (
     <section id={`block-${props.block.id}`} className="block question">
       <h2 dir="auto"><InlineMarkdown>{props.block.markdown}</InlineMarkdown></h2>
       {multiple && <div className="small">{t(goals ? 'question.goals' : 'question.several')}</div>}
-      <div className="options">
-        {options.map((o) =>
-          multiple ? (
+      <form className="stack" onSubmit={submit}>
+        <div className="options">
+          {options.map((o) => (
             <button
               key={o}
               type="button"
@@ -534,24 +537,8 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
             >
               <InlineMarkdown>{o}</InlineMarkdown>
             </button>
-          ) : (
-            <button key={o} className="btn option" dir="auto" disabled={props.disabled} onClick={() => props.onAnswer(o)}>
-              <InlineMarkdown>{o}</InlineMarkdown>
-            </button>
-          ),
-        )}
-        {multiple && (
-          <button
-            type="button"
-            className="btn primary"
-            disabled={props.disabled || picked.length + ruled.length === 0}
-            onClick={() => props.onAnswer(picked.join('; '), goals ? ruled : undefined)}
-          >
-            {goals && ruled.length > 0 ? t('question.doneRuled', { count: picked.length, ruled: ruled.length }) : t('question.done', { count: picked.length })}
-          </button>
-        )}
-      </div>
-      <form onSubmit={submit}>
+          ))}
+        </div>
         <label htmlFor={`own-${props.block.id}`}>{t('question.own')}</label>
         <div className="row">
           <input
@@ -560,8 +547,12 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          <button className="btn primary" disabled={props.disabled || !text.trim()}>
-            {t('question.answer')}
+          <button className="btn primary" disabled={props.disabled || !(given || ruled.length)}>
+            {goals && ruled.length > 0
+              ? t('question.doneRuled', { count: picked.length, ruled: ruled.length })
+              : multiple && picked.length > 0 && !text.trim()
+                ? t('question.done', { count: picked.length })
+                : t('question.answer')}
           </button>
         </div>
       </form>

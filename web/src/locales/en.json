@@ -214,7 +214,7 @@
       "importing": "Importing {{name}}…"
     },
     "question": {
-      "own": "Or say it in your own words",
+      "own": "Or add your own words",
       "answer": "Answer",
       "several": "Pick all that apply.",
       "done_one": "Done, {{count}} picked",

@@ -212,7 +212,8 @@ async def ask(lesson_id: int, question: str, options: list[str], multiple: bool 
 
     multiple: more than one option may be true (what they already know, what they want to do,
     what equipment there is): the learner picks any number and the answer arrives as the picks
-    joined by "; ". The learner can also answer in their own words. This returns at once: end your
+    joined by "; ". The learner can also answer in their own words, alone or after their picks, in the same
+    "; "-joined answer. This returns at once: end your
     turn after calling it, and the answer arrives as the next turn.
     non_goals: for the question about what the course should enable; implies multiple. The learner can
     also mark options as not wanted, and the server records those as the course's non-goals.
