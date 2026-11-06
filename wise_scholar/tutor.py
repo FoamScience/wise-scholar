@@ -1997,6 +1997,53 @@ async def propose_edits(course_id: int, edits: list[Edit]) -> str:
     return "\n".join(out) or "error: give at least one edit"
 
 
+EXPLORE_TOOLS = ("suggest_courses",)
+SUGGESTIONS = 6
+SUGGESTIONS_OF_A_KIND = 2
+SUGGESTION_TITLE_CHARS = 70
+SUGGESTION_PITCH_CHARS = 260
+suggestion_jobs: dict[int, dict] = {}  # course id the turn runs on -> {"profile_id", "topics", "retire", "done"}
+
+
+class Suggestion(BaseModel):
+    title: str
+    pitch: str
+    kind: Literal["deeper", "adjacent"]
+    builds_on: str
+
+
+@mcp.tool()
+async def suggest_courses(course_id: int, suggestions: list[Suggestion]) -> str:
+    """Offer the learner their next courses; these replace the ones on offer.
+
+    Exactly 6, at least 2 of each kind. title: the subject as a person would type it to start a course, plain text,
+    under 70 characters. pitch: under 260 characters, what the learner will be able to do and what of theirs carries
+    over. kind: deeper goes up a level in what they know, adjacent opens a neighbouring field. builds_on: the topic of
+    one of the learner's courses, copied exactly from its [course] line.
+    """
+    job = suggestion_jobs.get(course_id)
+    if job is None:
+        return f"error: no suggestions are being written on course {course_id}"
+    entries = [{k: " ".join(v.split()) for k, v in s.model_dump().items()} for s in suggestions]
+    if len(entries) != SUGGESTIONS:
+        return f"error: give exactly {SUGGESTIONS} suggestions"
+    kinds = Counter(e["kind"] for e in entries)
+    if min(kinds["deeper"], kinds["adjacent"]) < SUGGESTIONS_OF_A_KIND:
+        return f"error: give at least {SUGGESTIONS_OF_A_KIND} of each kind"
+    titles = [e["title"].casefold() for e in entries]
+    if len(set(titles)) != len(titles):
+        return "error: every suggestion needs its own title"
+    if taken := [e["title"] for e in entries if e["title"].casefold() in {t.casefold() for t in job["topics"]}]:
+        return f"error: {taken} are already courses of this learner"
+    if bad := [e["title"] for e in entries if not e["title"] or not e["pitch"] or len(e["title"]) > SUGGESTION_TITLE_CHARS or len(e["pitch"]) > SUGGESTION_PITCH_CHARS]:
+        return f"error: {bad} need a title under {SUGGESTION_TITLE_CHARS} characters and a pitch under {SUGGESTION_PITCH_CHARS}"
+    if unknown := sorted({e["builds_on"] for e in entries} - set(job["topics"])):
+        return f"error: {unknown} are not courses of this learner; copy builds_on from a [course] line"
+    db.set_suggestions(job["profile_id"], entries, job["retire"])
+    job["done"] = True
+    return "recorded"
+
+
 @mcp.tool()
 async def set_placement(course_id: int, level: str, summary: str, areas: list[Area]) -> str:
     """Record the result of the placement check.
@@ -2055,8 +2102,8 @@ async def mark_solved(challenge_id: int) -> str:
 # whose turn is running. Either way a tutor talked into it cannot reach another course, and a turn gets a bounded
 # number of calls.
 # A graph turn reads a finished lesson for its claims, a cards turn makes long or missed review cards short and a
-# cleanup turn proposes edits to a version before it is published; each may call only its own tools, and a lesson
-# turn may call none of them.
+# cleanup turn proposes edits to a version before it is published, an explore turn writes the learner's suggested next
+# courses; each may call only its own tools, and a lesson turn may call none of them.
 turns: dict[int | tuple[str, int], dict] = {}  # lesson_id, or (kind, lesson_id) -> {"token", "calls", "lesson_id", "course_id", "kind"}
 _ID_ARGUMENTS = ("lesson_id", "course_id", "challenge_id", "quiz_id", "block_id")
 
@@ -2105,7 +2152,7 @@ def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
 def _guard(call_tool):
     async def guarded(name: str, arguments: dict, context, convert_result: bool = False):
         targets = _targets(arguments)
-        kind = "graph" if name in GRAPH_TOOLS else "cards" if name in CARD_TOOLS else "cleanup" if name in CLEANUP_TOOLS else "lesson"
+        kind = "graph" if name in GRAPH_TOOLS else "cards" if name in CARD_TOOLS else "cleanup" if name in CLEANUP_TOOLS else "explore" if name in EXPLORE_TOOLS else "lesson"
         if token := _token(context):
             turn = next((t for t in turns.values() if t["token"] == token), None)
             if turn is None:
