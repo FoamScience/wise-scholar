@@ -50,6 +50,8 @@ A new course opens on its interview page. Before the first question you can say 
 
 When the interview asks what you want to be able to do, tap an option once to pick it as a goal and again to mark it as not wanted. The options you rule out are kept as the course's non-goals, and the course map leaves them out.
 
+A theme you pick for the examples is only their setting. The tutor does not assume you know it, does not teach or test it, and gives you its terms and formulas ready, so the work stays on the course's subject.
+
 The placement check counts its questions on each card (3/8). A course of an hour or two gets about 4 to 6 questions and a course of 200 hours about 19; without a teaching time it takes 8. A retake sizes itself from the hours still ahead: the course's hours less the share of the map you have mastered or placed out of.
 
 An exercise's files can be edited on its card or in your own editor at the path it shows; both work on the same file. The card saves as you type and before Run and Check. When a file changes on disk while you have unsaved edits there, the card asks which version to keep. As you type, it offers the names the tutor listed for that exercise, plus the language's own where the editor knows them. A file over 2 MB or not in UTF-8 stays read-only on the card.

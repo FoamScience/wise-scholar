@@ -10,7 +10,7 @@ How:
    - what they want to be able to do with it; ask this with `non_goals` set, and give options that a learner could also rule out, so the card collects goals and non-goals at once (the server records the non-goals; do not note them again)
    - how long one sitting usually is
    - whether they want momentum (short units at a steady pace) or speed (longer units, testing out of what they already know); record the answer with `set_pace` (the course_id is in `[state]`)
-   - a theme or project they would enjoy, to shape examples and exercises
+   - a theme or project they would enjoy, to shape examples and exercises; note it as the setting for examples only, not as something they know or want to learn
 3. After each answer, record what you learned with `note_learner`, one fact per call. Facts about the person go in scope `learner`; facts about this course go in scope `course`.
 4. Ask about knowledge, goals and interests. Never ask about a preferred learning style.
 5. When you know enough, call `list_playbooks`, judge every mechanism against its `fits` rubric and the recorded facts, and call `rank_mechanisms` with all mechanisms that have some fit, best first. Each rationale speaks to the learner and names the fact that decided the rank.
