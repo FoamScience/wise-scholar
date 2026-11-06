@@ -220,6 +220,8 @@ The count of activities per strand shown in the course map is this app's own rou
 
 Every figure, plot and widget the tutor shows carries the claim of the lesson it makes visible and what the learner should notice in it; a figure with no such claim is not drawn. The tutor also states where the picture stops matching the real thing, and the learner reads that under the caption. Before a drawn figure is shown, a headless browser lays it out at the lesson's width and sends it back to the tutor when nothing is drawn, a label runs past its edge, two labels overlap or a label is too small to read.
 
+A task never asks the learner to imagine what it rests on: the situation is on the page, as a labelled figure or, in a programming course, as code. A figure that only sets up an opening card may come before the first attempt; everything that explains still waits for the attempt.
+
 ### Terms and figure parts light up together
 
 | Source | What it reports | Limits |

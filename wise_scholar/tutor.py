@@ -196,6 +196,16 @@ def pretest_blocker(lesson: dict) -> str | None:
     )
 
 
+def figure_blocker(lesson: dict, setup: bool) -> str | None:
+    """Before the opening's attempt, the one figure that sets up its card is the only figure the lesson may show."""
+    problem = pretest_blocker(lesson)
+    if not problem or not setup:
+        return problem
+    if any(block["kind"] in ("figure", "plot") for block in db.blocks(lesson["id"])):
+        return "an opening has one setup figure, and this lesson has it. Pose the card and end the turn"
+    return None
+
+
 @mcp.tool()
 async def ask(lesson_id: int, question: str, options: list[str], multiple: bool = False, non_goals: bool = False) -> str:
     """Show the learner one question card with 2 to 5 short answer options.
@@ -502,7 +512,7 @@ async def set_known(course_id: int, known: list[str], unknown: list[str]) -> str
 
 
 @mcp.tool()
-async def add_figure(lesson_id: int, svg: str, caption: str, alt: str, teaches: figures.Teaches) -> str:
+async def add_figure(lesson_id: int, svg: str, caption: str, alt: str, teaches: figures.Teaches, setup: bool = False) -> str:
     """Show a figure you draw yourself as SVG: a schematic, a labelled structure, an apparatus sketch, a force
     diagram, a small infographic.
 
@@ -517,6 +527,8 @@ async def add_figure(lesson_id: int, svg: str, caption: str, alt: str, teaches: 
     #e1f0ee, amber #6b3a00, amber tint #fbebd3, line #8794a1; text and outlines in currentColor so both themes
     read it. No script, style element, image, foreignObject or external links; they are stripped or refused.
     caption: one sentence under the figure. alt: what the figure shows, for a reader who cannot see it.
+    setup: this figure shows the situation of the opening card you pose next, with what the card asks left out;
+    only then, and only once, may a figure come before the learner's first attempt. claim says what the situation is.
     Before showing it the server lays it out 600 px wide and refuses it, saying why, when nothing is drawn, a label
     runs past the viewBox, two labels overlap, or a label is under 9 px tall.
     Wrap each part the lesson text talks about in `<g data-part="id">` (a short lowercase id); the text names it as
@@ -529,7 +541,7 @@ async def add_figure(lesson_id: int, svg: str, caption: str, alt: str, teaches: 
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    if problem := pretest_blocker(lesson):
+    if problem := figure_blocker(lesson, setup):
         return f"refused: {problem}"
     try:
         data = _figure_data(svg, alt) | {"teaches": figures.teaching(teaches)}
@@ -583,15 +595,15 @@ _layouts = asyncio.Semaphore(2)
 
 
 @mcp.tool()
-async def add_diagram(lesson_id: int, domain: str, substance: str, caption: str, alt: str, teaches: figures.Teaches) -> str:
+async def add_diagram(lesson_id: int, domain: str, substance: str, caption: str, alt: str, teaches: figures.Teaches, setup: bool = False) -> str:
     """Show a diagram the server lays out from what you state, in a domain listed on the [tools] line (read
     diagram_help first). substance: a Penrose Substance program for that domain: declare the objects, state the
     predicates, give labels with `Label x "text"`. The layout follows the domain's rules; an error names the rule
-    that cannot be met, then state fewer or smaller things. caption, alt and teaches as for add_figure."""
+    that cannot be met, then state fewer or smaller things. caption, alt, teaches and setup as for add_figure."""
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    if problem := pretest_blocker(lesson):
+    if problem := figure_blocker(lesson, setup):
         return f"refused: {problem}"
     if not alt.strip():
         return "error: alt text is required"
@@ -638,18 +650,18 @@ async def add_animation(lesson_id: int, domain: str, stages: list[str], caption:
 
 
 @mcp.tool()
-async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str, teaches: figures.Teaches) -> str:
+async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str, teaches: figures.Teaches, setup: bool = False) -> str:
     """Show a crafted figure: a thing drawn as itself in volume and shade, from the kit's prisms, tubes, turned
     bodies and soft bodies: an apparatus, a machine, a chromosome, a cell, an organ, a structure. Read craft_help
     first. script: an ES module that imports the kit from "./kit/iso-kit.mjs" and exports as default the string
     figureSvg returns, or an array of 2 to 6 such strings for an animation: the same object, one state per stage,
     played as one animation and shown stage by stage in the book. The server runs it and shows the SVG; an error
     carries Node's message. The figure is coloured by the site's theme, so it carries no colours of its own.
-    caption, alt and teaches as for add_figure; for an animation, alt tells the whole sequence."""
+    caption, alt, teaches and setup as for add_figure; for an animation, alt tells the whole sequence."""
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    if problem := pretest_blocker(lesson):
+    if problem := figure_blocker(lesson, setup):
         return f"refused: {problem}"
     if not alt.strip():
         return "error: alt text is required"
@@ -749,7 +761,7 @@ async def find_art(query: str) -> str:
 
 
 @mcp.tool()
-async def add_plot(lesson_id: int, title: str, spec: dict, alt: str, teaches: figures.Teaches) -> str:
+async def add_plot(lesson_id: int, title: str, spec: dict, alt: str, teaches: figures.Teaches, setup: bool = False) -> str:
     """Show a plot: a function, a comparison of numbers, or data from a file in the workspace.
 
     spec: {"x": {"label": "t (s)", "domain"?: [a, b], "grid"?: true, "type"?: "log"}, "y": {...},
@@ -763,14 +775,14 @@ async def add_plot(lesson_id: int, title: str, spec: dict, alt: str, teaches: fi
       {"type": "rule", "y": 0} or {"type": "rule", "x": 0}; {"type": "text", "data": [{"x", "y", "text"}]};
       {"type": "rect", "data": [...], "x1", "x2", "y1", "y2"}.
     Name the quantity and unit on each axis label. One finding per plot. alt: what the plot shows, in words.
-    teaches as for add_figure: the claim is the finding, notice is where on the plot it shows.
+    teaches as for add_figure: the claim is the finding, notice is where on the plot it shows. setup as for add_figure.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     if not alt.strip():
         return "error: alt text is required"
-    if problem := pretest_blocker(lesson):
+    if problem := figure_blocker(lesson, setup):
         return f"refused: {problem}"
     try:
         purpose = figures.teaching(teaches)
