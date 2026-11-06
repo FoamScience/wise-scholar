@@ -582,6 +582,10 @@ a.btn.primary:hover {
   min-height: 48px;
 }
 
+.topic-form input:placeholder-shown {
+  text-overflow: ellipsis;
+}
+
 .topic-form > .muted {
   font-size: var(--text-sm);
 }
