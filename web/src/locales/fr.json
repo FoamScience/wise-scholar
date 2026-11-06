@@ -704,7 +704,8 @@
         "practice": "Pratique",
         "graph": "Graphe des affirmations",
         "cards": "Cartes de révision",
-        "cleanup": "Vérification avant publication"
+        "cleanup": "Vérification avant publication",
+        "explore": "Cours suggérés"
       }
     },
     "publish": {
@@ -781,6 +782,23 @@
       "upgradeNow": "Passer à la nouvelle version",
       "upgrading": "Passage…",
       "stay": "Rester sur cette version"
+    },
+    "explore": {
+      "link": "Explorer",
+      "heading": "Et ensuite",
+      "help": "Des cours que le tuteur suggère d’après ce que vous avez appris : le niveau au-dessus, et des domaines voisins où vos acquis vous donnent de l’avance.",
+      "start": "Commencer ce cours",
+      "dismiss": "Pas pour moi",
+      "others": "Suggérer autre chose",
+      "writing": "Le tuteur écrit des suggestions…",
+      "failed": "Le tuteur n’a pas pu écrire de suggestions cette fois-ci.",
+      "empty": "Les suggestions viennent dès qu’un cours a son plan.",
+      "emptyLink": "Commencer un cours",
+      "buildsOn": "Prolonge {{course}}",
+      "kinds": {
+        "deeper": "Niveau suivant",
+        "adjacent": "Domaine voisin"
+      }
     }
   },
   "server": {
@@ -807,6 +825,7 @@
     "message is empty": "le message est vide",
     "answer is empty": "la réponse est vide",
     "non-goals are options of a goal question": "les objectifs écartés sont des options d'une question sur les objectifs",
+    "this suggestion is no longer on offer": "cette suggestion n’est plus proposée",
     "already answered": "déjà répondu",
     "try the unit's opening first": "essayez d'abord l'ouverture de l'unité",
     "a prepared course has no pace": "un cours préparé n'a pas de rythme",

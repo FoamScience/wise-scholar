@@ -408,6 +408,77 @@ a.btn.primary:hover {
   font-size: var(--text-section);
 }
 
+/* suggested next courses: three to a row where they fit */
+.home.explore {
+  max-width: var(--page);
+}
+
+.explore header p {
+  max-width: var(--measure);
+  margin: 0;
+}
+
+.suggestions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+@media (max-width: 60rem) {
+  .suggestions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 40rem) {
+  .suggestions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.suggestion {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  transition: border-color var(--motion-fast) var(--ease);
+}
+
+.suggestion:hover,
+.suggestion:focus-within {
+  border-color: var(--line-strong);
+}
+
+.suggestion h2 {
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.suggestion p {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.suggestion .chip.adjacent {
+  background: var(--amber-tint);
+  color: var(--amber-ink);
+}
+
+.suggestion .row {
+  margin-top: var(--space-2xs);
+}
+
+.suggestion.skeleton {
+  align-items: stretch;
+  min-height: 12rem;
+}
+
 /* the sitting leads; reviews and calibration sit in a rail beside it on a wide screen */
 .home.desk {
   display: grid;

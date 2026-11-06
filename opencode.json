@@ -92,6 +92,15 @@
         "scholar_*": "allow"
       }
     },
+    "tutor-explore": {
+      "mode": "primary",
+      "description": "wise-scholar: suggested next courses",
+      "prompt": "{file:./wise_scholar/prompts/explore.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
+    },
     "tutor-lesson-teacher": {
       "mode": "primary",
       "description": "wise-scholar course designer: lesson for a teacher",

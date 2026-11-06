@@ -688,7 +688,8 @@
         "practice": "Practice",
         "graph": "Claims graph",
         "cards": "Review cards",
-        "cleanup": "Publish check"
+        "cleanup": "Publish check",
+        "explore": "Suggested courses"
       }
     },
     "publish": {
@@ -765,6 +766,23 @@
       "upgradeNow": "Move to the new version",
       "upgrading": "Moving…",
       "stay": "Stay on this version"
+    },
+    "explore": {
+      "link": "Explore",
+      "heading": "Where next",
+      "help": "Courses the tutor suggests from what you have learned so far: the level above it, and fields next to it where it gives you a head start.",
+      "start": "Start this course",
+      "dismiss": "Not for me",
+      "others": "Suggest others",
+      "writing": "The tutor is writing suggestions…",
+      "failed": "The tutor could not write suggestions this time.",
+      "empty": "Suggestions come once a course has its map.",
+      "emptyLink": "Start a course",
+      "buildsOn": "Grows from {{course}}",
+      "kinds": {
+        "deeper": "Next level",
+        "adjacent": "Nearby field"
+      }
     }
   },
   "server": {}

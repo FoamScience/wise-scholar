@@ -499,6 +499,20 @@ MIGRATIONS = [
     ALTER TABLE errors ADD COLUMN misconception TEXT NOT NULL DEFAULT '';
     """,
     _add_missed_columns,
+    """
+    CREATE TABLE suggestions (
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id),
+        title TEXT NOT NULL,
+        pitch TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        builds_on TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open'
+    );
+    CREATE INDEX suggestions_profile ON suggestions(profile_id, status);
+    ALTER TABLE profiles ADD COLUMN suggested_courses INTEGER;
+    ALTER TABLE profiles ADD COLUMN suggested_lessons INTEGER;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -1699,6 +1713,42 @@ def graph(profile_id: int, now: str) -> dict:
         "WHERE a.profile_id = ? AND a.wrong = 0 AND b.wrong = 0", profile_id,
     )
     return {"claims": claims, "edges": edges}
+
+
+def suggestions(profile_id: int, status: str = "open") -> list[dict]:
+    return rows("SELECT id, title, pitch, kind, builds_on FROM suggestions WHERE profile_id = ? AND status = ? ORDER BY id", profile_id, status)
+
+
+def suggestion_basis(profile_id: int) -> tuple[int, int]:
+    """What suggestions are written from: the learner's mapped courses and their finished lessons."""
+    courses = row(
+        "SELECT COUNT(*) AS n FROM courses c WHERE c.profile_id = ? AND c.mode = 'learner' AND EXISTS (SELECT 1 FROM concepts k WHERE k.course_id = c.id)",
+        profile_id,
+    )["n"]
+    lessons = row(
+        "SELECT COUNT(*) AS n FROM lessons l JOIN courses c ON c.id = l.course_id WHERE c.profile_id = ? AND c.mode = 'learner' "
+        "AND l.phase IN ('lesson', 'practice') AND EXISTS (SELECT 1 FROM blocks b WHERE b.lesson_id = l.id AND b.kind = 'done')",
+        profile_id,
+    )["n"]
+    return courses, lessons
+
+
+def set_suggestions(profile_id: int, entries: list[dict], retire: bool) -> None:
+    """The new suggestions replace the open ones. retire: the learner asked for others, so the old ones are not offered again."""
+    conn.execute("BEGIN")
+    try:
+        if retire:
+            conn.execute("UPDATE suggestions SET status = 'dismissed' WHERE profile_id = ? AND status = 'open'", (profile_id,))
+        else:
+            conn.execute("DELETE FROM suggestions WHERE profile_id = ? AND status = 'open'", (profile_id,))
+        conn.executemany(
+            "INSERT INTO suggestions (profile_id, title, pitch, kind, builds_on) VALUES (?, ?, ?, ?, ?)",
+            [(profile_id, e["title"], e["pitch"], e["kind"], e["builds_on"]) for e in entries],
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
 
 
 def update_claim(claim_id: int, text: str | None, wrong: bool | None) -> None:

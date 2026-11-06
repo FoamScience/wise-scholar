@@ -108,6 +108,10 @@ The interface and the tutor work in English, French or Arabic. Pick the language
 
 A new language is one file: copy `web/src/locales/en.json`, translate it, and add its code to `web/src/locale.ts`, `web/src/i18n.ts` and the `Locale` names in `wise_scholar/app.py`. `make test` checks that every key and every learner-facing server error is covered.
 
+## Where next
+
+The compass in the top bar opens six courses the tutor suggests from your courses and your claims: the level above what you hold, and neighbouring fields where it gives you a head start. They are written in the background, in your language, when you have no suggestions yet, when a course gets its map, after every three finished lessons and when fewer than three are left; each writing is one tutor turn, counted in the usage of your newest course. *Suggest others* asks for a new set and *Not for me* removes one; neither comes back. The field for a new course on the home screen types the same titles out as its placeholder. Prepared courses and teacher profiles get no suggestions.
+
 ## Export a course as a PDF (optional)
 
 "Export as a book" on the course map opens the whole course as a book: cover, contents, the interview and the placement check, one chapter per lesson with the tutor conversation, your projects and the course's error notebook. It keeps the theme you are using and the site's typefaces.

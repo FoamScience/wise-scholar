@@ -1056,7 +1056,8 @@ def set_sketch(profile_id: int, body: ProfileSketch) -> dict:
 @app.post("/api/profiles/{profile_id}/locale")
 def set_profile_locale(profile_id: int, body: ProfileLocale) -> dict:
     _profile(profile_id)
-    db.conn.execute("UPDATE profiles SET locale = ? WHERE id = ?", (body.locale, profile_id))
+    # suggestions are written in the profile's language, so a new one calls for new ones
+    db.conn.execute("UPDATE profiles SET locale = ?, suggested_courses = NULL WHERE id = ?", (body.locale, profile_id))
     return db.profile(profile_id)
 
 
@@ -1447,6 +1448,138 @@ async def create_course(body: NewCourse) -> dict:
     if not topic:
         raise HTTPException(422, "topic is empty")
     return db.create_course(topic, _profile(body.profile_id)["id"])
+
+
+# --- Suggested next courses: written from the learner's courses and claims, kept until enough of those changed -----
+SUGGEST_AFTER_LESSONS = 3
+SUGGEST_REFILL_BELOW = 3
+SUGGEST_CLAIMS = 200
+SUGGEST_NOT_WANTED = 30
+_suggesting: dict[int, asyncio.Task] = {}
+_suggest_failed: set[int] = set()  # tried in this process and failed: only the learner's asking tries again before a restart
+
+
+def _suggestions_due(profile: dict) -> bool:
+    courses, lessons = db.suggestion_basis(profile["id"])
+    if not courses or profile["mode"] == "teacher":
+        return False
+    return (
+        courses != profile["suggested_courses"]
+        or lessons - (profile["suggested_lessons"] or 0) >= SUGGEST_AFTER_LESSONS
+        or len(db.suggestions(profile["id"])) < SUGGEST_REFILL_BELOW
+    )
+
+
+def _explore_prompt(profile: dict, host: int, retire: bool) -> str:
+    lines = [
+        f"[state] course_id={host}",
+        f"[language] Write titles and pitches in {LOCALE_NAMES[profile['locale']]}.",
+    ]
+    for c in db.rows("SELECT id, topic, level, details FROM courses WHERE profile_id = ? AND mode = 'learner' ORDER BY id", profile["id"]):
+        units = db.concept_view(c["id"])
+        if not units:
+            continue
+        lines.append(f"[course] {c['topic']} | level at the start: {c['level'] or 'unknown'} | wanted: {_untrusted(c['details'] or '') or 'not said'}")
+        lines.append("[units] " + "; ".join(f"{u['title']}: " + ("not started" if u["mastery"] is None else f"{u['mastery']:.0%}") for u in units))
+    states = db.claim_states(profile["id"], _now())
+    claims = db.rows("SELECT id, text FROM claims WHERE profile_id = ? AND wrong = 0 ORDER BY id DESC LIMIT ?", profile["id"], SUGGEST_CLAIMS)
+    kept = {c["id"] for c in claims}
+    lines += [f"[claim {c['id']}, {states[c['id']]}] {_untrusted(c['text'])}" for c in reversed(claims)]
+    lines += [
+        f"[link] {e['from_id']} {e['kind']} {e['to_id']}"
+        for e in db.rows("SELECT e.from_id, e.to_id, e.kind FROM claim_edges e JOIN claims c ON c.id = e.from_id WHERE c.profile_id = ?", profile["id"])
+        if e["from_id"] in kept and e["to_id"] in kept
+    ]
+    refused = db.suggestions(profile["id"], "dismissed")[-SUGGEST_NOT_WANTED:]
+    lines += [f"[not wanted] {s['title']}" for s in refused + (db.suggestions(profile["id"]) if retire else [])]
+    return "\n".join(lines)
+
+
+async def _suggest(profile: dict, retire: bool) -> None:
+    profile_id = profile["id"]
+    courses, lessons = db.suggestion_basis(profile_id)
+    # the turn runs on, and its cost counts to, the learner's newest mapped course
+    host = db.row(
+        "SELECT c.id FROM courses c WHERE c.profile_id = ? AND c.mode = 'learner' AND EXISTS (SELECT 1 FROM concepts k WHERE k.course_id = c.id) ORDER BY c.id DESC LIMIT 1",
+        profile_id,
+    )["id"]
+    lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ? ORDER BY id LIMIT 1", host)["id"])
+    topics = [r["topic"] for r in db.rows("SELECT topic FROM courses WHERE profile_id = ?", profile_id)]
+    job = {"profile_id": profile_id, "topics": topics, "retire": retire, "done": False}
+    tutor.suggestion_jobs[host] = job
+    try:
+        prompt = await asyncio.to_thread(_explore_prompt, profile, host, retire)
+        ok = await _background_turn(lesson, prompt, "explore", "suggested courses")
+    finally:
+        tutor.suggestion_jobs.pop(host, None)
+    if not ok or not job["done"]:
+        _suggest_failed.add(profile_id)
+        return
+    db.conn.execute("UPDATE profiles SET suggested_courses = ?, suggested_lessons = ? WHERE id = ?", (courses, lessons, profile_id))
+
+
+def _suggestions_state(profile_id: int) -> dict:
+    return {"suggestions": db.suggestions(profile_id), "running": profile_id in _suggesting, "failed": profile_id in _suggest_failed}
+
+
+def _start_suggesting(profile: dict, retire: bool = False) -> None:
+    profile_id = profile["id"]
+
+    async def run() -> None:
+        try:
+            await _suggest(profile, retire)
+        except Exception:
+            log.exception("suggestions of profile %s", profile_id)
+            _suggest_failed.add(profile_id)
+        finally:
+            _suggesting.pop(profile_id, None)
+
+    _suggesting[profile_id] = asyncio.create_task(run())
+
+
+class SuggestionAsk(BaseModel):
+    profile_id: int
+    others: bool = False
+
+
+@app.get("/api/suggestions")
+def list_suggestions(profile: int) -> dict:
+    _profile(profile)
+    return _suggestions_state(profile)
+
+
+@app.post("/api/suggestions")
+async def ask_suggestions(body: SuggestionAsk) -> dict:
+    """Pages call this as they open: the server starts a turn only when suggestions are due. others: the learner asked for new ones."""
+    profile = _profile(body.profile_id)
+    if body.profile_id not in _suggesting:
+        if body.others and profile["mode"] != "teacher" and db.suggestion_basis(body.profile_id)[0]:
+            _suggest_failed.discard(body.profile_id)
+            _start_suggesting(profile, retire=True)
+        elif body.profile_id not in _suggest_failed and _suggestions_due(profile):
+            _start_suggesting(profile)
+    return _suggestions_state(body.profile_id)
+
+
+def _open_suggestion(suggestion_id: int) -> dict:
+    found = db.row("SELECT * FROM suggestions WHERE id = ? AND status = 'open'", suggestion_id)
+    if not found:
+        raise HTTPException(409, "this suggestion is no longer on offer")
+    return found
+
+
+@app.post("/api/suggestions/{suggestion_id}/dismiss")
+async def dismiss_suggestion(suggestion_id: int) -> dict:
+    found = _open_suggestion(suggestion_id)
+    db.conn.execute("UPDATE suggestions SET status = 'dismissed' WHERE id = ?", (suggestion_id,))
+    return await ask_suggestions(SuggestionAsk(profile_id=found["profile_id"]))
+
+
+@app.post("/api/suggestions/{suggestion_id}/start")
+async def start_suggestion(suggestion_id: int) -> dict:
+    found = _open_suggestion(suggestion_id)
+    db.conn.execute("UPDATE suggestions SET status = 'taken' WHERE id = ?", (suggestion_id,))
+    return db.create_course(found["title"], found["profile_id"])
 
 
 @app.post("/api/courses/{course_id}/start", status_code=202)

@@ -23,6 +23,7 @@ import { PlacementAreas } from './Areas'
 import { FileEditor } from './FileEditor'
 import { GraphPage } from './Graph'
 import { SittingPage } from './Sitting'
+import { ExplorePage } from './Explore'
 import { SearchPage } from './Search'
 import { HandPage, PhotoTray } from './Handwork'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
@@ -2267,6 +2268,7 @@ export default function App() {
     if (hash === '#/errors') return <ErrorsPage profile={current.id} />
     if (graph) return <GraphPage key={hash} profile={current.id} course={graph[1] ? Number(graph[1]) : null} />
     if (hash === '#/sitting') return <SittingPage profile={current.id} />
+    if (hash === '#/explore' && current.mode !== 'teacher') return <ExplorePage key={current.id} profile={current.id} />
     if (hash === '#/commands') return <CommandsPage profile={current.id} />
     if (hash === '#/usage') return <UsagePage profile={current.id} />
     if (publishing) return <PublishPage key={publishing[1]} courseId={Number(publishing[1])} />
@@ -2291,6 +2293,14 @@ export default function App() {
                 <path d="M8.4 6.6 15.6 7.4M7 8.4 8.4 15.6M16.5 10 10.8 16.2" />
               </svg>
             </a>
+            {current.mode !== 'teacher' && (
+              <a href="#/explore" title={t('explore.link')} aria-label={t('explore.link')}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5Z" />
+                </svg>
+              </a>
+            )}
           </nav>
         )}
         <span className="grow" />
