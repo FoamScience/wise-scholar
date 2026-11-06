@@ -41,6 +41,7 @@ import { usePlayer } from './player'
 import { splitBy, textDirection } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
 import { useProfiles } from './profiles'
+import { useSuggestedPlaceholder } from './suggestedPlaceholder'
 import { clearTabMark, markTab } from './tabMark'
 import { LOCALES, browserLocale, rememberLocale } from './locale'
 import type { Locale } from './locale'
@@ -170,6 +171,7 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
   const picker = useRef<HTMLInputElement | null>(null)
   const bundlePicker = useRef<HTMLInputElement | null>(null)
   const [error, setError] = useState('')
+  const placeholder = useSuggestedPlaceholder(profile, !teacher, topic !== '', t('home.topicPlaceholder'))
 
   useEffect(() => {
     api<Course[]>(`/api/courses?profile=${profile}`).then((all) => {
@@ -266,7 +268,7 @@ function Home({ profile, teacher }: { profile: number; teacher: boolean }) {
             className="field" dir="auto"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder={t('home.topicPlaceholder')}
+            placeholder={placeholder}
           />
           <button className="btn primary" disabled={!topic.trim() || starting !== ''}>
             {starting ? t('home.starting') : t('common.start')}
