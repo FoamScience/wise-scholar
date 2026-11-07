@@ -79,6 +79,8 @@ With `agy` the tutor runs in a home folder of its own, `data/agy-home/`, that li
 
 Other settings, all optional. To keep this machine's own values, put them in `.env` at the repository root, which git ignores and `make` reads as a makefile fragment: one `export NAME ?= value` line each, with no quotes (they would become part of the value). A value set in the shell when running `make` wins over the file.
 
+The profile page links to **Server settings**, which shows every setting below with its value and where it came from. On the server's own machine, at `http://127.0.0.1` or `http://localhost`, it saves the backend and model, the limits, the disk quota, the clean-up, casts, the search model and the opencode port to `.env`, and restarts the server to apply them (under `make dev`, restart by hand). A value set in the shell stays as it is. What decides who reaches the server, what commands may touch and where data lives is read-only there.
+
 | Variable | Meaning | Default |
 |---|---|---|
 | `WISE_SCHOLAR_PORT` | port of the app; the tutor's MCP connection follows it, so it must match the port the server is started on (`make serve` does that) | `8321` |

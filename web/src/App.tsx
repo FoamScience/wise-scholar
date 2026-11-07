@@ -24,6 +24,7 @@ import { FileEditor } from './FileEditor'
 import { GraphPage } from './Graph'
 import { SittingPage } from './Sitting'
 import { ExplorePage } from './Explore'
+import { SettingsPage } from './Settings'
 import { SearchPage } from './Search'
 import { HandPage, PhotoTray } from './Handwork'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
@@ -2273,6 +2274,7 @@ export default function App() {
     if (hash === '#/explore' && current.mode !== 'teacher') return <ExplorePage key={current.id} profile={current.id} />
     if (hash === '#/commands') return <CommandsPage profile={current.id} />
     if (hash === '#/usage') return <UsagePage profile={current.id} />
+    if (hash === '#/settings') return <SettingsPage />
     if (publishing) return <PublishPage key={publishing[1]} courseId={Number(publishing[1])} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} locale={locale} onSelect={select} onChanged={reload} />

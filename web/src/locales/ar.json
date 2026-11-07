@@ -437,6 +437,9 @@
       "usageHeading": "استهلاك الوكيل",
       "usageScope": "الرموز والتكلفة المكافئة لواجهة البرمجة للمعلّم ومهامه الخلفية، لكل دورة ودرس.",
       "usage": "الاستهلاك",
+      "settingsHeading": "إعدادات الخادم",
+      "settingsScope": "الوكيل والحدود وميزات هذا الخادم، تُحفظ في ‎.env.",
+      "settings": "الإعدادات",
       "modeHeading": "كيف تستخدم wise-scholar",
       "learner": "أتعلّم",
       "teacher": "أدرّس",
@@ -756,6 +759,116 @@
         "explore": "الدورات المقترحة"
       }
     },
+    "settings": {
+      "heading": "إعدادات الخادم",
+      "intro": "الإعدادات التي بدأ بها هذا الخادم. المجموعة الأولى تُحفظ من هنا: تُكتب في ‎.env وتسري عند تشغيل الخادم من جديد. والثانية تحدّد من يصل إلى الخادم وما تلمسه الأوامر وأين تُحفظ البيانات: غيّرها في ‎.env أو في الصدفة.",
+      "remote": "لست على جهاز الخادم نفسه، أو وصلت عبر وسيط: لا تُقبل التغييرات إلا على http://127.0.0.1 أو http://localhost في ذلك الجهاز.",
+      "pending": "تسري التغييرات المحفوظة بعد إعادة التشغيل.",
+      "restart": "أعد تشغيل الخادم",
+      "restarting": "إعادة التشغيل…",
+      "restartNote": "تتوقف أدوار المعلّم الجارية، وتعود هذه الصفحة وحدها.",
+      "restartByHand": "لا يستطيع هذا الخادم إعادة تشغيل نفسه (make dev): أوقفه ثم شغّله من جديد.",
+      "editableHeading": "تُغيَّر من هنا",
+      "lockedHeading": "تُضبط في ‎.env أو الصدفة",
+      "lockedIntro": "للقراءة فقط في هذه الصفحة.",
+      "save": "احفظ في ‎.env",
+      "discard": "تجاهل التغييرات",
+      "on": "مفعّل",
+      "off": "معطّل",
+      "unset": "غير مضبوط",
+      "afterRestart": "بعد إعادة التشغيل: {{value}}",
+      "source": {
+        "default": "افتراضي",
+        "file": "من ‎.env",
+        "shell": "مضبوط في الصدفة"
+      },
+      "items": {
+        "WISE_SCHOLAR_AGENT": {
+          "label": "الوكيل والنموذج",
+          "help": "claude أو opencode أو agy، يتبعه عند الحاجة ‎/النموذج، مثل agy/gemini-3.8-flash-high. يجب أن يستدعي النموذج الأدوات بموثوقية."
+        },
+        "WISE_SCHOLAR_COMMANDS": {
+          "label": "تنفيذ الأوامر",
+          "help": "عند التعطيل لا يحصل المعلّم على أدوات مساحة العمل ولا يطرح تمارين قابلة للتشغيل، ويُرفض زر التشغيل. للنسخ المفتوحة لأشخاص آخرين."
+        },
+        "WISE_SCHOLAR_TURNS": {
+          "label": "أدوار المعلّم في وقت واحد",
+          "help": "أدوار المعلّم التي تجري معًا؛ والبقية تنتظر."
+        },
+        "WISE_SCHOLAR_TURNS_PER_HOUR": {
+          "label": "أدوار المعلّم في الساعة",
+          "help": "أدوار المعلّم التي يمكن أن تبدأ في ساعة؛ والبقية تنتظر."
+        },
+        "WISE_SCHOLAR_TOOL_CALLS": {
+          "label": "استدعاءات الأدوات في الدور",
+          "help": "استدعاءات الأدوات التي يجريها دور واحد للمعلّم."
+        },
+        "WISE_SCHOLAR_MCP_CALLS": {
+          "label": "استدعاءات الأدوات في الدقيقة",
+          "help": "استدعاءات الأدوات في الدقيقة، لكل الأدوار معًا."
+        },
+        "WISE_SCHOLAR_WORKSPACE_MB": {
+          "label": "القرص لكل دورة (ميغابايت)",
+          "help": "ما تحمله الدورة الواحدة في مساحة عملها، ومثله في ذاكرة أوامرها المؤقتة."
+        },
+        "WISE_SCHOLAR_KEEP_DAYS": {
+          "label": "التنظيف بعد (أيام)",
+          "help": "يحذف ملفات الدورات التي لم تُلمس منذ هذا العدد من الأيام: مساحة العمل وذاكرة الأوامر وجلسات الوكيل. يبقى السجل. فارغ: لا يُحذف شيء أبدًا."
+        },
+        "WISE_SCHOLAR_PODCASTS": {
+          "label": "حلقات صوتية",
+          "help": "مع تثبيت الصوت، يستطيع المعلّم تحويل حوار بصوتين إلى حلقة من 5 إلى 8 دقائق. يحتاج ffmpeg."
+        },
+        "WISE_SCHOLAR_SEARCH_MODEL": {
+          "label": "نموذج البحث",
+          "help": "نموذج التضمين الذي يبحث في ملفات الدورات ودروسها وملاحظاتها."
+        },
+        "WISE_SCHOLAR_OPENCODE_PORT": {
+          "label": "منفذ خادم opencode",
+          "help": "منفذ خادم opencode الذي يشغّله التطبيق."
+        },
+        "WISE_SCHOLAR_PORT": {
+          "label": "المنفذ",
+          "help": "منفذ التطبيق؛ ويتبعه اتصال أدوات المعلّم."
+        },
+        "WISE_SCHOLAR_HOSTS": {
+          "label": "أسماء المضيف",
+          "help": "الأسماء التي يجيب عنها الخادم، مفصولة بفواصل."
+        },
+        "WISE_SCHOLAR_LISTEN": {
+          "label": "عناوين إضافية",
+          "help": "عناوين يستمع عليها الخادم إلى جانب 127.0.0.1."
+        },
+        "WISE_SCHOLAR_DB": {
+          "label": "قاعدة البيانات",
+          "help": "مسار ملف قاعدة البيانات."
+        },
+        "WISE_SCHOLAR_WORKSPACE": {
+          "label": "مساحات عمل الدورات",
+          "help": "المجلد الجذر لمساحات عمل الدورات."
+        },
+        "WISE_SCHOLAR_VAULT": {
+          "label": "خزنة Obsidian",
+          "help": "مجلد خزنة يُبقي الخادم ملاحظات الدورات فيه محدّثة."
+        },
+        "WISE_SCHOLAR_SANDBOX": {
+          "label": "صندوق العزل",
+          "help": "عند التعطيل تجري الأوامر بلا bubblewrap، باسم مستخدم الخادم، مع الشبكة والمجلد المنزلي كله."
+        },
+        "WISE_SCHOLAR_SANDBOX_PATHS": {
+          "label": "مجلدات إضافية للقراءة",
+          "help": "مجلدات تقرؤها الأوامر إلى جانب ما يشير إليه PATH."
+        },
+        "WISE_SCHOLAR_AGENT_ENV": {
+          "label": "بيئة إضافية للوكيل",
+          "help": "متغيرات بيئة تتلقاها عمليات الوكيل إلى جانب متغيراتها."
+        },
+        "WISE_SCHOLAR_MCP_SECRET": {
+          "label": "سرّ الأدوات",
+          "help": "رمز bearer على ‎/mcp؛ رمز جديد عند كل تشغيل إن لم يُضبط. لا يُعرض أبدًا."
+        }
+      }
+    },
     "publish": {
       "link": "نشر نسخة",
       "back": "العودة إلى الدورة",
@@ -935,6 +1048,13 @@
     "no lesson of this course is finished yet, so there is nothing to check": "لم يكتمل أي درس من هذه الدورة بعد، فلا شيء لفحصه.",
     "wait for the check of this course to finish before publishing": "انتظر انتهاء فحص هذه الدورة قبل النشر.",
     "that version is not the one this course can move to": "لا يمكن لهذه الدورة الانتقال إلى هذه النسخة.",
-    "wait for the tutor to finish before upgrading": "انتظر حتى ينتهي المعلّم قبل التحديث."
+    "wait for the tutor to finish before upgrading": "انتظر حتى ينتهي المعلّم قبل التحديث.",
+    "settings can be changed only from this machine, at 127.0.0.1 or localhost": "لا تُغيَّر الإعدادات إلا من هذا الجهاز، على 127.0.0.1 أو localhost",
+    "this server cannot restart itself; stop it and start it again": "لا يستطيع هذا الخادم إعادة تشغيل نفسه؛ أوقفه ثم شغّله من جديد",
+    "this setting cannot be changed here": "لا يُغيَّر هذا الإعداد من هنا",
+    "this setting is set in the shell, which overrides .env": "هذا الإعداد مضبوط في الصدفة، وهي تتقدّم على ‎.env",
+    "that value cannot be written to .env": "لا يمكن كتابة هذه القيمة في ‎.env",
+    "that number is too small or not a whole number": "هذا العدد صغير جدًا أو ليس عددًا صحيحًا",
+    "the agent must start with claude, opencode or agy": "يجب أن يبدأ الوكيل بـ claude أو opencode أو agy"
   }
 }

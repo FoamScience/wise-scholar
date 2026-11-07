@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 import httpx
 import simplemma
 
-from . import art, book, bundle, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, handwork, history, hub, obsidian, quiz, review, sandbox, search, sources, speech, tutor, vault, vocab, widgets
+from . import art, book, bundle, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, handwork, history, hub, obsidian, quiz, review, sandbox, search, settings, sources, speech, tutor, vault, vocab, widgets
 from .backends import AGENT, BACKEND, MCP_SECRET, agy, claude, opencode
 from .playbooks import describe
 
@@ -242,6 +242,10 @@ class BlockEdit(BaseModel):
 
 class Move(BaseModel):
     direction: Literal["up", "down"]
+
+
+class SettingChanges(BaseModel):
+    values: dict[str, str | None]
 
 
 class Turn(BaseModel):
@@ -969,6 +973,44 @@ def _require_answerable(block: dict) -> None:
 @app.get("/api/meta")
 def meta() -> dict:
     return {"agent": AGENT, "speech": speech.available(), "pdf": book.available(), "commands": sandbox.commands(), "crafted": crafted.available()}
+
+
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+def _from_this_machine(request: Request) -> bool:
+    """A request made on this machine to its loopback address. One a local proxy forwards names the proxied host or
+    carries a forwarding header, so it does not count."""
+    forwarded = any(h in request.headers for h in ("forwarded", "x-forwarded-for", "x-real-ip"))
+    client = request.client.host if request.client else ""
+    return not forwarded and client in LOOPBACK and _hostname(request.headers.get("host", "")) in LOOPBACK
+
+
+@app.get("/api/settings")
+def get_settings(request: Request) -> dict:
+    return {"settings": settings.view(), "editable": _from_this_machine(request), "restart": settings.restarter is not None}
+
+
+@app.post("/api/settings")
+def save_settings(body: SettingChanges, request: Request) -> dict:
+    if not _from_this_machine(request):
+        raise HTTPException(403, "settings can be changed only from this machine, at 127.0.0.1 or localhost")
+    for name, value in body.values.items():
+        if problem := settings.check(name, value):
+            raise HTTPException(422, problem)
+    settings.write(body.values)
+    log.info("settings saved to .env: %s", ", ".join(sorted(body.values)))
+    return get_settings(request)
+
+
+@app.post("/api/settings/restart", status_code=202)
+async def restart_server(request: Request) -> None:
+    if not _from_this_machine(request):
+        raise HTTPException(403, "settings can be changed only from this machine, at 127.0.0.1 or localhost")
+    if settings.restarter is None:
+        raise HTTPException(409, "this server cannot restart itself; stop it and start it again")
+    log.warning("restarting at the owner's request")
+    asyncio.get_running_loop().call_later(0.5, settings.restarter)
 
 
 @app.get("/api/tts")

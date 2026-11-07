@@ -404,6 +404,9 @@
       "usageHeading": "Consommation de l'agent",
       "usageScope": "Jetons et coût équivalent API du tuteur et de ses tâches de fond, par cours et par leçon.",
       "usage": "Consommation",
+      "settingsHeading": "Réglages du serveur",
+      "settingsScope": "Agent, limites et fonctions de ce serveur, enregistrés dans .env.",
+      "settings": "Réglages",
       "modeHeading": "Votre usage de wise-scholar",
       "learner": "J'apprends",
       "teacher": "J'enseigne",
@@ -708,6 +711,116 @@
         "explore": "Cours suggérés"
       }
     },
+    "settings": {
+      "heading": "Réglages du serveur",
+      "intro": "Les réglages avec lesquels ce serveur a démarré. Le premier groupe peut être enregistré ici : il est écrit dans .env et s'applique au prochain démarrage du serveur. Le second décide qui atteint le serveur, ce que les commandes peuvent toucher et où vivent les données : modifiez-le dans .env ou dans le shell.",
+      "remote": "Vous n'êtes pas sur la machine du serveur, ou vous passez par un proxy : les modifications ne sont acceptées qu'à http://127.0.0.1 ou http://localhost sur cette machine.",
+      "pending": "Les modifications enregistrées s'appliquent après un redémarrage.",
+      "restart": "Redémarrer le serveur",
+      "restarting": "Redémarrage…",
+      "restartNote": "Les tours du tuteur en cours s'arrêtent ; cette page revient d'elle-même.",
+      "restartByHand": "Ce serveur ne peut pas redémarrer seul (make dev) : arrêtez-le puis relancez-le.",
+      "editableHeading": "Modifiables ici",
+      "lockedHeading": "Définis dans .env ou le shell",
+      "lockedIntro": "En lecture seule sur cette page.",
+      "save": "Enregistrer dans .env",
+      "discard": "Annuler les modifications",
+      "on": "Activé",
+      "off": "Désactivé",
+      "unset": "non défini",
+      "afterRestart": "après redémarrage : {{value}}",
+      "source": {
+        "default": "par défaut",
+        "file": "depuis .env",
+        "shell": "défini dans le shell"
+      },
+      "items": {
+        "WISE_SCHOLAR_AGENT": {
+          "label": "Agent et modèle",
+          "help": "claude, opencode ou agy, suivi au besoin de /modèle, par exemple agy/gemini-3.8-flash-high. Le modèle doit appeler les outils de façon fiable."
+        },
+        "WISE_SCHOLAR_COMMANDS": {
+          "label": "Exécution de commandes",
+          "help": "Désactivée : le tuteur n'a pas d'outils d'espace de travail ni d'exercices exécutables, et Exécuter est refusé. Pour les instances ouvertes à d'autres personnes."
+        },
+        "WISE_SCHOLAR_TURNS": {
+          "label": "Tours du tuteur simultanés",
+          "help": "Tours du tuteur qui tournent en même temps ; les autres attendent."
+        },
+        "WISE_SCHOLAR_TURNS_PER_HOUR": {
+          "label": "Tours du tuteur par heure",
+          "help": "Tours du tuteur qui peuvent démarrer en une heure ; les autres attendent."
+        },
+        "WISE_SCHOLAR_TOOL_CALLS": {
+          "label": "Appels d'outils par tour",
+          "help": "Appels d'outils qu'un tour du tuteur peut faire."
+        },
+        "WISE_SCHOLAR_MCP_CALLS": {
+          "label": "Appels d'outils par minute",
+          "help": "Appels d'outils par minute, tous tours confondus."
+        },
+        "WISE_SCHOLAR_WORKSPACE_MB": {
+          "label": "Disque par cours (Mo)",
+          "help": "Ce qu'un cours peut contenir dans son espace de travail, et autant dans son cache de commandes."
+        },
+        "WISE_SCHOLAR_KEEP_DAYS": {
+          "label": "Nettoyer après (jours)",
+          "help": "Supprime les fichiers des cours inactifs depuis ce nombre de jours : espace de travail, cache de commandes et sessions de l'agent. L'historique reste. Vide : rien n'est jamais supprimé."
+        },
+        "WISE_SCHOLAR_PODCASTS": {
+          "label": "Émissions audio",
+          "help": "Avec la voix installée, le tuteur peut transformer un dialogue à deux voix en une émission de 5 à 8 minutes. Nécessite ffmpeg."
+        },
+        "WISE_SCHOLAR_SEARCH_MODEL": {
+          "label": "Modèle de recherche",
+          "help": "Le modèle d'embeddings qui cherche dans les fichiers, leçons et notes des cours."
+        },
+        "WISE_SCHOLAR_OPENCODE_PORT": {
+          "label": "Port du serveur opencode",
+          "help": "Port du serveur opencode que l'application lance."
+        },
+        "WISE_SCHOLAR_PORT": {
+          "label": "Port",
+          "help": "Port de l'application ; la connexion aux outils du tuteur le suit."
+        },
+        "WISE_SCHOLAR_HOSTS": {
+          "label": "Noms d'hôte",
+          "help": "Noms auxquels le serveur répond, séparés par des virgules."
+        },
+        "WISE_SCHOLAR_LISTEN": {
+          "label": "Adresses supplémentaires",
+          "help": "Adresses où le serveur écoute en plus de 127.0.0.1."
+        },
+        "WISE_SCHOLAR_DB": {
+          "label": "Base de données",
+          "help": "Chemin du fichier de base de données."
+        },
+        "WISE_SCHOLAR_WORKSPACE": {
+          "label": "Espaces de travail",
+          "help": "Dossier racine des espaces de travail des cours."
+        },
+        "WISE_SCHOLAR_VAULT": {
+          "label": "Coffre Obsidian",
+          "help": "Un dossier de coffre où le serveur tient les notes des cours à jour."
+        },
+        "WISE_SCHOLAR_SANDBOX": {
+          "label": "Bac à sable",
+          "help": "Désactivé, les commandes tournent sans bubblewrap, comme l'utilisateur du serveur, avec réseau et tout le dossier personnel."
+        },
+        "WISE_SCHOLAR_SANDBOX_PATHS": {
+          "label": "Dossiers lisibles en plus",
+          "help": "Dossiers que les commandes peuvent lire en plus de ceux du PATH."
+        },
+        "WISE_SCHOLAR_AGENT_ENV": {
+          "label": "Environnement de l'agent en plus",
+          "help": "Variables d'environnement que reçoivent les processus de l'agent en plus des leurs."
+        },
+        "WISE_SCHOLAR_MCP_SECRET": {
+          "label": "Secret des outils",
+          "help": "Le jeton bearer sur /mcp ; un nouveau à chaque démarrage s'il n'est pas défini. Jamais affiché."
+        }
+      }
+    },
     "publish": {
       "link": "Publier une version",
       "back": "Retour au cours",
@@ -887,6 +1000,13 @@
     "no lesson of this course is finished yet, so there is nothing to check": "Aucune leçon de ce cours n'est encore terminée, il n'y a donc rien à vérifier.",
     "wait for the check of this course to finish before publishing": "Attendez la fin de la vérification de ce cours avant de publier.",
     "that version is not the one this course can move to": "Ce cours ne peut pas passer à cette version.",
-    "wait for the tutor to finish before upgrading": "Attendez que le tuteur ait fini avant de mettre à jour."
+    "wait for the tutor to finish before upgrading": "Attendez que le tuteur ait fini avant de mettre à jour.",
+    "settings can be changed only from this machine, at 127.0.0.1 or localhost": "Les réglages ne se modifient que depuis cette machine, à 127.0.0.1 ou localhost",
+    "this server cannot restart itself; stop it and start it again": "ce serveur ne peut pas redémarrer seul ; arrêtez-le puis relancez-le",
+    "this setting cannot be changed here": "ce réglage ne se modifie pas ici",
+    "this setting is set in the shell, which overrides .env": "ce réglage est défini dans le shell, qui l'emporte sur .env",
+    "that value cannot be written to .env": "cette valeur ne peut pas être écrite dans .env",
+    "that number is too small or not a whole number": "ce nombre est trop petit ou n'est pas entier",
+    "the agent must start with claude, opencode or agy": "l'agent doit commencer par claude, opencode ou agy"
   }
 }
