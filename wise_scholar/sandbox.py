@@ -48,7 +48,7 @@ SYSTEM = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/etc", "/opt")
 HOME_INSIDE = Path("/home/learner")
 COURSES_INSIDE = HOME_INSIDE / "wise-scholar" / "workspace"
 # Home folders that PATH may point into but that hold credentials, shell history or the agent's own state.
-PRIVATE = {".claude", ".config", ".ssh", ".gnupg", ".aws", ".opencode", ".atuin"}
+PRIVATE = {".claude", ".config", ".ssh", ".gnupg", ".aws", ".opencode", ".gemini", ".atuin"}
 # ~/.local mixes programs with application data: only its program folders are shown.
 LOCAL_PARTS = ("bin", "lib", "share/uv/python", "share/uv/tools")
 COMPANIONS = {".cargo": (".rustup",)}
