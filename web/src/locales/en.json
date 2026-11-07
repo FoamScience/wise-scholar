@@ -393,6 +393,9 @@
       "usageHeading": "Agent usage",
       "usageScope": "Tokens and API-equivalent cost of the tutor and its background jobs, per course and lesson.",
       "usage": "Usage",
+      "settingsHeading": "Server settings",
+      "settingsScope": "Backend, limits and features of this server, saved to .env.",
+      "settings": "Settings",
       "modeHeading": "How you use wise-scholar",
       "learner": "I learn",
       "teacher": "I teach",
@@ -690,6 +693,116 @@
         "cards": "Review cards",
         "cleanup": "Publish check",
         "explore": "Suggested courses"
+      }
+    },
+    "settings": {
+      "heading": "Server settings",
+      "intro": "The settings this server started with. The first group can be saved here: it is written to .env and takes effect when the server starts again. The second decides who reaches the server, what commands may touch and where data lives: change it in .env or the shell.",
+      "remote": "You are not on the server's own machine, or you came through a proxy: changes are accepted only at http://127.0.0.1 or http://localhost on that machine.",
+      "pending": "Saved changes take effect after a restart.",
+      "restart": "Restart the server",
+      "restarting": "Restarting…",
+      "restartNote": "Running tutor turns stop; this page comes back by itself.",
+      "restartByHand": "This server cannot restart itself (make dev): stop it and start it again.",
+      "editableHeading": "Can be changed here",
+      "lockedHeading": "Set in .env or the shell",
+      "lockedIntro": "Read-only on this page.",
+      "save": "Save to .env",
+      "discard": "Discard changes",
+      "on": "On",
+      "off": "Off",
+      "unset": "unset",
+      "afterRestart": "after restart: {{value}}",
+      "source": {
+        "default": "default",
+        "file": "from .env",
+        "shell": "set in the shell"
+      },
+      "items": {
+        "WISE_SCHOLAR_AGENT": {
+          "label": "Agent backend and model",
+          "help": "claude, opencode or agy, optionally followed by /model, such as agy/gemini-3.8-flash-high. The model must call tools reliably."
+        },
+        "WISE_SCHOLAR_COMMANDS": {
+          "label": "Command execution",
+          "help": "Off: the tutor gets no workspace tools and poses no runnable exercises, and Run is refused. For instances opened to other people."
+        },
+        "WISE_SCHOLAR_TURNS": {
+          "label": "Tutor turns at once",
+          "help": "Tutor turns running at the same time; the others wait."
+        },
+        "WISE_SCHOLAR_TURNS_PER_HOUR": {
+          "label": "Tutor turns per hour",
+          "help": "Tutor turns that may start in an hour; the others wait."
+        },
+        "WISE_SCHOLAR_TOOL_CALLS": {
+          "label": "Tool calls per turn",
+          "help": "Tool calls one tutor turn may make."
+        },
+        "WISE_SCHOLAR_MCP_CALLS": {
+          "label": "Tool calls per minute",
+          "help": "Tool calls a minute, all turns together."
+        },
+        "WISE_SCHOLAR_WORKSPACE_MB": {
+          "label": "Disk per course (MB)",
+          "help": "What one course may hold in its workspace, and again in its command cache."
+        },
+        "WISE_SCHOLAR_KEEP_DAYS": {
+          "label": "Clean up after (days)",
+          "help": "Removes the files of courses untouched for that many days: workspace, command cache and agent sessions. The record stays. Empty: nothing is ever removed."
+        },
+        "WISE_SCHOLAR_PODCASTS": {
+          "label": "Audio casts",
+          "help": "With speech installed, the tutor may turn a two-voice dialogue into a 5 to 8 minute audio cast. Needs ffmpeg."
+        },
+        "WISE_SCHOLAR_SEARCH_MODEL": {
+          "label": "Search model",
+          "help": "The embedding model that searches course files, lessons and notes."
+        },
+        "WISE_SCHOLAR_OPENCODE_PORT": {
+          "label": "opencode server port",
+          "help": "Port of the opencode server the app starts."
+        },
+        "WISE_SCHOLAR_PORT": {
+          "label": "Port",
+          "help": "Port of the app; the tutor's tool connection follows it."
+        },
+        "WISE_SCHOLAR_HOSTS": {
+          "label": "Host names",
+          "help": "Names the server answers to, comma-separated."
+        },
+        "WISE_SCHOLAR_LISTEN": {
+          "label": "Extra addresses",
+          "help": "Addresses the server listens on besides 127.0.0.1."
+        },
+        "WISE_SCHOLAR_DB": {
+          "label": "Database",
+          "help": "Path of the database file."
+        },
+        "WISE_SCHOLAR_WORKSPACE": {
+          "label": "Course workspaces",
+          "help": "Root folder of the course workspaces."
+        },
+        "WISE_SCHOLAR_VAULT": {
+          "label": "Obsidian vault",
+          "help": "A vault folder the server keeps the course notes current in."
+        },
+        "WISE_SCHOLAR_SANDBOX": {
+          "label": "Sandbox",
+          "help": "Off runs commands without bubblewrap, as the server's user, with network and the whole home directory."
+        },
+        "WISE_SCHOLAR_SANDBOX_PATHS": {
+          "label": "Extra readable folders",
+          "help": "Folders commands may read besides what PATH points into."
+        },
+        "WISE_SCHOLAR_AGENT_ENV": {
+          "label": "Extra agent environment",
+          "help": "Environment variables the agent processes get besides their own."
+        },
+        "WISE_SCHOLAR_MCP_SECRET": {
+          "label": "Tool secret",
+          "help": "The bearer token on /mcp; a fresh one each start when unset. Never shown."
+        }
       }
     },
     "publish": {

@@ -2555,6 +2555,20 @@ pre:has(> .mermaid) {
   padding: 0 var(--space-xs);
 }
 
+.settings-page .row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.settings-page code {
+  overflow-wrap: anywhere;
+}
+
+.settings-page .field {
+  min-width: 0;
+  flex: 1 1 16rem;
+}
+
 .usage-page .table-scroll {
   overflow-x: auto;
 }

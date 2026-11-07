@@ -8,6 +8,7 @@ import sys
 
 import uvicorn
 
+from wise_scholar import settings
 from wise_scholar.backends import PORT
 
 log = logging.getLogger("uvicorn.error")
@@ -35,7 +36,21 @@ def main() -> None:
             log.warning("not listening on %s:%d: %s", host, PORT, e)
     for sock in sockets:
         log.info("listening on %s", sock.getsockname()[:2])
-    uvicorn.Server(config).run(sockets=sockets)
+    server = uvicorn.Server(config)
+    restart = False
+
+    def stop_for_restart() -> None:
+        nonlocal restart
+        restart = server.should_exit = True
+
+    settings.restarter = stop_for_restart
+    server.run(sockets=sockets)
+    if restart:
+        # The listening sockets are inheritable: closed here, or the new server could not bind its port.
+        for sock in sockets:
+            sock.close()
+        log.info("starting again with the saved settings")
+        os.execve(sys.executable, [sys.executable, "-m", "wise_scholar.serve"], settings.environment_for_restart())
 
 
 if __name__ == "__main__":
