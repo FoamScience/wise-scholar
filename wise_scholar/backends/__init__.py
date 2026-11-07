@@ -1,11 +1,12 @@
 import os
 import secrets
 
-# "<backend>" or "<backend>/<model>", e.g. "claude/sonnet" or "opencode/openrouter/qwen/qwen3.8-27b:free".
+# "<backend>" or "<backend>/<model>", e.g. "claude/sonnet", "opencode/openrouter/qwen/qwen3.8-27b:free" or
+# "agy/gemini-3.8-flash-high".
 AGENT = os.environ.get("WISE_SCHOLAR_AGENT", "claude")
 BACKEND, _, MODEL = AGENT.partition("/")
-if BACKEND not in ("claude", "opencode"):
-    raise SystemExit(f"WISE_SCHOLAR_AGENT must start with 'claude' or 'opencode', got {AGENT!r}")
+if BACKEND not in ("claude", "opencode", "agy"):
+    raise SystemExit(f"WISE_SCHOLAR_AGENT must start with 'claude', 'opencode' or 'agy', got {AGENT!r}")
 
 # The port this server listens on; the backends point their MCP config at it, so several instances can run at once.
 PORT = int(os.environ.get("WISE_SCHOLAR_PORT", "8321"))

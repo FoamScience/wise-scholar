@@ -27,7 +27,7 @@ import httpx
 import simplemma
 
 from . import art, book, bundle, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, handwork, history, hub, obsidian, quiz, review, sandbox, search, sources, speech, tutor, vault, vocab, widgets
-from .backends import AGENT, BACKEND, MCP_SECRET, claude, opencode
+from .backends import AGENT, BACKEND, MCP_SECRET, agy, claude, opencode
 from .playbooks import describe
 
 WEB_DIST = db.ROOT / "web" / "dist"
@@ -53,7 +53,7 @@ MISMATCH_SHARE = 0.5
 # placement questions for a course of an hour and for the longest; a course with no teaching time set gets the untimed count
 PLACEMENT_QUESTIONS = (4, 20)
 PLACEMENT_UNTIMED = 8
-backend = {"claude": claude, "opencode": opencode}[BACKEND]
+backend = {"claude": claude, "opencode": opencode, "agy": agy}[BACKEND]
 
 log = logging.getLogger("wise_scholar")
 _turns: dict[int, asyncio.Task] = {}

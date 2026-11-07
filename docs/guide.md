@@ -8,7 +8,8 @@ Everything the [README](../README.md) leaves out: prerequisites, backends, optio
 - Node.js with npm
 - One agent backend:
   - [Claude Code](https://claude.com/claude-code), logged in (`claude` on your `PATH`), or
-  - [opencode](https://opencode.ai) 2 or newer, with a provider configured (`opencode` on your `PATH`)
+  - [opencode](https://opencode.ai) 2 or newer, with a provider configured (`opencode` on your `PATH`), or
+  - the [Antigravity CLI](https://antigravity.google) 1.5 or newer, logged in with Google (`agy` on your `PATH`)
 - [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`, Linux), for the sandbox that commands run in
 
 > [!NOTE]
@@ -62,16 +63,19 @@ Reviews take three minutes at a time. A card with options takes one tap; any oth
 
 ## Choose the backend and model
 
-Set `WISE_SCHOLAR_AGENT` to `<backend>` or `<backend>/<model>`. The backend is `claude` or `opencode`.
+Set `WISE_SCHOLAR_AGENT` to `<backend>` or `<backend>/<model>`. The backend is `claude`, `opencode` or `agy`.
 
 ```bash
 make serve                                                              # Claude Code, its default model
 WISE_SCHOLAR_AGENT=claude/sonnet make serve                             # Claude Code, a named model
 WISE_SCHOLAR_AGENT=opencode make serve                                  # opencode, its default model
 WISE_SCHOLAR_AGENT='opencode/openrouter/openrouter/free' make serve   # opencode, provider/model
+WISE_SCHOLAR_AGENT=agy/gemini-3.8-flash-high make serve               # Antigravity CLI, a model `agy models` lists
 ```
 
 The model must be able to call tools reliably.
+
+With `agy` the tutor runs in a home folder of its own, `data/agy-home/`, that links only your login from `~/.gemini`: your `GEMINI.md`, MCP servers, plugins and skills stay out of its sessions, which are kept there too. agy reports tokens but no price, so its usage shows no cost.
 
 Other settings, all optional. To keep this machine's own values, put them in `.env` at the repository root, which git ignores and `make` reads as a makefile fragment: one `export NAME ?= value` line each, with no quotes (they would become part of the value). A value set in the shell when running `make` wins over the file.
 
@@ -161,7 +165,7 @@ For subjects with a domain under `wise_scholar/penrose/` (cells in division, to 
 ## What keeps the tutor in its lane
 
 - The tutor's tools answer only the agent processes this server starts: a secret made at start travels as a bearer token on `/mcp`, and each turn carries its own token, so a tool call may touch only the lesson and course of the turn it belongs to (with opencode, whose tools share one connection, any lesson whose turn is running). A turn gets at most 80 tool calls (`WISE_SCHOLAR_TOOL_CALLS`), the server at most 600 a minute (`WISE_SCHOLAR_MCP_CALLS`). To call the tools from a Claude Code session in this repository, set `WISE_SCHOLAR_MCP_SECRET` to a value of your own before starting the server and the session; `.mcp.json` reads it.
-- Agent processes get a minimal environment: the basics, their own settings and the keys of model providers, plus whatever `WISE_SCHOLAR_AGENT_ENV` names (comma-separated names or prefixes ending in `*`). They run from `data/agents/`, never from a course workspace, and `opencode serve` takes a password only this process knows.
+- Agent processes get a minimal environment: the basics, their own settings and the keys of model providers, plus whatever `WISE_SCHOLAR_AGENT_ENV` names (comma-separated names or prefixes ending in `*`). They run from `data/agents/`, never from a course workspace, and `opencode serve` takes a password only this process knows. agy has no switch for its built-in tools: a hook the server writes for each turn denies every tool call but the tutor's own, and a failing hook blocks the call too.
 - Two tutor turns run at a time (`WISE_SCHOLAR_TURNS`) and at most 200 start in an hour (`WISE_SCHOLAR_TURNS_PER_HOUR`); the rest wait. The server answers only to the names in `WISE_SCHOLAR_HOSTS` (`127.0.0.1`, `localhost` and `::1` by default): set it to your domain behind a proxy, and a page on another name that resolves to this machine gets nothing.
 - Everything the learner typed or uploaded reaches the tutor marked as text: a line of it that starts like an app line is escaped, facts are one sentence under 300 characters.
 - A page from another site cannot change anything here: state-changing requests must come from this site's own pages.
@@ -181,3 +185,4 @@ make test    # Python and web tests
 - `data/` holds the database, recordings and casts under `data/audio/`, the art packs under `data/art/`, and the files you add to a course under `data/sources/` (PDF, EPUB, HTML, Markdown, text, code; the tutor searches them and reads one section at a time). Before a schema upgrade the database is copied to `data/wise-scholar.db.v<N>.bak`.
 - `workspace/<course>/` holds each course's exercise files. Deleting a course removes its folder.
 - `.mcp.json` and `opencode.json` declare the tutor's MCP server for this repository only.
+- `data/agy-home/` holds the agy sessions; `WISE_SCHOLAR_KEEP_DAYS` does not clean them.
