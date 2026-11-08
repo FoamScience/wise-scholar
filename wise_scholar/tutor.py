@@ -234,7 +234,7 @@ async def ask(lesson_id: int, question: str, options: list[str], multiple: bool 
 async def set_pace(course_id: int, pace: Literal["momentum", "speed"]) -> str:
     """Record how the learner wants to move through this course, from their answer in the interview.
 
-    momentum: short units of about 15 minutes at a steady pace, the outline followed as set. speed: longer units,
+    momentum: units of one sitting at a steady pace, the outline followed as set. speed: longer units,
     and the learner may test out of a step or a whole unit by answering its checks first. The learner can switch
     any time on the course map; the default is momentum.
     """
@@ -242,6 +242,55 @@ async def set_pace(course_id: int, pace: Literal["momentum", "speed"]) -> str:
         return f"error: no course with id {course_id}"
     save_pace(course_id, pace)
     return f"pace set to {pace}"
+
+
+@mcp.tool()
+async def set_sitting(course_id: int, minutes: int) -> str:
+    """Record how long one study sitting usually is for the learner in this course, from their answer in the
+    interview. A unit is planned to fit one sitting, and the course map is sized from how long units really take."""
+    if not db.course(course_id):
+        return f"error: no course with id {course_id}"
+    if not 5 <= minutes <= 240:
+        return "error: a sitting is 5 to 240 minutes"
+    db.conn.execute("UPDATE courses SET sitting = ? WHERE id = ?", (minutes, course_id))
+    return f"sitting set to {minutes} minutes"
+
+
+# Until two of the learner's units are measured, a unit is taken to run twice the sitting it is planned for.
+SITTING_MINUTES = 30
+UNMEASURED_STRETCH = 2
+
+
+def unit_minutes(course: dict) -> tuple[float, int]:
+    """Minutes one unit takes this learner, and over how many finished units that was measured (0: estimated)."""
+    if pace := db.unit_pace(course["profile_id"]):
+        return pace["unit"], pace["units"]
+    return UNMEASURED_STRETCH * (course["sitting"] or SITTING_MINUTES), 0
+
+
+def map_budget(course: dict, hours: int | None = None) -> int | None:
+    """The most units to study that fit the course's hours, with the practice units the server adds; None for a
+    prepared course or one without hours."""
+    hours = hours or course["hours"]
+    if not hours or course["mode"] == "teacher":
+        return None
+    units = max(1, round(hours * 60 / unit_minutes(course)[0]))
+    return max(n for n in range(1, units + 1) if n + n // db.PRACTICE_EVERY <= units)
+
+
+def _over_budget(course: dict, modules: list[Module], hours: int | None = None, known: frozenset[str] = frozenset(), allowed: int = 0) -> str | None:
+    """Why a map does not fit the course's hours, or None when it does or holds no more units than allowed."""
+    budget = map_budget(course, hours)
+    studied = sum(len(set(m.concepts) - set(m.known) - known) for m in modules)
+    if budget is None or studied <= max(budget, allowed):
+        return None
+    minutes, measured = unit_minutes(course)
+    return (
+        f"error: the map has {studied} units to study; at about {minutes:.0f} minutes a unit for this learner "
+        f"({f'measured over their last {measured} units' if measured else 'twice the sitting, until units are measured'}), "
+        f"with a practice unit after every {db.PRACTICE_EVERY}, the course's {hours or course['hours']} hours fit {budget}. "
+        "Merge or cut units, or mark known ones; when the learner asked for more than fits, set hours to what the map needs."
+    )
 
 
 def save_pace(course_id: int, pace: str) -> None:
@@ -336,6 +385,8 @@ async def set_course_map(course_id: int, modules: list[Module]) -> str:
     needs, problem = _module_needs(modules)
     if problem or (problem := _needs_problem([t for m in modules for t in m.concepts], needs)):
         return problem
+    if problem := _over_budget(db.course(course_id), modules):
+        return problem
     db.set_concepts(course_id, [m.model_dump() for m in modules])
     db.set_needs(course_id, needs, replace=True, linked=bool(needs))
     hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id)})
@@ -390,6 +441,10 @@ async def revise_course_map(course_id: int, modules: list[Module], renamed: list
     after = {names.get(t, t) for t in db.started_concepts(course_id)}
     if lost := sorted(after - set(titles)):
         return f"error: units {lost} already have a lesson and cannot be dropped; keep them, and list them in known if the learner is done with them"
+    units = [c for c in db.concepts(course_id) if c["kind"] == "concept"]
+    known = frozenset(names.get(c["title"], c["title"]) for c in units if c["known"])
+    if problem := _over_budget(db.course(course_id), modules, hours, known, allowed=sum(not c["known"] for c in units)):
+        return problem
     try:
         removed = db.revise_concepts(course_id, [m.model_dump() for m in modules], names, hours)
     except ValueError as started:

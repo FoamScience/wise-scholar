@@ -292,6 +292,12 @@ def test_a_finished_lesson_yields_claims_whose_state_follows_their_latest_eviden
     assert record_claims([new(key="face", id=face_id, evidence=[again["id"]])]) == f"recorded: face = claim {face_id}"
     db.conn.execute("UPDATE cards SET due = '2000-01-01' WHERE id = ?", (again["data"]["card_id"],))
     assert db.claim_states(who, now)[face_id] == "fading" and db.claim_states(who, "1999-01-01")[face_id] == "held"
+    # A review of a linked card counts too: a miss makes the claim shaky though the card is no longer due.
+    review = lambda right: quiz.grade(quiz.submit(db.card(again["data"]["card_id"]), "x", 0.9), right)  # noqa: E731
+    review(False)
+    assert db.claim_states(who, "2000-01-01")[face_id] == "shaky"
+    review(True)
+    assert db.claim_states(who, "2000-01-01")[face_id] == "held"
 
     # The search spans the profile, never another one, and a claim the learner rejected stays out.
     found = asyncio.run(tutor.search_claims(lesson, ["faces explorer"]))
@@ -309,6 +315,16 @@ def test_a_finished_lesson_yields_claims_whose_state_follows_their_latest_eviden
     assert app._queue_claims([lesson]) == 1 and app._queue_claims([lesson]) == 0
     app._claims_waiting.discard(lesson)
     db.mark_extracted(lesson)
+    assert db.unextracted(course) == []
+
+    # A check answered after the claims were taken out brings the lesson back, from the block after the last one read.
+    db.conn.execute("UPDATE lessons SET extracted = '2000-01-01T00:00:00+00:00' WHERE id = ?", (lesson,))
+    assert db.unextracted(course) == [lesson]
+    db.conn.execute("UPDATE blocks SET created = '1999-01-01 00:00:00' WHERE lesson_id = ? AND id < ?", (lesson, again["id"]))
+    assert db.extracted_through(lesson) == again["id"] - 1
+    assert f"[earlier] This lesson's claims were recorded through block {again['id'] - 1}." in app._claims_prompt(db.lesson(lesson))
+    asyncio.run(tutor.pose_quiz(lesson, "Unanswered?", "open", [], "yes", ""))
+    db.conn.execute("UPDATE blocks SET created = '1999-01-01 00:00:00' WHERE lesson_id = ? AND id <> ?", (lesson, db.blocks(lesson)[-1]["id"]))
     assert db.unextracted(course) == []
 
 
@@ -2153,3 +2169,46 @@ def test_every_route_is_bound_to_an_endpoint_and_none_to_a_private_helper():
     named = {r.path: r.endpoint.__name__ for r in app.app.routes if hasattr(getattr(r, "endpoint", None), "__name__")}
     assert named["/api/concepts/{concept_id}/lesson"] == "open_concept"
     assert [path for path, name in named.items() if name.startswith("_")] == []
+
+
+def test_the_course_map_fits_the_hours_at_the_time_the_learner_takes_per_unit():
+    import asyncio
+
+    from wise_scholar import app, tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Timed')").lastrowid
+    course = db.create_course("Throughflow", who)["id"]
+    db.conn.execute("UPDATE courses SET hours = 2 WHERE id = ?", (course,))
+    assert asyncio.run(tutor.set_sitting(course, 2)) == "error: a sitting is 5 to 240 minutes"
+    assert asyncio.run(tutor.set_sitting(course, 30)) == "sitting set to 30 minutes"
+    # Unmeasured, a unit runs twice the sitting: 2 hours fit two units, and a third is refused unless placed out.
+    assert tutor.unit_minutes(db.course(course)) == (60, 0) and tutor.map_budget(db.course(course)) == 2
+    three = [tutor.Module(title="Loops", concepts=["Balance", "Momentum", "Solver"])]
+    refused = asyncio.run(tutor.set_course_map(course, three))
+    assert refused.startswith("error: the map has 3 units to study; at about 60 minutes a unit") and "fit 2" in refused
+    assert asyncio.run(tutor.set_course_map(course, [tutor.Module(title="Loops", concepts=["Balance", "Momentum", "Solver"], known=["Balance"])])) == "shown"
+    assert asyncio.run(tutor.revise_course_map(course, [tutor.Module(title="Loops", concepts=["Balance", "Momentum", "Solver", "Slip"])])).startswith("error: the map has 3")
+    assert asyncio.run(tutor.revise_course_map(course, [tutor.Module(title="Loops", concepts=["Balance", "Momentum", "Solver", "Slip"])], hours=4)) == "shown"
+    # A practice unit counts against the hours too: four hours of hour-long units hold three units to study.
+    assert tutor.map_budget(db.course(course), 4) == 3
+
+    # Finished units measure the learner: active time with the time away cut out, per unit and per task.
+    units = [c for c in db.concepts(course) if c["kind"] == "concept"]
+    for n, unit in enumerate(units[:2]):
+        lesson = db.create_lesson(course, unit["title"], "lesson", unit["id"])
+        for at in ("10:00", "10:10", "10:20", "11:40"):
+            db.conn.execute("INSERT INTO messages (lesson_id, role, text, created) VALUES (?, 'learner', 'x', ?)", (lesson, f"2026-01-0{n + 1} {at}:00"))
+        db.add_block(lesson, "challenge", "Do it.", {})
+        db.add_block(lesson, "done", "Done.", {})
+        db.conn.execute("UPDATE blocks SET created = ? WHERE lesson_id = ?", (f"2026-01-0{n + 1} 10:20:00", lesson))
+    assert db.unit_pace(who) == {"units": 2, "unit": 20, "task": 20}
+    assert tutor.map_budget(db.course(course)) == 9
+    # A long tutor turn the learner waited on counts, though no event fell inside it; a background turn does not.
+    used = {"model": "m", "input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "cost": None}
+    db.add_usage(course, lesson, "lesson", "claude", used, 40 * 60)
+    db.add_usage(course, lesson, "graph", "claude", used, 50 * 60)
+    db.conn.execute("UPDATE usage SET created = '2026-01-02 11:40:00' WHERE lesson_id = ?", (lesson,))
+    assert db.unit_pace(who) == {"units": 2, "unit": 40, "task": 40}
+    state = app._turn_prompt(db.lesson(lesson), "x")
+    assert " sitting=30 min task=40 min" in state
+    assert "A unit takes this learner about 40 minutes (measured over their last 2 units), so the map holds at most 5 units" in state
