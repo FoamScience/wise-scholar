@@ -498,6 +498,10 @@ def _turn_prompt(lesson: dict, line: str) -> str:
     )
     if lesson["level"]:
         state += f" level={lesson['level']!r}"
+    if lesson["mode"] != "teacher":
+        state += f" sitting={lesson['sitting'] or tutor.SITTING_MINUTES} min"
+        if pace := db.unit_pace(lesson["profile_id"]):
+            state += f" task={pace['task']:.0f} min"
     if lesson["concept"]:
         state += f" module={lesson['module']!r} concept={lesson['concept']!r}"
     if outline := tutor._outline(lesson["id"]):
@@ -518,7 +522,15 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         )
     if lesson["details"]:
         known.append(f"[known] (this course) Scope set by the learner, the boundary for questions, plan and course map: {_untrusted(lesson['details'])}")
-    if lesson["hours"]:
+    if budget := tutor.map_budget(lesson):
+        minutes, measured = tutor.unit_minutes(lesson)
+        known.append(
+            f"[known] (this course) Teaching time the learner plans for the whole course: {lesson['hours']} hours. A unit takes "
+            f"this learner about {minutes:.0f} minutes ({f'measured over their last {measured} units' if measured else 'twice the sitting, until units are measured'}), "
+            f"so the map holds at most {budget} units to study; the server adds a practice unit after every {db.PRACTICE_EVERY}. "
+            "Keep each lesson to one sitting."
+        )
+    elif lesson["hours"]:
         known.append(
             f"[known] (this course) Teaching time the learner plans for the whole course: {lesson['hours']} hours. "
             "Size the course map so its sittings add up to about that, and keep each lesson to one sitting."
@@ -636,9 +648,9 @@ def _placed_from_cards(lesson: dict, blocks: list[dict]) -> str:
     return PLACED.get(lesson["locale"], PLACED["en"]).format(known=len(known), total=len(right))
 
 
-def _record_usage(lesson: dict, kind: str, final: dict) -> None:
+def _record_usage(lesson: dict, kind: str, final: dict, seconds: float | None = None) -> None:
     if used := final.get("usage"):
-        db.add_usage(lesson["course_id"], lesson["id"], kind, BACKEND, used)
+        db.add_usage(lesson["course_id"], lesson["id"], kind, BACKEND, used, seconds)
 
 
 async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
@@ -650,6 +662,7 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
     session_id = lesson["session_id"] if resume else str(uuid.uuid4())
     token = secrets.token_urlsafe(16)
     tutor.turn_started(lesson, token)
+    started = time.monotonic()
     events = None
     try:
         # Over the hourly budget, the turn waits its turn rather than losing what the learner just did.
@@ -681,7 +694,7 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
             await events.aclose()
         tutor.turn_ended(lesson_id)
         del _turns[lesson_id]
-    _record_usage(lesson, lesson["phase"], final)
+    _record_usage(lesson, lesson["phase"], final, time.monotonic() - started)
     if (now := db.lesson(lesson_id)) and _replayed(now):
         _replay_progress(now)
     if quiet:
@@ -755,6 +768,8 @@ def _claims_prompt(lesson: dict) -> str:
     return "\n".join([
         f"[state] lesson_id={lesson['id']} course={lesson['topic']!r} lesson={lesson['title']!r}",
         f"[language] Write the claims in {LOCALE_NAMES[lesson['locale']]}; code, commands and identifiers stay as they are.",
+        *([f"[earlier] This lesson's claims were recorded through block {through}. Record only what the blocks after it taught or tested."]
+          if (through := db.extracted_through(lesson["id"])) else []),
         _lesson_record(lesson["id"]),
     ])
 
@@ -800,7 +815,7 @@ async def _extract_forever() -> None:
         lesson_id = await _claims_queue.get()
         try:
             lesson = db.lesson(lesson_id)
-            if lesson and lesson["extracted"] is None:
+            if lesson and lesson_id in db.unextracted(lesson["course_id"]):
                 if await _extract(lesson):
                     db.mark_extracted(lesson_id)
                     hub.publish(lesson["course_id"], {"type": "claims.updated"})

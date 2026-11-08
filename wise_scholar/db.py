@@ -5,7 +5,8 @@ import shutil
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from itertools import pairwise
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -513,6 +514,12 @@ MIGRATIONS = [
     ALTER TABLE profiles ADD COLUMN suggested_courses INTEGER;
     ALTER TABLE profiles ADD COLUMN suggested_lessons INTEGER;
     """,
+    """
+    ALTER TABLE courses ADD COLUMN sitting INTEGER;
+    """,
+    """
+    ALTER TABLE usage ADD COLUMN seconds REAL;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -746,12 +753,12 @@ def commands(profile_id: int) -> list[dict]:
     )
 
 
-def add_usage(course_id: int, lesson_id: int | None, kind: str, backend: str, used: dict) -> None:
+def add_usage(course_id: int, lesson_id: int | None, kind: str, backend: str, used: dict, seconds: float | None = None) -> None:
     conn.execute(
-        "INSERT INTO usage (course_id, lesson_id, kind, backend, model, input, output, cache_read, cache_write, cost) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO usage (course_id, lesson_id, kind, backend, model, input, output, cache_read, cache_write, cost, seconds) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (course_id, lesson_id, kind, backend, used["model"], used["input"], used["output"], used["cache_read"],
-         used["cache_write"], used["cost"]),
+         used["cache_write"], used["cost"], seconds),
     )
 
 
@@ -1090,7 +1097,7 @@ def _rehome_capstones(course_id: int) -> list[str]:
 
 def lesson(lesson_id: int) -> dict | None:
     return row(
-        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, c.details, c.hours, c.started, c.mode, c.pace, p.name AS profile, p.locale, k.title AS concept, k.module, k.unwritten "
+        "SELECT l.*, c.topic, c.slug, c.mechanism, c.level, c.lang, c.profile_id, c.details, c.hours, c.started, c.mode, c.pace, c.sitting, p.name AS profile, p.locale, k.title AS concept, k.module, k.unwritten "
         "FROM lessons l JOIN courses c ON c.id = l.course_id JOIN profiles p ON p.id = c.profile_id "
         "LEFT JOIN concepts k ON k.id = l.concept_id "
         "WHERE l.id = ?",
@@ -1348,6 +1355,54 @@ def graded_answers(profile_id: int) -> list[dict]:
         "JOIN courses c ON c.id = k.course_id WHERE c.profile_id = ? AND a.correct IS NOT NULL AND a.stated = 1 ORDER BY a.created, a.id",
         profile_id,
     )
+
+
+# A longer gap between two things happening in a lesson is time away from it, not time spent on it; a tutor turn
+# the learner waits on counts whatever its length.
+IDLE = timedelta(minutes=30)
+UNITS_MEASURED = 8
+
+
+def _covered(spans: list[tuple[datetime, datetime]]) -> timedelta:
+    """The time the spans cover, overlaps counted once."""
+    total, reach = timedelta(), None
+    for start, end in sorted(spans):
+        if reach is None or start > reach:
+            total += end - start
+        elif end > reach:
+            total += end - reach
+        reach = end if reach is None else max(reach, end)
+    return total
+
+
+def unit_pace(profile_id: int) -> dict | None:
+    """How long the learner's last UNITS_MEASURED finished units took, in any course, time away cut out: the units
+    measured, active minutes per unit and per task (quick check, challenge or exercise), the tutor's turns included.
+    None before two are done."""
+    lessons = rows(
+        "SELECT l.id FROM lessons l JOIN courses c ON c.id = l.course_id WHERE c.profile_id = ? AND c.mode = 'learner' "
+        "AND l.phase = 'lesson' AND EXISTS (SELECT 1 FROM blocks b WHERE b.lesson_id = l.id AND b.kind = 'done') "
+        "ORDER BY l.id DESC LIMIT ?", profile_id, UNITS_MEASURED,
+    )
+    if len(lessons) < 2:
+        return None
+    spent, tasks = timedelta(), 0
+    for lesson in lessons:
+        times = sorted(datetime.fromisoformat(r["created"]) for r in rows(
+            "SELECT created FROM messages WHERE lesson_id = ? UNION ALL SELECT created FROM blocks WHERE lesson_id = ? "
+            "UNION ALL SELECT a.created FROM answers a JOIN blocks b ON json_extract(b.data, '$.card_id') = a.card_id "
+            "WHERE b.lesson_id = ?", lesson["id"], lesson["id"], lesson["id"],
+        ))
+        spans = [(a, b) for a, b in pairwise(times) if b - a < IDLE]
+        for r in rows("SELECT created, seconds FROM usage WHERE lesson_id = ? AND kind = 'lesson' AND seconds IS NOT NULL", lesson["id"]):
+            end = datetime.fromisoformat(r["created"])
+            spans.append((end - timedelta(seconds=r["seconds"]), end))
+        spent += _covered(spans)
+        tasks += row(
+            f"SELECT COUNT(*) AS n FROM blocks WHERE lesson_id = ? AND kind IN ({', '.join(repr(k) for k in EVIDENCE_KINDS)})", lesson["id"]
+        )["n"]
+    minutes = spent.total_seconds() / 60
+    return {"units": len(lessons), "unit": minutes / len(lessons), "task": minutes / max(tasks, 1)}
 
 
 def concept_mastery(course_id: int) -> dict[int, float]:
@@ -1618,35 +1673,65 @@ def _verdict(block: dict) -> str | None:
     return None
 
 
+_CARD_LINE = "WITH RECURSIVE line(id) AS (SELECT ? UNION SELECT k.id FROM cards k JOIN line ON k.parent_id = line.id) "
+
+
+def _card_verdicts(card_id: int) -> list[tuple[str, str]]:
+    """Every graded answer to a card and to the parts it was split into, in the lesson and in review: when, and held or shaky."""
+    return [
+        (a["created"], "held" if a["correct"] and a["confidence"] >= 0.5 else "shaky")
+        for a in rows(_CARD_LINE + "SELECT a.created, a.correct, a.confidence FROM answers a JOIN line ON line.id = a.card_id "
+                      "WHERE a.correct IS NOT NULL ORDER BY a.id", card_id)
+    ]
+
+
 def claim_states(profile_id: int, now: str) -> dict[int, str]:
-    """Each claim's state from its latest evidence: held (fading once a linked review card is due), shaky, or unseen."""
+    """Each claim's state from its latest evidence, in a lesson or in a review of its cards: held (fading once a linked
+    review card is due), shaky, or unseen."""
     states = {c["id"]: "unseen" for c in rows("SELECT id FROM claims WHERE profile_id = ? AND wrong = 0", profile_id)}
-    latest: dict[int, str] = {}
+    latest: dict[int, tuple[str, str]] = {}
     due: set[int] = set()
     for e in rows(
         "SELECT e.claim_id, b.* FROM claim_evidence e JOIN blocks b ON b.id = e.block_id JOIN claims c ON c.id = e.claim_id "
         "WHERE c.profile_id = ? AND c.wrong = 0 ORDER BY b.id", profile_id,
     ):
         block = _block({k: v for k, v in e.items() if k != "claim_id"})
-        if verdict := _verdict(block):
-            latest[e["claim_id"]] = verdict
         card_id = (block["data"] or {}).get("card_id")
-        card = row("SELECT due FROM cards WHERE id = ?", card_id) if card_id else None
-        if card and card["due"] and card["due"] <= now:
+        if block["kind"] == "quiz" and card_id:
+            verdicts = _card_verdicts(card_id)
+        else:
+            verdicts = [(block["created"], verdict)] if (verdict := _verdict(block)) else []
+        for when, verdict in verdicts:
+            if e["claim_id"] not in latest or when >= latest[e["claim_id"]][0]:
+                latest[e["claim_id"]] = (when, verdict)
+        if card_id and row(_CARD_LINE + "SELECT 1 FROM cards k JOIN line ON line.id = k.id WHERE k.retired = 0 AND k.due <= ?", card_id, now):
             due.add(e["claim_id"])
-    for claim_id, verdict in latest.items():
+    for claim_id, (_, verdict) in latest.items():
         states[claim_id] = "fading" if verdict == "held" and claim_id in due else verdict
     return states
 
 
 def unextracted(course_id: int) -> list[int]:
-    """The course's finished unit and practice lessons whose claims were not taken out yet, oldest first."""
+    """The course's finished unit and practice lessons whose claims were not taken out yet, or that have a check
+    answered since they were, oldest first."""
     return [r["id"] for r in rows(
         "SELECT l.id FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.course_id = ? AND c.mode = 'learner' "
-        "AND l.phase IN ('lesson', 'practice') AND l.extracted IS NULL "
-        "AND EXISTS (SELECT 1 FROM blocks b WHERE b.lesson_id = l.id AND b.kind = 'done') ORDER BY l.id",
+        "AND l.phase IN ('lesson', 'practice') "
+        "AND EXISTS (SELECT 1 FROM blocks b WHERE b.lesson_id = l.id AND b.kind = 'done') "
+        "AND (l.extracted IS NULL OR EXISTS (SELECT 1 FROM blocks b WHERE b.lesson_id = l.id "
+        f"AND b.kind IN ({', '.join(repr(k) for k in EVIDENCE_KINDS)}) AND b.created > datetime(l.extracted) "
+        "AND json_extract(b.data, '$.pretest') IS NOT 1 AND (json_extract(b.data, '$.correct') IS NOT NULL "
+        "OR json_extract(b.data, '$.solved') OR json_extract(b.data, '$.gave_up')))) ORDER BY l.id",
         course_id,
     )]
+
+
+def extracted_through(lesson_id: int) -> int | None:
+    """The last block of a lesson that its claims were taken out of, or None when they never were."""
+    return row(
+        "SELECT MAX(b.id) AS id FROM blocks b JOIN lessons l ON l.id = b.lesson_id WHERE l.id = ? AND b.created <= datetime(l.extracted)",
+        lesson_id,
+    )["id"]
 
 
 def mark_extracted(lesson_id: int) -> None:
