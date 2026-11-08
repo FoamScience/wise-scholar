@@ -2702,7 +2702,9 @@ pre:has(> .mermaid) {
   all: unset;
   cursor: zoom-in;
   display: block;
+  width: 100%;
   max-width: 600px;
+  margin-inline: auto;
 }
 
 .figure-box.large {
