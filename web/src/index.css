@@ -2332,9 +2332,11 @@ mark {
   margin: 0;
 }
 
+/* Room inside the scroll box: exponents in a tall fraction reach past KaTeX's line box and would be clipped. */
 .katex-display {
   overflow-x: auto;
   overflow-y: hidden;
+  padding-block: 0.3em;
 }
 
 /* speech */
