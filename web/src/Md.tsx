@@ -35,9 +35,18 @@ function Link(props: ComponentProps<'a'>) {
   )
 }
 
+function Table(props: ComponentProps<'table'>) {
+  const { node: _, ...rest } = props as ComponentProps<'table'> & { node?: unknown }
+  return (
+    <div className="md-table">
+      <table {...rest} />
+    </div>
+  )
+}
+
 export default function Markdown({ children }: { children: string }) {
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={{ code: Code, a: Link }} urlTransform={imageOrSafe}>
+    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={{ code: Code, a: Link, table: Table }} urlTransform={imageOrSafe}>
       {children}
     </ReactMarkdown>
   )

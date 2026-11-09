@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Core, Position } from 'cytoscape'
+import type { CollectionReturnValue, Core, Position } from 'cytoscape'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { useTheme } from './theme'
@@ -18,6 +18,20 @@ const FONT_SIZE = 11
 const LINE_HEIGHT = 1.3
 const MERGE_CHOICES = 8
 const PADDING = 16
+// below this zoom the cards' text falls under min-zoomed-font-size and is not drawn
+const READABLE = 0.75
+
+/** Fit the elements, but never so small the cards cannot be read: a bigger graph opens on its most connected claim. */
+function show(c: Core, eles: CollectionReturnValue) {
+  c.fit(eles, PADDING)
+  if (c.zoom() >= READABLE) return
+  const claims = eles.nodes('[?claim]')
+  const hub = claims.max((n) => n.degree(false)).ele
+  c.zoom(READABLE)
+  c.center(hub)
+}
+
+let registered = false
 
 function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -51,7 +65,7 @@ function focus(c: Core, id: number | null, home: Map<string, Position>) {
   if (node.empty()) {
     if (home.size) c.nodes('[?claim]').positions((n) => home.get(n.id()) ?? n.position())
     home.clear()
-    c.fit(c.elements(), PADDING)
+    show(c, c.elements())
     return
   }
   if (!home.size) c.nodes('[?claim]').forEach((n) => void home.set(n.id(), { ...n.position() }))
@@ -108,8 +122,12 @@ export function GraphPage({ profile, course }: { profile: number; course: number
   useEffect(() => {
     if (!box.current || shown.claims.length === 0) return
     let gone = false
-    import('cytoscape').then(({ default: cytoscape }) => {
+    Promise.all([import('cytoscape'), import('cytoscape-fcose')]).then(([{ default: cytoscape }, { default: fcose }]) => {
       if (gone || !box.current) return
+      if (!registered) {
+        cytoscape.use(fcose)
+        registered = true
+      }
       const ink = token('--ink')
       const grouped = filter === null && courses.length > 1
       const font = getComputedStyle(document.body).fontFamily
@@ -173,8 +191,9 @@ export function GraphPage({ profile, course }: { profile: number; course: number
           { selector: 'edge[kind = "supports"]', style: { 'line-style': 'dashed', 'target-arrow-shape': 'triangle' } },
           { selector: 'edge[kind = "contrasts"]', style: { 'line-style': 'dotted', 'line-color': token('--danger') } },
         ],
-        layout: { name: 'cose', animate: false, nodeDimensionsIncludeLabels: true, componentSpacing: 30, padding: PADDING },
+        layout: { name: 'fcose', quality: 'proof', animate: false, packComponents: false, nodeRepulsion: () => 20000, idealEdgeLength: () => 120, padding: PADDING } as cytoscape.LayoutOptions,
       })
+      show(cy.current, cy.current.elements())
       home.current.clear()
       cy.current.on('tap', 'node[?claim]', (e) => setSelected(Number(e.target.id())))
       cy.current.on('tap', (e) => e.target === cy.current && setSelected(null))
@@ -184,7 +203,7 @@ export function GraphPage({ profile, course }: { profile: number; course: number
     // the layout runs against the box as first measured; a box that settles or changes size afterwards gets the graph refitted
     const fit = new ResizeObserver(() => {
       cy.current?.resize()
-      cy.current?.fit(cy.current.elements(':visible'), PADDING)
+      if (cy.current) show(cy.current, cy.current.elements(':visible'))
     })
     return () => {
       fit.disconnect()
@@ -215,7 +234,7 @@ export function GraphPage({ profile, course }: { profile: number; course: number
       <div className="row">
         <h1 className="grow">{t('graph.heading', { n: graph?.claims.length ?? 0 })}</h1>
         {courses.length > 1 && (
-          <select className="btn" aria-label={t('graph.course')} value={filter ?? ''} onChange={(e) => setFilter(e.target.value ? Number(e.target.value) : null)}>
+          <select className="btn graph-course" aria-label={t('graph.course')} value={filter ?? ''} onChange={(e) => setFilter(e.target.value ? Number(e.target.value) : null)}>
             <option value="">{t('graph.allCourses')}</option>
             {courses.map(([id, topic]) => (
               <option key={id} value={id}>
