@@ -35,6 +35,7 @@ import { NetworkCard } from './Network'
 import { PlotCard } from './PlotCard'
 import { ScopeCard, ScopeForm } from './Scope'
 import { Book } from './Book'
+import { Recap } from './Recap'
 import { Handout } from './Handout'
 import { SourcesPanel, SOURCE_TYPES } from './Sources'
 import type { Source } from './Sources'
@@ -401,6 +402,11 @@ function CourseCard(props: {
         </strong>
         <span className="muted">{course.mechanism ? lookup(`playbooks.${course.mechanism}.title`, course.mechanism) : t('home.interviewOpen')}</span>
       </a>
+      {course.finished && (
+        <div className="card-recap small">
+          <a href={`#/course/${course.id}/recap`}>{t('recap.cardLine', { date: day(course.finished) })}</a>
+        </div>
+      )}
       <details ref={menu} className="menu" name="course-menu" onToggle={() => {
           setConfirming(false)
           setNaming(null)
@@ -1272,7 +1278,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
   useEffect(() => {
     const refreshTotals = () =>
       api<CourseDetail>(`/api/courses/${courseId}`).then(
-        ({ concepts, strands, vocabulary }) => setCourse((c) => c && { ...c, concepts, strands, vocabulary }),
+        ({ concepts, strands, vocabulary, recap }) => setCourse((c) => c && { ...c, concepts, strands, vocabulary, recap }),
         () => {},
       )
     const source = new EventSource(`/api/courses/${courseId}/events`)
@@ -1391,6 +1397,12 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
     )
     return () => source.close()
   }, [courseId, concept, start, foundLesson])
+
+  // a course just finished opens its recap once, when the tutor is done answering
+  const busy = course?.lessons.some((l) => l.running) ?? true
+  useEffect(() => {
+    if (course?.recap?.finished && !course.recap.seen && !busy) location.hash = `#/course/${courseId}/recap`
+  }, [course?.recap, busy, courseId])
 
   useEffect(() => {
     // back at an unfinished unit after days away: the server decides whether it opens with a recap. Asked once the
@@ -1711,6 +1723,14 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
             </details>
           )
         })}
+        {course.recap?.finished && (
+          <a className="recap-entry" href={`#/course/${course.id}/recap`}>
+            <span className="concept-name">{t('recap.mapEntry')}</span>
+            <span className="done-mark" role="img" aria-label={t('common.done')}>
+              ✓
+            </span>
+          </a>
+        )}
       </nav>
 
       <main ref={lessonBox} className="lesson">
@@ -2250,6 +2270,7 @@ export default function App() {
   const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing)|\?lesson=(\d+)&(card|chat)=(\d+))?$/)
   const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
   const book = hash.match(/^#\/course\/(\d+)\/book$/)
+  const recapped = hash.match(/^#\/course\/(\d+)\/recap(\?preview)?$/)
   const publishing = hash.match(/^#\/course\/(\d+)\/publish$/)
   const found = hash.match(/^#\/course\/(\d+)\/search\?(.*)$/)
   const hand = hash.match(/^#\/hand\/([\w-]+)$/)
@@ -2288,6 +2309,7 @@ export default function App() {
       const params = new URLSearchParams(found[2])
       return <SearchPage key={hash} courseId={Number(found[1])} query={params.get('q') ?? ''} kind={params.get('kind') ?? ''} />
     }
+    if (recapped) return <Recap key={hash} courseId={Number(recapped[1])} profile={current.id} preview={Boolean(recapped[2])} />
     if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={pdf} sketched={current.sketch} />
     if (handout) return <Handout key={handout[0]} lessonId={Number(handout[1])} version={handout[2] as 'student' | 'teacher'} pdf={pdf} />
     if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />

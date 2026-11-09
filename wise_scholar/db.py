@@ -520,6 +520,15 @@ MIGRATIONS = [
     """
     ALTER TABLE usage ADD COLUMN seconds REAL;
     """,
+    """
+    CREATE TABLE recaps (
+        course_id INTEGER PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
+        finished TEXT,
+        seen INTEGER NOT NULL DEFAULT 0,
+        narrative TEXT,
+        positions TEXT
+    );
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -826,6 +835,7 @@ def delete_course(course_id: int) -> None:
             "DELETE FROM lessons WHERE course_id = ?",
             "DELETE FROM concepts WHERE course_id = ?",
             "DELETE FROM facts WHERE course_id = ?",
+            "DELETE FROM recaps WHERE course_id = ?",
             "DELETE FROM courses WHERE id = ?",
         ):
             conn.execute(sql, (course_id,))
@@ -1375,6 +1385,22 @@ def _covered(spans: list[tuple[datetime, datetime]]) -> timedelta:
     return total
 
 
+def lesson_time(lesson_id: int) -> tuple[timedelta, bool]:
+    """The active time of one lesson, time away cut out, the tutor's turns included; and whether the turns were timed
+    (turn lengths are recorded only since they were added, so an older lesson is measured by its gaps alone)."""
+    times = sorted(datetime.fromisoformat(r["created"]) for r in rows(
+        "SELECT created FROM messages WHERE lesson_id = ? UNION ALL SELECT created FROM blocks WHERE lesson_id = ? "
+        "UNION ALL SELECT a.created FROM answers a JOIN blocks b ON json_extract(b.data, '$.card_id') = a.card_id "
+        "WHERE b.lesson_id = ?", lesson_id, lesson_id, lesson_id,
+    ))
+    spans = [(a, b) for a, b in pairwise(times) if b - a < IDLE]
+    turns = rows("SELECT created, seconds FROM usage WHERE lesson_id = ? AND kind = 'lesson' AND seconds IS NOT NULL", lesson_id)
+    for r in turns:
+        end = datetime.fromisoformat(r["created"])
+        spans.append((end - timedelta(seconds=r["seconds"]), end))
+    return _covered(spans), bool(turns)
+
+
 def unit_pace(profile_id: int) -> dict | None:
     """How long the learner's last UNITS_MEASURED finished units took, in any course, time away cut out: the units
     measured, active minutes per unit and per task (quick check, challenge or exercise), the tutor's turns included.
@@ -1388,16 +1414,7 @@ def unit_pace(profile_id: int) -> dict | None:
         return None
     spent, tasks = timedelta(), 0
     for lesson in lessons:
-        times = sorted(datetime.fromisoformat(r["created"]) for r in rows(
-            "SELECT created FROM messages WHERE lesson_id = ? UNION ALL SELECT created FROM blocks WHERE lesson_id = ? "
-            "UNION ALL SELECT a.created FROM answers a JOIN blocks b ON json_extract(b.data, '$.card_id') = a.card_id "
-            "WHERE b.lesson_id = ?", lesson["id"], lesson["id"], lesson["id"],
-        ))
-        spans = [(a, b) for a, b in pairwise(times) if b - a < IDLE]
-        for r in rows("SELECT created, seconds FROM usage WHERE lesson_id = ? AND kind = 'lesson' AND seconds IS NOT NULL", lesson["id"]):
-            end = datetime.fromisoformat(r["created"])
-            spans.append((end - timedelta(seconds=r["seconds"]), end))
-        spent += _covered(spans)
+        spent += lesson_time(lesson["id"])[0]
         tasks += row(
             f"SELECT COUNT(*) AS n FROM blocks WHERE lesson_id = ? AND kind IN ({', '.join(repr(k) for k in EVIDENCE_KINDS)})", lesson["id"]
         )["n"]
@@ -1855,3 +1872,64 @@ def merge_claims(claim_id: int, into: int) -> None:
     except Exception:
         conn.execute("ROLLBACK")
         raise
+
+
+# --- Recap: a finished course told back to the learner ---------------------------------------------------------------
+def course_finished(course_id: int) -> str | None:
+    """When a learner's course was finished, or None while it is not: every module is done, its units finished or
+    placed out, or all its projects built. The time is when its last unit was finished."""
+    course = row("SELECT mode FROM courses WHERE id = ?", course_id)
+    units = concepts(course_id)
+    if not course or course["mode"] == "teacher" or not units:
+        return None
+    finished = {r["concept_id"]: r["at"] for r in rows(
+        "SELECT l.concept_id, MIN(b.created) AS at FROM lessons l JOIN blocks b ON b.lesson_id = l.id "
+        "WHERE l.course_id = ? AND l.concept_id IS NOT NULL AND b.kind = 'done' GROUP BY l.concept_id", course_id,
+    )}
+    begun = {r["concept_id"] for r in rows("SELECT DISTINCT concept_id FROM lessons WHERE course_id = ? AND concept_id IS NOT NULL", course_id)}
+    projects = capstones(course_id)
+    for module in dict.fromkeys(u["module"] for u in units):
+        done = all(u["id"] in finished or (u["known"] and u["id"] not in begun) for u in units if u["module"] == module)
+        built = [k for k in projects if k["module"] == module]
+        if not done and not (built and all(k["done"] == len(k["milestones"]) for k in built)):
+            return None
+    return max(finished.values(), default=None) or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _recap(r: dict | None) -> dict | None:
+    if r:
+        r["narrative"] = json.loads(r["narrative"]) if r["narrative"] else None
+        r["positions"] = json.loads(r["positions"]) if r["positions"] else None
+    return r
+
+
+def recap(course_id: int) -> dict | None:
+    return _recap(row("SELECT * FROM recaps WHERE course_id = ?", course_id))
+
+
+def sync_recap(course_id: int) -> dict | None:
+    """The course's recap brought up to date with the course: finishing gives it its finish time and makes it new
+    again; growing past the finish takes the time away, and the narrative stays until the course is finished again.
+    None for a course never finished."""
+    at = course_finished(course_id)
+    current = recap(course_id)
+    if at and not current:
+        conn.execute("INSERT INTO recaps (course_id, finished) VALUES (?, ?)", (course_id, at))
+    elif current and bool(current["finished"]) != bool(at):
+        conn.execute("UPDATE recaps SET finished = ?, seen = 0 WHERE course_id = ?", (at, course_id))
+    else:
+        return current
+    return recap(course_id)
+
+
+def set_recap(course_id: int, **fields) -> None:
+    """seen, narrative or positions of a recap; narrative and positions are stored as JSON."""
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    values = [json.dumps(v) if k in ("narrative", "positions") else v for k, v in fields.items()]
+    conn.execute(f"UPDATE recaps SET {sets} WHERE course_id = ?", (*values, course_id))
+
+
+def fixed_at(card_id: int, after: str) -> str | None:
+    """The first right answer to a card or its parts after a time: when a mistake on it was put right."""
+    return row(_CARD_LINE + "SELECT MIN(a.created) AS at FROM answers a JOIN line ON line.id = a.card_id WHERE a.correct = 1 AND a.created > ?",
+               card_id, after)["at"]

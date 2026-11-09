@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 import httpx
 import simplemma
 
-from . import art, book, bundle, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, handwork, history, hub, obsidian, quiz, review, sandbox, search, settings, sources, speech, tutor, vault, vocab, widgets
+from . import art, book, bundle, challenge, cleanup, course_files, crafted, db, diagrams, egress, handout, handwork, history, hub, obsidian, quiz, recap, review, sandbox, search, settings, sources, speech, tutor, vault, vocab, widgets
 from .backends import AGENT, BACKEND, MCP_SECRET, agy, claude, opencode
 from .playbooks import describe
 
@@ -338,6 +338,7 @@ def _course(course_id: int) -> dict:
         "lessons": [_lesson_view(lesson["id"]) for lesson in lessons],
         "setup": json.loads(course["setup"]) if course["setup"] else [],
         "upgrade": _upgrade_view(course),
+        "recap": _recap_state(course_id),
     }
 
 
@@ -1126,8 +1127,8 @@ def forget_fact(fact_id: int) -> None:
 @app.get("/api/courses")
 def list_courses(profile: int) -> list[dict]:
     return db.rows(
-        "SELECT id, topic, slug, mechanism, level, archived, mode, cover IS NOT NULL AS cover, cover_alt FROM courses "
-        "WHERE profile_id = ? ORDER BY id DESC",
+        "SELECT c.id, c.topic, c.slug, c.mechanism, c.level, c.archived, c.mode, c.cover IS NOT NULL AS cover, c.cover_alt, r.finished "
+        "FROM courses c LEFT JOIN recaps r ON r.course_id = c.id WHERE c.profile_id = ? ORDER BY c.id DESC",
         profile,
     )
 
@@ -1592,6 +1593,110 @@ def _start_suggesting(profile: dict, retire: bool = False) -> None:
             _suggesting.pop(profile_id, None)
 
     _suggesting[profile_id] = asyncio.create_task(run())
+
+
+# --- Recap: a finished course told back to the learner, its narrative written once by a turn of its own --------------
+# A developer setting: shows any learner course as a recap so far, without its narrative.
+RECAP_PREVIEW = os.environ.get("WISE_SCHOLAR_RECAP_PREVIEW") == "1"
+_recapping: dict[int, asyncio.Task] = {}
+_recap_failed: set[int] = set()  # tried in this process and failed: only the learner's asking tries again before a restart
+
+
+def _recap_state(course_id: int) -> dict | None:
+    """Whether the course is finished and its recap seen; None for a course never finished."""
+    r = db.sync_recap(course_id)
+    return {"finished": r["finished"], "seen": bool(r["seen"])} if r else None
+
+
+async def _write_recap(course_id: int) -> None:
+    lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ? ORDER BY id LIMIT 1", course_id)["id"])
+    story = await asyncio.to_thread(recap.story, course_id, _now())
+    job = {"weeks": story["weeks"], "locale": lesson["locale"], "finished": story["finished"], "done": False}
+    tutor.recap_jobs[course_id] = job
+    try:
+        prompt = "\n".join([
+            f"[state] course_id={course_id}",
+            f"[language] Write in {LOCALE_NAMES[lesson['locale']]}; code, commands and identifiers stay as they are.",
+            recap.outline(story),
+        ])
+        ok = await _background_turn(lesson, prompt, "recap", "course recap")
+    finally:
+        tutor.recap_jobs.pop(course_id, None)
+    if not ok or not job["done"]:
+        _recap_failed.add(course_id)
+
+
+def _start_recap(course_id: int) -> None:
+    async def run() -> None:
+        try:
+            await _write_recap(course_id)
+        except Exception:
+            log.exception("recap of course %s", course_id)
+            _recap_failed.add(course_id)
+        finally:
+            _recapping.pop(course_id, None)
+            # the open recap page reloads, written or not
+            hub.publish(course_id, {"type": "recap.written"})
+
+    _recapping[course_id] = asyncio.create_task(run())
+
+
+def _recap_course(course_id: int) -> dict:
+    course = db.course(course_id)
+    if not course:
+        raise HTTPException(404, "no such course")
+    if course["mode"] == "teacher":
+        raise HTTPException(409, "a prepared course has no recap")
+    return course
+
+
+@app.get("/api/courses/{course_id}/recap")
+async def get_recap(course_id: int, preview: bool = False) -> dict:
+    """The finished course as a story. Its narrative is written the first time the recap is opened after the course
+    is finished, and again after it is finished anew."""
+    _recap_course(course_id)
+    state = db.sync_recap(course_id)
+    finished = bool(state and state["finished"])
+    if not finished and not (preview and RECAP_PREVIEW):
+        raise HTTPException(409, "this course is not finished yet")
+    story = await asyncio.to_thread(recap.story, course_id, _now())
+    stale = finished and (not story["narrative"] or story["narrative"]["finished"] != story["finished"])
+    if stale and course_id not in _recapping and course_id not in _recap_failed:
+        _start_recap(course_id)
+    return {**story, "preview": not finished, "writing": course_id in _recapping, "failed": course_id in _recap_failed}
+
+
+@app.post("/api/courses/{course_id}/recap/write", status_code=202)
+def rewrite_recap(course_id: int) -> dict:
+    """The learner asked for the narrative again, in the profile's language as it is now."""
+    _recap_course(course_id)
+    state = db.sync_recap(course_id)
+    if not (state and state["finished"]):
+        raise HTTPException(409, "this course is not finished yet")
+    if course_id not in _recapping:
+        _recap_failed.discard(course_id)
+        _start_recap(course_id)
+    return {"writing": True}
+
+
+@app.post("/api/courses/{course_id}/recap/seen")
+def see_recap(course_id: int) -> dict:
+    if db.recap(course_id):
+        db.set_recap(course_id, seen=1)
+    return {"seen": True}
+
+
+class RecapLayout(BaseModel):
+    positions: dict[int, tuple[float, float]]
+
+
+@app.post("/api/courses/{course_id}/recap/positions")
+def save_recap_layout(course_id: int, body: RecapLayout) -> dict:
+    """Where each claim sits in the recap's graph, laid out once so the graph grows without moving."""
+    if not db.recap(course_id):
+        raise HTTPException(409, "this course has no recap")
+    db.set_recap(course_id, positions={str(k): list(v) for k, v in body.positions.items()})
+    return {"saved": len(body.positions)}
 
 
 class SuggestionAsk(BaseModel):

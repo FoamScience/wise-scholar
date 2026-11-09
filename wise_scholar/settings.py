@@ -35,6 +35,7 @@ CATALOG = (
     Setting("WISE_SCHOLAR_WORKSPACE_MB", "4096", "int", True, 1),
     Setting("WISE_SCHOLAR_KEEP_DAYS", "", "int", True, 1),
     Setting("WISE_SCHOLAR_PODCASTS", "0", "bool", True),
+    Setting("WISE_SCHOLAR_RECAP_PREVIEW", "0", "bool", True),
     Setting("WISE_SCHOLAR_SEARCH_MODEL", "minishlab/potion-multilingual-128M", "text", True),
     Setting("WISE_SCHOLAR_OPENCODE_PORT", "8322", "int", True, 1024),
     Setting("WISE_SCHOLAR_PORT", "8321", "int", False),

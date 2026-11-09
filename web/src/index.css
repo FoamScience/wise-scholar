@@ -3668,3 +3668,556 @@ dialog.handoff .qr {
 .file > .small {
   padding: var(--space-2xs) var(--space-md);
 }
+
+/* Recap: a finished course told back as a timeline, the claims graph growing beside it */
+.course-card:has(.card-recap) {
+  display: flex;
+  flex-direction: column;
+}
+
+.course-card:has(.card-recap) > a {
+  flex: 1;
+  min-height: 0;
+}
+
+.card-recap {
+  padding: 0 var(--space-md) var(--space-md);
+  margin-top: calc(-1 * var(--space-xs));
+}
+
+.map .recap-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 44px;
+  margin-top: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-top: 1px solid var(--line);
+  color: var(--teal-dark);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.map .recap-entry:hover {
+  background: var(--color-paper-3);
+  border-radius: var(--radius-input);
+}
+
+.recap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  width: 100%;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: var(--space-xl) var(--space-lg) var(--space-3xl);
+}
+
+.recap h2 {
+  margin: 0;
+  font-size: var(--text-section);
+}
+
+.recap-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-xl);
+  animation: recap-rise var(--dur-long) var(--ease-out) both;
+}
+
+.recap-hero:not(:has(.recap-cover)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.recap-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--teal-tint);
+}
+
+.recap-title h1 {
+  margin: var(--space-2xs) 0 var(--space-lg);
+  font-size: var(--text-3xl);
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.recap-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--space-sm);
+}
+
+.recap-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--panel);
+  border-top: 2px solid var(--teal);
+  border-radius: 0 0 var(--radius-input) var(--radius-input);
+  font-size: var(--text-sm);
+}
+
+.recap-tile strong {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.recap-tile strong .muted {
+  font-size: var(--text-md);
+  font-weight: 400;
+}
+
+.recap-intro {
+  margin: 0;
+  font-size: var(--text-lead);
+  line-height: 1.6;
+}
+
+.recap-rewrite {
+  align-self: flex-start;
+}
+
+.recap-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  align-items: start;
+  gap: var(--space-xl);
+}
+
+.recap-panel {
+  position: sticky;
+  top: var(--space-md);
+  grid-row: 1;
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.recap-graph {
+  height: 16rem;
+}
+
+.recap-now {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.recap-now p {
+  margin: 0;
+}
+
+.recap-counts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2xs) var(--space-sm);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.recap-counts span {
+  white-space: nowrap;
+}
+
+.recap-counts strong {
+  color: var(--ink);
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.recap-play {
+  align-self: flex-start;
+}
+
+.recap-modules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: var(--space-sm) 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  color: var(--muted);
+}
+
+.recap-modules i {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-inline-end: var(--space-2xs);
+  border-radius: 2px;
+  vertical-align: -0.1rem;
+}
+
+.recap-timeline {
+  grid-row: 1;
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  min-width: 0;
+}
+
+.recap-before summary,
+.recap-step summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.recap-before summary::-webkit-details-marker,
+.recap-step summary::-webkit-details-marker {
+  display: none;
+}
+
+.recap-before {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--well);
+  border-radius: var(--radius-card);
+}
+
+.recap-before ul {
+  margin: var(--space-xs) 0 0;
+  padding-inline-start: var(--space-lg);
+}
+
+.recap-week {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.recap-week > h2.label {
+  font-size: var(--text-sm);
+}
+
+.recap-caption {
+  max-width: var(--measure);
+  margin: 0;
+  font-size: var(--text-lead);
+  line-height: 1.55;
+}
+
+.recap-week ol {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* the ribbon: each step in its module's colour, its dot filled once the story has reached it */
+.recap-step {
+  position: relative;
+  padding-block: var(--space-2xs);
+  padding-inline-start: var(--space-lg);
+  border-inline-start: 4px solid var(--module);
+}
+
+.recap-step::before {
+  content: '';
+  position: absolute;
+  top: calc(var(--space-sm) + 0.25rem);
+  inset-inline-start: -10px;
+  width: 16px;
+  height: 16px;
+  border: 3px solid var(--module);
+  border-radius: 50%;
+  background: var(--ground);
+  transition: background var(--motion) var(--ease);
+}
+
+.recap-step.reached::before {
+  background: var(--module);
+}
+
+.recap-step summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-input);
+}
+
+.recap-step summary:hover {
+  background: var(--well);
+}
+
+.recap-step details[open] > summary {
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.recap-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2xs) var(--space-sm);
+}
+
+.recap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+.recap-chip {
+  max-width: 100%;
+  overflow: hidden;
+  padding: var(--space-3xs) var(--space-xs);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--chip, var(--mastery-off));
+  border-radius: var(--radius-inner);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 40rem) {
+  .recap-chip {
+    max-width: 24rem;
+  }
+}
+
+.recap-chip.state-held {
+  --chip: var(--teal);
+}
+.recap-chip.state-fading {
+  --chip: var(--amber-line);
+}
+.recap-chip.state-shaky {
+  --chip: var(--danger);
+}
+
+.recap-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.mark-missed {
+  color: var(--danger);
+}
+.mark-fixed {
+  color: var(--teal);
+}
+.mark-project {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.recap-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-sm) var(--space-md);
+}
+
+.recap-step-body p {
+  margin: 0;
+}
+
+.recap-claims,
+.recap-mistakes,
+.recap-weak ul,
+.recap-next ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recap-claims,
+.recap-mistakes {
+  font-size: var(--text-sm);
+}
+
+.recap-mistakes li {
+  padding-inline-start: var(--space-sm);
+  border-inline-start: 2px solid var(--line);
+}
+
+.recap-end {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xl);
+  padding-top: var(--space-xl);
+  border-top: 1px solid var(--line);
+}
+
+.recap-end > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.recap-sure {
+  grid-column: 1 / -1;
+}
+
+.recap-sure p {
+  margin: 0;
+}
+
+.recap-letter {
+  padding: var(--space-lg);
+  background: var(--teal-tint);
+  border-radius: var(--radius-card);
+}
+
+.recap-letter p {
+  margin: 0;
+  font-size: var(--text-lead);
+  line-height: 1.65;
+}
+
+.recap-weak a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.recap-prompt > summary {
+  cursor: pointer;
+}
+
+.recap-prompt > :is(p, .md-table, .katex-display):first-of-type,
+.recap-prompt > summary + * {
+  margin-top: var(--space-xs);
+}
+
+.recap-prompt a.small {
+  color: var(--teal-dark);
+  text-decoration: underline;
+}
+
+.recap-weak a:hover {
+  color: var(--teal-dark);
+  text-decoration: underline;
+}
+
+.recap-next li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+}
+
+@keyframes recap-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recap-hero {
+    animation: none;
+  }
+
+  .recap-step::before {
+    transition: none;
+  }
+}
+
+/* on a phone the panel turns into a strip that stays at the top: the graph small beside the counts */
+@media (max-width: 60rem) {
+  .recap {
+    padding-inline: var(--space-md);
+  }
+
+  .recap-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-md);
+  }
+
+  .recap-title h1 {
+    font-size: var(--text-2xl);
+  }
+
+  .recap-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-md);
+  }
+
+  .recap-panel {
+    top: 0;
+    z-index: var(--z-sticky);
+    grid-column: 1;
+    flex-direction: row;
+    align-items: center;
+    margin-inline: calc(-1 * var(--space-md));
+    padding: var(--space-xs) var(--space-md);
+    border-inline: 0;
+    border-radius: 0;
+  }
+
+  .recap-graph {
+    flex: 0 0 6.5rem;
+    height: 5.5rem;
+  }
+
+  .recap-now {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .recap-counts {
+    grid-template-columns: repeat(4, auto);
+    justify-content: start;
+    font-size: var(--text-xs);
+  }
+
+  .recap-counts strong {
+    font-size: var(--text-md);
+  }
+
+  .recap-now p,
+  .recap-modules {
+    display: none;
+  }
+
+  .recap-timeline {
+    grid-row: 2;
+  }
+
+  .recap-end {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media print {
+  .recap-play,
+  .recap-rewrite {
+    display: none;
+  }
+
+  .recap-panel {
+    position: static;
+  }
+
+  .recap-hero {
+    animation: none;
+  }
+
+  .recap-step::before {
+    background: var(--module);
+  }
+}

@@ -2099,6 +2099,47 @@ async def suggest_courses(course_id: int, suggestions: list[Suggestion]) -> str:
     return "recorded"
 
 
+RECAP_TOOLS = ("write_recap",)
+RECAP_INTRO_CHARS = 700
+RECAP_CAPTION_CHARS = 220
+RECAP_LETTER_CHARS = 1000
+recap_jobs: dict[int, dict] = {}  # course id -> {"weeks", "locale", "finished", "done"}
+
+
+class WeekCaption(BaseModel):
+    week: str
+    caption: str
+
+
+@mcp.tool()
+async def write_recap(course_id: int, intro: str, weeks: list[WeekCaption], letter: str) -> str:
+    """Write the narrative of the finished course's recap.
+
+    intro: about 80 words on where the learner started and what the course set out to do, under 700 characters.
+    weeks: one caption per [week] line, its week copied exactly, each one sentence under 220 characters on what
+    changed that week. letter: about 120 words to the learner on what they can now do and what to strengthen next,
+    under 1000 characters. Plain text with inline Markdown; no headings.
+    """
+    job = recap_jobs.get(course_id)
+    if job is None:
+        return f"error: no recap is being written on course {course_id}"
+    intro, letter = " ".join(intro.split()), " ".join(letter.split())
+    captions = {w.week.strip(): " ".join(w.caption.split()) for w in weeks}
+    if not intro or len(intro) > RECAP_INTRO_CHARS:
+        return f"error: the intro must be under {RECAP_INTRO_CHARS} characters"
+    if not letter or len(letter) > RECAP_LETTER_CHARS:
+        return f"error: the letter must be under {RECAP_LETTER_CHARS} characters"
+    if missing := [w for w in job["weeks"] if w not in captions]:
+        return f"error: weeks {missing} need a caption"
+    if extra := sorted(set(captions) - set(job["weeks"])):
+        return f"error: {extra} are not weeks of this course; copy them from the [week] lines"
+    if long := [w for w, c in captions.items() if not c or len(c) > RECAP_CAPTION_CHARS]:
+        return f"error: the captions of {long} must be one sentence under {RECAP_CAPTION_CHARS} characters"
+    db.set_recap(course_id, narrative={"intro": intro, "weeks": captions, "letter": letter, "locale": job["locale"], "finished": job["finished"]})
+    job["done"] = True
+    return "recorded"
+
+
 @mcp.tool()
 async def set_placement(course_id: int, level: str, summary: str, areas: list[Area]) -> str:
     """Record the result of the placement check.
@@ -2158,7 +2199,8 @@ async def mark_solved(challenge_id: int) -> str:
 # number of calls.
 # A graph turn reads a finished lesson for its claims, a cards turn makes long or missed review cards short and a
 # cleanup turn proposes edits to a version before it is published, an explore turn writes the learner's suggested next
-# courses; each may call only its own tools, and a lesson turn may call none of them.
+# courses, a recap turn writes the story of a finished course; each may call only its own tools, and a lesson turn may
+# call none of them.
 turns: dict[int | tuple[str, int], dict] = {}  # lesson_id, or (kind, lesson_id) -> {"token", "calls", "lesson_id", "course_id", "kind"}
 _ID_ARGUMENTS = ("lesson_id", "course_id", "challenge_id", "quiz_id", "block_id")
 
@@ -2207,7 +2249,10 @@ def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
 def _guard(call_tool):
     async def guarded(name: str, arguments: dict, context, convert_result: bool = False):
         targets = _targets(arguments)
-        kind = "graph" if name in GRAPH_TOOLS else "cards" if name in CARD_TOOLS else "cleanup" if name in CLEANUP_TOOLS else "explore" if name in EXPLORE_TOOLS else "lesson"
+        kind = (
+            "graph" if name in GRAPH_TOOLS else "cards" if name in CARD_TOOLS else "cleanup" if name in CLEANUP_TOOLS
+            else "explore" if name in EXPLORE_TOOLS else "recap" if name in RECAP_TOOLS else "lesson"
+        )
         if token := _token(context):
             turn = next((t for t in turns.values() if t["token"] == token), None)
             if turn is None:
