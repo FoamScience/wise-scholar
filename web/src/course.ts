@@ -10,6 +10,7 @@ export type Course = {
   mode: 'learner' | 'teacher' | 'replay'
   cover: number
   cover_alt: string | null
+  finished?: string | null
 }
 export type Message = { id: number; lesson_id: number; role: 'learner' | 'tutor'; text: string; created: string }
 export type QuestionData = { options: string[]; answer: string | null; multiple?: boolean; non_goals?: string[] }
@@ -98,6 +99,7 @@ export type CourseDetail = Course & {
   vocabulary: { total: number; due: number; tier?: number; tier_size?: number; tier_known?: number; tier_words?: number }
   setup: SetupStep[]
   upgrade: UpgradeOffer | null
+  recap: { finished: string | null; seen: boolean } | null
 }
 export type UpgradeOffer = { hash: string; number: number; notes: string; published: string; kept: string[]; restarted: string[]; added: string[]; removed: string[] }
 export type SetupStep = { command: string; status: 'asked' | 'running' | 'done' | 'failed' | 'refused'; exit_code?: number | null }

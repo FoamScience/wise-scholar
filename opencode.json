@@ -101,6 +101,15 @@
         "scholar_*": "allow"
       }
     },
+    "tutor-recap": {
+      "mode": "primary",
+      "description": "wise-scholar: the story of a finished course",
+      "prompt": "{file:./wise_scholar/prompts/recap.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
+    },
     "tutor-lesson-teacher": {
       "mode": "primary",
       "description": "wise-scholar course designer: lesson for a teacher",

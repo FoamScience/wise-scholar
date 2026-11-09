@@ -3,15 +3,15 @@ import type { CollectionReturnValue, Core, Position } from 'cytoscape'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { useTheme } from './theme'
+import { STATE_COLOR, loadCytoscape, token } from './claims'
+import type { State } from './claims'
 
-type State = 'held' | 'fading' | 'shaky' | 'unseen'
 type Source = { id: number; title: string; concept_id: number | null; course_id: number; topic: string }
 type Evidence = { block_id: number; lesson_id: number; kind: string; markdown: string; verdict: 'held' | 'shaky' | null }
 type Claim = { id: number; text: string; state: State; sources: Source[]; evidence: Evidence[] }
 type Edge = { from_id: number; to_id: number; kind: 'follows' | 'supports' | 'contrasts' }
 type Graph = { claims: Claim[]; edges: Edge[] }
 
-const STATE_COLOR: Record<State, string> = { held: '--teal', fading: '--amber-line', shaky: '--danger', unseen: '--mastery-off' }
 const CARD_TEXT = 180
 const CARD_PAD = 8
 const FONT_SIZE = 11
@@ -29,12 +29,6 @@ function show(c: Core, eles: CollectionReturnValue) {
   const hub = claims.max((n) => n.degree(false)).ele
   c.zoom(READABLE)
   c.center(hub)
-}
-
-let registered = false
-
-function token(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
 /** A card's opening words without the Markdown marks, for a one-line mention. */
@@ -122,12 +116,8 @@ export function GraphPage({ profile, course }: { profile: number; course: number
   useEffect(() => {
     if (!box.current || shown.claims.length === 0) return
     let gone = false
-    Promise.all([import('cytoscape'), import('cytoscape-fcose')]).then(([{ default: cytoscape }, { default: fcose }]) => {
+    loadCytoscape().then((cytoscape) => {
       if (gone || !box.current) return
-      if (!registered) {
-        cytoscape.use(fcose)
-        registered = true
-      }
       const ink = token('--ink')
       const grouped = filter === null && courses.length > 1
       const font = getComputedStyle(document.body).fontFamily
