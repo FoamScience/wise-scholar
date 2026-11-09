@@ -443,6 +443,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
       <section key={card.id} className="block quiz review-card">
         <div className="label">
           <span dir="auto">{card.topic}</span>
+          <span className="muted">{t('review.position', { n: index + 1, total: cards.length })}</span>
           {card.confident_miss && <span className="chip warn">{t('review.sureAndMissed')}</span>}
           {then && (
             <a className="btn as-link skip" href={then} onClick={goOn}>
@@ -540,9 +541,7 @@ export function ReviewPanels({ profile }: { profile: number }) {
             {t('review.start')}
           </a>
         )}
-        <a className="btn as-link" href="#/errors">
-          {t('review.errorNotebook')}
-        </a>
+        <a href="#/errors">{t('review.errorNotebook')}</a>
       </section>
 
       {calibration && calibration.n > 0 && (
@@ -572,7 +571,7 @@ export function ReviewPanels({ profile }: { profile: number }) {
               <i className="bar actual" /> {t('review.howOften')}
             </span>
           </div>
-          <div className="muted">{t('review.brier', { brier: calibration.brier!.toFixed(2), n: calibration.n })}</div>
+          <div className="muted small">{t('review.brier', { brier: calibration.brier!.toFixed(2), n: calibration.n })}</div>
         </section>
       )}
     </div>

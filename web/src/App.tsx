@@ -131,7 +131,7 @@ function Today({ profile }: { profile: number }) {
         )}
         {plan.units.slice(1, 4).map((u) => (
           <li key={u.course_id} className="muted">
-            {t('today.later', { topic: u.topic, title: unitTitle(u, t) })}
+            {t('today.later', { title: unitTitle(u, t) })} <span className="muted">{u.topic}</span>
           </li>
         ))}
         {plan.cast && (
@@ -2071,11 +2071,34 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
 
       <nav className="panes" aria-label={t('panes.label')}>
         {(['map', 'lesson'] as const).map((p) => (
-          <button key={p} aria-pressed={pane === p} onClick={() => setPane(p)}>
+          <button
+            key={p}
+            aria-pressed={pane === p && !open}
+            onClick={() => {
+              setPane(p)
+              setAsking(false)
+            }}
+          >
             {p === 'map' ? t('map.label') : t('panes.lesson')}
             {p === 'lesson' && p !== pane && lesson.running && <span className="live"> ({t('activity.working')})</span>}
           </button>
         ))}
+        <button
+          aria-pressed={open}
+          onClick={() => {
+            setPane('lesson')
+            setAsking(true)
+            requestAnimationFrame(() => document.getElementById('chat')?.focus())
+          }}
+        >
+          {t('chat.ask')}
+          {unread > 0 && !open && (
+            <span className="badge">
+              <span aria-hidden="true">{unread}</span>
+              <span className="visually-hidden"> {t('chat.unread', { count: unread })}</span>
+            </span>
+          )}
+        </button>
       </nav>
     </div>
   )
@@ -2296,6 +2319,7 @@ export default function App() {
                 <circle cx="9" cy="18" r="2.5" />
                 <path d="M8.4 6.6 15.6 7.4M7 8.4 8.4 15.6M16.5 10 10.8 16.2" />
               </svg>
+              <span className="nav-label">{t('graph.link')}</span>
             </a>
             {current.mode !== 'teacher' && (
               <a href="#/explore" title={t('explore.link')} aria-label={t('explore.link')}>
@@ -2303,6 +2327,7 @@ export default function App() {
                   <circle cx="12" cy="12" r="9" />
                   <path d="M15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5Z" />
                 </svg>
+                <span className="nav-label">{t('explore.link')}</span>
               </a>
             )}
           </nav>
@@ -2311,13 +2336,18 @@ export default function App() {
         <span className="status">{t('header.agent', { agent })}</span>
         {localeError && <span className="error">{localeError}</span>}
         <ThemeToggle />
-        <select className="btn locale" aria-label={t('header.language')} value={locale} onChange={(e) => switchLocale(e.target.value as Locale)}>
-          {Object.entries(LOCALES).map(([code, name]) => (
-            <option key={code} value={code} lang={code}>
-              {name}
-            </option>
-          ))}
-        </select>
+        <span className="locale-pick">
+          <span className="btn" aria-hidden="true">
+            {locale.toUpperCase()}
+          </span>
+          <select className="btn locale" aria-label={t('header.language')} value={locale} onChange={(e) => switchLocale(e.target.value as Locale)}>
+            {Object.entries(LOCALES).map(([code, name]) => (
+              <option key={code} value={code} lang={code}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </span>
         {current && (
           <a className="btn as-link" href="#/profile">
             {current.name}

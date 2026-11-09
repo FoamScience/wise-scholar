@@ -132,11 +132,18 @@ pre {
   font-size: 0.93em;
 }
 
+/* A lighter edge shows on the side where code runs past the box; the local layers cover it once scrolled to that end. */
 pre {
+  --edge: color-mix(in oklab, var(--code-ink) 38%, var(--code-bg));
   margin: var(--space-xs) 0;
   padding: var(--space-sm) var(--space-md);
   overflow-x: auto;
-  background: var(--code-bg);
+  background:
+    linear-gradient(to right, var(--code-bg) 40%, transparent) left / 2rem 100% no-repeat local,
+    linear-gradient(to left, var(--code-bg) 40%, transparent) right / 2rem 100% no-repeat local,
+    linear-gradient(to right, var(--edge), transparent) left / 1.25rem 100% no-repeat scroll,
+    linear-gradient(to left, var(--edge), transparent) right / 1.25rem 100% no-repeat scroll,
+    var(--code-bg);
   color: var(--code-ink);
   border-radius: var(--radius-input);
 }
@@ -204,6 +211,20 @@ pre ::selection {
   white-space: nowrap;
 }
 
+.topnav a {
+  gap: var(--space-2xs);
+}
+
+/* the language picker shows its code on a phone; the real select lies over it, unseen, and still opens the list */
+.locale-pick {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.locale-pick > span {
+  display: none;
+}
+
 .topnav a:hover,
 .topbar > a.small:hover {
   background: var(--well);
@@ -220,21 +241,43 @@ pre ::selection {
     margin-inline-end: 0;
   }
 
-  /* the destinations take a row of their own under the bar, so none hides behind a scroll */
-  .topbar {
-    flex-wrap: wrap;
-    height: auto;
-    min-height: var(--bar-height);
+  .topnav a {
+    justify-content: center;
+    min-width: 44px;
+    padding: 0;
   }
 
-  .topnav {
-    order: 1;
-    flex-basis: 100%;
-    border-top: 1px solid var(--line);
+  .nav-label {
+    display: none;
+  }
+
+  .locale-pick > span {
+    display: inline-flex;
+    align-items: center;
+  }
+  .locale-pick > select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    opacity: 0;
+  }
+  .locale-pick:focus-within > span {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
   }
 
   .topbar .btn {
     padding: 0 var(--space-xs);
+  }
+
+  /* a long profile name gives way before the bar outgrows the screen */
+  .topbar > .as-link {
+    display: block;
+    max-width: 7rem;
+    line-height: 38px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -816,6 +859,23 @@ a.btn.primary:hover {
     border-top: 3px solid transparent;
     color: var(--muted);
     cursor: pointer;
+  }
+
+  /* the chat opens from the pane switcher here, so no button floats over the lesson */
+  .lesson .ask {
+    display: none;
+  }
+
+  .panes .badge {
+    display: inline-block;
+    min-width: 20px;
+    margin-inline-start: var(--space-2xs);
+    padding: 0 var(--space-2xs);
+    background: var(--amber);
+    color: var(--on-teal);
+    border-radius: 10px;
+    font-size: var(--text-xs);
+    line-height: 20px;
   }
 
   .panes button[aria-pressed='true'] {
@@ -1435,6 +1495,11 @@ a.btn.primary:hover {
   align-items: center;
   gap: var(--space-sm);
 }
+.graph-course {
+  max-width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
 .graph-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
@@ -1796,7 +1861,7 @@ a.btn.primary:hover {
   min-height: 36px;
   padding: var(--space-2xs) var(--space-sm);
   border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-input);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -2031,6 +2096,16 @@ a.btn.primary:hover {
 table {
   margin: var(--space-xs) 0;
   border-collapse: collapse;
+}
+
+/* A wide table scrolls in its own box instead of squeezing its columns to a word per line. */
+.md-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.md-table > table {
+  width: max-content;
+  max-width: 44rem;
 }
 
 th,
@@ -2332,8 +2407,9 @@ mark {
   margin: 0;
 }
 
-/* Room inside the scroll box: exponents in a tall fraction reach past KaTeX's line box and would be clipped. */
+/* Room inside the scroll box: exponents in a tall fraction reach past KaTeX's line box and would be clipped. The margin gives back what the padding adds. */
 .katex-display {
+  margin-block: 0.7em;
   overflow-x: auto;
   overflow-y: hidden;
   padding-block: 0.3em;
