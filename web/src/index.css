@@ -1101,6 +1101,24 @@ a.btn.primary:hover {
   margin-bottom: var(--space-xs);
 }
 
+.numbered {
+  position: relative;
+}
+
+.card-n {
+  position: absolute;
+  top: var(--space-lg);
+  inset-inline-end: 0;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.numbered > .block > .label {
+  padding-inline-end: 4.5em;
+}
+
 .workspace {
   position: relative;
 }

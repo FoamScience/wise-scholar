@@ -54,6 +54,8 @@ The hypercorrection finding says confident errors are corrected readily once fee
 
 The mapping from correctness and confidence to a review rating (wrong = again, right but unsure = hard, right = good, right and certain = easy) is a heuristic of this app, not a research result.
 
+A quick check asks one thing: a question that would ask how something changes, which case is special and why is posed as separate checks, one at a time, and the server refuses a check with more than one question mark outside code and math. This answers a learner who found compound checks too much to take in at once; it rests on no source read here and is an experiment, to revisit if accuracy on the split checks says nothing the compound one did not.
+
 ### Spaced review
 
 | Source | What it reports | Limits |
@@ -83,7 +85,7 @@ Back at an unfinished unit after three days or more, the learner first gets a sh
 |---|---|---|
 | Luiten, Ames & Ackerson 1980, *American Educational Research Journal* 17(2), 211–218. [doi:10.3102/00028312017002211](https://doi.org/10.3102/00028312017002211). Abstract read. | Across 135 published and unpublished studies, advance organizers (an overview given before the material) helped both learning and retention; grade level, subject, how the organizer was presented and ability level were examined as influences. | Advance organizers as studied are introductory material that relates the new content to what learners know, which is more than a list of steps. The abstract gives no effect size here. |
 
-Each unit opens with 3 to 6 named steps, and a counter shows the step the learner is on. The outline's link to advance organizers is loose, since a list of steps relates little to prior knowledge. The counter, the cap of one added step and the rule that the tutor says why it added one rest on no source: they answer the learner's complaint that units felt long with no visible end, and are an experiment to drop if they do not help learners finish units.
+Each unit opens with 3 to 6 named steps, and a counter shows the step the learner is on. The outline's link to advance organizers is loose, since a list of steps relates little to prior knowledge. The counter, the cap of one added step and the rule that the tutor says why it added one rest on no source: they answer the learner's complaint that units felt long with no visible end, and are an experiment to drop if they do not help learners finish units. For the same reason every card of a unit carries its number against the tutor's estimate of the unit's cards ("4 / 12"); the estimate is given with the outline and revised when the unit grows or shrinks, and the total shown never falls below the cards already there. The same experiment covers it.
 
 ### Progress on the course map
 

@@ -135,6 +135,7 @@
       "nothingLeft": "nothing the course teaches"
     },
     "outline": {
+      "card": "Card {{n}} of about {{total}}",
       "testStep": "Test out of this step",
       "testUnit": "Test out of the unit",
       "label": "This unit",

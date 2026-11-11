@@ -157,7 +157,7 @@ export type ExerciseFile = { path: string; location: string; content: string | n
 
 export type SortItem = { text: string; category?: string }
 
-export type OutlineData = { steps: string[]; at: number; added: { step: string; reason: string } | null }
+export type OutlineData = { steps: string[]; at: number; added: { step: string; reason: string } | null; cards?: number }
 
 export function outlineOf(lesson: Lesson): OutlineData | null {
   return (lesson.blocks.find((b) => b.kind === 'outline')?.data as OutlineData | undefined) ?? null
