@@ -1832,11 +1832,14 @@ def test_a_unit_outline_counts_its_steps_and_takes_one_added_step_with_a_reason(
     assert run(tutor.step_done(lesson)).startswith("error: this lesson has no outline")
     assert run(tutor.set_outline(lesson, ["a", "b"])).startswith("error: an outline has 3 to 6")
     assert run(tutor.set_outline(lesson, ["Predict", "See", "Practise"], reason="why")).startswith("error: a first outline")
-    assert run(tutor.set_outline(lesson, ["Predict", " See  the  pattern ", "Practise"])) == "outline shown: step 1 of 3"
+    assert run(tutor.set_outline(lesson, ["Predict", " See  the  pattern ", "Practise"])) == "error: cards is required: how many cards the whole unit will show"
+    db.add_block(lesson, "prose", "Opening.", None)
+    assert run(tutor.set_outline(lesson, ["Predict", "See the pattern", "Practise"], cards=1)).startswith("error: cards is the estimate for the whole unit, at least 3")
+    assert run(tutor.set_outline(lesson, ["Predict", " See  the  pattern ", "Practise"], cards=8)) == "outline shown: step 1 of 3, about 8 cards"
     block = tutor._outline(lesson)
     assert block["markdown"] == "1. Predict\n2. See the pattern\n3. Practise" and block["data"]["at"] == 0
     assert run(tutor.step_done(lesson)) == "step 1 of 3 done" and tutor._outline(lesson)["markdown"].startswith("1. Predict ✓\n2. See")
-    assert "outline=step 2 of 3: 'See the pattern'" in app._turn_prompt(db.lesson(lesson), "[event] x")
+    assert "outline=step 2 of 3: 'See the pattern' cards=1 of about 8 shown" in app._turn_prompt(db.lesson(lesson), "[event] x")
     assert run(tutor.set_outline(lesson, ["Predict", "See the pattern", "Practise", "Check"])) == "error: reason is required when adding a step"
     assert run(tutor.set_outline(lesson, ["Predict", "Practise", "Check", "See the pattern"], "r")).startswith("error: keep every earlier step")
     assert run(tutor.set_outline(lesson, ["Recap", "Predict", "See the pattern", "Practise"], "r")) == "error: a step goes after the step the learner is on, not before"
@@ -1847,12 +1850,13 @@ def test_a_unit_outline_counts_its_steps_and_takes_one_added_step_with_a_reason(
     data = tutor._outline(lesson)["data"]
     assert data["added"] == {"step": "Match on a variant", "reason": "You confused the two cases."} and data["at"] == 1
     assert run(tutor.set_outline(lesson, ["Predict", "Match on a variant", "See the pattern", "Practise", "More"], "r")) == "refused: the outline already took its one added step"
+    assert run(tutor.step_done(lesson, cards=10)) == "step 2 of 4 done" and tutor._outline(lesson)["data"]["cards"] == 10
     while tutor._outline(lesson)["data"]["at"] < 4:
         run(tutor.step_done(lesson))
     assert run(tutor.step_done(lesson)) == "refused: every step is already done"
     assert "outline=all 4 steps done" in app._turn_prompt(db.lesson(lesson), "[event] x")
     fourth = db.create_lesson(course, "Full", "lesson", db.concepts(course)[0]["id"])
-    run(tutor.set_outline(fourth, ["a", "b", "c"]))
+    run(tutor.set_outline(fourth, ["a", "b", "c"], cards=6))
     for _ in range(3):
         run(tutor.step_done(fourth))
     assert run(tutor.set_outline(fourth, ["a", "b", "c", "d"], "r")) == "refused: every step is already done"
@@ -1862,7 +1866,7 @@ def test_a_unit_outline_counts_its_steps_and_takes_one_added_step_with_a_reason(
     other = db.create_lesson(course, "Plan", "interview", None)
     assert run(tutor.set_outline(other, ["a", "b", "c"])) == "error: only a unit lesson has an outline"
     third = db.create_lesson(course, "Again", "lesson", db.concepts(course)[0]["id"])
-    run(tutor.set_outline(third, ["a", "b", "c"]))
+    run(tutor.set_outline(third, ["a", "b", "c"], cards=6))
     assert run(tutor.finish_lesson(third, "Done.")) == "finished; end the turn" and tutor._outline(third)["data"]["at"] == 3
 
 
@@ -1902,12 +1906,12 @@ def test_a_course_runs_at_momentum_until_switched_and_speed_lets_the_learner_tes
     db.add_block(lesson, "quiz", "What runs at compile time?", {"card_id": 0, "kind": "open", "options": [], "answer": "comptime", "pretest": True})
     with pytest.raises(HTTPException, match="no step left"):
         asyncio.run(app.test_out(lesson, app.TestOut(scope="step")))
-    assert asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it", "Check", "More"])) == "outline shown: step 1 of 5"
+    assert asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it", "Check", "More"], cards=10)) == "outline shown: step 1 of 5, about 10 cards"
     db.conn.execute("DELETE FROM blocks WHERE lesson_id = ? AND kind = 'outline'", (lesson,))
     asyncio.run(tutor.set_pace(course, "momentum"))
-    assert asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it", "Check", "More"])).startswith("error: a first outline here has 3 to 4 steps")
+    assert asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it", "Check", "More"], cards=10)).startswith("error: a first outline here has 3 to 4 steps")
     asyncio.run(tutor.set_pace(course, "speed"))
-    asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it"]))
+    asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it"], cards=6))
     asyncio.run(tutor.step_done(lesson))
     asyncio.run(app.test_out(lesson, app.TestOut(scope="step")))
     assert turns[-1].startswith("[event] The learner tests out of the current outline step (step 2: 'See comptime').")
@@ -2212,3 +2216,19 @@ def test_the_course_map_fits_the_hours_at_the_time_the_learner_takes_per_unit():
     state = app._turn_prompt(db.lesson(lesson), "x")
     assert " sitting=30 min task=40 min" in state
     assert "A unit takes this learner about 40 minutes (measured over their last 2 units), so the map holds at most 5 units" in state
+
+
+def test_a_quick_check_asks_one_thing():
+    import asyncio
+
+    from wise_scholar import tutor
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Single')").lastrowid
+    course = db.create_course("Pumps", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Euler head"], "known": []}])
+    lesson = db.create_lesson(course, "Euler head", "lesson", db.concepts(course)[0]["id"])
+    two = "How does the head line change as $\\beta_2$ grows? Which point does every line share, and why?"
+    assert asyncio.run(tutor.pose_quiz(lesson, two, "open", [], "a", "")).startswith("error: not shown. A quick check asks one thing; this one asks 2")
+    one = "How does the head line change as $\\beta_2$ grows from 25° to 90°? Code `x?y` and math $a?b$ do not count."
+    assert asyncio.run(tutor.pose_quiz(lesson, one.replace("? Code", ", with code"), "open", [], "a", "")).startswith("shown as quiz")
+    assert asyncio.run(tutor.pose_quiz(lesson, "Which point is shared ؟ لماذا؟", "open", [], "a", "")).startswith("error: not shown")

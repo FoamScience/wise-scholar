@@ -513,6 +513,8 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         # every turn carries where the unit's counter stands, so step_done keeps up with the lesson
         steps, at = outline["data"]["steps"], outline["data"]["at"]
         state += f" outline=step {at + 1} of {len(steps)}: {steps[at]!r}" if at < len(steps) else f" outline=all {len(steps)} steps done"
+        if cards := outline["data"].get("cards"):
+            state += f" cards={tutor.cards_shown(lesson['id'])} of about {cards} shown"
     if lesson["questions"]:
         state += f" placement=question {tutor.placement_posed(lesson['id'])} of {lesson['questions']} posed"
     known = [

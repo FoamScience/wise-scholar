@@ -166,6 +166,19 @@ def _pretest_length_error(text: str) -> str | None:
     )
 
 
+CODE_OR_MATH = re.compile(r"```.*?```|`[^`]*`|\$\$.*?\$\$|\$[^$]*\$", re.S)
+
+
+def _questions_error(question: str) -> str | None:
+    asked = len(re.findall(r"[?؟]", CODE_OR_MATH.sub("", question)))
+    if asked <= 1:
+        return None
+    return (
+        f"error: not shown. A quick check asks one thing; this one asks {asked} questions. "
+        "Pose the first now as its own check, and the others as further checks, one per turn"
+    )
+
+
 def prepared(lesson: dict) -> bool:
     """A teacher's course: cards are authored for a class, nobody answers them here, so the learner gates are off."""
     return lesson["mode"] == "teacher"
@@ -1651,6 +1664,9 @@ async def pose_quiz(
 ) -> str:
     """Show a quick check that the learner answers together with how sure they are.
 
+    question asks exactly one thing, in one short question the learner takes in at a glance. A check that
+    would ask how, which and why is several checks: pose them one after another, one per turn.
+
     choice: 2 to 5 options, and answer_key is exactly the right option; the server grades it.
     The server shuffles the options, so none may refer to another by position or letter
     (no "both of the above", no "A and C").
@@ -1684,6 +1700,8 @@ async def pose_quiz(
         return f"error: the placement check has {lesson['questions']} questions and all are posed; call set_placement"
     if lemma and not lesson["lang"]:
         return "error: lemma needs a language course; pose_vocab_check or add_reading sets the language"
+    if problem := _questions_error(question):
+        return problem
     if pretest and not prepared(lesson) and (problem := _pretest_length_error("\n".join([question, *options]))):
         return problem
     options = _shuffled(options) if kind == "choice" else []
@@ -1784,6 +1802,17 @@ def _outline(lesson_id: int) -> dict | None:
     return next((b for b in db.blocks(lesson_id) if b["kind"] == "outline"), None)
 
 
+def cards_shown(lesson_id: int) -> int:
+    return db.row("SELECT COUNT(*) AS n FROM blocks WHERE lesson_id = ? AND kind != 'outline'", lesson_id)["n"]
+
+
+def _cards_error(lesson_id: int, cards: int, steps: int) -> str | None:
+    least = max(steps, cards_shown(lesson_id) + 1)
+    if cards >= least:
+        return None
+    return f"error: cards is the estimate for the whole unit, at least {least} here (cards already shown, plus the summary still to come)"
+
+
 def _write_outline(block: dict, data: dict) -> dict:
     # the Markdown copy is what exports and the book show
     markdown = "\n".join(f"{i}. {step}{' ✓' if i <= data['at'] else ''}" for i, step in enumerate(data["steps"], 1))
@@ -1792,10 +1821,13 @@ def _write_outline(block: dict, data: dict) -> dict:
 
 
 @mcp.tool()
-async def set_outline(lesson_id: int, steps: list[str], reason: str = "") -> str:
+async def set_outline(lesson_id: int, steps: list[str], reason: str = "", cards: int = 0) -> str:
     """Show the unit's plan: 3 to 6 short steps (at most 4 when the course's pace is momentum), each one thing the learner does or gets ("Predict what foldr
     returns", "See the pattern behind it", "Practise on lists", "Check yourself"). The learner sees them as a
     numbered list with a step counter. Call it once in the unit's first turn, together with the opening.
+    cards: required the first time, your estimate of how many cards the whole unit shows, the opening, each
+    explanation, check and task and the closing summary included. Each card is numbered for the learner
+    against it ("4 / 12"), so keep it honest; revise it here or with step_done when the plan changes.
 
     Later, at most once, call it again to insert one step the learner turned out to need (after a confident miss,
     say): steps then holds every earlier step in its order plus the new one, never before a step already done, and
@@ -1818,10 +1850,16 @@ async def set_outline(lesson_id: int, steps: list[str], reason: str = "") -> str
         most = MOMENTUM_STEPS if lesson["pace"] == "momentum" else OUTLINE_STEPS[1]
         if len(steps) > most or reason.strip():
             return f"error: a first outline here has {OUTLINE_STEPS[0]} to {most} steps and no reason"
-        block = db.add_block(lesson_id, "outline", "", {"steps": steps, "at": 0, "added": None})
+        if not cards:
+            return "error: cards is required: how many cards the whole unit will show"
+        if problem := _cards_error(lesson_id, cards, len(steps)):
+            return problem
+        block = db.add_block(lesson_id, "outline", "", {"steps": steps, "at": 0, "added": None, "cards": cards})
         _show(lesson, _write_outline(block, block["data"]))
-        return f"outline shown: step 1 of {len(steps)}"
+        return f"outline shown: step 1 of {len(steps)}, about {cards} cards"
     data = block["data"]
+    if cards and (problem := _cards_error(lesson_id, cards, len(steps))):
+        return problem
     if data["added"]:
         return "refused: the outline already took its one added step"
     if not reason.strip():
@@ -1837,21 +1875,26 @@ async def set_outline(lesson_id: int, steps: list[str], reason: str = "") -> str
         return "error: keep every earlier step in its order and add exactly one"
     if new < data["at"]:
         return "error: a step goes after the step the learner is on, not before"
-    data = {**data, "steps": steps, "added": {"step": steps[new], "reason": " ".join(reason.split())}}
+    data = {**data, "steps": steps, "added": {"step": steps[new], "reason": " ".join(reason.split())}} | ({"cards": cards} if cards else {})
     _show(lesson, _write_outline(block, data), "block.updated")
     return f"step added: now step {data['at'] + 1} of {len(steps)}"
 
 
 @mcp.tool()
-async def step_done(lesson_id: int) -> str:
-    """Mark the current step of the unit's outline done, moving the learner's counter on by one."""
+async def step_done(lesson_id: int, cards: int = 0) -> str:
+    """Mark the current step of the unit's outline done, moving the learner's counter on by one.
+
+    cards: when the unit turns out longer or shorter than planned, the new estimate of all its cards.
+    """
     block = _outline(lesson_id)
     if not block:
         return "error: this lesson has no outline; call set_outline first"
     data = block["data"]
     if data["at"] >= len(data["steps"]):
         return "refused: every step is already done"
-    data = {**data, "at": data["at"] + 1}
+    if cards and (problem := _cards_error(lesson_id, cards, len(data["steps"]))):
+        return problem
+    data = {**data, "at": data["at"] + 1} | ({"cards": cards} if cards else {})
     _show(db.lesson(lesson_id), _write_outline(block, data), "block.updated")
     left = len(data["steps"]) - data["at"]
     return f"step {data['at']} of {len(data['steps'])} done" + ("" if left else "; every step is done, finish the lesson when its checks are answered")

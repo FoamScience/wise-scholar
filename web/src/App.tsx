@@ -1486,6 +1486,10 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
   const seenUpTo = loadSeen(lesson.id) ?? lastTutor
   const unread = open ? 0 : lesson.messages.filter((m) => m.role === 'tutor' && m.id > seenUpTo).length
   const outline = outlineOf(lesson)
+  const cards = lesson.blocks.filter((b) => b.kind !== 'outline').length
+  // the summary card still to come keeps the total above the cards already shown
+  const cardTotal = outline?.cards && (lessonDone ? cards : Math.max(outline.cards, cards + 1))
+  const cardNumber = (i: number) => (cardTotal ? { n: lesson.blocks.slice(0, i + 1).filter((b) => b.kind !== 'outline').length, total: cardTotal } : null)
   const units = course.concepts.filter((c) => c.kind === 'concept')
   const unitsDone = units.filter((c) => unitDone(c, course.lessons.find((l) => l.concept_id === c.id))).length
   const reviewDue = units.filter((c) => c.due).length
@@ -1827,6 +1831,7 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
           ))}
         {lesson.blocks.map((b, i) => {
           if (b.kind === 'outline' || (lesson.replay && i >= replayShown(lesson.blocks))) return null
+          const n = cardNumber(i)
           const card = b.kind === 'question' ? (
             <QuestionCard
               key={b.id}
@@ -1931,10 +1936,20 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
               <Markdown>{b.markdown}</Markdown>
             </section>
           )
-          if (course.mode !== 'teacher' || b.kind === 'question') return card
+          const shown = n ? (
+            <div key={b.id} className="numbered">
+              <span className="card-n" aria-label={t('outline.card', n)}>
+                {n.n} / {n.total}
+              </span>
+              {card}
+            </div>
+          ) : (
+            card
+          )
+          if (course.mode !== 'teacher' || b.kind === 'question') return shown
           return (
             <Fragment key={b.id}>
-              {card}
+              {shown}
               <EditBar
                 block={b}
                 first={i === 0}

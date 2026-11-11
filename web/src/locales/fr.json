@@ -141,6 +141,7 @@
       "nothingLeft": "rien de ce que le cours enseigne"
     },
     "outline": {
+      "card": "Carte {{n}} sur environ {{total}}",
       "testStep": "Sauter cette étape par un test",
       "testUnit": "Sauter l'unité par un test",
       "label": "Cette unité",
