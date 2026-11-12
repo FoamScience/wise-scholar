@@ -6,6 +6,8 @@ Call `write_recap` once:
 
 - `intro`: where the learner stood at the start and what the course set out to give them, in two or three sentences. Use the placement and the units they knew before.
 - `weeks`: one caption per `[week]` line, with its week copied exactly. One sentence on what changed that week: what they could do or see at its end that they could not at its start. Name the actual thing, a concept, a method or a result, never "great progress" or "more topics".
-- `letter`: to the learner, about 120 words. What they can now do that they could not before, concretely, drawing on the held claims and the projects. Then, plainly, the one or two things to strengthen, from the shaky claims and open mistakes. End with what this opens next.
+- `can_do`: two to five things the learner can now do that they could not before, each one short sentence, concrete, drawn from the held claims and the projects. They show as the finish line of the timeline, so each stands alone.
+- `strengthen`: the one or two things to strengthen, each one plain sentence, from the shaky claims and open mistakes. They head a list of every shaky claim and open mistake, so name the theme, not each item.
+- `next_step`: one sentence on what this course opens next.
 
 Write to the learner as "you". Facts only from the material: no numbers, dates or skills that are not in it. No praise words, no "journey", "amazing" or "congratulations"; the work speaks for itself. If a tool returns an error, fix the call and call it again.

@@ -3844,6 +3844,55 @@ dialog.handoff .qr {
   align-self: flex-start;
 }
 
+.recap-lens {
+  display: flex;
+  padding: var(--space-3xs);
+  background: var(--well);
+  border-radius: var(--radius-input);
+}
+
+.recap-lens button {
+  flex: 1;
+  min-height: 32px;
+  padding: 0 var(--space-xs);
+  background: none;
+  border: 0;
+  border-radius: calc(var(--radius-input) - 2px);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--motion) var(--ease), color var(--motion) var(--ease);
+}
+
+.recap-lens button[aria-pressed='true'] {
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--line);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.recap-picked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3xs);
+}
+
+.recap-picked p {
+  margin: 0;
+}
+
+.recap-show {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--teal-dark);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .recap-modules {
   display: flex;
   flex-direction: column;
@@ -3923,6 +3972,7 @@ dialog.handoff .qr {
 /* the ribbon: each step in its module's colour, its dot filled once the story has reached it */
 .recap-step {
   position: relative;
+  scroll-margin-top: var(--space-xl);
   padding-block: var(--space-2xs);
   padding-inline-start: var(--space-lg);
   border-inline-start: 4px solid var(--module);
@@ -4020,6 +4070,108 @@ dialog.handoff .qr {
 .mark-project {
   color: var(--amber);
   font-weight: 600;
+}
+.mark-weak {
+  color: var(--amber);
+}
+
+/* the finish line of the ribbon: what the course leaves the learner able to do */
+.recap-finish {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--teal-tint);
+  border-inline-start: 4px solid var(--teal);
+  border-radius: 0 var(--radius-card) var(--radius-card) 0;
+}
+
+.recap-finish ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recap-finish li {
+  position: relative;
+  padding-inline-start: var(--space-lg);
+  line-height: 1.5;
+}
+
+.recap-finish li::before {
+  content: '';
+  position: absolute;
+  top: 0.45em;
+  inset-inline-start: 0;
+  width: 0.45rem;
+  height: 0.8rem;
+  border: solid var(--teal);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.recap-focus li {
+  line-height: 1.55;
+}
+
+.recap-weak-units li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  border-inline-start: 4px solid var(--module);
+  border-radius: 0 var(--radius-input) var(--radius-input) 0;
+}
+
+.recap-weak-unit {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3xs) var(--space-sm);
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--space-xs) var(--space-sm);
+  background: none;
+  border: 0;
+  border-radius: 0 var(--radius-input) var(--radius-input) 0;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--motion) var(--ease);
+}
+
+.recap-weak-unit:hover {
+  background: var(--well);
+}
+
+.recap-weak-units a.small {
+  flex: none;
+  color: var(--teal-dark);
+}
+
+.recap-weak-counts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.recap-elsewhere summary {
+  cursor: pointer;
+}
+
+.recap-elsewhere ul {
+  margin-top: var(--space-sm);
+}
+
+.recap-next-lead {
+  margin: 0;
 }
 
 .recap-step-body {
@@ -4190,12 +4342,18 @@ dialog.handoff .qr {
   }
 
   .recap-now p,
+  .recap-picked,
+  .recap-lens,
   .recap-modules {
     display: none;
   }
 
   .recap-timeline {
     grid-row: 2;
+  }
+
+  .recap-step {
+    scroll-margin-top: 8rem;
   }
 
   .recap-end {
