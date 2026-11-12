@@ -1488,7 +1488,8 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
   const outline = outlineOf(lesson)
   const cards = lesson.blocks.filter((b) => b.kind !== 'outline').length
   // the summary card still to come keeps the total above the cards already shown
-  const cardTotal = outline?.cards && (lessonDone ? cards : Math.max(outline.cards, cards + 1))
+  const estimate = outline?.cards ?? lesson.cards
+  const cardTotal = estimate && (lessonDone ? cards : Math.max(estimate, cards + 1))
   const cardNumber = (i: number) => (cardTotal ? { n: lesson.blocks.slice(0, i + 1).filter((b) => b.kind !== 'outline').length, total: cardTotal } : null)
   const units = course.concepts.filter((c) => c.kind === 'concept')
   const unitsDone = units.filter((c) => unitDone(c, course.lessons.find((l) => l.concept_id === c.id))).length

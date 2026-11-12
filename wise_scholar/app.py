@@ -363,7 +363,7 @@ def _tier_view(course: dict) -> dict:
 
 
 def _lesson_view(lesson_id: int) -> dict:
-    lesson = db.row("SELECT id, title, phase, concept_id, batch FROM lessons WHERE id = ?", lesson_id)
+    lesson = db.row("SELECT id, title, phase, concept_id, batch, cards FROM lessons WHERE id = ?", lesson_id)
     lesson["messages"] = db.rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_id)
     lesson["blocks"] = db.blocks(lesson_id)
     lesson["running"] = lesson_id in _turns
@@ -414,10 +414,11 @@ def _map_outline(course_id: int, current: int | None) -> str:
 
 
 PRACTICE_TASK_CHARS = 600
+PRACTICE_TASKS = (4, 6)
 
 
-def _practice_brief(concept_id: int) -> str:
-    """The solved tasks of the units a practice unit covers, for the tutor to vary."""
+def _practice_tasks(concept_id: int) -> list[str]:
+    """The solved tasks of the units a practice unit covers, not yet varied, as lines for the tutor."""
     lines = []
     scope = db.practice_scope(concept_id)
     done = tutor.varied(scope[0]["course_id"]) if scope else set()
@@ -426,11 +427,22 @@ def _practice_brief(concept_id: int) -> str:
             for b in db.blocks(lesson_row["id"]):
                 if tutor.variable(b) and b["id"] not in done:
                     lines.append(f"- {unit['title']}, task {b['id']}: {_untrusted(b['markdown'][:PRACTICE_TASK_CHARS])}")
-    if not lines:
-        return "No task of the units before this one was solved: pose fresh tasks on their concepts instead, without variant_of."
+    return lines
+
+
+def _practice_size(tasks: list[str]) -> int:
+    """How many tasks the practice poses: one per solved task, within PRACTICE_TASKS; the fewest when none was solved."""
+    return min(max(len(tasks), PRACTICE_TASKS[0]), PRACTICE_TASKS[1])
+
+
+def _practice_brief(tasks: list[str]) -> str:
+    size = f"Pose exactly {_practice_size(tasks)} tasks: the learner's cards are numbered against that count."
+    if not tasks:
+        return f"No task of the units before this one was solved: pose fresh tasks on their concepts instead, without variant_of. {size}"
+    pick = " Pick them from the list below." if len(tasks) > _practice_size(tasks) else ""
     return (
-        "Tasks the learner solved in the units since the last practice; pose a variant of each (new numbers or a new "
-        "situation, same idea), mixed across units, with variant_of set to the task id:\n" + "\n".join(lines)
+        f"{size}{pick}\nTasks the learner solved in the units since the last practice; pose a variant of each (new numbers or a new "
+        "situation, same idea), mixed across units, with variant_of set to the task id:\n" + "\n".join(tasks)
     )
 
 
@@ -515,6 +527,8 @@ def _turn_prompt(lesson: dict, line: str) -> str:
         state += f" outline=step {at + 1} of {len(steps)}: {steps[at]!r}" if at < len(steps) else f" outline=all {len(steps)} steps done"
         if cards := outline["data"].get("cards"):
             state += f" cards={tutor.cards_shown(lesson['id'])} of about {cards} shown"
+    elif lesson["cards"]:
+        state += f" cards={tutor.cards_shown(lesson['id'])} of {lesson['cards']} shown"
     if lesson["questions"]:
         state += f" placement=question {tutor.placement_posed(lesson['id'])} of {lesson['questions']} posed"
     known = [
@@ -2257,13 +2271,16 @@ async def open_concept(concept_id: int) -> dict:
     if existing:
         return _lesson_view(existing["id"])
     practice = concept["kind"] == "practice"
-    lesson_id = db.create_lesson(concept["course_id"], concept["title"], "practice" if practice else "lesson", concept_id)
+    tasks = _practice_tasks(concept_id) if practice else []
+    # a practice has no outline to estimate its cards: its tasks are fixed now, and the closing summary is one more
+    cards = _practice_size(tasks) + 1 if practice else None
+    lesson_id = db.create_lesson(concept["course_id"], concept["title"], "practice" if practice else "lesson", concept_id, cards=cards)
     view = _lesson_view(lesson_id)
     hub.publish(concept["course_id"], {"type": "lesson.created", "lesson": view})
     outline = _map_outline(concept["course_id"], concept_id)
     lesson = _lesson(lesson_id)
     if practice:
-        _start_turn(lesson, f"[event] The practice begins. Course map:\n{outline}\n{_practice_brief(concept_id)}{_practice_claims(concept_id, lesson['profile_id'])}")
+        _start_turn(lesson, f"[event] The practice begins. Course map:\n{outline}\n{_practice_brief(tasks)}{_practice_claims(concept_id, lesson['profile_id'])}")
         return view
     strands = ""
     if lesson["mechanism"] == "leveled-course":
