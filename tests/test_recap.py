@@ -118,7 +118,7 @@ def writer(monkeypatch):
         seen.append(prompt)
         job = tutor.recap_jobs[lesson["course_id"]]
         weeks = [tutor.WeekCaption(week=w, caption=f"Week {w}.") for w in job["weeks"]]
-        seen.append(await tutor.write_recap(lesson["course_id"], "Where you began.", weeks, "What you can do now."))
+        seen.append(await tutor.write_recap(lesson["course_id"], "Where you began.", weeks, ["Size a pump.", "Read a curve."], ["Slip."], "Losses."))
         return True
 
     monkeypatch.setattr(app, "_background_turn", turn)
@@ -148,7 +148,8 @@ def test_opening_a_finished_course_writes_its_narrative_once(writer):
     assert "[week 2026-10-12]" in writer[0]
     narrative = db.recap(course)["narrative"]
     assert narrative == {"intro": "Where you began.", "weeks": {"2026-10-05": "Week 2026-10-05.", "2026-10-12": "Week 2026-10-12."},
-                         "letter": "What you can do now.", "locale": "en", "finished": "2026-10-14 10:00:00"}
+                         "can_do": ["Size a pump.", "Read a curve."], "strengthen": ["Slip."], "next_step": "Losses.",
+                         "locale": "en", "finished": "2026-10-14 10:00:00"}
     again = asyncio.run(_open(course))
     assert not again["writing"] and again["narrative"] == narrative
     assert len(writer) == 2
@@ -158,14 +159,19 @@ def test_the_recap_tool_wants_every_week_and_only_those():
     course, _ = _course(_learner(), PUMPS)
     tutor.recap_jobs[course] = {"weeks": ["2026-10-05"], "locale": "en", "finished": "x", "done": False}
     try:
-        write = lambda weeks, intro="Start.": asyncio.run(tutor.write_recap(course, intro, weeks, "Letter."))
+        def write(weeks, intro="Start.", can_do=("One.", "Two."), strengthen=("Three.",), next_step="Four."):
+            return asyncio.run(tutor.write_recap(course, intro, weeks, list(can_do), list(strengthen), next_step))
         assert write([]) == "error: weeks ['2026-10-05'] need a caption"
         two = [tutor.WeekCaption(week="2026-10-05", caption="One."), tutor.WeekCaption(week="2026-10-12", caption="Two.")]
         assert write(two).startswith("error: ['2026-10-12'] are not weeks")
         assert write([two[0]], intro="x" * 800).startswith("error: the intro")
+        assert write([two[0]], can_do=["One.", " "]) == "error: give 2 to 5 can_do points"
+        assert write([two[0]], strengthen=[]) == "error: give 1 or 2 strengthen points"
+        assert write([two[0]], strengthen=["x" * 300]).startswith("error: ['xxxx")
+        assert write([two[0]], next_step="").startswith("error: next_step")
     finally:
         tutor.recap_jobs.pop(course)
-    assert asyncio.run(tutor.write_recap(course, "Start.", [], "Letter.")) == f"error: no recap is being written on course {course}"
+    assert asyncio.run(tutor.write_recap(course, "Start.", [], ["One.", "Two."], ["Three."], "Four.")) == f"error: no recap is being written on course {course}"
 
 
 def test_an_unfinished_course_opens_as_a_preview_only_where_the_server_allows_it(writer, monkeypatch):

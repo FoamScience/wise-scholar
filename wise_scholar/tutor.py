@@ -2102,7 +2102,9 @@ async def suggest_courses(course_id: int, suggestions: list[Suggestion]) -> str:
 RECAP_TOOLS = ("write_recap",)
 RECAP_INTRO_CHARS = 700
 RECAP_CAPTION_CHARS = 220
-RECAP_LETTER_CHARS = 1000
+RECAP_POINT_CHARS = 200
+RECAP_CAN_DO = (2, 5)
+RECAP_STRENGTHEN = (1, 2)
 recap_jobs: dict[int, dict] = {}  # course id -> {"weeks", "locale", "finished", "done"}
 
 
@@ -2112,30 +2114,43 @@ class WeekCaption(BaseModel):
 
 
 @mcp.tool()
-async def write_recap(course_id: int, intro: str, weeks: list[WeekCaption], letter: str) -> str:
+async def write_recap(course_id: int, intro: str, weeks: list[WeekCaption], can_do: list[str], strengthen: list[str], next_step: str) -> str:
     """Write the narrative of the finished course's recap.
 
     intro: about 80 words on where the learner started and what the course set out to do, under 700 characters.
     weeks: one caption per [week] line, its week copied exactly, each one sentence under 220 characters on what
-    changed that week. letter: about 120 words to the learner on what they can now do and what to strengthen next,
-    under 1000 characters. Plain text with inline Markdown; no headings.
+    changed that week. can_do: 2 to 5 things the learner can now do that they could not before, each one short
+    sentence under 200 characters. strengthen: the 1 or 2 things to strengthen, each one sentence under 200
+    characters. next_step: one sentence under 200 characters on what this course opens next.
+    Plain text with inline Markdown; no headings, no lists inside an item.
     """
     job = recap_jobs.get(course_id)
     if job is None:
         return f"error: no recap is being written on course {course_id}"
-    intro, letter = " ".join(intro.split()), " ".join(letter.split())
+    intro, next_step = " ".join(intro.split()), " ".join(next_step.split())
+    can_do = [p for p in (" ".join(p.split()) for p in can_do) if p]
+    strengthen = [p for p in (" ".join(p.split()) for p in strengthen) if p]
     captions = {w.week.strip(): " ".join(w.caption.split()) for w in weeks}
     if not intro or len(intro) > RECAP_INTRO_CHARS:
         return f"error: the intro must be under {RECAP_INTRO_CHARS} characters"
-    if not letter or len(letter) > RECAP_LETTER_CHARS:
-        return f"error: the letter must be under {RECAP_LETTER_CHARS} characters"
+    if not RECAP_CAN_DO[0] <= len(can_do) <= RECAP_CAN_DO[1]:
+        return f"error: give {RECAP_CAN_DO[0]} to {RECAP_CAN_DO[1]} can_do points"
+    if not RECAP_STRENGTHEN[0] <= len(strengthen) <= RECAP_STRENGTHEN[1]:
+        return f"error: give {RECAP_STRENGTHEN[0]} or {RECAP_STRENGTHEN[1]} strengthen points"
+    if long := [p for p in [*can_do, *strengthen] if len(p) > RECAP_POINT_CHARS]:
+        return f"error: {[p[:40] for p in long]} must be one sentence under {RECAP_POINT_CHARS} characters"
+    if not next_step or len(next_step) > RECAP_POINT_CHARS:
+        return f"error: next_step must be one sentence under {RECAP_POINT_CHARS} characters"
     if missing := [w for w in job["weeks"] if w not in captions]:
         return f"error: weeks {missing} need a caption"
     if extra := sorted(set(captions) - set(job["weeks"])):
         return f"error: {extra} are not weeks of this course; copy them from the [week] lines"
     if long := [w for w, c in captions.items() if not c or len(c) > RECAP_CAPTION_CHARS]:
         return f"error: the captions of {long} must be one sentence under {RECAP_CAPTION_CHARS} characters"
-    db.set_recap(course_id, narrative={"intro": intro, "weeks": captions, "letter": letter, "locale": job["locale"], "finished": job["finished"]})
+    db.set_recap(course_id, narrative={
+        "intro": intro, "weeks": captions, "can_do": can_do, "strengthen": strengthen, "next_step": next_step,
+        "locale": job["locale"], "finished": job["finished"],
+    })
     job["done"] = True
     return "recorded"
 
