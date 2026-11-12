@@ -1604,7 +1604,9 @@ def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(
         brief = turns[-1][1]
         assert brief.startswith("[event] The practice begins.") and "Practice 1 (this lesson; practice unit)" in brief
         assert f"- Slope, task {rise['id']}: Slope of the line" in brief and "Milestone" not in brief and "Unsolved" not in brief
-        assert app._practice_brief(by_title["Practice 2"]["id"]).startswith("No task of the units before")
+        assert "Pose exactly 4 tasks" in brief and practice["cards"] == 5  # one solved task: the fewest, plus the summary
+        assert app._practice_brief(app._practice_tasks(by_title["Practice 2"]["id"])).startswith("No task of the units before")
+        assert app._practice_size([""] * 9) == 6 and "Pick them from the list" in app._practice_brief([""] * 9)
 
         foreign = db.add_block(db.row("SELECT id FROM lessons WHERE course_id = ?", other)["id"], "challenge", "x", {**challenge.new(), "solved": True})
         assert asyncio.run(tutor.pose_challenge(practice["id"], "v", variant_of=foreign["id"])).startswith("error: variant_of")
@@ -1616,7 +1618,7 @@ def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(
         variant = db.blocks(practice["id"])[-1]
         assert variant["data"]["variant_of"] == rise["id"]
         assert asyncio.run(tutor.pose_challenge(practice["id"], "again", variant_of=rise["id"])).startswith("error: task")
-        assert f"task {rise['id']}" not in app._practice_brief(by_title["Practice 1"]["id"])  # varied once: not offered again
+        assert f"task {rise['id']}" not in app._practice_brief(app._practice_tasks(by_title["Practice 1"]["id"]))  # varied once: not offered again
 
         # Revealed unsolved: the unit's cards come forward and the notebook gets the miss.
         db.set_block_data(variant["id"], {**variant["data"], "attempts": ["1"], "gave_up": True, "hints": ["Rise over run."]})

@@ -529,6 +529,13 @@ MIGRATIONS = [
         positions TEXT
     );
     """,
+    """
+    ALTER TABLE lessons ADD COLUMN cards INTEGER;
+    UPDATE lessons SET cards = (
+        SELECT CASE WHEN SUM(b.kind = 'done') > 0 THEN COUNT(*) ELSE MAX(COUNT(*) + 1, 5) END
+        FROM blocks b WHERE b.lesson_id = lessons.id AND b.kind != 'outline'
+    ) WHERE phase = 'practice';
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -879,10 +886,12 @@ def set_ranking(course_id: int, ranking: list[dict]) -> None:
     )
 
 
-def create_lesson(course_id: int, title: str, phase: str, concept_id: int | None = None, questions: int | None = None) -> int:
+def create_lesson(
+    course_id: int, title: str, phase: str, concept_id: int | None = None, questions: int | None = None, cards: int | None = None
+) -> int:
     return conn.execute(
-        "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, questions) VALUES (?, ?, ?, ?, ?, ?)",
-        (course_id, title, phase, concept_id, str(uuid.uuid4()), questions),
+        "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, questions, cards) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (course_id, title, phase, concept_id, str(uuid.uuid4()), questions, cards),
     ).lastrowid
 
 

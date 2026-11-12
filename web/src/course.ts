@@ -63,6 +63,7 @@ export type Lesson = {
   running: boolean
   batch?: number
   replay?: boolean
+  cards?: number | null
 }
 export type Ranked = {
   mechanism: string
