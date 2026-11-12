@@ -213,3 +213,20 @@ def test_a_recap_turn_that_breaks_tells_the_open_page(monkeypatch):
     assert published == [(course, {"type": "recap.written"})]
     assert course in app._recap_failed
     assert not asyncio.run(_open(course))["writing"]
+
+
+def test_asking_for_the_narrative_again_starts_a_new_one(writer):
+    from fastapi.testclient import TestClient
+
+    course, units = _course(_learner(), PUMPS)
+    _finish(course, units["Head"], "2026-10-07 10:00:00")
+    _finish(course, units["Blades"], "2026-10-14 10:00:00")
+    async def written() -> None:
+        if task := app._recapping.get(course):
+            await task
+
+    with TestClient(app.app, base_url="http://127.0.0.1:8321") as client:
+        assert client.post(f"/api/courses/{course}/recap/write", json={}).status_code == 202
+        client.portal.call(written)
+    assert writer[-1] == "recorded"
+    assert db.recap(course)["narrative"]["can_do"] == ["Size a pump.", "Read a curve."]

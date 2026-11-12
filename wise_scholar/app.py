@@ -1667,7 +1667,7 @@ async def get_recap(course_id: int, preview: bool = False) -> dict:
 
 
 @app.post("/api/courses/{course_id}/recap/write", status_code=202)
-def rewrite_recap(course_id: int) -> dict:
+async def rewrite_recap(course_id: int) -> dict:
     """The learner asked for the narrative again, in the profile's language as it is now."""
     _recap_course(course_id)
     state = db.sync_recap(course_id)
