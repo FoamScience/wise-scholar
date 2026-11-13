@@ -33,9 +33,9 @@ def test_stream_lines_map_to_ui_events():
 
 def test_a_result_ends_the_turn_with_its_tokens():
     used = {"input_tokens": 10, "output_tokens": 5, "thinking_tokens": 7, "cache_read_tokens": 3, "total_tokens": 25}
-    done = EventParser().feed(json.dumps({"event": "result", "result": {"status": "SUCCESS", "usage": used}}))
+    done = EventParser("gemini-3.8-flash-high").feed(json.dumps({"event": "result", "result": {"status": "SUCCESS", "usage": used}}))
     assert done == [{"type": "turn.done", "ok": True, "error": None, "usage": {
-        "model": agy.MODEL or "agy", "input": 10, "output": 12, "cache_read": 3, "cache_write": 0, "cost": None}}]
+        "model": "gemini-3.8-flash-high", "input": 10, "output": 12, "cache_read": 3, "cache_write": 0, "cost": None}}]
     failed = EventParser().feed(json.dumps({"event": "result", "result": {"status": "ERROR", "error": "bad input"}}))
     assert failed == [{"type": "turn.done", "ok": False, "error": "bad input", "usage": None}]
 

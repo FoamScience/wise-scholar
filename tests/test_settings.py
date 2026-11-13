@@ -58,6 +58,8 @@ def test_values_make_could_misread_or_out_of_range_are_refused(env_file):
     assert settings.check("WISE_SCHOLAR_SANDBOX", "0") and settings.check("WISE_SCHOLAR_TOOL_CALLS", "40")
     assert settings.check("WISE_SCHOLAR_NOPE", "1")
     assert settings.check("WISE_SCHOLAR_AGENT", "agy/gemini-3.8-flash-high") is None
+    assert settings.check("WISE_SCHOLAR_MODELS", "chat=haiku") and settings.check("WISE_SCHOLAR_MODELS", "cards=")
+    assert settings.check("WISE_SCHOLAR_MODELS", "cards=haiku, graph=openrouter/qwen/qwen3.8-27b") is None
     assert settings.check("WISE_SCHOLAR_KEEP_DAYS", None) is None and settings.check("WISE_SCHOLAR_TURNS", "5") is None
 
 

@@ -18,6 +18,39 @@ MCP_HEADERS = {"Authorization": f"Bearer {MCP_SECRET}"}
 TURN_HEADER = "X-Scholar-Turn"
 # Phases whose prompt stands alone, without the tutor rules of core.md.
 ALONE = ("graph", "cards", "cleanup", "explore", "recap")
+KINDS = ("interview", "placement", "lesson", "practice", "story", "writing", *ALONE)
+
+# Claude Code alone gets a model per kind by default: teaching on the strongest, narrow background jobs on cheaper
+# ones. A model named in WISE_SCHOLAR_AGENT, or another backend's default, serves every kind.
+CLAUDE_MODELS = {
+    "interview": "opus", "lesson": "opus", "practice": "opus", "story": "opus", "writing": "opus",
+    "placement": "sonnet", "graph": "sonnet", "cleanup": "sonnet", "explore": "sonnet", "recap": "sonnet",
+    "cards": "haiku",
+}
+
+
+def parse_models(value: str) -> dict[str, str]:
+    """`kind=model` pairs, comma-separated; raises ValueError on an unknown kind or an empty model."""
+    models = {}
+    for pair in filter(None, (p.strip() for p in value.split(","))):
+        kind, _, model = (part.strip() for part in pair.partition("="))
+        if kind not in KINDS or not model:
+            raise ValueError(f"{pair!r}: write kind=model, the kind one of {', '.join(KINDS)}")
+        models[kind] = model
+    return models
+
+
+# Per-kind models over the default, e.g. "cards=haiku,graph=sonnet".
+try:
+    MODELS = parse_models(os.environ.get("WISE_SCHOLAR_MODELS", ""))
+except ValueError as e:
+    raise SystemExit(f"WISE_SCHOLAR_MODELS: {e}")
+
+
+def model_for(phase: str) -> str:
+    """The model a turn of this phase prompt runs on; empty for the backend's own default."""
+    kind = phase.removesuffix("-teacher")
+    return MODELS.get(kind) or MODEL or (CLAUDE_MODELS.get(kind, "") if BACKEND == "claude" else "")
 
 # What an agent process gets from the server's environment: the basics, its own settings and keys, and whatever the
 # owner lists in WISE_SCHOLAR_AGENT_ENV (names or prefixes ending in *), never the server's other secrets.

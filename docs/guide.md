@@ -75,6 +75,15 @@ WISE_SCHOLAR_AGENT=agy/gemini-3.8-flash-high make serve               # Antigrav
 
 The model must be able to call tools reliably.
 
+With `claude` and no model named, each kind of turn gets its own model: interviews, lessons, practice, stories and writing run on `opus`; the placement check and the background jobs (claims graph, clean-up, course suggestions, recap) on `sonnet`; splitting cards on `haiku`. A model named in `WISE_SCHOLAR_AGENT`, or the default of `opencode` or `agy`, serves every kind. `WISE_SCHOLAR_MODELS` overrides some kinds, as `kind=model` pairs separated by commas:
+
+```bash
+WISE_SCHOLAR_MODELS='placement=opus,cards=sonnet' make serve
+WISE_SCHOLAR_AGENT=opencode WISE_SCHOLAR_MODELS='cards=openrouter/openrouter/free' make serve
+```
+
+The kinds are `interview`, `placement`, `lesson`, `practice`, `story`, `writing`, `graph`, `cards`, `cleanup`, `explore` and `recap`.
+
 With `agy` the tutor runs in a home folder of its own, `data/agy-home/`, that links only your login from `~/.gemini`: your `GEMINI.md`, MCP servers, plugins and skills stay out of its sessions, which are kept there too. agy reports tokens but no price, so its usage shows no cost.
 
 Other settings, all optional. To keep this machine's own values, put them in `.env` at the repository root, which git ignores and `make` reads as a makefile fragment: one `export NAME ?= value` line each, with no quotes (they would become part of the value). A value set in the shell when running `make` wins over the file.
@@ -92,6 +101,7 @@ The profile page links to **Server settings**, which shows every setting below w
 | `WISE_SCHOLAR_HOSTS` | host names the server answers to, comma-separated, ports ignored | `127.0.0.1,localhost,::1` |
 | `WISE_SCHOLAR_LISTEN` | extra addresses `make serve` listens on, comma-separated, beside `127.0.0.1` (which the agents call back on): a tailnet address lets a proxy reach the server without opening it to the LAN; add the proxied name to `WISE_SCHOLAR_HOSTS` too. An address that cannot be bound is skipped with a warning. | unset |
 | `WISE_SCHOLAR_MCP_SECRET` | the bearer token on `/mcp`; a fresh one per start when unset | unset |
+| `WISE_SCHOLAR_MODELS` | the model of some kinds of turn, `kind=model` pairs separated by commas (see above) | unset |
 | `WISE_SCHOLAR_AGENT_ENV` | extra environment variables the agent processes get, names or prefixes ending in `*`, comma-separated | unset |
 | `WISE_SCHOLAR_TURNS` | tutor turns running at once | `2` |
 | `WISE_SCHOLAR_TURNS_PER_HOUR` | tutor turns that may start in an hour | `200` |

@@ -8,6 +8,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .backends import parse_models
+
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 LINE = re.compile(r"^\s*(?:export\s+)?(WISE_SCHOLAR_[A-Z_]+)\s*[?:]?=\s*(.*?)\s*$")
 BACKENDS = ("claude", "opencode", "agy")
@@ -27,6 +29,7 @@ class Setting:
 # server, what commands may touch, and where data lives; those stay in .env or the shell.
 CATALOG = (
     Setting("WISE_SCHOLAR_AGENT", "claude", "agent", True),
+    Setting("WISE_SCHOLAR_MODELS", "", "text", True),
     Setting("WISE_SCHOLAR_COMMANDS", "1", "bool", True),
     Setting("WISE_SCHOLAR_TURNS", "2", "int", True, 1),
     Setting("WISE_SCHOLAR_TURNS_PER_HOUR", "200", "int", True, 1),
@@ -113,6 +116,11 @@ def check(name: str, value: str | None) -> str | None:
         return "that number is too small or not a whole number"
     if s.kind == "agent" and value.partition("/")[0] not in BACKENDS:
         return "the agent must start with claude, opencode or agy"
+    if name == "WISE_SCHOLAR_MODELS":
+        try:
+            parse_models(value)
+        except ValueError as e:
+            return str(e)
     return None
 
 

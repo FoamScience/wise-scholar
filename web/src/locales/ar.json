@@ -880,6 +880,10 @@
           "label": "الوكيل والنموذج",
           "help": "claude أو opencode أو agy، يتبعه عند الحاجة ‎/النموذج، مثل agy/gemini-3.8-flash-high. يجب أن يستدعي النموذج الأدوات بموثوقية."
         },
+        "WISE_SCHOLAR_MODELS": {
+          "label": "النموذج لكل نوع من الأدوار",
+          "help": "يستبدل النموذج لبعض أنواع الأدوار، بأزواج نوع=نموذج تفصل بينها فواصل، مثل cards=haiku,graph=sonnet. الأنواع: interview وplacement وlesson وpractice وstory وwriting وgraph وcards وcleanup وexplore وrecap. مع claude دون تسمية نموذج، تستخدم الدروس والقصص والكتابة opus افتراضيًا، والمهام الخلفية sonnet، وتقسيم البطاقات haiku."
+        },
         "WISE_SCHOLAR_COMMANDS": {
           "label": "تنفيذ الأوامر",
           "help": "عند التعطيل لا يحصل المعلّم على أدوات مساحة العمل ولا يطرح تمارين قابلة للتشغيل، ويُرفض زر التشغيل. للنسخ المفتوحة لأشخاص آخرين."

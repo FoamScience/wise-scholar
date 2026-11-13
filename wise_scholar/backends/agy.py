@@ -7,7 +7,7 @@ import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from . import ALONE, MCP_HEADERS, MCP_URL, MODEL, PORT, TURN_HEADER, environment
+from . import ALONE, MCP_HEADERS, MCP_URL, PORT, TURN_HEADER, environment, model_for
 
 ROOT = Path(__file__).resolve().parents[2]
 PROMPTS = ROOT / "wise_scholar" / "prompts"
@@ -44,7 +44,8 @@ async def stop() -> None:
 class EventParser:
     """Map `agy -p --output-format stream-json` lines to UI events."""
 
-    def __init__(self):
+    def __init__(self, model: str = ""):
+        self.model = model
         self.step = None
         self.tools = set()
 
@@ -74,17 +75,17 @@ class EventParser:
             result = e["result"]
             ok = result.get("status") == "SUCCESS"
             error = None if ok else str(result.get("error") or result.get("status"))
-            return [{"type": "turn.done", "ok": ok, "error": error, "usage": usage(result)}]
+            return [{"type": "turn.done", "ok": ok, "error": error, "usage": usage(result, self.model)}]
         return []
 
 
-def usage(result: dict) -> dict | None:
+def usage(result: dict, model: str = "") -> dict | None:
     """What a run used; agy reports tokens but no price."""
     used = result.get("usage")
     if not used:
         return None
     return {
-        "model": MODEL or "agy",
+        "model": model or "agy",
         "input": used.get("input_tokens") or 0,
         "output": (used.get("output_tokens") or 0) + (used.get("thinking_tokens") or 0),
         "cache_read": used.get("cache_read_tokens") or 0,
@@ -126,7 +127,7 @@ async def run_turn(
         "agy",
         "--output-format", "stream-json", "--disable-slash-commands",
         "--settings", SETTINGS,
-        *(["--model", MODEL] if MODEL else []),
+        *(["--model", model] if (model := model_for(phase)) else []),
         *(["--conversation", session_id] if resume else []),
         # The prompt comes on stdin, one message: no argument length limit, and not visible in the process list.
         "--input-format", "stream-json", "--print=",
@@ -138,7 +139,7 @@ async def run_turn(
         limit=2**24,
     )
     stderr = asyncio.create_task(proc.stderr.read())
-    parser = EventParser()
+    parser = EventParser(model_for(phase))
     done = False
     try:
         proc.stdin.write(json.dumps({"event": "user", "message": {"role": "user", "content": prompt}}).encode() + b"\n")
