@@ -14,6 +14,7 @@ import simplemma
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.utilities.types import Image
+from mcp.types import ListToolsResult, PaginatedRequestParams
 from pydantic import BaseModel
 
 from . import art, challenge, course_files, crafted, db, diagrams, figcheck, figures, handwork, hub, plots, quiz, sandbox, search, speech, vocab, widgets
@@ -2294,12 +2295,42 @@ def _targets(arguments: dict) -> list[tuple[int | None, int | None]]:
     return found
 
 
-def _token(context) -> str | None:
+def _token(request_context) -> str | None:
     """The turn token that came with the request, if the backend sends one."""
     try:
-        return context.request_context.request.headers.get(TURN_HEADER) or None
+        return request_context.request.headers.get(TURN_HEADER) or None
     except (AttributeError, ValueError):
         return None
+
+
+def _kind(tool: str) -> str:
+    return (
+        "graph" if tool in GRAPH_TOOLS else "cards" if tool in CARD_TOOLS else "cleanup" if tool in CLEANUP_TOOLS
+        else "explore" if tool in EXPLORE_TOOLS else "recap" if tool in RECAP_TOOLS else "lesson"
+    )
+
+
+# What the interview and placement prompts use besides the tools every phase shares; lessons and practice see all.
+SHARED_TOOLS = (
+    "add_animation", "add_block", "add_crafted_figure", "add_diagram", "add_figure", "add_plot", "add_widget", "ask",
+    "craft_help", "find_art", "note_learner", "replace_crafted_figure", "revise_course_map", "view_handwork",
+)
+PHASE_TOOLS = {
+    "interview": (*SHARED_TOOLS, "get_playbook", "list_playbooks", "rank_mechanisms", "set_course_map", "set_cover", "set_pace", "set_sitting"),
+    "placement": (*SHARED_TOOLS, "get_playbook", "grade_quiz", "pose_quiz", "pose_vocab_check", "set_course_map", "set_known", "set_placement"),
+}
+
+
+async def _list_tools(ctx, params) -> ListToolsResult:
+    """A turn sees only the tools it may call, so their schemas do not ride along in every request; a caller without a
+    turn token (opencode shares one connection) sees them all."""
+    tools = await mcp.list_tools()
+    turn = next((t for t in turns.values() if t["token"] == token), None) if (token := _token(ctx)) else None
+    if turn is not None:
+        lesson = db.lesson(turn["lesson_id"]) if turn["kind"] == "lesson" else None
+        allowed = PHASE_TOOLS.get(lesson["phase"]) if lesson else None
+        tools = [t for t in tools if _kind(t.name) == turn["kind"] and (allowed is None or t.name in allowed)]
+    return ListToolsResult(tools=tools)
 
 
 def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
@@ -2310,11 +2341,8 @@ def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
 def _guard(call_tool):
     async def guarded(name: str, arguments: dict, context, convert_result: bool = False):
         targets = _targets(arguments)
-        kind = (
-            "graph" if name in GRAPH_TOOLS else "cards" if name in CARD_TOOLS else "cleanup" if name in CLEANUP_TOOLS
-            else "explore" if name in EXPLORE_TOOLS else "recap" if name in RECAP_TOOLS else "lesson"
-        )
-        if token := _token(context):
+        kind = _kind(name)
+        if token := _token(context.request_context):
             turn = next((t for t in turns.values() if t["token"] == token), None)
             if turn is None:
                 raise ToolError("this turn is over; nothing more can be changed")
@@ -2339,3 +2367,4 @@ def _guard(call_tool):
 
 # The wrapped method's signature is pinned by the test suite; an mcp upgrade that changes it fails there, not here.
 mcp._tool_manager.call_tool = _guard(mcp._tool_manager.call_tool)
+mcp._lowlevel_server.add_request_handler("tools/list", PaginatedRequestParams, _list_tools)

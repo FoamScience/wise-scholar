@@ -232,6 +232,32 @@ def test_a_graph_turn_calls_only_the_graph_tools_and_a_lesson_turn_none_of_them(
         db.delete_course(course)
 
 
+def test_a_turn_is_shown_only_the_tools_it_may_call():
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Lister')").lastrowid
+    try:
+        course = db.create_course("Shown", who)["id"]
+        lesson = db.lesson(db.create_lesson(course, "Unit", "lesson"))
+        interview = db.lesson(db.create_lesson(course, "Hello", "interview"))
+        shown = lambda token: {t.name for t in asyncio.run(tutor._list_tools(_context(token).request_context, None)).tools}  # noqa: E731
+        everything = shown(None)
+        assert {name for names in tutor.PHASE_TOOLS.values() for name in names} <= everything
+        tutor.turn_started(lesson, "tok-graph", kind="graph")
+        tutor.turn_started(lesson, "tok-lesson")
+        tutor.turn_started(interview, "tok-interview")
+        try:
+            assert shown("tok-graph") == set(tutor.GRAPH_TOOLS)
+            lesson_tools = shown("tok-lesson")
+            assert "pose_exercise" in lesson_tools and not lesson_tools & {*tutor.GRAPH_TOOLS, *tutor.CARD_TOOLS, *tutor.RECAP_TOOLS}
+            assert shown("tok-interview") == set(tutor.PHASE_TOOLS["interview"])
+            assert shown("tok-over") == everything
+        finally:
+            tutor.turn_ended(("graph", lesson["id"]))
+            tutor.turn_ended(lesson["id"])
+            tutor.turn_ended(interview["id"])
+    finally:
+        db.delete_course(course)
+
+
 def test_a_cards_turn_replaces_only_its_own_cards_and_a_lesson_turn_none():
     from mcp.server.mcpserver.exceptions import ToolError
 
