@@ -1653,9 +1653,9 @@ async def pose_quiz(
     lesson_id: int,
     question: str,
     kind: Literal["choice", "open"],
-    options: list[str],
     answer_key: str,
     explanation: str,
+    options: list[str] | None = None,
     lemma: str = "",
     pretest: bool = False,
     form: str = "",
@@ -1672,7 +1672,7 @@ async def pose_quiz(
     (no "both of the above", no "A and C").
     In the placement check a choice has 2 to 4 options: the card adds "I don't know" as the last one
     by itself, so never write such an option.
-    open: options is empty and answer_key is the model answer; you grade it with grade_quiz
+    open: no options, and answer_key is the model answer; you grade it with grade_quiz
     when the answer arrives. The learner sees answer_key and explanation only after grading.
     The question comes back later in spaced reviews, so it must make sense on its own.
     lemma: in a language course, the vocabulary word the question tests; the grade sets its ledger state.
@@ -1688,6 +1688,7 @@ async def pose_quiz(
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
+    options = options or []
     translation = translation.strip()
     misconceptions = {o: b.strip() for o, b in (misconceptions or {}).items() if b.strip()}
     if misconceptions and (kind != "choice" or not set(misconceptions) <= set(options) - {answer_key}):
