@@ -814,6 +814,10 @@
           "label": "Agent et modèle",
           "help": "claude, opencode ou agy, suivi au besoin de /modèle, par exemple agy/gemini-3.8-flash-high. Le modèle doit appeler les outils de façon fiable."
         },
+        "WISE_SCHOLAR_MODELS": {
+          "label": "Modèle par type de tour",
+          "help": "Remplace le modèle pour certains types de tour, en paires type=modèle séparées par des virgules, par exemple cards=haiku,graph=sonnet. Types : interview, placement, lesson, practice, story, writing, graph, cards, cleanup, explore, recap. Avec claude sans modèle nommé, les leçons, les récits et l'écriture prennent opus par défaut, les tâches de fond sonnet et le découpage des cartes haiku."
+        },
         "WISE_SCHOLAR_COMMANDS": {
           "label": "Exécution de commandes",
           "help": "Désactivée : le tuteur n'a pas d'outils d'espace de travail ni d'exercices exécutables, et Exécuter est refusé. Pour les instances ouvertes à d'autres personnes."

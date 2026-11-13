@@ -5,7 +5,7 @@ import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from . import ALONE, MCP_HEADERS, MCP_URL, MODEL, PORT, TURN_HEADER, environment
+from . import ALONE, MCP_HEADERS, MCP_URL, PORT, TURN_HEADER, environment, model_for
 
 ROOT = Path(__file__).resolve().parents[2]
 PROMPTS = ROOT / "wise_scholar" / "prompts"
@@ -96,7 +96,7 @@ async def run_turn(
         # No built-in tools: the tutor acts only through the server's MCP tools, which sandbox what they run.
         "--tools", "",
         "--allowedTools", "mcp__scholar",
-        *(["--model", MODEL] if MODEL else []),
+        *(["--model", model] if (model := model_for(phase)) else []),
         *session,
         cwd=home,
         # Its own settings and keys, and the cloud credentials a Bedrock or Vertex setup signs with.

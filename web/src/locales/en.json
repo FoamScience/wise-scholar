@@ -792,6 +792,10 @@
           "label": "Agent backend and model",
           "help": "claude, opencode or agy, optionally followed by /model, such as agy/gemini-3.8-flash-high. The model must call tools reliably."
         },
+        "WISE_SCHOLAR_MODELS": {
+          "label": "Model per kind of turn",
+          "help": "Overrides the model for some kinds of turn, as kind=model pairs separated by commas, such as cards=haiku,graph=sonnet. Kinds: interview, placement, lesson, practice, story, writing, graph, cards, cleanup, explore, recap. With claude and no model named, lessons, stories and writing default to opus, background jobs to sonnet and card splitting to haiku."
+        },
         "WISE_SCHOLAR_COMMANDS": {
           "label": "Command execution",
           "help": "Off: the tutor gets no workspace tools and poses no runnable exercises, and Run is refused. For instances opened to other people."

@@ -12,7 +12,7 @@ from pathlib import Path
 import httpx
 
 from .. import db
-from . import MCP_HEADERS, MCP_URL, MODEL, environment
+from . import MCP_HEADERS, MCP_URL, environment, model_for
 
 ROOT = Path(__file__).resolve().parents[2]
 OPENCODE_PORT = int(os.environ.get("WISE_SCHOLAR_OPENCODE_PORT", "8322"))
@@ -90,9 +90,9 @@ async def stop() -> None:
 class EventParser:
     """Turn the opencode event stream, which carries every session, into the UI events of one session."""
 
-    def __init__(self, session_id: str):
+    def __init__(self, session_id: str, model: str = ""):
         self.session_id = session_id
-        self.used = {"model": MODEL or "opencode", "input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "cost": 0.0}
+        self.used = {"model": model or "opencode", "input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "cost": 0.0}
 
     def count(self, d: dict) -> None:
         """Add one step's tokens and cost, priced by opencode from its provider's rates."""
@@ -145,8 +145,8 @@ async def run_turn(
         async def prepare(session: str) -> httpx.Response:
             """The session's agent and model for this turn; a phase change between turns picks another agent."""
             chosen = await client.post(f"/api/session/{session}/agent", json={"agent": f"tutor-{phase}"})
-            if chosen.status_code < 400 and MODEL:
-                provider, _, model = MODEL.partition("/")
+            if chosen.status_code < 400 and (chosen_model := model_for(phase)):
+                provider, _, model = chosen_model.partition("/")
                 chosen = await client.post(f"/api/session/{session}/model", json={"model": {"id": model, "providerID": provider}})
             return chosen
 
@@ -163,7 +163,7 @@ async def run_turn(
         if prepared.status_code >= 400:
             yield {"type": "turn.done", "ok": False, "error": f"opencode refused the turn: {prepared.text[:300]}"}
             return
-        parser = EventParser(session_id)
+        parser = EventParser(session_id, model_for(phase))
         finished = False
         try:
             async with client.stream("GET", "/api/event") as events:
