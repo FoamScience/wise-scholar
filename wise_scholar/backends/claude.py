@@ -47,20 +47,22 @@ def parse_event(line: str) -> dict | None:
 
 
 def usage(result: dict) -> dict | None:
-    """What a run used, summed over its models; Claude Code prices it at the API list price."""
+    """What a run used; Claude Code prices it at the API list price. On a resumed session `modelUsage` and the cost
+    run over the whole session, while `usage` holds this turn's tokens: the cost goes out as the session's running
+    total, which add_usage turns into this turn's share."""
     models = result.get("modelUsage") or {}
     if not models:
         return None
     ranked = sorted(models.items(), key=lambda m: m[1].get("costUSD") or 0, reverse=True)
-    total = {key: sum(m.get(key) or 0 for m in models.values()) for key in
-             ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens", "costUSD")}
+    turn = result.get("usage") or {}
     return {
         "model": ", ".join(name for name, _ in ranked),
-        "input": total["inputTokens"],
-        "output": total["outputTokens"],
-        "cache_read": total["cacheReadInputTokens"],
-        "cache_write": total["cacheCreationInputTokens"],
-        "cost": result.get("total_cost_usd", total["costUSD"]),
+        "input": turn.get("input_tokens") or 0,
+        "output": turn.get("output_tokens") or 0,
+        "cache_read": turn.get("cache_read_input_tokens") or 0,
+        "cache_write": turn.get("cache_creation_input_tokens") or 0,
+        "cost": result.get("total_cost_usd", sum(m.get("costUSD") or 0 for m in models.values())),
+        "session": result.get("session_id"),
     }
 
 

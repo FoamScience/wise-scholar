@@ -82,6 +82,41 @@ def _rebuild_errors(connection) -> None:
     )""", "id, profile_id, course_id, card_id, kind, prompt, said, correct, explanation, note, pinned, resolved, created")
 
 
+USAGE_TOTALS = ("input", "output", "cache_read", "cache_write", "cost")
+
+
+def _usage_per_turn(connection) -> None:
+    """Rows of a resumed lesson session held the session's running totals; each becomes its turn's own share. The rows
+    never named their session, so it is guessed: a row lower than the one before in any total starts a new session,
+    and a new session whose first turn is no lower in all five passes for a continuation. The open session of each
+    lesson is named, so its next turn is charged only its own share."""
+    connection.execute("ALTER TABLE usage ADD COLUMN session TEXT")
+    connection.execute("CREATE INDEX usage_session ON usage(session)")
+    chains: dict[tuple, list] = {}
+    # Background kinds start a fresh session every turn and already hold one turn each.
+    for r in connection.execute(
+        "SELECT u.id, u.lesson_id, u.kind, u.backend, u.input, u.output, u.cache_read, u.cache_write, COALESCE(u.cost, 0) AS cost, "
+        "l.session_id, l.session_started, l.backend AS lesson_backend FROM usage u JOIN lessons l ON l.id = u.lesson_id "
+        "WHERE u.kind NOT IN ('graph', 'cards', 'cleanup', 'explore', 'recap') ORDER BY u.id"
+    ).fetchall():
+        chains.setdefault((r["lesson_id"], r["kind"]), []).append(r)
+    for chain in chains.values():
+        before, current = None, []
+        for r in chain:
+            if before is not None and all(r[k] >= before[k] for k in USAGE_TOTALS):
+                connection.execute(
+                    "UPDATE usage SET " + ", ".join(f"{k} = ?" for k in USAGE_TOTALS) + " WHERE id = ?",
+                    (*(r[k] - before[k] for k in USAGE_TOTALS), r["id"]),
+                )
+                current.append(r["id"])
+            else:
+                current = [r["id"]]
+            before = r
+        last = chain[-1]
+        if last["session_started"] and last["lesson_backend"] == last["backend"] == "claude":
+            connection.executemany("UPDATE usage SET session = ? WHERE id = ?", [(last["session_id"], i) for i in current])
+
+
 CARD_COLUMNS = "id, course_id, concept_id, question, kind, options, answer_key, explanation, fsrs, due, confident_miss, scheduled, vocab, lemma, lang, translation, relearn_after"
 MIGRATIONS = [
     """
@@ -536,6 +571,7 @@ MIGRATIONS = [
         FROM blocks b WHERE b.lesson_id = lessons.id AND b.kind != 'outline'
     ) WHERE phase = 'practice';
     """,
+    _usage_per_turn,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -770,11 +806,16 @@ def commands(profile_id: int) -> list[dict]:
 
 
 def add_usage(course_id: int, lesson_id: int | None, kind: str, backend: str, used: dict, seconds: float | None = None) -> None:
+    """A usage that names its session carries that session's running cost; the turn is charged what the session's
+    earlier turns have not."""
+    cost, session = used["cost"], used.get("session")
+    if session and cost is not None:
+        cost -= row("SELECT COALESCE(SUM(cost), 0) AS spent FROM usage WHERE session = ?", session)["spent"]
     conn.execute(
-        "INSERT INTO usage (course_id, lesson_id, kind, backend, model, input, output, cache_read, cache_write, cost, seconds) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO usage (course_id, lesson_id, kind, backend, model, input, output, cache_read, cache_write, cost, seconds, session) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (course_id, lesson_id, kind, backend, used["model"], used["input"], used["output"], used["cache_read"],
-         used["cache_write"], used["cost"], seconds),
+         used["cache_write"], cost, seconds, session),
     )
 
 

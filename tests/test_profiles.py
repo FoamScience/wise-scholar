@@ -2114,6 +2114,19 @@ def test_each_turn_records_its_tokens_and_cost_against_its_lesson_and_course(mon
     assert app.list_usage(who) == [] and db.row("SELECT COUNT(*) AS n FROM usage WHERE course_id = ?", course)["n"] == 0
 
 
+def test_a_resumed_session_is_charged_per_turn_not_its_running_total():
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Resumer')").lastrowid
+    course = db.create_course("Pumps", who)["id"]
+    lesson = db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]
+    turn = {"model": "claude-opus-5-5", "input": 2, "output": 10, "cache_read": 100, "cache_write": 50}
+    for running in (0.25, 0.75, 1.0):
+        db.add_usage(course, lesson, "lesson", "claude", {**turn, "cost": running, "session": "a"})
+    db.add_usage(course, lesson, "lesson", "claude", {**turn, "cost": 0.5, "session": "b"})
+    db.add_usage(course, lesson, "graph", "opencode", {**turn, "cost": 0.125})
+    costs = [r["cost"] for r in db.rows("SELECT cost FROM usage WHERE course_id = ? ORDER BY id", course)]
+    assert costs == [0.25, 0.5, 0.25, 0.5, 0.125]
+
+
 def test_a_wrong_option_carries_the_belief_behind_it_into_the_feedback_the_notebook_and_the_next_lesson(monkeypatch):
     import asyncio
 
