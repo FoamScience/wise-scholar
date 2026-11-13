@@ -2116,6 +2116,53 @@ def test_each_turn_records_its_tokens_and_cost_against_its_lesson_and_course(mon
     assert app.list_usage(who) == [] and db.row("SELECT COUNT(*) AS n FROM usage WHERE course_id = ?", course)["n"] == 0
 
 
+def test_a_lesson_idle_past_the_cache_hour_goes_on_in_a_fresh_session_from_its_record(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app
+
+    calls = []
+
+    async def run_turn(prompt, **kwargs):
+        calls.append({"prompt": prompt, **kwargs})
+        yield {"type": "session.started", "session_id": kwargs["session_id"]}
+        yield {"type": "turn.done", "ok": True, "error": None,
+               "usage": {"model": "m", "input": 1, "output": 1, "cache_read": 1, "cache_write": 1, "cost": 0.0}}
+
+    monkeypatch.setattr(app.backend, "run_turn", run_turn)
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Idle returner')").lastrowid
+    course = db.create_course("Rotors", who)["id"]
+    lesson_id = db.create_lesson(course, "Blades", "lesson")
+    db.add_message(lesson_id, "learner", "the blade twists toward the hub")
+
+    def turn():
+        app._turns[lesson_id] = None
+        asyncio.run(app._run_turn(db.lesson(lesson_id), "[learner] next", quiet=True))
+        return calls[-1]
+
+    first, again = turn(), turn()
+    assert not first["resume"] and again["resume"] and again["session_id"] == first["session_id"]
+    assert "[so far]" not in again["prompt"]
+
+    db.conn.execute("UPDATE usage SET created = datetime('now', '-61 minutes') WHERE lesson_id = ?", (lesson_id,))
+    cold = turn()
+    assert not cold["resume"] and cold["session_id"] != first["session_id"]
+    assert db.lesson(lesson_id)["session_id"] == cold["session_id"]
+    assert "the blade twists toward the hub" in cold["prompt"] and cold["prompt"].index("[so far]") < cold["prompt"].index("[learner] next")
+
+    # Past the limit the record keeps the end of the lesson, where the learner left off.
+    for n in range(60):
+        db.add_message(lesson_id, "tutor", f"step {n}: " + "x" * 900)
+    record = app._lesson_record(lesson_id, newest=True)
+    assert len(record) == app.RECORD_CHARS and "step 59:" in record and "the blade twists" not in record
+
+    # A lesson from before usage was recorded goes cold by the tutor's last reply.
+    db.conn.execute("DELETE FROM usage WHERE lesson_id = ?", (lesson_id,))
+    assert app._resumes(db.lesson(lesson_id))
+    db.conn.execute("UPDATE messages SET created = datetime('now', '-2 hours') WHERE lesson_id = ?", (lesson_id,))
+    assert not app._resumes(db.lesson(lesson_id))
+
+
 def test_a_resumed_session_is_charged_per_turn_not_its_running_total():
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Resumer')").lastrowid
     course = db.create_course("Pumps", who)["id"]

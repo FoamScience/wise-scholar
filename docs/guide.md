@@ -84,6 +84,8 @@ WISE_SCHOLAR_AGENT=opencode WISE_SCHOLAR_MODELS='cards=openrouter/openrouter/fre
 
 The kinds are `interview`, `placement`, `lesson`, `practice`, `story`, `writing`, `graph`, `cards`, `cleanup`, `explore` and `recap`.
 
+A lesson left for longer than the agent's prompt cache lasts goes on in a fresh session that starts from what happened in it so far, instead of writing its whole history to the cache again. That is an hour, Claude Code's cache on a subscription; on an API key, Bedrock or Vertex it caches for five minutes, so set `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` there.
+
 With `agy` the tutor runs in a home folder of its own, `data/agy-home/`, that links only your login from `~/.gemini`: your `GEMINI.md`, MCP servers, plugins and skills stay out of its sessions, which are kept there too. agy reports tokens but no price, so its usage shows no cost.
 
 Other settings, all optional. To keep this machine's own values, put them in `.env` at the repository root, which git ignores and `make` reads as a makefile fragment: one `export NAME ?= value` line each, with no quotes (they would become part of the value). A value set in the shell when running `make` wins over the file.
