@@ -302,6 +302,8 @@ def test_a_finished_lesson_yields_claims_whose_state_follows_their_latest_eviden
     # The search spans the profile, never another one, and a claim the learner rejected stays out.
     found = asyncio.run(tutor.search_claims(lesson, ["faces explorer"]))
     assert f"claim {walk_id}: TopExp_Explorer visits the faces of a shape. (from: OCCT)" in found
+    twice = asyncio.run(tutor.search_claims(lesson, ["faces explorer", "explorer faces"]))
+    assert twice.count("TopExp_Explorer visits") == 1 and f"claim {walk_id} (above)" in twice
     db.conn.execute("UPDATE claims SET wrong = 1 WHERE id = ?", (walk_id,))
     assert "marked wrong by the learner" in asyncio.run(tutor.search_claims(lesson, ["explorer"]))
     assert "marked wrong" in record_claims([new(key="w", text="TopExp_Explorer visits the faces of a shape.")])

@@ -1993,14 +1993,16 @@ async def search_claims(lesson_id: int, queries: list[str]) -> str:
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     _searched.add(lesson_id)
-    out = []
+    out, shown = [], set()
     for query in queries:
         found = db.search_claims(lesson["profile_id"], query, SEARCH_RESULTS)
         out.append(f"{query!r}:")
         out += [
+            f"  claim {c['id']} (above)" if c["id"] in shown else
             f"  claim {c['id']}: {c['text']}" + (" (marked wrong by the learner: never record it)" if c["wrong"] else f" (from: {', '.join(c['courses'])})")
             for c in found
         ] or ["  nothing found"]
+        shown.update(c["id"] for c in found)
     return "\n".join(out)
 
 
