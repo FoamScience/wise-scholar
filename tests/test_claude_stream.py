@@ -9,6 +9,7 @@ def stream(event: dict) -> str:
 
 def test_parse_event_maps_stream_lines_to_ui_events():
     assert parse_event(json.dumps({"type": "system", "subtype": "init"})) == {"type": "session.started"}
+    assert parse_event(json.dumps({"type": "system", "subtype": "init", "session_id": "s2"})) == {"type": "session.started", "session_id": "s2"}
     assert parse_event(json.dumps({"type": "system", "subtype": "status"})) is None
     assert parse_event(stream({"type": "message_start", "message": {}})) == {"type": "chat.break"}
     assert parse_event(

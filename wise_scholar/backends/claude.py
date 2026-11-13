@@ -31,7 +31,8 @@ def parse_event(line: str) -> dict | None:
     e = json.loads(line)
     kind = e.get("type")
     if kind == "system" and e.get("subtype") == "init":
-        return {"type": "session.started"}
+        # The session the turn really runs in: a resume that fails goes on in a fresh one.
+        return {"type": "session.started", **({"session_id": e["session_id"]} if e.get("session_id") else {})}
     if kind == "stream_event":
         ev = e["event"]
         if ev["type"] == "message_start":
