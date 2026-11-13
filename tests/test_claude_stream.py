@@ -29,11 +29,14 @@ def test_parse_event_maps_stream_lines_to_ui_events():
     }
 
 
-def test_a_result_reports_the_tokens_and_list_price_of_every_model_it_used():
-    result = {"type": "result", "subtype": "success", "is_error": False, "total_cost_usd": 0.05, "modelUsage": {
+def test_a_result_reports_this_turns_tokens_and_the_sessions_running_cost():
+    result = {"type": "result", "subtype": "success", "is_error": False, "session_id": "s1", "total_cost_usd": 0.05,
+              "usage": {"input_tokens": 2, "output_tokens": 30, "cache_read_input_tokens": 700, "cache_creation_input_tokens": 400},
+              "modelUsage": {
         "claude-haiku-5-5": {"inputTokens": 10, "outputTokens": 5, "cacheReadInputTokens": 100, "cacheCreationInputTokens": 0, "costUSD": 0.01},
         "claude-opus-5-5": {"inputTokens": 2, "outputTokens": 40, "cacheReadInputTokens": 900, "cacheCreationInputTokens": 3000, "costUSD": 0.04},
     }}
     assert parse_event(json.dumps(result))["usage"] == {
-        "model": "claude-opus-5-5, claude-haiku-5-5", "input": 12, "output": 45, "cache_read": 1000, "cache_write": 3000, "cost": 0.05,
+        "model": "claude-opus-5-5, claude-haiku-5-5", "input": 2, "output": 30, "cache_read": 700, "cache_write": 400,
+        "cost": 0.05, "session": "s1",
     }

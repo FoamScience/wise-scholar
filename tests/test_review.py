@@ -157,6 +157,44 @@ def test_the_cards_table_rebuild_keeps_rows_and_their_answers_and_errors(tmp_pat
     raw.close()
 
 
+def test_usage_rows_holding_session_totals_become_per_turn_rows(tmp_path):
+    import sqlite3
+
+    from wise_scholar import db
+
+    raw = sqlite3.connect(tmp_path / "old.db")
+    raw.row_factory = sqlite3.Row
+    for script in db.MIGRATIONS[: db.MIGRATIONS.index(db._usage_per_turn)]:
+        if callable(script):
+            script(raw)
+        else:
+            raw.executescript(script)
+    raw.execute("PRAGMA foreign_keys = OFF")  # no profile or course rows: only the usage rewrite is under test
+    raw.execute("INSERT INTO lessons (id, course_id, title, session_id, session_started, phase, backend) VALUES (7, 1, 't', 'open', 1, 'lesson', 'claude')")
+    totals = [
+        ("lesson", 10, 100, 1000, 500, 0.5),
+        ("lesson", 12, 150, 3000, 700, 0.75),   # running total: 2, 50, 2000, 200, 0.25 of its own
+        ("graph", 5, 60, 900, 900, 0.25),       # a fresh session every time
+        ("graph", 6, 70, 950, 950, 0.25),
+        ("lesson", 3, 40, 400, 400, 0.125),     # lower than before: a new session started
+        ("lesson", 4, 90, 900, 600, 0.25),
+    ]
+    raw.executemany(
+        "INSERT INTO usage (course_id, lesson_id, kind, backend, model, input, output, cache_read, cache_write, cost) VALUES (1, 7, ?, 'claude', 'm', ?, ?, ?, ?, ?)",
+        totals,
+    )
+    db._usage_per_turn(raw)
+    assert [tuple(r) for r in raw.execute("SELECT kind, input, output, cache_read, cache_write, cost, session FROM usage ORDER BY id")] == [
+        ("lesson", 10, 100, 1000, 500, 0.5, None),
+        ("lesson", 2, 50, 2000, 200, 0.25, None),
+        ("graph", 5, 60, 900, 900, 0.25, None),
+        ("graph", 6, 70, 950, 950, 0.25, None),
+        ("lesson", 3, 40, 400, 400, 0.125, "open"),
+        ("lesson", 1, 50, 500, 200, 0.125, "open"),
+    ]
+    raw.close()
+
+
 def test_the_errors_table_rebuild_keeps_quiz_and_writing_rows(tmp_path):
     import sqlite3
 
