@@ -5,7 +5,7 @@ from typing import Literal
 import simplemma
 from pydantic import BaseModel
 
-from .. import challenge, db, lexicon, resources, speech, vocab
+from .. import challenge, db, lexicon, resources, sentences, speech, vocab
 from ..tutor import _patch_block, _show, _shuffled, log, mcp
 
 
@@ -198,6 +198,53 @@ async def lookup_word(course_id: int, word: str) -> str:
     if not found:
         return f"{word!r} is not in the lexicon"
     return lexicon.answer(found)
+
+
+EXAMPLES = 10
+
+
+def _forms(course_id: int, word: str) -> list[str]:
+    """The word and, when the course has a lexicon, the forms the lexicon gives for it and for the word it is a form of."""
+    folder = resources.course_resource(course_id, "lexicon")
+    if not folder or not (folder / lexicon.DB).exists():
+        return [word]
+    return [word, *(form for e in lexicon.lookup(folder, word)[:lexicon.ENTRIES] for form, _ in e["forms"] if " " not in form)]
+
+
+def _fit(sentence: dict, scope: dict | None, word: str, words: set[str]) -> tuple:
+    """How well a sentence suits the learner: holding the word or one of its forms as a word (as written, or by lemma
+    where the language has a lemmatizer), then a translation, then the share of its words in the learner's range,
+    then a recording, then shortness."""
+    whole = any(lexicon.fold(t) in words for t in vocab.WORD.findall(sentence["text"]))
+    share = 0.0
+    if scope:
+        check = vocab.check_reading(sentence["text"], scope["lang"], scope["tier"], scope["known"], [word])
+        whole = whole or any(lexicon.fold(l) in words for l in check["lemmas"])
+        share = check["coverage"]
+    return (whole, bool(sentence["translation"]), share, bool(sentence["audio"]), -len(sentence["text"]))
+
+
+@mcp.tool()
+async def example_sentences(course_id: int, word: str, n: int = 5) -> str:
+    """Real sentences from Tatoeba that use a word of the course's language, with their translation into the learner's
+    language and, for some, a native speaker's recording. The ones that best fit the learner's vocabulary come first;
+    with a lexicon, inflected forms of the word count too. Use them in readings, cards and listening work, and credit
+    Tatoeba where you show them. n: how many, at most 10."""
+    course = db.course(course_id)
+    row = db.row("SELECT lang FROM course_resources WHERE course_id = ? AND kind = 'sentences'", course_id)
+    folder = resources.course_resource(course_id, "sentences")
+    if not course or not folder or not (folder / sentences.DB).exists():
+        return "example sentences are not set up for this course; write your own"
+    word = word.strip()
+    forms = await asyncio.to_thread(_forms, course_id, word)
+    found = await asyncio.to_thread(sentences.find, folder, forms)
+    if not found:
+        return f"no sentence uses {word!r}"
+    # without a word list for the language, sentences are ranked without the learner's range
+    scope = _vocab({"profile_id": course["profile_id"], "level": course["level"]}, row["lang"]) if vocab.supported(row["lang"]) else None
+    words = {lexicon.fold(f) for f in forms}
+    ranked = (await asyncio.to_thread(sorted, found, key=lambda s: _fit(s, scope, word, words), reverse=True))[:max(1, min(n, EXAMPLES))]
+    return "\n".join([*(sentences.describe(i, s) for i, s in enumerate(ranked, 1)), sentences.CREDIT])
 
 
 @mcp.tool()

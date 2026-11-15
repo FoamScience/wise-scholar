@@ -1,4 +1,5 @@
 import asyncio
+import bz2
 import shutil
 from collections import Counter
 from functools import partial
@@ -9,18 +10,23 @@ import pytest
 from fastapi.testclient import TestClient
 
 from wise_scholar import app as application
-from wise_scholar import db, lexicon, resources
+from wise_scholar import db, lexicon, resources, sentences
 from wise_scholar.tools import language as language_tools
 
 LEXICON = "https://kaikki.org/dictionary/German/kaikki.org-dictionary-German.jsonl"
 AUDIO = "https://downloads.tatoeba.org/exports/per_language/deu/deu_sentences_with_audio.tsv.bz2"
 FILES = {
     LEXICON: b'{"word": "Haus"}\n',
-    "https://downloads.tatoeba.org/exports/per_language/deu/deu_sentences.tsv.bz2": b"de" * 10,
-    AUDIO: b"au",
-    "https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2": b"en" * 5,
-    "https://downloads.tatoeba.org/exports/per_language/deu/deu-eng_links.tsv.bz2": b"li",
+    "https://downloads.tatoeba.org/exports/per_language/deu/deu_sentences.tsv.bz2": bz2.compress("1\tdeu\tDas Haus ist alt.\n".encode()),
+    AUDIO: bz2.compress(b"1\t9\tanna\tCC BY 4.0\thttps://tatoeba.org\n"),
+    "https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2": bz2.compress(b"2\teng\tThe house is old.\n"),
+    "https://downloads.tatoeba.org/exports/per_language/deu/deu-eng_links.tsv.bz2": bz2.compress(b"1\t2\n"),
 }
+SENTENCES_SIZE = sum(len(FILES[url]) for url in (
+    "https://downloads.tatoeba.org/exports/per_language/deu/deu_sentences.tsv.bz2", AUDIO,
+    "https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2",
+    "https://downloads.tatoeba.org/exports/per_language/deu/deu-eng_links.tsv.bz2",
+))
 
 
 @pytest.fixture
@@ -72,14 +78,14 @@ def test_offering_records_sizes_and_says_why_a_kind_is_not_offered(web):
     broken, missing, _, _ = web
     course = _course()
     assert asyncio.run(resources.offer(course, "de", "en")) == {"lexicon": "asked", "sentences": "asked"}
-    assert _row(course, "lexicon")["size"] == 17 and _row(course, "sentences")["size"] == 34
+    assert _row(course, "lexicon")["size"] == 17 and _row(course, "sentences")["size"] == SENTENCES_SIZE
     assert asyncio.run(resources.offer(_course(), "tlh", "en")) == {"lexicon": resources.MISSING, "sentences": resources.MISSING}
     broken.add(LEXICON)
     assert asyncio.run(resources.offer(_course(), "de", "en"))["lexicon"] == resources.UNREACHABLE
     missing.add(AUDIO)
     without_audio = _course()
     assert asyncio.run(resources.offer(without_audio, "de", "en"))["sentences"] == "asked"
-    assert _row(without_audio, "sentences")["size"] == 32
+    assert _row(without_audio, "sentences")["size"] == SENTENCES_SIZE - len(FILES[AUDIO])
 
 
 def test_one_download_serves_every_course_waiting_on_it(web):
@@ -97,7 +103,9 @@ def test_one_download_serves_every_course_waiting_on_it(web):
     assert _row(first, "sentences")["status"] == _row(second, "sentences")["status"] == "ready"
     assert set(gets.values()) == {1} and len(gets) == 4
     path = resources.course_resource(first, "sentences")
-    assert path == resources.ROOT / "sentences" / "de-en" and (path / "links.tsv.bz2").read_bytes() == b"li"
+    assert path == resources.ROOT / "sentences" / "de-en"
+    assert sentences.find(path, ["haus"]) == [
+        {"id": 1, "text": "Das Haus ist alt.", "translation": "The house is old.", "audio": 9, "audio_by": "anna", "audio_license": "CC BY 4.0"}]
     assert resources.course_resource(first, "sentences", "fr") is None and resources.course_resource(first, "lexicon") is None
     assert asyncio.run(resources.offer(_course(), "de-DE", "en"))["sentences"] == "ready"
 

@@ -14,7 +14,7 @@ from urllib.parse import quote
 import httpx
 import langcodes
 
-from . import db, hub, lexicon
+from . import db, hub, lexicon, sentences
 
 log = logging.getLogger("wise_scholar")
 ROOT = db.DB_PATH.parent / "resources"
@@ -74,7 +74,7 @@ def _sentences(lang: str, own: str) -> list[Source]:
 
 CATALOG = {
     "lexicon": Kind(lambda lang, own: code(lang), _lexicon, lexicon.prepare),
-    "sentences": Kind(lambda lang, own: f"{code(lang)}-{code(own)}", _sentences),
+    "sentences": Kind(lambda lang, own: f"{code(lang)}-{code(own)}", _sentences, sentences.prepare),
 }
 # one download per shared folder, whichever courses wait on it
 _running: dict[tuple[str, str], asyncio.Task] = {}

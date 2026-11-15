@@ -6,7 +6,7 @@ from functools import lru_cache
 
 import geonamescache
 import simplemma
-from wordfreq import top_n_list, zipf_frequency
+from wordfreq import available_languages, top_n_list, zipf_frequency
 
 TIER = 200
 LIST_SIZE = 12000
@@ -106,6 +106,17 @@ def tier_words(lang: str, tier: int) -> list[str]:
 def max_tier(lang: str) -> int:
     """The last full tier of a language's teachable list; higher tiers would be empty."""
     return max(1, len(lemma_list(lang)) // TIER)
+
+
+def supported(lang: str) -> bool:
+    """Whether the language has a frequency list and a lemmatizer, which the reading gate and tiers need."""
+    if lang not in available_languages():
+        return False
+    try:
+        simplemma.lemmatize("a", lang=lang)
+    except ValueError:
+        return False
+    return True
 
 
 def lemmatize(text: str, lang: str) -> list[str]:
