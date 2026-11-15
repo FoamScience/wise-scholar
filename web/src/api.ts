@@ -18,3 +18,11 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   const text = await res.text()
   return (text ? JSON.parse(text) : undefined) as T
 }
+
+export async function transcribe(clip: Blob, lang?: string): Promise<string> {
+  const form = new FormData()
+  form.append('audio', clip, 'clip.webm')
+  const res = await fetch(`/api/stt${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`, { method: 'POST', body: form })
+  if (!res.ok) throw await failure(res)
+  return (await res.json()).text
+}
