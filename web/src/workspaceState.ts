@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import type { Dispatch, KeyboardEvent, SetStateAction } from 'react'
 import { api } from './api'
 import i18n from './i18n'
 import { loadGiven, saveGiven } from './offline'
 import type { Given } from './offline'
-import type { Block, CourseDetail, Lesson } from './course'
+import type { Block, CourseDetail, Lesson, Message } from './course'
 import type { Source } from './Sources'
 import { courseChange, lessonChange, sourcesChange, type TutorEvent } from './courseEvents'
 import { clearTabMark, markTab } from './tabMark'
@@ -274,4 +275,75 @@ export function useAnsweredToday(lessonDone: boolean, profile: number): boolean 
     api<{ answers: number; current?: boolean }>(`/api/sitting?profile=${profile}`).then((s) => setAnsweredToday(Boolean(s.current && s.answers)), () => {})
   }, [lessonDone, profile])
   return answeredToday
+}
+
+/** Moving a replayed course to the newer version on offer; the lesson shown stays unless the upgrade removed it. */
+export function useUpgrade(
+  courseId: number,
+  setCourse: (course: CourseDetail) => void,
+  setLessonId: Dispatch<SetStateAction<number | null>>,
+  setError: (message: string) => void,
+) {
+  const [upgrading, setUpgrading] = useState(false)
+
+  async function upgrade(hash: string) {
+    setUpgrading(true)
+    try {
+      const c = await api<CourseDetail>(`/api/courses/${courseId}/upgrade`, { hash })
+      setCourse(c)
+      setLessonId((id) => (c.lessons.some((l) => l.id === id) ? id : c.lessons[c.lessons.length - 1].id))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setUpgrading(false)
+    }
+  }
+
+  return { upgrading, upgrade }
+}
+
+/** The message being written to the tutor; Enter sends it, Shift+Enter breaks the line. changing: it asks for a map change. */
+export function useChatDraft(lesson: Lesson | null, patchLesson: (id: number, patch: (l: Lesson) => Lesson) => void, setError: (message: string) => void) {
+  const [draft, setDraft] = useState('')
+  const [changing, setChanging] = useState(false)
+
+  function send() {
+    const text = draft.trim()
+    if (!lesson || lesson.running || !text) return
+    api<Message>(`/api/lessons/${lesson.id}/turns`, { text }).then(
+      (message) => {
+        patchLesson(lesson.id, (l) => ({ ...l, messages: [...l.messages, message] }))
+        setDraft('')
+        setChanging(false)
+      },
+      (err: Error) => setError(err.message),
+    )
+  }
+
+  function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+
+  return { draft, setDraft, changing, setChanging, send, onKey }
+}
+
+/** The server's side of coming back: a finished course opens its recap once the tutor is done, and a unit left
+ * open for a moment asks whether it opens with a recap of where the learner was. */
+export function useLessonVisits(course: CourseDetail | null, courseId: number, lessonId: number | null) {
+  // a course just finished opens its recap once, when the tutor is done answering
+  const busy = course?.lessons.some((l) => l.running) ?? true
+  useEffect(() => {
+    if (course?.recap?.finished && !course.recap.seen && !busy) location.hash = `#/course/${courseId}/recap`
+  }, [course?.recap, busy, courseId])
+
+  useEffect(() => {
+    // back at an unfinished unit after days away: the server decides whether it opens with a recap. Asked once the
+    // lesson stays open a moment, so one shown on the way to another (a new unit being created) gets none.
+    if (lessonId === null || !navigator.onLine) return
+    const asked = setTimeout(() => api(`/api/lessons/${lessonId}/resume`, {}).catch(() => {}), 1500)
+    return () => clearTimeout(asked)
+  }, [lessonId])
 }

@@ -204,3 +204,21 @@ export function moduleRuns(concepts: Concept[]): Concept[][] {
 export function unitDone(concept: Concept, lesson: Lesson | undefined): boolean {
   return lesson ? lesson.blocks.some((b) => b.kind === 'done') : Boolean(concept.known)
 }
+
+/** What the lesson pane shows around the cards: the plan in an interview, the card count, the next unit once this
+ * one is finished, the working placeholder for an empty lesson, and whether it can be taken offline. */
+export function lessonView(course: Pick<CourseDetail, 'ranking' | 'concepts' | 'mode'>, lesson: Lesson) {
+  const done = lesson.blocks.some((b) => b.kind === 'done')
+  const showPlan = lesson.phase === 'interview' && course.ranking.length > 0
+  const finished = lesson.concept_id !== null && done
+  const nextUnit = finished
+    ? course.concepts.slice(course.concepts.findIndex((c) => c.id === lesson.concept_id) + 1).find((c) => !c.known && (c.mastery ?? 0) < 2 / 3)
+    : undefined
+  const cards = lesson.blocks.filter((b) => b.kind !== 'outline').length
+  // the summary card still to come keeps the total above the cards already shown
+  const estimate = outlineOf(lesson)?.cards ?? lesson.cards
+  const cardTotal = estimate && (done ? cards : Math.max(estimate, cards + 1))
+  const empty = lesson.blocks.length === 0 && !showPlan
+  const canPrepare = lesson.phase === 'lesson' && lesson.concept_id !== null && course.mode !== 'teacher' && !lesson.batch && !lesson.replay && !finished
+  return { showPlan, finished, nextUnit, cardTotal, empty, canPrepare }
+}
