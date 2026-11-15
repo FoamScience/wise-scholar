@@ -1,6 +1,8 @@
 // Keeps a copy of what the app fetches, so a course opened once still reads without a connection. Asking the
 // tutor and sending answers still need the server.
 const CACHE = 'wise-scholar'
+// casts the learner kept for offline listening; only the page adds to it or empties it
+const AUDIO = 'wise-scholar-audio'
 const SHELL = '/'
 // past this wait a stored copy is shown: a connection that is up but carries nothing would hang the page
 const PATIENCE = 6000
@@ -20,6 +22,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   // the warm-up check decides from the learner's latest activity; an old copy would offer one that is not due
   if (url.origin !== location.origin || url.pathname.startsWith('/mcp') || url.pathname.endsWith('/warmup')) return
+  if (url.pathname.startsWith('/api/audio/')) return event.respondWith(kept(request))
   // live course events and partial audio responses cannot be stored
   if (request.headers.get('accept')?.includes('text/event-stream') || request.headers.has('range')) return
   // every route lives behind the hash, so the app shell is the one page load to keep
@@ -27,6 +30,27 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/assets/')) event.respondWith(cacheFirst(request))
   else event.respondWith(networkFirst(request))
 })
+
+/** A kept cast, cut to the range the audio element asks for; one not kept comes from the network. */
+async function kept(request) {
+  const cached = await (await caches.open(AUDIO)).match(request.url)
+  if (!cached) return fetch(request)
+  const range = request.headers.get('range')?.match(/^bytes=(\d*)-(\d*)$/)
+  if (!range || (!range[1] && !range[2])) return cached
+  const blob = await cached.blob()
+  const start = range[1] ? Number(range[1]) : Math.max(0, blob.size - Number(range[2]))
+  const end = range[1] && range[2] ? Math.min(Number(range[2]), blob.size - 1) : blob.size - 1
+  if (start > end) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${blob.size}` } })
+  return new Response(blob.slice(start, end + 1), {
+    status: 206,
+    headers: {
+      'Content-Type': cached.headers.get('content-type') ?? 'audio/ogg',
+      'Content-Range': `bytes ${start}-${end}/${blob.size}`,
+      'Content-Length': String(end - start + 1),
+      'Accept-Ranges': 'bytes',
+    },
+  })
+}
 
 function keep(cache, request, response) {
   if (!UNKEPT.test(response.headers.get('content-type') ?? '')) cache.put(request, response).catch(() => {})

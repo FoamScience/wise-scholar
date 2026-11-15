@@ -631,7 +631,11 @@
       "rendering": "Synthèse des voix : {{done}} répliques sur {{total}}…",
       "failed": "Le podcast n'a pas pu être produit : {{error}}",
       "paused": "En pause pour une question. Répondez ci-dessous et le podcast reprend.",
-      "transcript": "Transcription"
+      "transcript": "Transcription",
+      "keep": "Garder hors ligne",
+      "drop": "Retirer la copie hors ligne",
+      "kept": "Se lit sans connexion.",
+      "keepFailed": "Le podcast n'a pas pu être enregistré sur cet appareil."
     },
     "book": {
       "export": "Exporter en livre",
@@ -1028,6 +1032,12 @@
       "unsupported": "Ce navigateur ne peut pas recevoir de rappels. Installez l'application depuis Chrome sur votre téléphone, en HTTPS.",
       "noWorker": "Les rappels demandent l'application installée, pas le serveur de développement.",
       "blocked": "Les notifications sont bloquées pour ce site. Autorisez-les dans les paramètres du site du navigateur."
+    },
+    "feed": {
+      "heading": "Flux de podcasts",
+      "copy": "Copier",
+      "copied": "Copié",
+      "help": "Ajoutez cette adresse à une application de podcasts comme AntennaPod pour y retrouver vos podcasts prêts. L'application doit pouvoir joindre ce serveur, comme votre navigateur."
     }
   },
   "server": {

@@ -1,10 +1,15 @@
+import json
 import uuid
-from fastapi import HTTPException, UploadFile
+from datetime import datetime, timezone
+from email.utils import format_datetime
+from xml.etree import ElementTree as ET
+
+from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 
 from .. import app as core
 from .. import crafted, db, handwork, hub, speech
-from ..app import CLIP_LIMIT, _add_photo, _handwork_block, _pending_photos, app, log
+from ..app import CLIP_LIMIT, _add_photo, _handwork_block, _pending_photos, _profile, app, log
 
 
 @app.get("/api/tts")
@@ -33,6 +38,40 @@ async def podcast_audio(name: str) -> FileResponse:
     if not (name.endswith(".opus") and name[:-5].isdigit() and path.exists()):
         raise HTTPException(404, "no such cast")
     return FileResponse(path, media_type="audio/ogg")
+
+
+# a podcast app keeps what it downloaded; the feed lists only the newest
+FEED_CASTS = 100
+
+
+@app.get("/api/profiles/{profile_id}/casts.rss")
+def cast_feed(profile_id: int, request: Request) -> Response:
+    """The profile's ready casts as a podcast feed, newest first, so a podcast app can fetch and play them."""
+    profile = _profile(profile_id)
+    base = str(request.base_url).rstrip("/")
+    rss = ET.Element("rss", version="2.0")
+    channel = ET.SubElement(rss, "channel")
+    ET.SubElement(channel, "title").text = f"wise-scholar: {profile['name']}"
+    ET.SubElement(channel, "link").text = base + "/"
+    ET.SubElement(channel, "description").text = "Casts from your wise-scholar courses."
+    for cast in db.rows(
+        "SELECT b.id, b.markdown, b.data, b.created, c.topic FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+        "JOIN courses c ON c.id = l.course_id WHERE c.profile_id = ? AND c.archived = 0 AND b.kind = 'podcast' "
+        "AND json_extract(b.data, '$.status') = 'ready' ORDER BY b.id DESC LIMIT ?",
+        profile_id, FEED_CASTS,
+    ):
+        data = json.loads(cast["data"])
+        path = speech.AUDIO / "podcasts" / f"{cast['id']}.opus"
+        if not path.exists():
+            continue
+        item = ET.SubElement(channel, "item")
+        ET.SubElement(item, "title").text = f"{cast['topic']}: {cast['markdown']}"
+        ET.SubElement(item, "guid", isPermaLink="false").text = f"wise-scholar-cast-{cast['id']}"
+        created = datetime.fromisoformat(cast["created"]).replace(tzinfo=timezone.utc)
+        ET.SubElement(item, "pubDate").text = format_datetime(created)
+        ET.SubElement(item, "enclosure", url=f"{base}{data['audio']}", length=str(path.stat().st_size), type="audio/ogg")
+        ET.SubElement(item, "description").text = "\n".join(f"{line['speaker']}: {line['text']}" for line in data["lines"])
+    return Response(ET.tostring(rss, encoding="utf-8", xml_declaration=True), media_type="application/rss+xml")
 
 
 @app.post("/api/stt")

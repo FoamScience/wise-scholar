@@ -5,6 +5,7 @@ import { api } from './api'
 import type { Locale } from './locale'
 import type { Profile } from './profiles'
 import { Reminder } from './Reminder'
+import { CastFeed } from './CastFeed'
 
 type Fact = { id: number; text: string }
 
@@ -107,6 +108,8 @@ export function ProfilePage(props: {
       </section>
 
       {current.mode === 'learner' && <Reminder key={`${current.id} ${current.remind_at}`} profile={current} onChanged={props.onChanged} />}
+
+      {current.mode === 'learner' && <CastFeed profile={current.id} />}
 
       <section className="block stack">
         <div className="label">{t('profile.knows')}</div>
