@@ -31,16 +31,7 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   const { options, answer, multiple, non_goals } = props.block.data as QuestionData
   const goals = non_goals !== undefined
 
-  if (answer !== null)
-    return (
-      <section id={`block-${props.block.id}`} className="block answered">
-        <div className="muted" dir="auto"><InlineMarkdown>{props.block.markdown}</InlineMarkdown></div>
-        {answer && <span className="chip"><AnswerText text={answer} picked={options.includes(answer)} /></span>}
-        {non_goals?.map((o) => (
-          <span key={o} className="chip ruled" dir="auto"><InlineMarkdown>{t('question.notWanted', { option: o })}</InlineMarkdown></span>
-        ))}
-      </section>
-    )
+  if (answer !== null) return <AnsweredQuestion block={props.block} />
 
   // on a goal card a tap picks an option, a second marks it not wanted, a third clears it
   function toggle(o: string) {
@@ -66,18 +57,7 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
       <form className="stack" onSubmit={submit}>
         <div className="options">
           {options.map((o) => (
-            <button
-              key={o}
-              type="button"
-              className={picked.includes(o) ? 'btn option on' : ruled.includes(o) ? 'btn option ruled' : 'btn option'}
-              aria-pressed={picked.includes(o) ? true : ruled.includes(o) ? 'mixed' : false}
-              aria-label={ruled.includes(o) ? t('question.notWanted', { option: o }) : undefined}
-              dir="auto"
-              disabled={props.disabled}
-              onClick={() => toggle(o)}
-            >
-              <InlineMarkdown>{o}</InlineMarkdown>
-            </button>
+            <OptionButton key={o} option={o} state={picked.includes(o) ? 'on' : ruled.includes(o) ? 'ruled' : 'off'} disabled={props.disabled} onToggle={() => toggle(o)} />
           ))}
         </div>
         <label htmlFor={`own-${props.block.id}`}>{t('question.own')}</label>
@@ -101,34 +81,53 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   )
 }
 
+function AnsweredQuestion({ block }: { block: Block }) {
+  const { t } = useTranslation()
+  const { options, answer, non_goals } = block.data as QuestionData
+  return (
+    <section id={`block-${block.id}`} className="block answered">
+      <div className="muted" dir="auto"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>
+      {answer && <span className="chip"><AnswerText text={answer} picked={options.includes(answer)} /></span>}
+      {non_goals?.map((o) => (
+        <span key={o} className="chip ruled" dir="auto"><InlineMarkdown>{t('question.notWanted', { option: o })}</InlineMarkdown></span>
+      ))}
+    </section>
+  )
+}
+
+function OptionButton(props: { option: string; state: 'on' | 'ruled' | 'off'; disabled: boolean; onToggle: () => void }) {
+  const { t } = useTranslation()
+  const ruled = props.state === 'ruled'
+  return (
+    <button
+      type="button"
+      className={props.state === 'off' ? 'btn option' : `btn option ${props.state}`}
+      aria-pressed={props.state === 'on' ? true : ruled ? 'mixed' : false}
+      aria-label={ruled ? t('question.notWanted', { option: props.option }) : undefined}
+      dir="auto"
+      disabled={props.disabled}
+      onClick={props.onToggle}
+    >
+      <InlineMarkdown>{props.option}</InlineMarkdown>
+    </button>
+  )
+}
+
 function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean; authored: boolean; onAct: Act; onError: (m: string) => void }) {
   const { t } = useTranslation()
-  const [text, setText] = useState('')
   const d = props.block.data as ChallengeData
   const open = !d.solved && d.solution === null && !props.authored
   const player = usePlayer(d.lang ?? '', props.speech)
-
-  const photos = pendingPhotos(d).length
-
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!text.trim() && !photos) return
-    props.onAct('attempt', { answer: text.trim() })
-    setText('')
-  }
+  const spoken = Boolean(d.spoken && d.lang)
 
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
       <div className="label">
         {challengeLabel(d, props.speech, t)}
         {d.solved && <span className="chip">{d.writing ? t('common.done') : t('common.solved')}</span>}
-        {d.spoken && d.lang && (
-          <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([props.block.markdown]))}>
-            {player.current ? t('common.stop') : t('common.listen')}
-          </button>
-        )}
+        {spoken && <ListenButton player={player} text={props.block.markdown} />}
       </div>
-      {!(d.spoken && d.lang) && <Markdown>{props.block.markdown}</Markdown>}
+      {!spoken && <Markdown>{props.block.markdown}</Markdown>}
       <Comparison data={d} />
       <Helper data={d} />
       {player.error && <div className="error">{player.error}</div>}
@@ -137,48 +136,76 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
 
       {open && (
         <>
-          <form onSubmit={submit}>
-            <label htmlFor={`attempt-${props.block.id}`}>
-              {t('common.yourAnswer')}
-              {d.words && (
-                <span className="muted">
-                  {' '}
-                  {t(d.structure ? 'challenge.wordRangeStructure' : 'challenge.wordRange', {
-                    min: d.words[0],
-                    max: d.words[1],
-                    structure: d.structure,
-                    n: text.trim() ? text.trim().split(/\s+/).length : 0,
-                  })}
-                </span>
-              )}
-            </label>
-            <textarea
-              id={`attempt-${props.block.id}`}
-              className="field" dir="auto"
-              rows={3}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
-            {!d.spoken && <PhotoTray blockId={props.block.id} task={props.block.markdown} data={d} disabled={props.disabled} onError={props.onError} />}
-            <div className="row">
-              <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
-              {d.spoken && props.speech && (
-                <Mic
-                  onClip={(clip) => transcribe(clip, d.lang).then((t) => setText((v) => (v ? `${v} ${t}` : t)))}
-                  onError={props.onError}
-                  disabled={props.disabled}
-                  limit={d.teachback ? 60 : undefined}
-                />
-              )}
-              <button className="btn primary" disabled={props.disabled || (!text.trim() && !photos)}>
-                {t('challenge.submit')}
-              </button>
-            </div>
-          </form>
+          <AttemptForm block={props.block} disabled={props.disabled} speech={props.speech} onAct={props.onAct} onError={props.onError} />
           <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />
         </>
       )}
     </section>
+  )
+}
+
+function ListenButton({ player, text }: { player: ReturnType<typeof usePlayer>; text: string }) {
+  const { t } = useTranslation()
+  return (
+    <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([text]))}>
+      {player.current ? t('common.stop') : t('common.listen')}
+    </button>
+  )
+}
+
+function AttemptForm(props: { block: Block; disabled: boolean; speech: boolean; onAct: Act; onError: (m: string) => void }) {
+  const { t } = useTranslation()
+  const [text, setText] = useState('')
+  const d = props.block.data as ChallengeData
+  const photos = pendingPhotos(d).length
+  const ready = Boolean(text.trim()) || photos > 0
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!ready) return
+    props.onAct('attempt', { answer: text.trim() })
+    setText('')
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <label htmlFor={`attempt-${props.block.id}`}>
+        {t('common.yourAnswer')}
+        {d.words && (
+          <span className="muted">
+            {' '}
+            {t(d.structure ? 'challenge.wordRangeStructure' : 'challenge.wordRange', {
+              min: d.words[0],
+              max: d.words[1],
+              structure: d.structure,
+              n: text.trim() ? text.trim().split(/\s+/).length : 0,
+            })}
+          </span>
+        )}
+      </label>
+      <textarea
+        id={`attempt-${props.block.id}`}
+        className="field" dir="auto"
+        rows={3}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      {!d.spoken && <PhotoTray blockId={props.block.id} task={props.block.markdown} data={d} disabled={props.disabled} onError={props.onError} />}
+      <div className="row">
+        <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
+        {d.spoken && props.speech && (
+          <Mic
+            onClip={(clip) => transcribe(clip, d.lang).then((t) => setText((v) => (v ? `${v} ${t}` : t)))}
+            onError={props.onError}
+            disabled={props.disabled}
+            limit={d.teachback ? 60 : undefined}
+          />
+        )}
+        <button className="btn primary" disabled={props.disabled || !ready}>
+          {t('challenge.submit')}
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -205,9 +232,7 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
       <div className="label">
         {d.speaking === 'shadow' ? t('speaking.shadow') : t('speaking.read')}
         {d.solved && <span className="chip">{t('common.done')}</span>}
-        <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([props.block.markdown]))}>
-          {player.current ? t('common.stop') : t('common.listen')}
-        </button>
+        <ListenButton player={player} text={props.block.markdown} />
       </div>
       {(d.speaking === 'read' || d.scores.length > 0) && (
         <p className="spoken-text" lang={d.lang} dir="auto">
@@ -216,17 +241,7 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
       )}
       {player.error && <div className="error">{player.error}</div>}
       {d.scores.map((a, i) => (
-        <div key={i} className="attempt">
-          <span className="label">{t('speaking.attemptScore', { n: i + 1, score: percent(a.score) })}</span>
-          <span lang={d.lang} dir="auto">
-            {a.words.map((w, j) => (
-              <span key={j} className={w.score < WEAK_WORD ? 'word weak' : 'word'} title={percent(w.score)}>
-                {w.word}{' '}
-              </span>
-            ))}
-            {a.heard !== null && <span className="small"> {t('speaking.heard', { text: a.heard })}</span>}
-          </span>
-        </div>
+        <SpokenAttempt key={i} n={i + 1} attempt={a} lang={d.lang} />
       ))}
       <HintList data={d} />
       {open && (
@@ -239,6 +254,23 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
         </>
       )}
     </section>
+  )
+}
+
+function SpokenAttempt({ n, attempt, lang }: { n: number; attempt: SpeakingData['scores'][number]; lang: string }) {
+  const { t } = useTranslation()
+  return (
+    <div className="attempt">
+      <span className="label">{t('speaking.attemptScore', { n, score: percent(attempt.score) })}</span>
+      <span lang={lang} dir="auto">
+        {attempt.words.map((w, j) => (
+          <span key={j} className={w.score < WEAK_WORD ? 'word weak' : 'word'} title={percent(w.score)}>
+            {w.word}{' '}
+          </span>
+        ))}
+        {attempt.heard !== null && <span className="small"> {t('speaking.heard', { text: attempt.heard })}</span>}
+      </span>
+    </div>
   )
 }
 
@@ -286,17 +318,14 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
 function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolean; authored: boolean; onAct: Act; onError: (m: string) => void }) {
   const { t } = useTranslation()
   const d = props.block.data as ExerciseData
-  const [files, setFiles] = useState<ExerciseFile[]>([])
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
   const [answer, setAnswer] = useState('')
   const open = !d.solved && d.solution === null && !props.authored
   const blockId = props.block.id
+  const { files, reads, flushes } = useExerciseFiles(blockId, open)
   const kept = files.length > 0 && files.every((f) => f.kept)
   const editing = open && files.some((f) => f.editable)
-  // A read that began before a save ended may carry the old text; only the latest read counts.
-  const reads = useRef(0)
-  const flushes = useRef(new Map<string, () => Promise<boolean>>())
 
   async function allSaved() {
     const results = await Promise.all([...flushes.current.values()].map((flush) => flush()))
@@ -304,20 +333,6 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
     setError(t('exercise.unsaved'))
     return false
   }
-
-  useEffect(() => {
-    const load = () => {
-      const read = ++reads.current
-      api<ExerciseFile[]>(`/api/blocks/${blockId}/files`).then((f) => {
-        if (read === reads.current) setFiles(f)
-      }, () => {})
-    }
-    load()
-    if (!open) return
-    // ponytail: polls the files every 2 s; push changes over SSE from a file watcher if this lags or costs too much
-    const timer = setInterval(load, 2000)
-    return () => clearInterval(timer)
-  }, [blockId, open])
 
   async function run() {
     setRunning(true)
@@ -336,40 +351,18 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       <Helper data={d} />
 
       {files.map((f) => (
-        // closed at first: a card with several files stays short, and the run button stays in reach
-        <details key={f.path} className="file">
-          <summary className="file-head">
-            <code>{f.location}</code>
-            <button
-              type="button"
-              className="link"
-              onClick={(e) => {
-                e.preventDefault()
-                navigator.clipboard.writeText(f.location)
-              }}
-            >
-              {t('exercise.copyPath')}
-            </button>
-          </summary>
-          {f.content === null ? (
-            <pre>{t('exercise.missing')}</pre>
-          ) : open && f.editable ? (
-            <FileEditor
-              blockId={blockId}
-              file={f}
-              completions={d.completions ?? []}
-              onSaving={() => reads.current++}
-              register={(flush) => {
-                flushes.current.set(f.path, flush)
-                return () => flushes.current.delete(f.path)
-              }}
-            />
-          ) : (
-            <div className="file-body">
-              <Markdown>{`\`\`\`\`${f.path.split('.').pop() ?? ''}\n${f.content}\n\`\`\`\``}</Markdown>
-            </div>
-          )}
-        </details>
+        <ExerciseFileView
+          key={f.path}
+          blockId={blockId}
+          file={f}
+          editable={open && f.editable}
+          completions={d.completions ?? []}
+          onSaving={() => reads.current++}
+          register={(flush) => {
+            flushes.current.set(f.path, flush)
+            return () => flushes.current.delete(f.path)
+          }}
+        />
       ))}
       <div className="small">{kept ? t('exercise.cleaned') : editing ? t('exercise.editHere') : t('exercise.follows')}</div>
 
@@ -406,21 +399,87 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
         )}
       </div>
 
-      {d.last_run && (
-        <div className="file">
-          <div className="file-head">
-            <span className="label">
-              {d.last_run.exit_code === null ? t('exercise.outputStopped') : t('exercise.outputExit', { code: d.last_run.exit_code })}
-            </span>
-          </div>
-          <pre className={d.last_run.exit_code === 0 ? '' : 'failed'}>{d.last_run.output || t('exercise.noOutput')}</pre>
-        </div>
-      )}
+      {d.last_run && <RunOutput run={d.last_run} />}
       {error && <div className="error">{error}</div>}
 
       <Ladder data={d} blockId={blockId} onError={props.onError} />
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}
     </section>
+  )
+}
+
+/** The exercise's files, read again every 2 s while it is open; the refs let a save outrun a read in flight. */
+function useExerciseFiles(blockId: number, open: boolean) {
+  const [files, setFiles] = useState<ExerciseFile[]>([])
+  // A read that began before a save ended may carry the old text; only the latest read counts.
+  const reads = useRef(0)
+  const flushes = useRef(new Map<string, () => Promise<boolean>>())
+
+  useEffect(() => {
+    const load = () => {
+      const read = ++reads.current
+      api<ExerciseFile[]>(`/api/blocks/${blockId}/files`).then((f) => {
+        if (read === reads.current) setFiles(f)
+      }, () => {})
+    }
+    load()
+    if (!open) return
+    // ponytail: polls the files every 2 s; push changes over SSE from a file watcher if this lags or costs too much
+    const timer = setInterval(load, 2000)
+    return () => clearInterval(timer)
+  }, [blockId, open])
+
+  return { files, reads, flushes }
+}
+
+function ExerciseFileView(props: {
+  blockId: number
+  file: ExerciseFile
+  editable: boolean
+  completions: NonNullable<ExerciseData['completions']>
+  onSaving: () => void
+  register: (flush: () => Promise<boolean>) => () => void
+}) {
+  const { t } = useTranslation()
+  const f = props.file
+  return (
+    // closed at first: a card with several files stays short, and the run button stays in reach
+    <details className="file">
+      <summary className="file-head">
+        <code>{f.location}</code>
+        <button
+          type="button"
+          className="link"
+          onClick={(e) => {
+            e.preventDefault()
+            navigator.clipboard.writeText(f.location)
+          }}
+        >
+          {t('exercise.copyPath')}
+        </button>
+      </summary>
+      {f.content === null ? (
+        <pre>{t('exercise.missing')}</pre>
+      ) : props.editable ? (
+        <FileEditor blockId={props.blockId} file={f} completions={props.completions} onSaving={props.onSaving} register={props.register} />
+      ) : (
+        <div className="file-body">
+          <Markdown>{`\`\`\`\`${f.path.split('.').pop() ?? ''}\n${f.content}\n\`\`\`\``}</Markdown>
+        </div>
+      )}
+    </details>
+  )
+}
+
+function RunOutput({ run }: { run: NonNullable<ExerciseData['last_run']> }) {
+  const { t } = useTranslation()
+  return (
+    <div className="file">
+      <div className="file-head">
+        <span className="label">{run.exit_code === null ? t('exercise.outputStopped') : t('exercise.outputExit', { code: run.exit_code })}</span>
+      </div>
+      <pre className={run.exit_code === 0 ? '' : 'failed'}>{run.output || t('exercise.noOutput')}</pre>
+    </div>
   )
 }
 
@@ -439,8 +498,7 @@ export function PlacementResult(props: { id?: number; level: string | null; text
 
 type Features = { speech: boolean; commands: boolean; crafted: boolean; sketched: boolean }
 
-/** One card of a lesson, by its kind, with the calls it makes back to the server. */
-export function LessonCard(props: {
+type CardProps = {
   block: Block
   lesson: Lesson
   authored: boolean
@@ -449,7 +507,56 @@ export function LessonCard(props: {
   features: Features
   post: (path: string, body: unknown) => void
   onError: (message: string) => void
-}) {
+}
+
+const TASK_KINDS = new Set(['exercise', 'challenge', 'speaking'])
+const ANSWER_KINDS = new Set(['question', 'quiz', 'reading', 'vocab', 'network'])
+
+/** One card of a lesson, by its kind, with the calls it makes back to the server. */
+export function LessonCard(props: CardProps) {
+  if (TASK_KINDS.has(props.block.kind)) return <TaskCard {...props} />
+  if (ANSWER_KINDS.has(props.block.kind)) return <AnswerCard {...props} />
+  return <ShownCard {...props} />
+}
+
+/** The cards worked on over several tries: challenges, exercises and speaking. */
+function TaskCard(props: CardProps) {
+  const { block: b, lesson, authored, features } = props
+  const onAct: Act = (action, body = {}) => props.post(`/api/blocks/${b.id}/${action}`, body)
+  return b.kind === 'exercise' ? (
+      <ExerciseCard
+        key={b.id}
+        block={b}
+        disabled={lesson.running}
+        commands={features.commands}
+        authored={authored}
+        onAct={onAct}
+        onError={props.onError}
+      />
+    ) : b.kind === 'challenge' ? (
+      <ChallengeCard
+        key={b.id}
+        block={b}
+        disabled={lesson.running}
+        speech={features.speech}
+        authored={authored}
+        onAct={onAct}
+        onError={props.onError}
+      />
+    ) : (
+      <SpeakingCard
+        key={b.id}
+        block={b}
+        disabled={lesson.running}
+        speech={features.speech}
+        onAct={onAct}
+        onError={props.onError}
+      />
+    )
+}
+
+/** The cards answered in one go: questions, quizzes, readings, the vocabulary check and network requests. */
+function AnswerCard(props: CardProps) {
   const { block: b, lesson, authored, features } = props
   return b.kind === 'question' ? (
       <QuestionCard
@@ -489,27 +596,7 @@ export function LessonCard(props: {
         disabled={lesson.running}
         onSubmit={(known) => props.post(`/api/blocks/${b.id}/vocab`, { known })}
       />
-    ) : b.kind === 'exercise' ? (
-      <ExerciseCard
-        key={b.id}
-        block={b}
-        disabled={lesson.running}
-        commands={features.commands}
-        authored={authored}
-        onAct={(action, body = {}) => props.post(`/api/blocks/${b.id}/${action}`, body)}
-        onError={props.onError}
-      />
-    ) : b.kind === 'challenge' ? (
-      <ChallengeCard
-        key={b.id}
-        block={b}
-        disabled={lesson.running}
-        speech={features.speech}
-        authored={authored}
-        onAct={(action, body = {}) => props.post(`/api/blocks/${b.id}/${action}`, body)}
-        onError={props.onError}
-      />
-    ) : b.kind === 'network' ? (
+    ) : (
       <NetworkCard
         key={b.id}
         id={b.id}
@@ -518,7 +605,13 @@ export function LessonCard(props: {
         disabled={lesson.running}
         onDecide={(allow) => props.post(`/api/blocks/${b.id}/network`, { allow })}
       />
-    ) : b.kind === 'plot' ? (
+    )
+}
+
+/** The cards that show something: plots, widgets, figures, a placement result, a podcast, and plain text. */
+function ShownCard(props: CardProps) {
+  const { block: b, lesson, authored, features } = props
+  return b.kind === 'plot' ? (
       <PlotCard key={b.id} id={b.id} title={b.markdown} data={b.data} />
     ) : b.kind === 'widget' ? (
       <WidgetCard key={b.id} id={b.id} title={b.markdown} data={b.data} onTry={authored ? undefined : (at) => props.post(`/api/blocks/${b.id}/widget`, { at })} />
@@ -533,15 +626,6 @@ export function LessonCard(props: {
         title={b.markdown}
         data={b.data}
         answered={(id) => (lesson.blocks.find((q) => q.id === id)?.data as QuizData | undefined)?.answer != null}
-      />
-    ) : b.kind === 'speaking' ? (
-      <SpeakingCard
-        key={b.id}
-        block={b}
-        disabled={lesson.running}
-        speech={features.speech}
-        onAct={(action, body = {}) => props.post(`/api/blocks/${b.id}/${action}`, body)}
-        onError={props.onError}
       />
     ) : (
       <section key={b.id} id={`block-${b.id}`} className="block">
