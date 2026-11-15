@@ -162,7 +162,6 @@ function QuizForm(props: {
   onUnknown?: () => void
   onSubmit: (answer: string, confidence: number) => void
 }) {
-  const { t } = useTranslation()
   const [answer, setAnswer] = useState('')
   const [unknown, setUnknown] = useState(false)
   const [confidence, setConfidence] = useState(50)
@@ -200,21 +199,28 @@ function QuizForm(props: {
           }}
         />
       ) : (
-        <>
-          <label htmlFor={`${props.id}-answer`} className="small">
-            {t('common.yourAnswer')}
-          </label>
-          <textarea
-            id={`${props.id}-answer`}
-            className="field" dir="auto"
-            rows={3}
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-          />
-        </>
+        <OpenAnswer id={props.id} answer={answer} onAnswer={setAnswer} />
       )}
       <Confidence id={props.id} value={unknown ? null : confidence} onChange={setConfidence} ready={!props.disabled && ready} />
     </form>
+  )
+}
+
+function OpenAnswer(props: { id: string; answer: string; onAnswer: (answer: string) => void }) {
+  const { t } = useTranslation()
+  return (
+    <>
+      <label htmlFor={`${props.id}-answer`} className="small">
+        {t('common.yourAnswer')}
+      </label>
+      <textarea
+        id={`${props.id}-answer`}
+        className="field" dir="auto"
+        rows={3}
+        value={props.answer}
+        onChange={(e) => props.onAnswer(e.target.value)}
+      />
+    </>
   )
 }
 
@@ -227,7 +233,7 @@ export function QuizResult(props: { answer: string; confidence: number; result: 
         <span className="label">
           {props.unknown ? t('common.yourAnswer') : t('quiz.answerSure', { percent: percent(props.confidence) })}
         </span>
-        {props.unknown ? t('quiz.dontKnow') : props.items ? <SortOutcome items={props.items} answer={props.answer} misplaced={result.misplaced} /> : <AnswerText text={props.answer} picked={props.picked} />}
+        <GivenAnswer answer={props.answer} unknown={props.unknown} items={props.items} misplaced={result.misplaced} picked={props.picked} />
       </div>
       <div className={result.correct ? 'solution' : 'hint'}>
         <div className="label">{result.correct ? t('quiz.correct') : t('quiz.notQuite')}</div>
@@ -240,6 +246,26 @@ export function QuizResult(props: { answer: string; confidence: number; result: 
       </div>
     </div>
   )
+}
+
+function GivenAnswer(props: { answer: string; unknown?: boolean; items?: SortItem[]; misplaced?: string[]; picked?: boolean }) {
+  const { t } = useTranslation()
+  if (props.unknown) return t('quiz.dontKnow')
+  if (props.items) return <SortOutcome items={props.items} answer={props.answer} misplaced={props.misplaced} />
+  return <AnswerText text={props.answer} picked={props.picked} />
+}
+
+/** An answered card: still being graded, or its result. */
+export function GradedAnswer({ data: d }: { data: QuizData }) {
+  const { t } = useTranslation()
+  if (d.correct === undefined)
+    return (
+      <div className="attempt">
+        <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
+        <AnswerText text={d.answer!} picked={d.kind === 'choice'} />
+      </div>
+    )
+  return <QuizResult picked={d.kind === 'choice'} answer={d.answer!} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
 }
 
 /** The model answer beside the learner's, for them to say whether they had it. */
@@ -367,13 +393,8 @@ export function QuizCard(props: {
         />
       ) : d.correct === undefined && props.onSelfGrade && d.answer_key !== undefined ? (
         <SelfGrade answer={d.answer!} confidence={d.confidence!} answerKey={d.answer_key} explanation={d.explanation} disabled={props.disabled} onGrade={props.onSelfGrade} />
-      ) : d.correct === undefined ? (
-        <div className="attempt">
-          <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
-          <AnswerText text={d.answer!} picked={d.kind === 'choice'} />
-        </div>
       ) : (
-        <QuizResult picked={d.kind === 'choice'} answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
+        <GradedAnswer data={d} />
       )}
     </section>
   )
@@ -474,11 +495,27 @@ function ReviewOpen(props: { shown: { answer_key: string; explanation: string } 
   )
 }
 
+function ReviewHead(props: { card: DueCard; n: number; total: number; then: string | null }) {
+  const { t } = useTranslation()
+  const { card, then } = props
+  return (
+    <div className="label">
+      <span dir="auto">{card.topic}</span>
+      <span className="muted">{t('review.position', { n: props.n, total: props.total })}</span>
+      {card.confident_miss && <span className="chip warn">{t('review.sureAndMissed')}</span>}
+      {then && (
+        <a className="btn as-link skip" href={then} onClick={goOn(then)}>
+          {t('review.skipWarmup')}
+        </a>
+      )}
+    </div>
+  )
+}
+
 // a review sitting is a short box of time; whatever is still due waits for the next one
 const REVIEW_BOX_MS = 3 * 60 * 1000
 
 export function Review({ profile, then }: { profile: number; then: string | null }) {
-  const { t } = useTranslation()
   const [cards, setCards] = useState<DueCard[] | null>(null)
   const [index, setIndex] = useState(0)
   const [started, setStarted] = useState(() => Date.now())
@@ -535,16 +572,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
   return (
     <main ref={box} className="home">
       <section key={card.id} className="block quiz review-card">
-        <div className="label">
-          <span dir="auto">{card.topic}</span>
-          <span className="muted">{t('review.position', { n: index + 1, total: cards.length })}</span>
-          {card.confident_miss && <span className="chip warn">{t('review.sureAndMissed')}</span>}
-          {then && (
-            <a className="btn as-link skip" href={then} onClick={goOn(then)}>
-              {t('review.skipWarmup')}
-            </a>
-          )}
-        </div>
+        <ReviewHead card={card} n={index + 1} total={cards.length} then={then} />
         <div className="review-time" aria-hidden="true">
           <span style={{ animationDuration: `${REVIEW_BOX_MS}ms`, animationDelay: `-${Date.now() - started}ms` }} />
         </div>
