@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { day, fileSize } from './i18n'
@@ -30,36 +31,12 @@ export function PublishPage({ courseId }: { courseId: number }) {
   const [sources, setSources] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [check, setCheck] = useState<Check | null>(null)
   const [stale, setStale] = useState(0)
 
   useEffect(() => {
     api<Preview>(`/api/courses/${courseId}/publish`).then(setPreview, (e: Error) => setError(e.message))
-    api<Check>(`/api/courses/${courseId}/check`).then(setCheck, (e: Error) => setError(e.message))
   }, [courseId])
-
-  useEffect(() => {
-    if (!check?.running) return
-    const timer = setTimeout(() => api<Check>(`/api/courses/${courseId}/check`).then(setCheck, (e: Error) => setError(e.message)), 2000)
-    return () => clearTimeout(timer)
-  }, [courseId, check])
-
-  async function startCheck() {
-    setError('')
-    try {
-      setCheck(await api<Check>(`/api/courses/${courseId}/check`, {}))
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }
-
-  async function decide(edit: Edit, status: EditStatus) {
-    try {
-      setCheck(await api<Check>(`/api/courses/${courseId}/check/${edit.id}`, { status }))
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }
+  const { check, startCheck, decide } = useCourseCheck(courseId, setError)
 
   async function publish() {
     setBusy(true)
@@ -97,114 +74,9 @@ export function PublishPage({ courseId }: { courseId: number }) {
           <div className="label">{t('publish.written', { written: preview.written, units: preview.units })}</div>
           <div className="small">{t('publish.writtenHelp')}</div>
 
-          {preview.sources.length > 0 && (
-            <fieldset className="stack">
-              <legend className="label">{t('publish.sources')}</legend>
-              <div className="small">{t('publish.sourcesHelp')}</div>
-              {preview.sources.map((s) => (
-                <label key={s.id} className="row">
-                  <input
-                    type="checkbox"
-                    checked={sources.includes(s.id)}
-                    onChange={(e) => setSources((all) => (e.target.checked ? [...all, s.id] : all.filter((x) => x !== s.id)))}
-                  />
-                  <span dir="auto">{s.name}</span>
-                  <span className="small">{fileSize(s.size)}</span>
-                </label>
-              ))}
-            </fieldset>
-          )}
+          <Carried preview={preview} sources={sources} onSources={setSources} />
 
-          {preview.from_workspace.length > 0 && (
-            <div className="stack">
-              <div className="label">{t('publish.fromWorkspace')}</div>
-              <div className="small">{t('publish.fromWorkspaceHelp')}</div>
-              <ul className="small">
-                {preview.from_workspace.map((x) => (
-                  <li key={x.block}>
-                    <span dir="auto">{x.lesson}</span>: <code>{x.files.join(', ')}</code>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {preview.setup.length > 0 && (
-            <div className="stack">
-              <div className="label">{t('publish.setup')}</div>
-              <div className="small">{t('publish.setupHelp')}</div>
-              <pre dir="ltr">{preview.setup.join('\n')}</pre>
-            </div>
-          )}
-
-          {check && (
-            <div className="stack publish-check">
-              <div className="label">{t('publish.check')}</div>
-              <div className="small">{t('publish.checkHelp')}</div>
-              {check.running ? (
-                <div className="muted">{t('publish.checking')}</div>
-              ) : (
-                <>
-                  {check.failed && <div className="error">{t('publish.checkFailed')}</div>}
-                  {check.checked && !check.failed && (
-                    <div className="small">
-                      {t('publish.checked', { date: day(check.checked.slice(0, 10)) })}{' '}
-                      {check.edits.length === 0 && t('publish.checkNone')}
-                    </div>
-                  )}
-                  <div className="row">
-                    <button type="button" className="btn" disabled={preview.written === 0} onClick={startCheck}>
-                      {check.checked ? t('publish.checkAgain') : t('publish.checkRun')}
-                    </button>
-                    {!check.checked && <span className="small">{t('publish.checkSkip')}</span>}
-                  </div>
-                </>
-              )}
-              {check.edits.map((edit) => (
-                <div key={edit.id} className={`block entry edit ${edit.status}`}>
-                  <div className="label">
-                    {t(`publish.targets.${edit.target}`)}
-                    {edit.lesson && (
-                      <span dir="auto">
-                        {': '}
-                        {edit.lesson}
-                      </span>
-                    )}
-                    {edit.target === 'file' && (
-                      <code className="small" dir="ltr">
-                        {' '}
-                        {edit.ref}
-                      </code>
-                    )}
-                    {edit.status !== 'proposed' && <span className="chip">{t(`publish.${edit.status}`)}</span>}
-                  </div>
-                  <div className="edit-change" dir="auto">
-                    <del>{edit.old}</del>
-                    <ins>{edit.new}</ins>
-                  </div>
-                  <div className="small" dir="auto">
-                    {edit.reason}
-                  </div>
-                  <div className="row">
-                    {edit.status === 'proposed' ? (
-                      <>
-                        <button type="button" className="btn primary" onClick={() => decide(edit, 'accepted')}>
-                          {t('publish.accept')}
-                        </button>
-                        <button type="button" className="btn" onClick={() => decide(edit, 'rejected')}>
-                          {t('publish.reject')}
-                        </button>
-                      </>
-                    ) : (
-                      <button type="button" className="btn" onClick={() => decide(edit, 'proposed')}>
-                        {t('publish.undo')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {check && <CourseCheck check={check} written={preview.written} onStart={startCheck} onDecide={decide} />}
 
           <label className="label" htmlFor="publish-notes">
             {t('publish.notes')}
@@ -232,35 +104,203 @@ export function PublishPage({ courseId }: { courseId: number }) {
         </section>
       )}
 
-      <section className="stack">
-        <h2>{t('publish.versions')}</h2>
-        {preview.versions.length === 0 && <div className="muted">{t('publish.none')}</div>}
-        {preview.versions.map((v) => (
-          <div key={v.hash} className="block entry">
-            <div className="label">
-              {t('publish.version', { number: v.number, date: day(v.published.slice(0, 10)) })}
-              <span className="chip">{t('publish.writtenShort', { written: v.written, units: v.units })}</span>
-            </div>
-            {v.notes && (
-              <div className="small" dir="auto">
-                {v.notes}
-              </div>
-            )}
-            <div className="small">
-              {t(`publish.licences.${v.licence}`)}
-              {v.forkable ? '' : `, ${t('publish.noForks')}`}
-            </div>
-            <div className="row">
-              <a className="btn as-link" href={`/api/versions/${v.hash}/bundle`} download>
-                {t('publish.download')}
-              </a>
-              <code className="small" dir="ltr" title={v.hash}>
-                {v.hash.slice(0, 12)}
-              </code>
-            </div>
-          </div>
-        ))}
-      </section>
+      <Versions versions={preview.versions} />
     </main>
+  )
+}
+
+/** The course's check runs on the server; while it runs the page asks again every 2 s. */
+function useCourseCheck(courseId: number, setError: (message: string) => void) {
+  const [check, setCheck] = useState<Check | null>(null)
+
+  useEffect(() => {
+    api<Check>(`/api/courses/${courseId}/check`).then(setCheck, (e: Error) => setError(e.message))
+  }, [courseId, setError])
+
+  useEffect(() => {
+    if (!check?.running) return
+    const timer = setTimeout(() => api<Check>(`/api/courses/${courseId}/check`).then(setCheck, (e: Error) => setError(e.message)), 2000)
+    return () => clearTimeout(timer)
+  }, [courseId, check, setError])
+
+  async function startCheck() {
+    setError('')
+    try {
+      setCheck(await api<Check>(`/api/courses/${courseId}/check`, {}))
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  async function decide(edit: Edit, status: EditStatus) {
+    try {
+      setCheck(await api<Check>(`/api/courses/${courseId}/check/${edit.id}`, { status }))
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  return { check, startCheck, decide }
+}
+
+/** What goes into the version besides the lessons: chosen sources, files from the workspace, setup commands. */
+function Carried(props: { preview: Preview; sources: number[]; onSources: Dispatch<SetStateAction<number[]>> }) {
+  const { t } = useTranslation()
+  return (
+    <>
+      {props.preview.sources.length > 0 && (
+        <fieldset className="stack">
+          <legend className="label">{t('publish.sources')}</legend>
+          <div className="small">{t('publish.sourcesHelp')}</div>
+          {props.preview.sources.map((s) => (
+            <label key={s.id} className="row">
+              <input
+                type="checkbox"
+                checked={props.sources.includes(s.id)}
+                onChange={(e) => props.onSources((all) => (e.target.checked ? [...all, s.id] : all.filter((x) => x !== s.id)))}
+              />
+              <span dir="auto">{s.name}</span>
+              <span className="small">{fileSize(s.size)}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+
+      {props.preview.from_workspace.length > 0 && (
+        <div className="stack">
+          <div className="label">{t('publish.fromWorkspace')}</div>
+          <div className="small">{t('publish.fromWorkspaceHelp')}</div>
+          <ul className="small">
+            {props.preview.from_workspace.map((x) => (
+              <li key={x.block}>
+                <span dir="auto">{x.lesson}</span>: <code>{x.files.join(', ')}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {props.preview.setup.length > 0 && (
+        <div className="stack">
+          <div className="label">{t('publish.setup')}</div>
+          <div className="small">{t('publish.setupHelp')}</div>
+          <pre dir="ltr">{props.preview.setup.join('\n')}</pre>
+        </div>
+      )}
+    </>
+  )
+}
+
+function CourseCheck(props: { check: Check; written: number; onStart: () => void; onDecide: (edit: Edit, status: EditStatus) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="stack publish-check">
+      <div className="label">{t('publish.check')}</div>
+      <div className="small">{t('publish.checkHelp')}</div>
+      {props.check.running ? (
+        <div className="muted">{t('publish.checking')}</div>
+      ) : (
+        <>
+          {props.check.failed && <div className="error">{t('publish.checkFailed')}</div>}
+          {props.check.checked && !props.check.failed && (
+            <div className="small">
+              {t('publish.checked', { date: day(props.check.checked.slice(0, 10)) })}{' '}
+              {props.check.edits.length === 0 && t('publish.checkNone')}
+            </div>
+          )}
+          <div className="row">
+            <button type="button" className="btn" disabled={props.written === 0} onClick={props.onStart}>
+              {props.check.checked ? t('publish.checkAgain') : t('publish.checkRun')}
+            </button>
+            {!props.check.checked && <span className="small">{t('publish.checkSkip')}</span>}
+          </div>
+        </>
+      )}
+      {props.check.edits.map((edit) => (
+        <EditCard key={edit.id} edit={edit} onDecide={(status) => props.onDecide(edit, status)} />
+      ))}
+    </div>
+  )
+}
+
+function EditCard(props: { edit: Edit; onDecide: (status: EditStatus) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className={`block entry edit ${props.edit.status}`}>
+      <div className="label">
+        {t(`publish.targets.${props.edit.target}`)}
+        {props.edit.lesson && (
+          <span dir="auto">
+            {': '}
+            {props.edit.lesson}
+          </span>
+        )}
+        {props.edit.target === 'file' && (
+          <code className="small" dir="ltr">
+            {' '}
+            {props.edit.ref}
+          </code>
+        )}
+        {props.edit.status !== 'proposed' && <span className="chip">{t(`publish.${props.edit.status}`)}</span>}
+      </div>
+      <div className="edit-change" dir="auto">
+        <del>{props.edit.old}</del>
+        <ins>{props.edit.new}</ins>
+      </div>
+      <div className="small" dir="auto">
+        {props.edit.reason}
+      </div>
+      <div className="row">
+        {props.edit.status === 'proposed' ? (
+          <>
+            <button type="button" className="btn primary" onClick={() => props.onDecide('accepted')}>
+              {t('publish.accept')}
+            </button>
+            <button type="button" className="btn" onClick={() => props.onDecide('rejected')}>
+              {t('publish.reject')}
+            </button>
+          </>
+        ) : (
+          <button type="button" className="btn" onClick={() => props.onDecide('proposed')}>
+            {t('publish.undo')}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Versions(props: { versions: Version[] }) {
+  const { t } = useTranslation()
+  return (
+    <section className="stack">
+      <h2>{t('publish.versions')}</h2>
+      {props.versions.length === 0 && <div className="muted">{t('publish.none')}</div>}
+      {props.versions.map((v) => (
+        <div key={v.hash} className="block entry">
+          <div className="label">
+            {t('publish.version', { number: v.number, date: day(v.published.slice(0, 10)) })}
+            <span className="chip">{t('publish.writtenShort', { written: v.written, units: v.units })}</span>
+          </div>
+          {v.notes && (
+            <div className="small" dir="auto">
+              {v.notes}
+            </div>
+          )}
+          <div className="small">
+            {t(`publish.licences.${v.licence}`)}
+            {v.forkable ? '' : `, ${t('publish.noForks')}`}
+          </div>
+          <div className="row">
+            <a className="btn as-link" href={`/api/versions/${v.hash}/bundle`} download>
+              {t('publish.download')}
+            </a>
+            <code className="small" dir="ltr" title={v.hash}>
+              {v.hash.slice(0, 12)}
+            </code>
+          </div>
+        </div>
+      ))}
+    </section>
   )
 }
