@@ -26,6 +26,7 @@ import type { Locale } from './locale'
 import { Home } from './Home'
 import { ThemeToggle } from './ThemeToggle'
 import { Workspace } from './Workspace'
+import { courseRoute, profileRoute } from './route'
 
 function useHash(): string {
   const [hash, setHash] = useState(location.hash)
@@ -73,51 +74,54 @@ function useLocale(current: Profile | null, reload: () => Promise<unknown>) {
 
 /** Pages of one course or lesson: the workspace, its search, recap, book, publishing and handouts. */
 function coursePage(hash: string, current: Profile, meta: Meta) {
-  const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing)|\?lesson=(\d+)&(card|chat)=(\d+))?$/)
-  if (match)
-    return (
-      <Workspace
-        key={match[1]}
-        profile={current.id}
-        courseId={Number(match[1])}
-        speech={meta.speech}
-        commands={meta.commands}
-        crafted={meta.crafted}
-        sketched={current.sketch}
-        concept={match[2] ? Number(match[2]) : null}
-        start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
-        found={match[4] ? { lesson: Number(match[4]), at: `${match[5] === 'chat' ? 'msg' : 'block'}-${match[6]}` } : null}
-      />
-    )
-  const found = hash.match(/^#\/course\/(\d+)\/search\?(.*)$/)
-  if (found) {
-    const params = new URLSearchParams(found[2])
-    return <SearchPage key={hash} courseId={Number(found[1])} query={params.get('q') ?? ''} kind={params.get('kind') ?? ''} />
+  const route = courseRoute(hash)
+  switch (route?.page) {
+    case 'workspace':
+      return (
+        <Workspace
+          key={route.courseId}
+          profile={current.id}
+          courseId={route.courseId}
+          speech={meta.speech}
+          commands={meta.commands}
+          crafted={meta.crafted}
+          sketched={current.sketch}
+          concept={route.concept}
+          start={route.start}
+          found={route.found}
+        />
+      )
+    case 'search':
+      return <SearchPage key={hash} courseId={route.courseId} query={route.query} kind={route.kind} />
+    case 'recap':
+      return <Recap key={hash} courseId={route.courseId} profile={current.id} preview={route.preview} />
+    case 'book':
+      return <Book key={route.courseId} courseId={route.courseId} learner={current.name} pdf={meta.pdf} sketched={current.sketch} />
+    case 'handout':
+      return <Handout key={hash} lessonId={route.lessonId} version={route.version} pdf={meta.pdf} />
+    case 'publish':
+      return <PublishPage key={route.courseId} courseId={route.courseId} />
   }
-  const recapped = hash.match(/^#\/course\/(\d+)\/recap(\?preview)?$/)
-  if (recapped) return <Recap key={hash} courseId={Number(recapped[1])} profile={current.id} preview={Boolean(recapped[2])} />
-  const book = hash.match(/^#\/course\/(\d+)\/book$/)
-  if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={meta.pdf} sketched={current.sketch} />
-  const handout = hash.match(/^#\/lesson\/(\d+)\/handout\/(student|teacher)$/)
-  if (handout) return <Handout key={handout[0]} lessonId={Number(handout[1])} version={handout[2] as 'student' | 'teacher'} pdf={meta.pdf} />
-  const publishing = hash.match(/^#\/course\/(\d+)\/publish$/)
-  if (publishing) return <PublishPage key={publishing[1]} courseId={Number(publishing[1])} />
   return null
+}
+
+const PROFILE_PAGES = {
+  errors: ErrorsPage,
+  sitting: SittingPage,
+  commands: CommandsPage,
+  usage: UsagePage,
 }
 
 /** Pages across the profile's courses: review, errors, the graph, sittings, exploring, commands, usage, settings. */
 function profilePage(hash: string, current: Profile) {
-  const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
-  if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
-  const graph = hash.match(/^#\/graph(?:\?course=(\d+))?$/)
-  if (graph) return <GraphPage key={hash} profile={current.id} course={graph[1] ? Number(graph[1]) : null} />
-  if (hash === '#/explore' && current.mode !== 'teacher') return <ExplorePage key={current.id} profile={current.id} />
-  if (hash === '#/errors') return <ErrorsPage profile={current.id} />
-  if (hash === '#/sitting') return <SittingPage profile={current.id} />
-  if (hash === '#/commands') return <CommandsPage profile={current.id} />
-  if (hash === '#/usage') return <UsagePage profile={current.id} />
-  if (hash === '#/settings') return <SettingsPage />
-  return null
+  const route = profileRoute(hash)
+  if (!route) return null
+  if (route.page === 'review') return <Review profile={current.id} then={route.then} />
+  if (route.page === 'graph') return <GraphPage key={hash} profile={current.id} course={route.course} />
+  if (route.page === 'explore') return current.mode !== 'teacher' ? <ExplorePage key={current.id} profile={current.id} /> : null
+  if (route.page === 'settings') return <SettingsPage />
+  const Page = PROFILE_PAGES[route.page]
+  return <Page profile={current.id} />
 }
 
 export default function App() {

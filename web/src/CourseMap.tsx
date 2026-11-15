@@ -1,48 +1,13 @@
 import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TFunction } from 'i18next'
 import { api } from './api'
-import { type ChallengeData, type Concept, type CourseDetail, type Lesson, outlineOf, practiceTitle, unitDone } from './course'
+import { type Concept, type CourseDetail, type Lesson, practiceTitle, unitDone } from './course'
+import { conceptStats } from './mapStats'
 import { day } from './i18n'
 import { type Source, SourcesPanel } from './Sources'
 
 function squares(concept: Concept): number {
   return Math.round((concept.mastery ?? 0) * 3)
-}
-
-function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction, prepared = false): string {
-  if (prepared) return preparedStats(lesson, t)
-  const due = concept.due ? t('map.reviewDue', { count: concept.due }) : ''
-  if (!lesson) return [concept.known ? t('map.placedOut') : t('map.notStarted'), due].filter(Boolean).join(', ')
-  if (concept.kind === 'practice') return lesson.blocks.some((b) => b.kind === 'done') ? t('common.done') : t('map.started')
-  const where = unitWhere(concept, lesson, t)
-  const cs = lesson.blocks
-    .filter((b) => b.kind === 'challenge' || b.kind === 'exercise' || b.kind === 'speaking')
-    .map((b) => b.data as ChallengeData)
-  if (cs.length === 0) return [where || t('map.started'), due].filter(Boolean).join(', ')
-  return [where, ...challengeStats(cs, t), due].filter(Boolean).join(', ')
-}
-
-function preparedStats(lesson: Lesson | undefined, t: TFunction): string {
-  if (!lesson) return t('map.notPlanned')
-  return lesson.blocks.some((b) => b.kind === 'done') ? t('map.planned') : t('map.drafting')
-}
-
-/** Done, or the outline step the unit is at. */
-function unitWhere(concept: Concept, lesson: Lesson, t: TFunction): string {
-  if (unitDone(concept, lesson)) return t('common.done')
-  const outline = outlineOf(lesson)
-  return outline && outline.at < outline.steps.length ? t('outline.step', { n: outline.at + 1, total: outline.steps.length }) : ''
-}
-
-function challengeStats(cs: ChallengeData[], t: TFunction): (string | false)[] {
-  const hints = cs.reduce((n, c) => n + c.hints.length, 0)
-  const gaveUp = cs.filter((c) => c.gave_up).length
-  return [
-    t('map.solved', { solved: cs.filter((c) => c.solved).length, total: cs.length }),
-    hints > 0 && t('map.hints', { count: hints }),
-    gaveUp > 0 && t('map.gaveUp', { n: gaveUp }),
-  ]
 }
 
 /** The course's menu: exports, placement, changing the map, pace and the learner's materials. */
