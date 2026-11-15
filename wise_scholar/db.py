@@ -1049,6 +1049,11 @@ def practice_title(n: int) -> str:
     return f"Practice {n}"
 
 
+def _card_due(card_id: int | None, now: str) -> bool:
+    """Whether the card, or a live card split from it, is due for review."""
+    return bool(card_id and row(_CARD_LINE + "SELECT 1 FROM cards k JOIN line ON line.id = k.id WHERE k.retired = 0 AND k.due <= ?", card_id, now))
+
+
 def place_practice(course_id: int) -> None:
     """Lay the practice units of a learner's course out again: one after every PRACTICE_EVERY units not placed out,
     in the module of the unit before it. A practice unit that already has a lesson is kept, in map order and
@@ -1772,9 +1777,7 @@ def _verdict(block: dict) -> str | None:
     """What one piece of evidence says: held, shaky, or nothing yet."""
     d = block["data"] or {}
     if block["kind"] == "quiz":
-        if d.get("correct") is None:
-            return None
-        return "held" if d["correct"] and not d.get("unknown") and d.get("confidence", 0) >= 0.5 else "shaky"
+        return _quiz_verdict(d)
     if d.get("solved") and d.get("solution") is None:
         return "held"
     if d.get("solved") or d.get("gave_up") or d.get("solution") is not None:
@@ -1802,6 +1805,13 @@ def _evidence_verdicts(block: dict) -> list[tuple[str, str]]:
     return [(block["created"], verdict)] if (verdict := _verdict(block)) else []
 
 
+def _quiz_verdict(d: dict) -> str | None:
+    """Held when answered right and sure enough, shaky otherwise; nothing before it is graded."""
+    if d.get("correct") is None:
+        return None
+    return "held" if d["correct"] and not d.get("unknown") and d.get("confidence", 0) >= 0.5 else "shaky"
+
+
 def claim_states(profile_id: int, now: str) -> dict[int, str]:
     """Each claim's state from its latest evidence, in a lesson or in a review of its cards: held (fading once a linked
     review card is due), shaky, or unseen."""
@@ -1813,11 +1823,10 @@ def claim_states(profile_id: int, now: str) -> dict[int, str]:
         "WHERE c.profile_id = ? AND c.wrong = 0 ORDER BY b.id", profile_id,
     ):
         block = _block({k: v for k, v in e.items() if k != "claim_id"})
-        card_id = (block["data"] or {}).get("card_id")
         for when, verdict in _evidence_verdicts(block):
             if e["claim_id"] not in latest or when >= latest[e["claim_id"]][0]:
                 latest[e["claim_id"]] = (when, verdict)
-        if card_id and row(_CARD_LINE + "SELECT 1 FROM cards k JOIN line ON line.id = k.id WHERE k.retired = 0 AND k.due <= ?", card_id, now):
+        if _card_due((block["data"] or {}).get("card_id"), now):
             due.add(e["claim_id"])
     for claim_id, (_, verdict) in latest.items():
         states[claim_id] = "fading" if verdict == "held" and claim_id in due else verdict
