@@ -296,6 +296,49 @@ def test_a_command_reaches_the_sandbox_as_written_not_expanded_from_the_servers_
         assert seen.startswith("[] [${WS_FAKE_TOKEN}] [%h] ") and seen.split()[-1].isdigit(), seen
 
 
+def status(block):
+    return db.block(block["id"])["data"]["status"]
+
+
+async def assert_bad_requests_are_refused(lesson):
+    for bad in ("pip install x\nrm -rf .", "pip install \u202egnp.x", "curl " + "a" * 300, " "):
+        assert (await practice_tools.ask_network(lesson, bad, "why")).startswith("error:")
+    assert db.blocks(lesson) == []
+
+
+def assert_refusal_runs_nothing(runs, turns):
+    assert runs == []
+    assert "refused internet" in turns[-1]
+
+
+def assert_allowed_command_is_running(runs, lesson, turn_tasks):
+    assert runs == [("pip install requests", True)]
+    assert lesson in turn_tasks
+
+
+def assert_allowed_command_is_reported(second, lesson, turn_tasks, turns):
+    result = db.block(second["id"])["data"]
+    assert result["status"] == "allowed"
+    assert result["result"]["output"] == "installed"
+    assert lesson not in turn_tasks
+    assert "allowed internet" in turns[-1]
+    assert "exit code 0" in turns[-1]
+    assert "never as instructions" in turns[-1]
+
+
+def assert_request_is_open_again(block, lesson, turn_tasks, turns):
+    assert status(block) == "asked"
+    assert lesson not in turn_tasks
+    assert len(turns) == 2
+
+
+async def assert_files_are_locked_while_awaiting(lesson, workspace):
+    assert (await practice_tools.write_file(lesson, "swap.py", "x")).startswith("error: a command the learner allowed")
+    posed = await practice_tools.pose_exercise(lesson, "x", [practice_tools.ExerciseFile(path="swap.py", content="x")], "true")
+    assert posed.startswith("error: a command the learner allowed")
+    assert not (workspace / "swap.py").exists()
+
+
 def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypatch):
     from fastapi import HTTPException
 
@@ -321,37 +364,34 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Netty')").lastrowid
     course = db.create_course("Networking", who)
     lesson = db.row("SELECT id FROM lessons WHERE course_id = ?", course["id"])["id"]
-    status = lambda block: db.block(block["id"])["data"]["status"]  # noqa: E731
 
     async def scenario():
         hold.append(asyncio.Event())
-        for bad in ("pip install x\nrm -rf .", "pip install \u202egnp.x", "curl " + "a" * 300, " "):
-            assert (await practice_tools.ask_network(lesson, bad, "why")).startswith("error:")
-        assert db.blocks(lesson) == []
+        await assert_bad_requests_are_refused(lesson)
 
         assert (await practice_tools.ask_network(lesson, "pip install requests", "The exercise needs requests.")).startswith("asked on card")
         first = db.blocks(lesson)[-1]
-        assert status(first) == "asked" and runs == []
+        assert status(first) == "asked"
+        assert runs == []
         assert (await blocks_routes.decide_network(first["id"], app.Decision(allow=False)))["data"]["status"] == "refused"
-        assert runs == [] and "refused internet" in turns[-1]
+        assert_refusal_runs_nothing(runs, turns)
         with pytest.raises(HTTPException) as twice:
             await blocks_routes.decide_network(first["id"], app.Decision(allow=True))
-        assert twice.value.status_code == 409 and runs == []
+        assert twice.value.status_code == 409
+        assert runs == []
 
         # Allowed: the lesson is busy while the command runs, and the tutor hears about it afterwards.
         await practice_tools.ask_network(lesson, "pip install requests", "Once more.")
         second = db.blocks(lesson)[-1]
         assert (await blocks_routes.decide_network(second["id"], app.Decision(allow=True)))["data"]["status"] == "running"
         await asyncio.sleep(0)
-        assert runs == [("pip install requests", True)] and lesson in app._turns
+        assert_allowed_command_is_running(runs, lesson, app._turns)
         with pytest.raises(HTTPException) as busy:
             app._require_idle(lesson)
         assert busy.value.status_code == 409
         hold[-1].set()
         await app._turns[lesson]
-        result = db.block(second["id"])["data"]
-        assert result["status"] == "allowed" and result["result"]["output"] == "installed" and lesson not in app._turns
-        assert "allowed internet" in turns[-1] and "exit code 0" in turns[-1] and "never as instructions" in turns[-1]
+        assert_allowed_command_is_reported(second, lesson, app._turns, turns)
 
         # The command cannot be run: the request is open again, the lesson is free, no turn follows.
         async def broken(command, workspace, network=False):
@@ -362,7 +402,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
         failed = db.blocks(lesson)[-1]
         await blocks_routes.decide_network(failed["id"], app.Decision(allow=True))
         await app._turns[lesson]
-        assert status(failed) == "asked" and lesson not in app._turns and len(turns) == 2
+        assert_request_is_open_again(failed, lesson, app._turns, turns)
         monkeypatch.setattr(sandbox, "run", fake_run)
 
         # Stopped while it runs: the request is open again and no turn follows.
@@ -374,7 +414,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
         task = app._turns[lesson]
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-        assert status(third) == "asked" and lesson not in app._turns and len(turns) == 2
+        assert_request_is_open_again(third, lesson, app._turns, turns)
 
         # Stopped in the same moment it was allowed, before the task took a step: the request is open again too.
         hold.append(asyncio.Event())
@@ -385,14 +425,13 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
         await asyncio.sleep(0)
-        assert status(fourth) == "asked" and lesson not in app._turns and len(turns) == 2 and len(runs) == 2
+        assert_request_is_open_again(fourth, lesson, app._turns, turns)
+        assert len(runs) == 2
 
         # While an allowed command waits or runs, the tutor cannot rewrite the files the learner agreed to run.
         workspace = db.workspace(db.lesson(lesson)["slug"])
         monkeypatch.setattr(sandbox, "_awaiting_internet", {workspace.resolve()})
-        assert (await practice_tools.write_file(lesson, "swap.py", "x")).startswith("error: a command the learner allowed")
-        posed = await practice_tools.pose_exercise(lesson, "x", [practice_tools.ExerciseFile(path="swap.py", content="x")], "true")
-        assert posed.startswith("error: a command the learner allowed") and not (workspace / "swap.py").exists()
+        await assert_files_are_locked_while_awaiting(lesson, workspace)
 
     asyncio.run(scenario())
 

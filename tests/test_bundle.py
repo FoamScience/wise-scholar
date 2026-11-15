@@ -67,51 +67,97 @@ def _authored(places) -> dict:
     return {"course": course_id, "lesson": lesson_id, "units": (fitting, lofting), "card": card, "kept": kept["id"]}
 
 
+def assert_preview_lists_what_would_ship(preview):
+    assert [s["name"] for s in preview["sources"]] == ["notes.md", "book.pdf"]
+    assert [x["files"] for x in preview["from_workspace"]] == [["loft/old.py"]]
+    assert preview["setup"] == ["uv pip install plotly"]
+    assert (preview["written"], preview["units"]) == (1, 2)
+
+
+def assert_manifest_has_nothing_of_the_author(manifest, a):
+    raw = json.dumps(manifest.model_dump(by_alias=True))
+    assert "pump maker" not in raw
+    assert "Ada" not in raw
+    assert "MakePipe\", \"correct" not in raw
+    assert "Half" not in raw
+    assert [u.key for u in manifest.units] == [u["key"] for u in a["units"]]
+    assert manifest.units[1].needs == [a["units"][0]["key"]]
+    assert [u.written for u in manifest.units] == [False, True]
+
+
+def assert_manifest_lesson_is_stripped(manifest, a):
+    [lesson] = manifest.lessons
+    assert [b.kind for b in lesson.blocks] == ["prose", "quiz", "figure", "exercise", "exercise"]
+    quiz = lesson.blocks[1].data
+    assert quiz["answer"] is None
+    assert "correct" not in quiz
+    assert quiz["card"] == db.card(a["card"])["key"]
+    assert "previous" not in lesson.blocks[2].data
+    assert lesson.blocks[3].data["attempts"] == []
+    assert "starter" not in lesson.blocks[3].data
+
+
+def assert_manifest_files_and_terms(manifest, assets):
+    files = {f.path: assets[f.asset].decode() for f in manifest.files}
+    assert files == {"loft/new.py": "# TODO loft", "loft/old.py": "print('old, as edited')"}
+    assert [s.name for s in manifest.sources] == ["notes.md"]
+    assert manifest.setup == ["uv pip install plotly"]
+    assert manifest.version.licence == "CC-BY-SA-4.0"
+    assert manifest.version.forkable is False
+
+
+def assert_installed_units(course, a, version_hash):
+    assert course["mode"] == "replay"
+    assert course["source_version"] == version_hash
+    assert course["refused_files"] == []
+    assert [(c["key"], c["unwritten"]) for c in db.concepts(course["id"])] == [(u["key"], k) for u, k in zip(a["units"], (1, 0))]
+    assert bundle.versions(a["course"])[0]["written"] == 1
+    assert db.needs(course["id"]) == {db.concepts(course["id"])[1]["id"]: [db.concepts(course["id"])[0]["id"]]}
+
+
+def assert_installed_lesson_is_clean(course, a):
+    new_lesson = db.row("SELECT * FROM lessons WHERE course_id = ? AND phase = 'lesson'", course["id"])
+    blocks = db.blocks(new_lesson["id"])
+    new_card = db.card(blocks[1]["data"]["card_id"])
+    assert new_card["course_id"] == course["id"]
+    assert new_card["key"] == db.card(a["card"])["key"]
+    assert new_card["misconceptions"] == {"MakePipe": "a pipe sweep joins sections"}
+    assert blocks[2]["data"]["teaches"] == {"claim": "A loft needs two wires.", "notice": "The two outlines.", "misconception": "", "limits": ""}
+    assert all(b["data"]["imported"] for b in blocks if b["data"])
+    assert db.rows("SELECT * FROM messages WHERE lesson_id = ?", new_lesson["id"]) == []
+    assert db.facts(course["id"]) == []
+    assert db.rows("SELECT * FROM answers WHERE card_id = ?", new_card["id"]) == []
+
+
+def assert_installed_files_and_sources(course, places):
+    workspace = db.WORKSPACE / course["slug"]
+    assert course_files.read_text(workspace, "loft/new.py") == "# TODO loft"
+    [source] = db.sources(course["id"])
+    assert source["status"] == "ready"
+    assert (places["source_dir"] / str(course["id"]) / f"{source['id']}-notes.md").read_bytes() == b"notes.md"
+
+
 def test_a_published_version_carries_the_content_and_none_of_the_author(places):
     a = _authored(places)
     preview = bundle.preview(a["course"])
-    assert [s["name"] for s in preview["sources"]] == ["notes.md", "book.pdf"]
-    assert [x["files"] for x in preview["from_workspace"]] == [["loft/old.py"]]
-    assert preview["setup"] == ["uv pip install plotly"] and (preview["written"], preview["units"]) == (1, 2)
+    assert_preview_lists_what_would_ship(preview)
 
     published = bundle.publish(a["course"], notes="first", licence="CC-BY-SA-4.0", forkable=False, sources=[a["kept"]], **places)
-    assert published["number"] == 1 and bundle.versions(a["course"])[0]["hash"] == published["hash"]
+    assert published["number"] == 1
+    assert bundle.versions(a["course"])[0]["hash"] == published["hash"]
     data = (places["store"] / f"{published['hash']}.zip").read_bytes()
     version_hash, manifest, assets = bundle.unpack(data)
     assert version_hash == published["hash"]
 
-    raw = json.dumps(manifest.model_dump(by_alias=True))
-    assert "pump maker" not in raw and "Ada" not in raw and "MakePipe\", \"correct" not in raw
-    assert [u.key for u in manifest.units] == [u["key"] for u in a["units"]] and manifest.units[1].needs == [a["units"][0]["key"]]
-    assert [u.written for u in manifest.units] == [False, True] and "Half" not in raw
-    [lesson] = manifest.lessons
-    assert [b.kind for b in lesson.blocks] == ["prose", "quiz", "figure", "exercise", "exercise"]
-    quiz = lesson.blocks[1].data
-    assert quiz["answer"] is None and "correct" not in quiz and quiz["card"] == db.card(a["card"])["key"]
-    assert "previous" not in lesson.blocks[2].data and lesson.blocks[3].data["attempts"] == [] and "starter" not in lesson.blocks[3].data
-    files = {f.path: assets[f.asset].decode() for f in manifest.files}
-    assert files == {"loft/new.py": "# TODO loft", "loft/old.py": "print('old, as edited')"}
-    assert [s.name for s in manifest.sources] == ["notes.md"] and manifest.setup == ["uv pip install plotly"]
-    assert manifest.version.licence == "CC-BY-SA-4.0" and manifest.version.forkable is False
+    assert_manifest_has_nothing_of_the_author(manifest, a)
+    assert_manifest_lesson_is_stripped(manifest, a)
+    assert_manifest_files_and_terms(manifest, assets)
 
     reader = db.conn.execute("INSERT INTO profiles (name) VALUES ('Reader')").lastrowid
     course = bundle.install(reader, version_hash, manifest, assets, places["source_dir"])
-    assert course["mode"] == "replay" and course["source_version"] == version_hash and course["refused_files"] == []
-    assert [(c["key"], c["unwritten"]) for c in db.concepts(course["id"])] == [(u["key"], k) for u, k in zip(a["units"], (1, 0))]
-    assert bundle.versions(a["course"])[0]["written"] == 1
-    assert db.needs(course["id"]) == {db.concepts(course["id"])[1]["id"]: [db.concepts(course["id"])[0]["id"]]}
-    new_lesson = db.row("SELECT * FROM lessons WHERE course_id = ? AND phase = 'lesson'", course["id"])
-    blocks = db.blocks(new_lesson["id"])
-    new_card = db.card(blocks[1]["data"]["card_id"])
-    assert new_card["course_id"] == course["id"] and new_card["key"] == db.card(a["card"])["key"]
-    assert new_card["misconceptions"] == {"MakePipe": "a pipe sweep joins sections"}
-    assert blocks[2]["data"]["teaches"] == {"claim": "A loft needs two wires.", "notice": "The two outlines.", "misconception": "", "limits": ""}
-    assert all(b["data"]["imported"] for b in blocks if b["data"]) and db.rows("SELECT * FROM messages WHERE lesson_id = ?", new_lesson["id"]) == []
-    assert db.facts(course["id"]) == [] and db.rows("SELECT * FROM answers WHERE card_id = ?", new_card["id"]) == []
-    workspace = db.WORKSPACE / course["slug"]
-    assert course_files.read_text(workspace, "loft/new.py") == "# TODO loft"
-    [source] = db.sources(course["id"])
-    assert source["status"] == "ready" and (places["source_dir"] / str(course["id"]) / f"{source['id']}-notes.md").read_bytes() == b"notes.md"
+    assert_installed_units(course, a, version_hash)
+    assert_installed_lesson_is_clean(course, a)
+    assert_installed_files_and_sources(course, places)
 
     assert bundle.preview(course["id"])["forked_from"] == {"topic": "Blade lofting", "number": 1, "hash": version_hash, "forkable": False}
 
@@ -210,6 +256,26 @@ def test_the_endpoints_publish_download_and_import_a_version(places, monkeypatch
         asyncio.run(sharing_routes.import_course(reader, UploadFile(io.BytesIO(b"nope"), filename="x.zip")))
 
 
+def assert_replay_view(view):
+    assert view["replay"] is True
+    assert [b["kind"] for b in view["blocks"]] == ["prose", "challenge", "quiz", "quiz"]
+
+
+def assert_misses_hold_the_tutor_back(started, replayed, open_quiz):
+    assert started == []
+    assert db.block(open_quiz["id"])["data"]["answer_key"] == "They bound the surface."
+    assert not any(b["kind"] == "done" for b in db.blocks(replayed))
+
+
+def assert_a_self_graded_miss_calls_the_tutor(started, replayed, blocks_routes):
+    [(where, line)] = started
+    assert where == replayed
+    assert blocks_routes.REPLAY_MISS in line
+    assert "marked it wrong" in line
+    assert db.blocks(replayed)[-1]["kind"] == "done"
+    assert db.blocks(replayed)[-1]["markdown"] == "You can loft two wires."
+
+
 def test_a_replayed_unit_runs_as_written_and_calls_the_tutor_only_on_misses(places, monkeypatch):
     import asyncio
 
@@ -237,40 +303,72 @@ def test_a_replayed_unit_runs_as_written_and_calls_the_tutor_only_on_misses(plac
     mine = bundle.install(reader, version_hash, manifest, assets, places["source_dir"])["id"]
     replayed = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", mine)["id"]
     view = app._lesson_view(replayed)
-    assert view["replay"] is True and [b["kind"] for b in view["blocks"]] == ["prose", "challenge", "quiz", "quiz"]
+    assert_replay_view(view)
     pretest, right, open_quiz = view["blocks"][1:]
 
     asyncio.run(blocks_routes.attempt(pretest["id"], blocks_routes.Answer(answer="two wires make a surface")))
     asyncio.run(blocks_routes.answer_quiz(right["id"], app.QuizAnswer(answer="ThruSections", confidence=0.8)))
     asyncio.run(blocks_routes.answer_quiz(open_quiz["id"], app.QuizAnswer(answer="no idea really", confidence=0.3)))
-    assert started == [] and db.block(open_quiz["id"])["data"]["answer_key"] == "They bound the surface."
-    assert not any(b["kind"] == "done" for b in db.blocks(replayed))
+    assert_misses_hold_the_tutor_back(started, replayed, open_quiz)
 
     asyncio.run(blocks_routes.self_grade_quiz(open_quiz["id"], app.SelfGrade(correct=False)))
-    [(where, line)] = started
-    assert where == replayed and blocks_routes.REPLAY_MISS in line and "marked it wrong" in line
-    assert db.blocks(replayed)[-1]["kind"] == "done" and db.blocks(replayed)[-1]["markdown"] == "You can loft two wires."
+    assert_a_self_graded_miss_calls_the_tutor(started, replayed, blocks_routes)
 
     prompt = app._turn_prompt(db.lesson(replayed), "[learner] why?")
-    assert "[replay]" in prompt and "Lofting joins sections." in prompt
+    assert "[replay]" in prompt
+    assert "Lofting joins sections." in prompt
 
     unwritten = next(c for c in db.concepts(mine) if c["unwritten"])
     live = asyncio.run(learner_routes.open_concept(unwritten["id"]))
-    assert live["replay"] is False and "The lesson begins" in started[-1][1]
+    assert live["replay"] is False
+    assert "The lesson begins" in started[-1][1]
 
     with pytest.raises(app.HTTPException, match="cards left"):
         courses_routes.card_placement(mine)  # the one written unit is finished already
     fresh = bundle.install(reader, version_hash, manifest, assets, places["source_dir"])["id"]
     placement = courses_routes.card_placement(fresh)
     [card] = placement["blocks"]
-    assert card["data"]["kind"] == "choice" and card["data"].get("answer_key") is None
+    assert card["data"]["kind"] == "choice"
+    assert card["data"].get("answer_key") is None
     asyncio.run(blocks_routes.answer_quiz(card["id"], app.QuizAnswer(answer="ThruSections", confidence=0.9)))
-    assert db.blocks(placement["id"])[-1]["kind"] == "done" and db.concepts(fresh)[0]["known"] == 1
+    assert db.blocks(placement["id"])[-1]["kind"] == "done"
+    assert db.concepts(fresh)[0]["known"] == 1
     assert len(started) == 2
     with pytest.raises(app.HTTPException, match="cards left"):
         courses_routes.card_placement(fresh)
     with pytest.raises(app.HTTPException, match="only an imported course"):
         courses_routes.card_placement(course)
+
+
+def assert_check_prompts(prompts, a, prose):
+    assert len(prompts) > 1
+    assert all("[author]" in p for p in prompts)
+    assert all("pump maker" in p for p in prompts)
+    joined = "".join(prompts)
+    assert f"[block {prose['key']}, lesson \"Lofting\"]" in joined
+    assert "[file loft/new.py]" in joined
+
+
+def assert_proposals(replies):
+    assert replies[0].splitlines() == ["1: proposed", "2: proposed", "3: proposed", "4: error: old is not in that block; copy it exactly",
+                                      "5: error: there is no summary 'nope' in this version", "6: already proposed"]
+
+
+def assert_version_holds_accepted_edits(manifest, assets, plain):
+    [lesson] = manifest.lessons
+    assert lesson.blocks[0].markdown == "Lofting joins **profiles**."
+    assert lesson.blocks[1].data["options"] == ["Loft", "MakePipe"]
+    [card] = manifest.cards
+    assert (card.question, card.options, card.answer_key) == ("Which call lofts wires?", ["Loft", "MakePipe"], "Loft")
+    assert {f.path: assets[f.asset].decode() for f in manifest.files}["loft/new.py"] == "# TODO loft"
+    assert manifest.units[1].hash != plain["units"][1]["hash"]
+    assert manifest.units[0].hash == plain["units"][0]["hash"]
+
+
+def assert_course_keeps_its_own_content(a, prose, quiz_block):
+    assert db.block(prose["id"])["markdown"] == "Lofting joins **sections**."
+    assert db.card(a["card"])["answer_key"] == "ThruSections"
+    assert db.block(quiz_block["id"])["data"]["options"] == ["ThruSections", "MakePipe"]
 
 
 def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_only(places, monkeypatch):
@@ -294,7 +392,8 @@ def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_on
     prompts, replies = [], []
 
     async def turn(lesson, prompt, kind, what):
-        assert kind == "cleanup" and lesson["course_id"] == a["course"]
+        assert kind == "cleanup"
+        assert lesson["course_id"] == a["course"]
         prompts.append(prompt)
         if len(prompts) == 1:
             replies.append(await side_tools.propose_edits(a["course"], [
@@ -309,12 +408,12 @@ def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_on
 
     monkeypatch.setattr(app, "_background_turn", turn)
     asyncio.run(sharing_routes._check(a["course"]))
-    assert len(prompts) > 1 and all("[author]" in p and "pump maker" in p for p in prompts)
-    assert f"[block {prose['key']}, lesson \"Lofting\"]" in "".join(prompts) and "[file loft/new.py]" in "".join(prompts)
-    assert replies[0].splitlines() == ["1: proposed", "2: proposed", "3: proposed", "4: error: old is not in that block; copy it exactly",
-                                      "5: error: there is no summary 'nope' in this version", "6: already proposed"]
+    assert_check_prompts(prompts, a, prose)
+    assert_proposals(replies)
     check = sharing_routes.publish_check(a["course"])
-    assert check["checked"] and not check["running"] and [e["lesson"] for e in check["edits"]] == ["Lofting", None, None]
+    assert check["checked"]
+    assert not check["running"]
+    assert [e["lesson"] for e in check["edits"]] == ["Lofting", None, None]
     block_edit, card_edit, file_edit = check["edits"]
     sharing_routes.decide_edit(a["course"], block_edit["id"], sharing_routes.EditStatus(status="accepted"))
     sharing_routes.decide_edit(a["course"], card_edit["id"], sharing_routes.EditStatus(status="accepted"))
@@ -326,19 +425,14 @@ def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_on
     v = sharing_routes.publish_version(a["course"], sharing_routes.Publish())
     assert v["stale"] == 0
     _, manifest, assets = bundle.unpack((places["store"] / f"{v['hash']}.zip").read_bytes())
-    [lesson] = manifest.lessons
-    assert lesson.blocks[0].markdown == "Lofting joins **profiles**." and lesson.blocks[1].data["options"] == ["Loft", "MakePipe"]
-    [card] = manifest.cards
-    assert (card.question, card.options, card.answer_key) == ("Which call lofts wires?", ["Loft", "MakePipe"], "Loft")
-    assert {f.path: assets[f.asset].decode() for f in manifest.files}["loft/new.py"] == "# TODO loft"
-    assert manifest.units[1].hash != plain["units"][1]["hash"] and manifest.units[0].hash == plain["units"][0]["hash"]
-    assert db.block(prose["id"])["markdown"] == "Lofting joins **sections**." and db.card(a["card"])["answer_key"] == "ThruSections"
-    assert db.block(quiz_block["id"])["data"]["options"] == ["ThruSections", "MakePipe"]
+    assert_version_holds_accepted_edits(manifest, assets, plain)
+    assert_course_keeps_its_own_content(a, prose, quiz_block)
 
     # A rerun keeps the author's decisions and reads the course with the accepted edits already made.
     prompts.clear()
     asyncio.run(sharing_routes._check(a["course"]))
-    assert "**profiles**" in "".join(prompts) and [e["status"] for e in sharing_routes.publish_check(a["course"])["edits"]] == ["accepted", "accepted", "rejected"]
+    assert "**profiles**" in "".join(prompts)
+    assert [e["status"] for e in sharing_routes.publish_check(a["course"])["edits"]] == ["accepted", "accepted", "rejected"]
 
     db.conn.execute("UPDATE blocks SET markdown = 'Rewritten.' WHERE id = ?", (prose["id"],))
     assert sharing_routes.publish_version(a["course"], sharing_routes.Publish())["stale"] == 1
@@ -406,6 +500,28 @@ def test_a_check_starts_in_the_background_and_blocks_publishing_until_it_ends(pl
     sharing_routes._checks_failed.discard(a["course"])
 
 
+def assert_upgrade_offer(offer):
+    assert offer["number"] == 2
+    assert offer["notes"] == "fitting written"
+    assert (offer["kept"], offer["restarted"], offer["added"], offer["removed"]) == (["Lofting"], ["Fitting"], ["Trimming"], ["Dropped"])
+
+
+def assert_upgraded_units(course, mine, a, card, gone):
+    fitting, lofting = a["units"]
+    after = {c["key"]: c for c in db.concepts(course)}
+    assert [c["title"] for c in db.concepts(course)] == ["Fitting", "Lofting", "Trimming"]
+    assert after[lofting["key"]]["known"] == 1
+    assert db.row("SELECT COUNT(*) AS n FROM answers WHERE card_id = ?", card)["n"] == 1
+    [trimming] = [c for k, c in after.items() if k not in mine]
+    assert after[fitting["key"]]["unwritten"] == 0
+    assert trimming["unwritten"] == 1
+    written = db.row("SELECT id FROM lessons WHERE course_id = ? AND concept_id = ?", course, after[fitting["key"]]["id"])
+    assert [b["markdown"] for b in db.blocks(written["id"])] == ["Half a lesson on fitting."]
+    assert db.rows("SELECT id FROM lessons WHERE concept_id = ?", gone) == []
+    assert db.concept_view(course)
+    assert db.needs(course) == {after[lofting["key"]]["id"]: [after[fitting["key"]]["id"]]}
+
+
 def test_an_upgrade_keeps_unchanged_units_restarts_changed_ones_and_is_offered_on_import(places, monkeypatch):
     import asyncio
 
@@ -438,9 +554,7 @@ def test_an_upgrade_keeps_unchanged_units_restarts_changed_ones_and_is_offered_o
     db.conn.execute("INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, 'Sections', 'Trimming', 0, 5, 'concept')", (a["course"],))
     v2 = sharing_routes.publish_version(a["course"], sharing_routes.Publish(notes="fitting written"))
 
-    offer = app._course(course)["upgrade"]
-    assert offer["number"] == 2 and offer["notes"] == "fitting written"
-    assert (offer["kept"], offer["restarted"], offer["added"], offer["removed"]) == (["Lofting"], ["Fitting"], ["Trimming"], ["Dropped"])
+    assert_upgrade_offer(app._course(course)["upgrade"])
     assert sharing_routes.skip_upgrade(course, sharing_routes.Upgrade(hash=v2["hash"]))["upgrade"] is None
     with pytest.raises(HTTPException, match="not the one"):
         sharing_routes.upgrade_course(course, sharing_routes.Upgrade(hash=v1["hash"]))
@@ -448,17 +562,13 @@ def test_an_upgrade_keeps_unchanged_units_restarts_changed_ones_and_is_offered_o
     # Importing the newer bundle again brings the offer back on the course already played, instead of a second course.
     data2 = (places["store"] / f"{v2['hash']}.zip").read_bytes()
     again = asyncio.run(sharing_routes.import_course(readers[0], UploadFile(io.BytesIO(data2), filename="v2.zip")))
-    assert again["id"] == course and again["upgrade"] == 2 and app._course(course)["upgrade"]["number"] == 2
+    assert again["id"] == course
+    assert again["upgrade"] == 2
+    assert app._course(course)["upgrade"]["number"] == 2
     assert asyncio.run(sharing_routes.import_course(readers[1], UploadFile(io.BytesIO(data2), filename="v2.zip")))["id"] != course
 
     done = sharing_routes.upgrade_course(course, sharing_routes.Upgrade(hash=v2["hash"]))
-    assert done["upgraded"]["kept"] == [lofting["key"]] and done["upgrade"] is None and db.course(course)["source_version"] == v2["hash"]
-    after = {c["key"]: c for c in db.concepts(course)}
-    assert [c["title"] for c in db.concepts(course)] == ["Fitting", "Lofting", "Trimming"]
-    assert after[lofting["key"]]["known"] == 1 and db.row("SELECT COUNT(*) AS n FROM answers WHERE card_id = ?", card)["n"] == 1
-    [trimming] = [c for k, c in after.items() if k not in mine]
-    assert after[fitting["key"]]["unwritten"] == 0 and trimming["unwritten"] == 1
-    written = db.row("SELECT id FROM lessons WHERE course_id = ? AND concept_id = ?", course, after[fitting["key"]]["id"])
-    assert [b["markdown"] for b in db.blocks(written["id"])] == ["Half a lesson on fitting."]
-    assert db.rows("SELECT id FROM lessons WHERE concept_id = ?", gone) == [] and db.concept_view(course)
-    assert db.needs(course) == {after[lofting["key"]]["id"]: [after[fitting["key"]]["id"]]}
+    assert done["upgraded"]["kept"] == [lofting["key"]]
+    assert done["upgrade"] is None
+    assert db.course(course)["source_version"] == v2["hash"]
+    assert_upgraded_units(course, mine, a, card, gone)
