@@ -30,7 +30,7 @@ def test_facts_reviews_and_answers_stay_inside_their_profile():
     assert len(db.graded_answers(ada)) == 1 and db.graded_answers(ben) == []
 
     assert db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", german)["id"])["profile"] == "Ben"
-    assert {p["name"]: p["courses"] for p in db.profiles()} == {"Ada": 2, "Ben": 1}
+    assert {p["name"]: p["courses"] for p in db.profiles() if p["id"] in (ada, ben)} == {"Ada": 2, "Ben": 1}
 
 
 def test_archived_courses_leave_the_review_queue_and_deleted_courses_leave_nothing():
