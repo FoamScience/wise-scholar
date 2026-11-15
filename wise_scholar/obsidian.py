@@ -121,6 +121,11 @@ def _alt(text: str) -> str:
     return " ".join(text.replace("]", ")").replace("[", "(").split())
 
 
+def _list(head: str, entries: list[str]) -> list[str]:
+    """A titled list after a blank line; nothing when it is empty."""
+    return ["", head, *entries] if entries else []
+
+
 def _first_line(text: str, fallback: str) -> str:
     return text.splitlines()[0] if text.strip() else fallback
 
@@ -487,20 +492,21 @@ class Vault:
         t = self.t
         for lesson in self.lessons:
             unit = self.unit_of_lesson(lesson)
-            for block in lesson["blocks"]:
-                if block["kind"] in CARD_KINDS:
-                    self.put(("card", block["id"]), self._card_props(lesson, block), self._card_body(lesson, block))
+            for block in (b for b in lesson["blocks"] if b["kind"] in CARD_KINDS):
+                self.put(("card", block["id"]), self._card_props(lesson, block), self._card_body(lesson, block))
             body = self.lesson_text(lesson)
             opening = lesson["phase"] in ("interview", "placement")
-            props = {
-                "type": "lesson", "id": lesson["id"], "phase": lesson["phase"], "course": self.link(("course",)),
-                "unit": self.link(("unit", unit["id"])) if unit else None,
-                "started": lesson["blocks"][0]["created"] if lesson["blocks"] else None,
-                "finished": any(b["kind"] == "done" for b in lesson["blocks"]),
-                "tags": ["wise-scholar/lesson"],
-            }
-            heading = t["interview"] if lesson["phase"] == "interview" else t["placement"] if lesson["phase"] == "placement" else lesson["title"]
-            self.put(("lesson", lesson["id"]), props, f"# {heading}\n\n" + ("" if opening else f"{t['course']}: {self.link(('course',))}\n\n") + "\n".join(body))
+            heading = t[lesson["phase"]] if opening else lesson["title"]
+            self.put(("lesson", lesson["id"]), self._lesson_props(lesson, unit), f"# {heading}\n\n" + ("" if opening else f"{t['course']}: {self.link(('course',))}\n\n") + "\n".join(body))
+
+    def _lesson_props(self, lesson: dict, unit: dict | None) -> dict:
+        return {
+            "type": "lesson", "id": lesson["id"], "phase": lesson["phase"], "course": self.link(("course",)),
+            "unit": self.link(("unit", unit["id"])) if unit else None,
+            "started": lesson["blocks"][0]["created"] if lesson["blocks"] else None,
+            "finished": any(b["kind"] == "done" for b in lesson["blocks"]),
+            "tags": ["wise-scholar/lesson"],
+        }
 
     def _mistake_notes(self) -> None:
         t = self.t
@@ -536,38 +542,42 @@ class Vault:
             self.put(("project", k["id"]), props, "\n".join(lines))
 
     def _unit_notes(self) -> None:
-        t = self.t
-        for c in self.concepts:
-            lessons = [l for l in self.lessons if l["concept_id"] == c["id"]]
-            cards = [b for l in lessons for b in l["blocks"] if b["kind"] in CARD_KINDS]
-            mistakes = [e for e in self.errors if (self.cards.get(e.get("card_id")) or {}).get("concept_id") == c["id"]]
-            index = self.concepts.index(c)
+        for index, c in enumerate(self.concepts):
             earlier = self.concepts[index - 1] if index else None
+            mistakes = [e for e in self.errors if (self.cards.get(e.get("card_id")) or {}).get("concept_id") == c["id"]]
             props = {
                 "type": "unit", "id": c["id"], "course": self.link(("course",)), "module": self.link(("module", c["module"])),
-                "position": self.concepts.index(c) + 1, "known": bool(c["known"]),
+                "position": index + 1, "known": bool(c["known"]),
                 "mastery": round(c["mastery"], 2) if c["mastery"] is not None else None,
                 "builds_on": self.link(("unit", earlier["id"])) if earlier else None,
                 "mistakes": len(mistakes), "tags": ["wise-scholar/unit"] + (["wise-scholar/placed-out"] if c["known"] else []),
             }
-            lines = [f"# {c['title']}", ""]
-            if c["known"]:
-                lines.append(f"*{t['placed_out']}*")
-            elif c["mastery"] is not None:
-                lines.append(f"**{t['mastery']}**: {round(c['mastery'] * 100)}%")
-            if earlier:
-                lines.append(f"**{t['builds_on']}**: {self.link(('unit', earlier['id']))}")
-            if lessons:
-                lines += ["", f"## {t['lessons']}"] + [f"- {self.link(('lesson', l['id']))}" for l in lessons]
-            if cards:
-                lines += ["", f"## {t['cards']}"] + [f"- {self.link(('card', b['id']))} · {self._outcome(b)}" for b in cards]
-            if mistakes:
-                lines += ["", f"## {t['mistakes']}"] + [f"- {self.link(('mistake', e['id']))}" for e in mistakes]
-            taught = [k for k in self.claims if any(src["concept_id"] == c["id"] for src in k["sources"])]
-            if taught:
-                lines += ["", f"## {t['claims']}"] + [f"- {self.link(('claim', k['id']))} · {t[k['state']]}" for k in taught]
-            lines += self._flashcards(c)
+            lines = [f"# {c['title']}", "", *self._unit_standing(c, earlier), *self._unit_lists(c, mistakes), *self._flashcards(c)]
             self.put(("unit", c["id"]), props, "\n".join(lines))
+
+    def _unit_standing(self, c: dict, earlier: dict | None) -> list[str]:
+        """Placed out or the mastery reached, and the unit it builds on."""
+        t, lines = self.t, []
+        if c["known"]:
+            lines.append(f"*{t['placed_out']}*")
+        elif c["mastery"] is not None:
+            lines.append(f"**{t['mastery']}**: {round(c['mastery'] * 100)}%")
+        if earlier:
+            lines.append(f"**{t['builds_on']}**: {self.link(('unit', earlier['id']))}")
+        return lines
+
+    def _unit_lists(self, c: dict, mistakes: list[dict]) -> list[str]:
+        """The unit's lessons, cards with their outcome, mistakes and the claims it taught."""
+        t = self.t
+        lessons = [l for l in self.lessons if l["concept_id"] == c["id"]]
+        cards = [b for l in lessons for b in l["blocks"] if b["kind"] in CARD_KINDS]
+        taught = [k for k in self.claims if any(src["concept_id"] == c["id"] for src in k["sources"])]
+        return [
+            *_list(f"## {t['lessons']}", [f"- {self.link(('lesson', l['id']))}" for l in lessons]),
+            *_list(f"## {t['cards']}", [f"- {self.link(('card', b['id']))} · {self._outcome(b)}" for b in cards]),
+            *_list(f"## {t['mistakes']}", [f"- {self.link(('mistake', e['id']))}" for e in mistakes]),
+            *_list(f"## {t['claims']}", [f"- {self.link(('claim', k['id']))} · {t[k['state']]}" for k in taught]),
+        ]
 
     def _module_notes(self) -> None:
         t = self.t
@@ -663,28 +673,29 @@ class Vault:
                 "lessons": [self.link(("lesson", src["id"])) for src in c["sources"] if ("lesson", src["id"]) in self.names],
                 "tags": ["wise-scholar/claim", f"wise-scholar/{c['state']}"],
             }
-            lines = [c["text"], "", f"*{t[c['state']]}*"]
-            for heading, kind, side in (
-                ("follows_from", "follows", "to_id"), ("leads_to", "follows", "from_id"),
-                ("grounded_by", "supports", "to_id"), ("grounds", "supports", "from_id"),
-            ):
-                other = "from_id" if side == "to_id" else "to_id"
-                found = [e[other] for e in mine if e["kind"] == kind and e[side] == c["id"]]
-                if found:
-                    lines += ["", f"**{t[heading]}**"] + [f"- {self._claim_ref(i)}" for i in found]
-            contrasts = [e["to_id"] if e["from_id"] == c["id"] else e["from_id"] for e in mine if e["kind"] == "contrasts"]
-            if contrasts:
-                lines += ["", f"**{t['contrasts']}**"] + [f"- {self._claim_ref(i)}" for i in contrasts]
+            lines = [c["text"], "", f"*{t[c['state']]}*", *self._claim_links(c["id"], mine)]
             taught = [src for src in c["sources"] if ("lesson", src["id"]) in self.names]
-            if taught:
-                lines += ["", f"**{t['taught_in']}**"] + [f"- {self.link(('lesson', src['id']))}" for src in taught]
+            lines += _list(f"**{t['taught_in']}**", [f"- {self.link(('lesson', src['id']))}" for src in taught])
             checked = [e for e in c["evidence"] if ("card", e["block_id"]) in self.names]
-            if checked:
-                lines += ["", f"**{t['checked_by']}**"] + [
-                    f"- {self.link(('card', e['block_id']))} · {t['right'] if e['verdict'] == 'held' else t['wrong'] if e['verdict'] else t['open']}"
-                    for e in checked
-                ]
+            lines += _list(f"**{t['checked_by']}**", [f"- {self.link(('card', e['block_id']))} · {self._verdict(e['verdict'])}" for e in checked])
             self.put(("claim", c["id"]), props, "\n".join(lines))
+
+    def _claim_links(self, claim_id: int, mine: list[dict]) -> list[str]:
+        """The claims this one follows from, leads to, is grounded by, grounds and contrasts with."""
+        t, lines = self.t, []
+        for heading, kind, side in (
+            ("follows_from", "follows", "to_id"), ("leads_to", "follows", "from_id"),
+            ("grounded_by", "supports", "to_id"), ("grounds", "supports", "from_id"),
+        ):
+            other = "from_id" if side == "to_id" else "to_id"
+            found = [e[other] for e in mine if e["kind"] == kind and e[side] == claim_id]
+            lines += _list(f"**{t[heading]}**", [f"- {self._claim_ref(i)}" for i in found])
+        contrasts = [e["to_id"] if e["from_id"] == claim_id else e["from_id"] for e in mine if e["kind"] == "contrasts"]
+        return lines + _list(f"**{t['contrasts']}**", [f"- {self._claim_ref(i)}" for i in contrasts])
+
+    def _verdict(self, verdict: str | None) -> str:
+        t = self.t
+        return t["right"] if verdict == "held" else t["wrong"] if verdict else t["open"]
 
     def _course_note(self):
         t, c = self.t, self.course
@@ -701,26 +712,31 @@ class Vault:
             lines += [f"**{t['level']}**: {c['level']}"]
         opening = [l for l in self.lessons if l["phase"] in ("interview", "placement")]
         lines += [""] + [f"- {self.link(('lesson', l['id']))}" for l in opening]
-        lines += ["", f"## {t['map']}", "", f"![[{self.root}/{_name(t['map'])}.canvas]]"]
+        self.put(("course",), props, "\n".join(lines + self._course_map() + self._course_lists()))
+
+    def _course_map(self) -> list[str]:
+        """The canvas, then each module with its units and how far each got."""
+        t = self.t
+        lines = ["", f"## {t['map']}", "", f"![[{self.root}/{_name(t['map'])}.canvas]]"]
         for module in dict.fromkeys(x["module"] for x in self.concepts):
             lines += ["", f"### {self.link(('module', module), module)}"]
             for u in (x for x in self.concepts if x["module"] == module):
                 mark = t["placed_out"] if u["known"] else f"{round(u['mastery'] * 100)}%" if u["mastery"] is not None else "–"
                 lines.append(f"- {self.link(('unit', u['id']))} · {mark}")
-        if self.capstones:
-            lines += ["", f"## {t['projects']}"] + [f"- {self.link(('project', k['id']))}" for k in self.capstones]
-        if self.errors:
-            lines += ["", f"## {t['mistakes']}"] + [f"- {self.link(('mistake', e['id']))}" for e in self.errors]
-        if self.claims:
-            lines += ["", f"## {t['claims']}"] + [f"- {self.link(('claim', k['id']))} · {t[k['state']]}" for k in self.claims]
+        return lines
+
+    def _course_lists(self) -> list[str]:
+        """The course's projects, mistakes, claims, lessons outside the map, and words."""
+        t = self.t
         extras = [l for l in self.lessons if l["concept_id"] is None and l["phase"] not in ("interview", "placement")]
-        if extras:
-            lines += ["", f"## {t['lessons']}"] + [f"- {self.link(('lesson', l['id']))}" for l in extras]
-        if c["lang"]:
-            words = self._words()
-            if words:
-                lines += ["", f"## {t['words']}"] + [f"- {self.link(('word', w['lemma']))}" for w in words]
-        self.put(("course",), props, "\n".join(lines))
+        words = self._words() if self.course["lang"] else []
+        return [
+            *_list(f"## {t['projects']}", [f"- {self.link(('project', k['id']))}" for k in self.capstones]),
+            *_list(f"## {t['mistakes']}", [f"- {self.link(('mistake', e['id']))}" for e in self.errors]),
+            *_list(f"## {t['claims']}", [f"- {self.link(('claim', k['id']))} · {t[k['state']]}" for k in self.claims]),
+            *_list(f"## {t['lessons']}", [f"- {self.link(('lesson', l['id']))}" for l in extras]),
+            *_list(f"## {t['words']}", [f"- {self.link(('word', w['lemma']))}" for w in words]),
+        ]
 
     def _canvas(self):
         """The map as an Obsidian canvas: one column per module, its units below, projects beside the module."""
