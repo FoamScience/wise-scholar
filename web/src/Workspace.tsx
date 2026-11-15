@@ -1,5 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { useArrivals } from './arrive'
@@ -8,16 +7,16 @@ import { useOnline } from './offline'
 import type { Given } from './offline'
 import type { QuizData } from './Quiz'
 import { LevelPanel } from './Language'
-import { lessonTitle, moduleRuns, outlineOf, replayShown, unitDone, searchHref } from './course'
+import { lessonTitle, lessonView, moduleRuns, outlineOf, replayShown, unitDone, searchHref } from './course'
 import { OutlineCard } from './Outline'
-import type { Block, Concept, CourseDetail, Lesson, Message, Ranked, SetupStep } from './course'
+import type { Block, Concept, CourseDetail, Lesson, Ranked, SetupStep } from './course'
 import { ScopeCard, ScopeForm } from './Scope'
 import type { Source } from './Sources'
 import { ModuleGroup, SideMenu } from './CourseMap'
 import { AskButton, ChatPanel, PaneSwitcher } from './Chat'
 import { EditBar } from './EditBar'
 import { LessonCard, PlacementResult } from './LessonCard'
-import { useAnsweredToday, useCourseStream, useFollow, useOfflineAnswers, useUnread } from './workspaceState'
+import { useAnsweredToday, useChatDraft, useCourseStream, useFollow, useLessonVisits, useOfflineAnswers, useUnread, useUpgrade } from './workspaceState'
 
 function Skeleton() {
   const { t } = useTranslation()
@@ -244,8 +243,6 @@ function SetupCard(props: { steps: SetupStep[]; onDecide: (index: number, allow:
 export function Workspace({ profile, courseId, speech, commands, crafted, sketched, concept, start, found }: { profile: number; courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null; found: { lesson: number; at: string } | null }) {
   const { t } = useTranslation()
   const foundLesson = found?.lesson ?? null
-  const [draft, setDraft] = useState('')
-  const [changing, setChanging] = useState(false)
   // the unit asked for while units it needs are still open: the map says so before it starts
   const [held, setHeld] = useState<number | null>(null)
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({})
@@ -263,20 +260,8 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
   const lessonBox = useRef<HTMLElement>(null)
 
   const lesson = course?.lessons.find((l) => l.id === lessonId) ?? null
-  const [upgrading, setUpgrading] = useState(false)
-
-  async function upgrade(hash: string) {
-    setUpgrading(true)
-    try {
-      const c = await api<CourseDetail>(`/api/courses/${courseId}/upgrade`, { hash })
-      setCourse(c)
-      setLessonId((id) => (c.lessons.some((l) => l.id === id) ? id : c.lessons[c.lessons.length - 1].id))
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setUpgrading(false)
-    }
-  }
+  const { upgrading, upgrade } = useUpgrade(courseId, setCourse, setLessonId, setError)
+  const { draft, setDraft, changing, setChanging, send, onKey } = useChatDraft(lesson, patchLesson, setError)
   const open = lesson ? (asking ?? (lesson.phase === 'interview' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))) : false
   const unread = useUnread(lessonId, lesson, open)
   const { given, give, sending, prepareOffline, sendBatch } = useOfflineAnswers(lessonId, patchLesson, setError)
@@ -322,42 +307,10 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
     api<Lesson>(path, {}).then(opened, (err: Error) => setError(err.message))
   }
 
-  // a course just finished opens its recap once, when the tutor is done answering
-  const busy = course?.lessons.some((l) => l.running) ?? true
-  useEffect(() => {
-    if (course?.recap?.finished && !course.recap.seen && !busy) location.hash = `#/course/${courseId}/recap`
-  }, [course?.recap, busy, courseId])
-
-  useEffect(() => {
-    // back at an unfinished unit after days away: the server decides whether it opens with a recap. Asked once the
-    // lesson stays open a moment, so one shown on the way to another (a new unit being created) gets none.
-    if (lessonId === null || !navigator.onLine) return
-    const asked = setTimeout(() => api(`/api/lessons/${lessonId}/resume`, {}).catch(() => {}), 1500)
-    return () => clearTimeout(asked)
-  }, [lessonId])
+  useLessonVisits(course, courseId, lessonId)
 
   function post(path: string, body: unknown) {
     api(path, body).catch((err: Error) => setError(err.message))
-  }
-
-  function send() {
-    const text = draft.trim()
-    if (!lesson || lesson.running || !text) return
-    api<Message>(`/api/lessons/${lesson.id}/turns`, { text }).then(
-      (message) => {
-        patchLesson(lesson.id, (l) => ({ ...l, messages: [...l.messages, message] }))
-        setDraft('')
-        setChanging(false)
-      },
-      (err: Error) => setError(err.message),
-    )
-  }
-
-  function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send()
-    }
   }
 
   // "Stop for today" after a finished unit, only once this sitting has answers to sum up
@@ -366,19 +319,9 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
 
   if (!course || !lesson) return <main className="home">{error && <div className="error">{error}</div>}</main>
 
-  const showPlan = lesson.phase === 'interview' && course.ranking.length > 0
-  const finished = lesson.concept_id !== null && lesson.blocks.some((b) => b.kind === 'done')
-  const nextUnit = finished
-    ? course.concepts.slice(course.concepts.findIndex((c) => c.id === lesson.concept_id) + 1).find((c) => !c.known && (c.mastery ?? 0) < 2 / 3)
-    : undefined
+  const { showPlan, finished, nextUnit, cardTotal, empty, canPrepare } = lessonView(course, lesson)
   const doing = activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working')
   const outline = outlineOf(lesson)
-  const cards = lesson.blocks.filter((b) => b.kind !== 'outline').length
-  // the summary card still to come keeps the total above the cards already shown
-  const estimate = outline?.cards ?? lesson.cards
-  const cardTotal = estimate && (lessonDone ? cards : Math.max(estimate, cards + 1))
-  const empty = lesson.blocks.length === 0 && !showPlan
-  const canPrepare = lesson.phase === 'lesson' && lesson.concept_id !== null && course.mode !== 'teacher' && !lesson.batch && !lesson.replay && !finished
 
   return (
     <div className="workspace" data-pane={pane}>
