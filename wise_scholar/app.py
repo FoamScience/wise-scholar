@@ -110,18 +110,28 @@ def _refusal(headers: dict, method: str, path: str) -> tuple[int, str] | None:
     if _hostname(headers.get("host", "")) not in HOSTS:
         return 421, "unknown host"
     if path.startswith("/mcp"):
-        given = headers.get("authorization", "").encode("utf-8", "replace")
-        if not secrets.compare_digest(given, f"Bearer {MCP_SECRET}".encode()):
-            return 401, "unauthorized"
-        if method == "POST" and _allowance(_mcp_clock, MCP_CALLS_PER_MINUTE, 60):
-            _mcp_clock.pop()
-            return 429, "too many tool calls this minute"
-    elif method in ("POST", "PUT", "PATCH", "DELETE"):
-        site = headers.get("sec-fetch-site")
-        origin = headers.get("origin")
-        if (site and site not in ("same-origin", "none")) or (origin and _hostname(urlparse(origin).netloc) != _hostname(headers.get("host", ""))):
-            return 403, "cross-site requests are refused"
+        return _mcp_refusal(headers, method)
+    if method in ("POST", "PUT", "PATCH", "DELETE") and _cross_site(headers):
+        return 403, "cross-site requests are refused"
     return None
+
+
+def _mcp_refusal(headers: dict, method: str) -> tuple[int, str] | None:
+    given = headers.get("authorization", "").encode("utf-8", "replace")
+    if not secrets.compare_digest(given, f"Bearer {MCP_SECRET}".encode()):
+        return 401, "unauthorized"
+    if method == "POST" and _allowance(_mcp_clock, MCP_CALLS_PER_MINUTE, 60):
+        _mcp_clock.pop()
+        return 429, "too many tool calls this minute"
+    return None
+
+
+def _cross_site(headers: dict) -> bool:
+    site = headers.get("sec-fetch-site")
+    if site and site not in ("same-origin", "none"):
+        return True
+    origin = headers.get("origin")
+    return bool(origin) and _hostname(urlparse(origin).netloc) != _hostname(headers.get("host", ""))
 
 
 class Guard:
@@ -269,6 +279,12 @@ def _state_line(lesson: dict) -> str:
             state += f" task={pace['task']:.0f} min"
     if lesson["concept"]:
         state += f" module={lesson['module']!r} concept={lesson['concept']!r}"
+    return state + _progress(lesson)
+
+
+def _progress(lesson: dict) -> str:
+    """The lesson's counters: outline step, cards shown, placement questions posed."""
+    state = ""
     if outline := flow_tools._outline(lesson["id"]):
         # every turn carries where the unit's counter stands, so step_done keeps up with the lesson
         steps, at = outline["data"]["steps"], outline["data"]["at"]
@@ -472,16 +488,29 @@ def _record_usage(lesson: dict, kind: str, final: dict, seconds: float | None = 
 
 
 async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
+    lesson_id = lesson["id"]
+    # what the turn said so far and how it ended; a stopped turn keeps the reply it streamed
+    turn = {"reply": "", "final": {"type": "turn.done", "ok": False, "error": "stopped"}}
+    token = secrets.token_urlsafe(16)
+    tutor.turn_started(lesson, token)
+    started = time.monotonic()
+    try:
+        await _converse(lesson, line, token, quiet, turn)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        tutor.turn_ended(lesson_id)
+        del _turns[lesson_id]
+    _turn_over(lesson, turn["reply"], turn["final"], time.monotonic() - started, quiet)
+
+
+async def _converse(lesson: dict, line: str, token: str, quiet: bool, turn: dict) -> None:
+    """Run the backend's turn, streaming its events to the learner unless quiet, until it is done."""
     lesson_id, course_id = lesson["id"], lesson["course_id"]
-    reply = ""
-    final = {"type": "turn.done", "ok": False, "error": "stopped"}
     # A lesson started on another backend, or idle past the cache's hour, gets a fresh session; the state header and
     # the lesson's record carry it over.
     resume = _resumes(lesson)
     session_id = lesson["session_id"] if resume else str(uuid.uuid4())
-    token = secrets.token_urlsafe(16)
-    tutor.turn_started(lesson, token)
-    started = time.monotonic()
     events = None
     try:
         # Over the hourly budget, the turn waits its turn rather than losing what the learner just did.
@@ -500,20 +529,21 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
             ), lesson_id, session_id, course_id)
             async for event in events:
                 if event["type"] == "chat.delta":
-                    reply += event["text"]
+                    turn["reply"] += event["text"]
                 if event["type"] == "turn.done":
-                    final = event
+                    turn["final"] = event
                     break
                 if not quiet:
                     hub.publish(course_id, {**event, "lesson_id": lesson_id})
-    except asyncio.CancelledError:
-        pass
     finally:
         if events is not None:
             await events.aclose()
-        tutor.turn_ended(lesson_id)
-        del _turns[lesson_id]
-    _record_usage(lesson, lesson["phase"], final, time.monotonic() - started)
+
+
+def _turn_over(lesson: dict, reply: str, final: dict, seconds: float, quiet: bool) -> None:
+    """After a turn: its usage, a replay's progress, and, for a turn the learner sees, the reply and the follow-up jobs."""
+    lesson_id, course_id = lesson["id"], lesson["course_id"]
+    _record_usage(lesson, lesson["phase"], final, seconds)
     if (now := db.lesson(lesson_id)) and _replayed(now):
         _replay_progress(now)
     if quiet:
@@ -553,24 +583,32 @@ def _record_line(block: dict) -> str:
     d, text = block["data"] or {}, _cut(block["markdown"], RECORD_BLOCK_CHARS)
     head = f"[block {block['id']}, {block['kind']}{', pretest' if d.get('pretest') else ''}]"
     if block["kind"] == "quiz":
-        options = f" | options: {'; '.join(map(str, d['options']))}" if d.get("options") else ""
-        given = (
-            "not answered" if d.get("correct") is None
-            else "did not know" if d.get("unknown")
-            else f"{_untrusted(_cut(str(d.get('answer')), 400))!r} at {d.get('confidence', 0):.0%} sure: {'right' if d['correct'] else 'wrong'}"
-        )
-        belief = f" | belief: {d['misconception']}" if d.get("misconception") else ""
-        return f"{head} {text}{options} | key: {d.get('answer_key', '')} | {d.get('explanation', '')} | learner: {given}{belief}"
+        return f"{head} {text}{_quiz_record(d)}"
     if block["kind"] in ("challenge", "exercise"):
-        last = f", last: {_untrusted(_cut(d['attempts'][-1], 400))!r}" if d.get("attempts") else ""
-        outcome = "solved" if d.get("solved") else "gave up" if d.get("gave_up") else "left open"
-        shown = f" | solution shown: {_cut(d['solution'], 600)}" if d.get("solution") is not None else ""
-        return f"{head} {text} | attempts: {len(d.get('attempts', []))}{last} | {outcome}{shown}"
+        return f"{head} {text}{_task_record(d)}"
     if block["kind"] == "widget" and d.get("tried"):
         text += " | tried: " + _cut("; ".join(widgets.describe(d["widget"], at) for at in d["tried"]), RECORD_BLOCK_CHARS)
     if teaches := d.get("teaches"):
         return f"{head} {text} | " + " | ".join(f"{k}: {_cut(v, RECORD_TEACHES_CHARS)}" for k, v in teaches.items() if v)
     return f"{head} {text}"
+
+
+def _quiz_record(d: dict) -> str:
+    options = f" | options: {'; '.join(map(str, d['options']))}" if d.get("options") else ""
+    given = (
+        "not answered" if d.get("correct") is None
+        else "did not know" if d.get("unknown")
+        else f"{_untrusted(_cut(str(d.get('answer')), 400))!r} at {d.get('confidence', 0):.0%} sure: {'right' if d['correct'] else 'wrong'}"
+    )
+    belief = f" | belief: {d['misconception']}" if d.get("misconception") else ""
+    return f"{options} | key: {d.get('answer_key', '')} | {d.get('explanation', '')} | learner: {given}{belief}"
+
+
+def _task_record(d: dict) -> str:
+    last = f", last: {_untrusted(_cut(d['attempts'][-1], 400))!r}" if d.get("attempts") else ""
+    outcome = "solved" if d.get("solved") else "gave up" if d.get("gave_up") else "left open"
+    shown = f" | solution shown: {_cut(d['solution'], 600)}" if d.get("solution") is not None else ""
+    return f" | attempts: {len(d.get('attempts', []))}{last} | {outcome}{shown}"
 
 
 def _lesson_record(lesson_id: int, newest: bool = False) -> str:
@@ -687,16 +725,9 @@ def _cards_prompt(lesson: dict, cards: list[dict], missed: str | None) -> str:
 async def _shorten(job: tuple[str, int]) -> str:
     """One cards turn: "done", "more" when a course has long cards left after a turn that made progress, or "failed"."""
     kind, ref = job
-    if kind == "short":
-        course_id, missed = ref, None
-        cards = [c for c in db.scheduled_cards(course_id) if quiz.is_long(c)][:CARDS_PER_TURN]
-    else:
-        card = db.card(ref)
-        if not card or card["retired"]:
-            return "done"
-        course_id, cards = card["course_id"], [card]
-        last = db.row("SELECT answer FROM answers WHERE card_id = ? ORDER BY id DESC LIMIT 1", ref)
-        missed = quiz.said(card, last["answer"]) if last else ""
+    if (picked := _job_cards(kind, ref)) is None:
+        return "done"
+    course_id, cards, missed = picked
     first = db.row("SELECT id FROM lessons WHERE course_id = ? ORDER BY id LIMIT 1", course_id)
     if not cards or not first:
         return "done"
@@ -710,6 +741,17 @@ async def _shorten(job: tuple[str, int]) -> str:
     if not ok:
         return "failed"
     return "more" if kind == "short" and any(db.card(c["id"])["retired"] for c in cards) else "done"
+
+
+def _job_cards(kind: str, ref: int) -> tuple[int, list[dict], str | None] | None:
+    """The course, the cards a cards job works on, and for a missed card what the learner said; None for a card gone."""
+    if kind == "short":
+        return ref, [c for c in db.scheduled_cards(ref) if quiz.is_long(c)][:CARDS_PER_TURN], None
+    card = db.card(ref)
+    if not card or card["retired"]:
+        return None
+    last = db.row("SELECT answer FROM answers WHERE card_id = ? ORDER BY id DESC LIMIT 1", ref)
+    return card["course_id"], [card], quiz.said(card, last["answer"]) if last else ""
 
 
 async def _shorten_forever() -> None:

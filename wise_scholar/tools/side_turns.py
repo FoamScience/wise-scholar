@@ -91,22 +91,35 @@ def _claim_error(c: NewClaim, text: str, lesson: dict) -> str | None:
     marked wrong, one said already, or evidence that is not a check of this lesson."""
     if (c.id is None) == (not text):
         return f"error: claim {c.key!r} needs either id or text, not both"
-    if c.id is not None:
-        known = db.claim(c.id)
-        if not known or known["profile_id"] != lesson["profile_id"]:
-            return f"error: there is no claim {c.id}"
-        if known["wrong"]:
-            return f"error: claim {c.id} was marked wrong by the learner; leave it out"
-    else:
-        if len(text) > CLAIM_CHARS:
-            return f"error: claim {c.key!r} is too long; one statement, under {CLAIM_CHARS} characters"
-        if same := db.same_claim(lesson["profile_id"], text):
-            return f"error: claim {c.key!r} was marked wrong by the learner; leave it out" if same["wrong"] else f"error: claim {same['id']} says {c.key!r} already; give its id"
+    problem = _known_claim_error(c.id, lesson) if c.id is not None else _new_claim_error(c.key, text, lesson)
+    if problem:
+        return problem
     for block_id in c.evidence:
-        block = db.block(block_id)
-        if not block or block["lesson_id"] != lesson["id"] or block["kind"] not in db.EVIDENCE_KINDS or (block["data"] or {}).get("pretest"):
+        if not _evidence_of(db.block(block_id), lesson):
             return f"error: block {block_id} is not a quick check, challenge or exercise of this lesson after the pretest"
     return None
+
+
+def _known_claim_error(claim_id: int, lesson: dict) -> str | None:
+    known = db.claim(claim_id)
+    if not known or known["profile_id"] != lesson["profile_id"]:
+        return f"error: there is no claim {claim_id}"
+    if known["wrong"]:
+        return f"error: claim {claim_id} was marked wrong by the learner; leave it out"
+    return None
+
+
+def _new_claim_error(key: str, text: str, lesson: dict) -> str | None:
+    if len(text) > CLAIM_CHARS:
+        return f"error: claim {key!r} is too long; one statement, under {CLAIM_CHARS} characters"
+    if same := db.same_claim(lesson["profile_id"], text):
+        return f"error: claim {key!r} was marked wrong by the learner; leave it out" if same["wrong"] else f"error: claim {same['id']} says {key!r} already; give its id"
+    return None
+
+
+def _evidence_of(block: dict | None, lesson: dict) -> bool:
+    """A quick check, challenge or exercise of this lesson, past its pretest."""
+    return bool(block) and block["lesson_id"] == lesson["id"] and block["kind"] in db.EVIDENCE_KINDS and not (block["data"] or {}).get("pretest")
 
 
 @mcp.tool()

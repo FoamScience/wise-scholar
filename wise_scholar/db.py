@@ -1123,29 +1123,10 @@ def revise_concepts(course_id: int, modules: list[dict], renamed: dict[str, str]
     # IMMEDIATE: this reads before it writes, and must not find the database changed under it in between.
     conn.execute("BEGIN IMMEDIATE")
     try:
-        # All renames are looked up before any is applied, so two units can swap titles.
-        ids = {old: row("SELECT id FROM concepts WHERE course_id = ? AND title = ?", course_id, old)["id"] for old in renamed}
-        for old, new in renamed.items():
-            conn.execute("UPDATE concepts SET title = ? WHERE id = ?", (new, ids[old]))
-            conn.execute("UPDATE lessons SET title = ? WHERE concept_id = ?", (new, ids[old]))
-        practice = {c["title"] for c in concepts(course_id) if c["kind"] == "practice"}
+        _rename_units(course_id, renamed)
         existing = {c["title"]: c for c in concepts(course_id) if c["kind"] == "concept"}
-        units = [(m, title) for m in modules for title in m["concepts"] if title not in practice]
-        for n, (m, title) in enumerate(units, start=1):
-            if unit := existing.get(title):
-                known = int(title in m["known"] or unit["known"])
-                conn.execute("UPDATE concepts SET module = ?, known = ?, position = ? WHERE id = ?", (m["title"], known, n, unit["id"]))
-            else:
-                conn.execute(
-                    "INSERT INTO concepts (course_id, module, title, known, position) VALUES (?, ?, ?, ?, ?)",
-                    (course_id, m["title"], title, int(title in m["known"]), n),
-                )
-        gone = sorted(existing.keys() - {title for _, title in units})
-        if started := [t for t in gone if row("SELECT 1 FROM lessons WHERE concept_id = ?", existing[t]["id"])]:
-            raise ValueError(started)
-        for title in gone:
-            conn.execute("UPDATE cards SET concept_id = NULL WHERE concept_id = ?", (existing[title]["id"],))
-            conn.execute("DELETE FROM concepts WHERE id = ?", (existing[title]["id"],))
+        kept = _place_units(course_id, modules, existing)
+        _drop_units(existing, existing.keys() - kept)
         removed = _rehome_capstones(course_id)
         place_practice(course_id)
         if hours:
@@ -1155,6 +1136,40 @@ def revise_concepts(course_id: int, modules: list[dict], renamed: dict[str, str]
         conn.execute("ROLLBACK")
         raise
     return removed
+
+
+def _rename_units(course_id: int, renamed: dict[str, str]) -> None:
+    # All renames are looked up before any is applied, so two units can swap titles.
+    ids = {old: row("SELECT id FROM concepts WHERE course_id = ? AND title = ?", course_id, old)["id"] for old in renamed}
+    for old, new in renamed.items():
+        conn.execute("UPDATE concepts SET title = ? WHERE id = ?", (new, ids[old]))
+        conn.execute("UPDATE lessons SET title = ? WHERE concept_id = ?", (new, ids[old]))
+
+
+def _place_units(course_id: int, modules: list[dict], existing: dict[str, dict]) -> set[str]:
+    """Each unit of the new map in its module and place, an existing one updated, a new one added; the titles placed."""
+    practice = {c["title"] for c in concepts(course_id) if c["kind"] == "practice"}
+    units = [(m, title) for m in modules for title in m["concepts"] if title not in practice]
+    for n, (m, title) in enumerate(units, start=1):
+        if unit := existing.get(title):
+            known = int(title in m["known"] or unit["known"])
+            conn.execute("UPDATE concepts SET module = ?, known = ?, position = ? WHERE id = ?", (m["title"], known, n, unit["id"]))
+        else:
+            conn.execute(
+                "INSERT INTO concepts (course_id, module, title, known, position) VALUES (?, ?, ?, ?, ?)",
+                (course_id, m["title"], title, int(title in m["known"]), n),
+            )
+    return {title for _, title in units}
+
+
+def _drop_units(existing: dict[str, dict], titles: set[str]) -> None:
+    """Delete the units the new map left out; a started one stops the revision with ValueError naming them."""
+    gone = sorted(titles)
+    if started := [t for t in gone if row("SELECT 1 FROM lessons WHERE concept_id = ?", existing[t]["id"])]:
+        raise ValueError(started)
+    for title in gone:
+        conn.execute("UPDATE cards SET concept_id = NULL WHERE concept_id = ?", (existing[title]["id"],))
+        conn.execute("DELETE FROM concepts WHERE id = ?", (existing[title]["id"],))
 
 
 def _rehome_capstones(course_id: int) -> list[str]:
