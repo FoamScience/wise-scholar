@@ -106,14 +106,9 @@ def dont_know(card: dict) -> dict:
     }
 
 
-def grade(answer_id: int, correct: bool, misconception: str = "") -> dict:
-    """Finalize a stored answer: record correctness, reschedule the card, disclose the key. A wrong answer carries the
-    belief behind it: the one the grader named, else the one the card names for the option chosen."""
-    answer = db.row("SELECT * FROM answers WHERE id = ?", answer_id)
-    card = db.card(answer["card_id"])
-    belief = "" if correct else misconception.strip() or card["misconceptions"].get(answer["answer"], "")
-    miss = review.is_confident_miss(correct, answer["confidence"])
-    db.conn.execute("UPDATE answers SET correct = ? WHERE id = ?", (int(correct), answer_id))
+def _record_recall(card: dict, answer: dict, correct: bool, miss: bool, belief: str) -> list[str]:
+    """The learner's record from one answer: recall days, the word's state, and the error a confident miss leaves.
+    Returns the days the card was recalled on."""
     profile = _profile(card)
     if not correct:
         db.reset_recall(card["id"])
@@ -127,6 +122,18 @@ def grade(answer_id: int, correct: bool, misconception: str = "") -> dict:
     if miss and card["scheduled"]:
         db.add_error(profile, card["course_id"], "quiz", card["question"], said(card, answer["answer"], only_wrong=True),
                      key(card, answer["answer"]), card["explanation"], card_id=card["id"], misconception=belief)
+    return days
+
+
+def grade(answer_id: int, correct: bool, misconception: str = "") -> dict:
+    """Finalize a stored answer: record correctness, reschedule the card, disclose the key. A wrong answer carries the
+    belief behind it: the one the grader named, else the one the card names for the option chosen."""
+    answer = db.row("SELECT * FROM answers WHERE id = ?", answer_id)
+    card = db.card(answer["card_id"])
+    belief = "" if correct else misconception.strip() or card["misconceptions"].get(answer["answer"], "")
+    miss = review.is_confident_miss(correct, answer["confidence"])
+    db.conn.execute("UPDATE answers SET correct = ? WHERE id = ?", (int(correct), answer_id))
+    days = _record_recall(card, answer, correct, miss, belief)
     due = None
     if card["scheduled"]:
         fsrs, due = review.schedule(card["fsrs"], correct, answer["confidence"], days)

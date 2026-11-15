@@ -121,44 +121,58 @@ def _number(value):
     return number if math.isfinite(number) else None
 
 
+NEEDED = {"line": ("x", "y"), "dot": ("x", "y"), "bar": ("x", "y"), "area": ("x", "y"), "text": ("x", "y", "text"),
+          "rect": ("x1", "x2", "y1", "y2"), "rule": ()}
+
+
+def _attach_rows(i: int, kind: str, mark: dict, resolved: dict, workspace: Path) -> None:
+    """The mark's rows: sampled from fn, read from a workspace file, or checked inline."""
+    if "fn" in mark:
+        label = mark.get("label") or mark["fn"]
+        rows = [{**r, "series": label} for r in sample(mark["fn"], mark.get("domain", [-10, 10]), mark.get("samples", DEFAULT_SAMPLES))]
+        resolved.update(data=rows, x="x", y="y", stroke=mark.get("stroke", "series"))
+    elif "file" in mark:
+        resolved["data"] = load_rows(Path(mark["file"]), workspace)
+    elif kind == "rule":
+        if "x" not in mark and "y" not in mark:
+            raise ValueError(f"mark {i}: a rule needs x or y")
+    else:
+        data = mark.get("data")
+        if not isinstance(data, list) or not data or not all(isinstance(r, dict) for r in data):
+            raise ValueError(f"mark {i}: data must be a list of row objects (or use fn/file)")
+        if len(data) > MAX_ROWS:
+            raise ValueError(f"mark {i}: at most {MAX_ROWS} rows inline; put larger data in a workspace file")
+
+
+def _check_columns(i: int, needed: tuple[str, ...], resolved: dict) -> None:
+    """The fields name columns of the data, and stroke and fill name a column or a #colour."""
+    columns = set().union(*(r.keys() for r in resolved["data"]))
+    if unknown := [resolved[k] for k in needed if isinstance(resolved[k], str) and resolved[k] not in columns]:
+        raise ValueError(f"mark {i}: the fields {unknown} are not columns of the data; columns are {sorted(columns)}")
+    for extra in ("stroke", "fill"):
+        if isinstance(resolved.get(extra), str) and resolved[extra] not in columns and not resolved[extra].startswith("#"):
+            raise ValueError(f"mark {i}: {extra} {resolved[extra]!r} is neither a column nor a #colour")
+
+
+def _resolve_mark(i: int, mark: object, workspace: Path) -> dict:
+    if not isinstance(mark, dict):
+        raise ValueError(f"mark {i}: must be an object")
+    kind = mark.get("type")
+    if kind not in MARKS:
+        raise ValueError(f"mark {i}: type must be one of {sorted(MARKS)}, got {kind!r}")
+    resolved = {k: v for k, v in mark.items() if k not in ("fn", "file", "domain", "samples")}
+    _attach_rows(i, kind, mark, resolved, workspace)
+    needed = NEEDED[kind]
+    if missing := [k for k in needed if k not in resolved]:
+        raise ValueError(f"mark {i}: a {kind} needs the fields {list(needed)}; missing {missing}")
+    if kind != "rule":
+        _check_columns(i, needed, resolved)
+    return resolved
+
+
 def resolve(spec: dict, workspace: Path) -> dict:
     """The spec with every mark's rows attached; raises ValueError for anything the browser could not draw."""
     marks = spec.get("marks")
     if not isinstance(marks, list) or not marks:
         raise ValueError("spec.marks must be a non-empty list")
-    out = []
-    for i, mark in enumerate(marks):
-        if not isinstance(mark, dict):
-            raise ValueError(f"mark {i}: must be an object")
-        kind = mark.get("type")
-        if kind not in MARKS:
-            raise ValueError(f"mark {i}: type must be one of {sorted(MARKS)}, got {kind!r}")
-        resolved = {k: v for k, v in mark.items() if k not in ("fn", "file", "domain", "samples")}
-        if "fn" in mark:
-            label = mark.get("label") or mark["fn"]
-            rows = [{**r, "series": label} for r in sample(mark["fn"], mark.get("domain", [-10, 10]), mark.get("samples", DEFAULT_SAMPLES))]
-            resolved.update(data=rows, x="x", y="y", stroke=mark.get("stroke", "series"))
-        elif "file" in mark:
-            resolved["data"] = load_rows(Path(mark["file"]), workspace)
-        elif kind == "rule":
-            if "x" not in mark and "y" not in mark:
-                raise ValueError(f"mark {i}: a rule needs x or y")
-        else:
-            data = mark.get("data")
-            if not isinstance(data, list) or not data or not all(isinstance(r, dict) for r in data):
-                raise ValueError(f"mark {i}: data must be a list of row objects (or use fn/file)")
-            if len(data) > MAX_ROWS:
-                raise ValueError(f"mark {i}: at most {MAX_ROWS} rows inline; put larger data in a workspace file")
-        needed = {"line": ("x", "y"), "dot": ("x", "y"), "bar": ("x", "y"), "area": ("x", "y"), "text": ("x", "y", "text"),
-                  "rect": ("x1", "x2", "y1", "y2"), "rule": ()}[kind]
-        if missing := [k for k in needed if k not in resolved]:
-            raise ValueError(f"mark {i}: a {kind} needs the fields {list(needed)}; missing {missing}")
-        if kind != "rule":
-            columns = set().union(*(r.keys() for r in resolved["data"]))
-            if unknown := [resolved[k] for k in needed if isinstance(resolved[k], str) and resolved[k] not in columns]:
-                raise ValueError(f"mark {i}: the fields {unknown} are not columns of the data; columns are {sorted(columns)}")
-            for extra in ("stroke", "fill"):
-                if isinstance(resolved.get(extra), str) and resolved[extra] not in columns and not resolved[extra].startswith("#"):
-                    raise ValueError(f"mark {i}: {extra} {resolved[extra]!r} is neither a column nor a #colour")
-        out.append(resolved)
-    return {**spec, "marks": out}
+    return {**spec, "marks": [_resolve_mark(i, mark, workspace) for i, mark in enumerate(marks)]}

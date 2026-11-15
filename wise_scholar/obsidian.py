@@ -322,73 +322,93 @@ class Vault:
             return t["exercise"]
         return t["challenge"]
 
+    def _sort_body(self, d: dict) -> list[str]:
+        t = self.t
+        out = [f"- {o['text']}" for o in d["options"]] + ["", "**" + " · ".join(d["categories"]) + "**", ""]
+        if d.get("answer") is not None:
+            placed, wrong = quiz.placements(d["answer"]), set(d.get("misplaced", []))
+            out += [f"- {o['text']} → {placed.get(o['text'], '?')}{' ✗' if o['text'] in wrong else ''}" for o in d["options"]] + [""]
+            if d.get("explanation"):
+                out.append(f"**{t['explanation']}**: {d['explanation']}")
+        elif self.solutions and not self.inline:
+            out += [f"- {o['text']} → {o['category']}" for o in db.card(d["card_id"])["options"]] + [""]
+        else:
+            out.append(f"*{t['unanswered']}*")
+        return out
+
+    def _quiz_answer(self, d: dict) -> list[str]:
+        """The learner's answer and its result, or the key when it was not answered."""
+        t = self.t
+        if d.get("answer") is None:
+            if not d.get("answer_key"):
+                return [f"*{t['unanswered']}*"]
+            return [f"**{t['answer']}**: {d['answer_key']}"] + ([f"**{t['explanation']}**: {d['explanation']}"] if d.get("explanation") else [])
+        shown = t["unknown"] if d.get("unknown") else d["answer"]
+        sure = "" if d.get("unknown") else f" · {t['sure'].format(round(d.get('confidence', 0) * 100))}"
+        out = [f"**{t['your_answer']}**{sure}: {shown}"]
+        if d.get("correct") is not None:
+            out.append(f"**{t['result']}**: {t['right'] if d['correct'] else t['wrong']}")
+            out.append(f"**{t['answer']}**: {d.get('answer_key', '')}")
+            if d.get("feedback"):
+                out.append(f"**{t['feedback']}**: {d['feedback']}")
+            elif d.get("explanation"):
+                out.append(f"**{t['explanation']}**: {d['explanation']}")
+        return out
+
+    def _quiz_body(self, d: dict) -> list[str]:
+        out = []
+        if d.get("options"):
+            mark = lambda o: "**" if self.solutions and o == d.get("answer_key") else ""  # noqa: E731
+            out += [f"- {mark(o)}{o}{mark(o)}" for o in d["options"]] + [""]
+        return out + (self._quiz_answer(d) if self.solutions else [""])
+
+    def _exercise_files(self, block: dict, d: dict) -> list[str]:
+        """The exercise's files, linked to copies kept with the vault where the workspace still has them."""
+        out = []
+        for path in d.get("files", []):
+            kept = f"{self.root}/attachments/exercise-{block['id']}/{path}"
+            content = None if self.inline or not self.workspace.exists() else course_files.read_text(self.workspace, path)
+            if content is not None:
+                self.files[kept] = content.encode()
+                out.append(f"- [[{kept}|{_name(path)}]]")
+            else:
+                out.append(f"- `{path}`")
+        return out
+
+    def _task_body(self, block: dict, d: dict) -> list[str]:
+        t, kind, out = self.t, block["kind"], []
+        if d.get("comparison"):
+            for n, side in enumerate(("left", "right"), start=1):
+                out += [f"**{t['solution_n'].format(n)}**", "", d["comparison"][side], ""]
+            out += [d["comparison"]["question"], ""]
+        if d.get("helper"):
+            out += [_callout("info", t["helper"], d["helper"], plain=self.inline), ""]
+        if kind == "exercise":
+            out += [f"**{t['run']}**: `{d.get('run', '')}`", f"**{t['files']}**:", *self._exercise_files(block, d)]
+            if self.solutions and d.get("last_run"):
+                out += ["", f"**{t['output']}** (exit {d['last_run'].get('exit_code')})", _code(d["last_run"].get("output", ""))]
+        if not self.solutions:
+            return out
+        if d.get("attempts"):
+            out += ["", f"**{t['attempts']}**"] + [f"{i + 1}. {a}" for i, a in enumerate(d["attempts"])]
+        if d.get("hints"):
+            out += ["", f"**{t['hints']}**"] + [f"- {h}" for h in d["hints"]]
+        if d.get("solution"):
+            out += ["", _callout("solution", t["solution"], d["solution"], plain=self.inline)]
+        return out
+
     def _card_body(self, lesson: dict, block: dict) -> str:
-        t, d, kind = self.t, block["data"], block["kind"]
+        d, kind = block["data"], block["kind"]
         out = [block["markdown"], ""]
         if kind == "quiz" and d.get("kind") == "sort":
-            out += [f"- {o['text']}" for o in d["options"]] + ["", "**" + " · ".join(d["categories"]) + "**", ""]
-            if d.get("answer") is not None:
-                placed, wrong = quiz.placements(d["answer"]), set(d.get("misplaced", []))
-                out += [f"- {o['text']} → {placed.get(o['text'], '?')}{' ✗' if o['text'] in wrong else ''}" for o in d["options"]] + [""]
-                if d.get("explanation"):
-                    out.append(f"**{t['explanation']}**: {d['explanation']}")
-            elif self.solutions and not self.inline:
-                out += [f"- {o['text']} → {o['category']}" for o in db.card(d["card_id"])["options"]] + [""]
-            else:
-                out.append(f"*{t['unanswered']}*")
+            out += self._sort_body(d)
         elif kind == "quiz":
-            if d.get("options"):
-                mark = lambda o: "**" if self.solutions and o == d.get("answer_key") else ""  # noqa: E731
-                out += [f"- {mark(o)}{o}{mark(o)}" for o in d["options"]] + [""]
-            if not self.solutions:
-                out.append("")
-            elif d.get("answer") is None:
-                if d.get("answer_key"):
-                    out.append(f"**{t['answer']}**: {d['answer_key']}")
-                    if d.get("explanation"):
-                        out.append(f"**{t['explanation']}**: {d['explanation']}")
-                else:
-                    out.append(f"*{t['unanswered']}*")
-            else:
-                shown = t["unknown"] if d.get("unknown") else d["answer"]
-                sure = "" if d.get("unknown") else f" · {t['sure'].format(round(d.get('confidence', 0) * 100))}"
-                out.append(f"**{t['your_answer']}**{sure}: {shown}")
-                if d.get("correct") is not None:
-                    out.append(f"**{t['result']}**: {t['right'] if d['correct'] else t['wrong']}")
-                    out.append(f"**{t['answer']}**: {d.get('answer_key', '')}")
-                    if d.get("feedback"):
-                        out.append(f"**{t['feedback']}**: {d['feedback']}")
-                    elif d.get("explanation"):
-                        out.append(f"**{t['explanation']}**: {d['explanation']}")
+            out += self._quiz_body(d)
         else:
-            if d.get("comparison"):
-                for n, side in enumerate(("left", "right"), start=1):
-                    out += [f"**{t['solution_n'].format(n)}**", "", d["comparison"][side], ""]
-                out += [d["comparison"]["question"], ""]
-            if d.get("helper"):
-                out += [_callout("info", t["helper"], d["helper"], plain=self.inline), ""]
-            if kind == "exercise":
-                out.append(f"**{t['run']}**: `{d.get('run', '')}`")
-                out.append(f"**{t['files']}**:")
-                for path in d.get("files", []):
-                    kept = f"{self.root}/attachments/exercise-{block['id']}/{path}"
-                    content = None if self.inline or not self.workspace.exists() else course_files.read_text(self.workspace, path)
-                    if content is not None:
-                        self.files[kept] = content.encode()
-                        out.append(f"- [[{kept}|{_name(path)}]]")
-                    else:
-                        out.append(f"- `{path}`")
-                if self.solutions and d.get("last_run"):
-                    out += ["", f"**{t['output']}** (exit {d['last_run'].get('exit_code')})", _code(d["last_run"].get("output", ""))]
-            if self.solutions and d.get("attempts"):
-                out += ["", f"**{t['attempts']}**"] + [f"{i + 1}. {a}" for i, a in enumerate(d["attempts"])]
-            if self.solutions and d.get("hints"):
-                out += ["", f"**{t['hints']}**"] + [f"- {h}" for h in d["hints"]]
-            if self.solutions and d.get("solution"):
-                out += ["", _callout("solution", t["solution"], d["solution"], plain=self.inline)]
+            out += self._task_body(block, d)
         mine = [e for e in self.errors if e.get("card_id") and self.by_card.get(e["card_id"], {}).get("id") == block["id"]]
         if mine and not self.inline:
-            out += ["", f"**{t['mistakes']}**: " + ", ".join(self.link(("mistake", e["id"])) for e in mine)]
+            out += ["", f"**{self.t['mistakes']}**: " + ", ".join(self.link(("mistake", e["id"])) for e in mine)]
         return "\n".join(out)
 
     def _card_props(self, lesson: dict, block: dict) -> dict:
@@ -421,7 +441,7 @@ class Vault:
 
     # --- notes -----------------------------------------------------------------------------------------------------
 
-    def build(self) -> dict[str, bytes]:
+    def _lesson_notes(self) -> None:
         t = self.t
         for lesson in self.lessons:
             unit = self.unit_of_lesson(lesson)
@@ -440,6 +460,8 @@ class Vault:
             heading = t["interview"] if lesson["phase"] == "interview" else t["placement"] if lesson["phase"] == "placement" else lesson["title"]
             self.put(("lesson", lesson["id"]), props, f"# {heading}\n\n" + ("" if opening else f"{t['course']}: {self.link(('course',))}\n\n") + "\n".join(body))
 
+    def _mistake_notes(self) -> None:
+        t = self.t
         for e in self.errors:
             card = self.cards.get(e.get("card_id"))
             block = self.by_card.get(e.get("card_id"))
@@ -459,6 +481,8 @@ class Vault:
                 body += ["", _callout("note", t["note"], e["note"], folded=False)]
             self.put(("mistake", e["id"]), props, "\n".join(body))
 
+    def _project_notes(self) -> None:
+        t = self.t
         for k in self.capstones:
             props = {
                 "type": "project", "id": k["id"], "course": self.link(("course",)), "module": self.maybe_link(("module", k["module"])),
@@ -469,6 +493,8 @@ class Vault:
                 lines.append(f"- [{'x' if m['done'] else ' '}] {self.maybe_link(('unit', m['concept_id']), m['concept'])}: {m['deliverable']}")
             self.put(("project", k["id"]), props, "\n".join(lines))
 
+    def _unit_notes(self) -> None:
+        t = self.t
         for c in self.concepts:
             lessons = [l for l in self.lessons if l["concept_id"] == c["id"]]
             cards = [b for l in lessons for b in l["blocks"] if b["kind"] in CARD_KINDS]
@@ -501,6 +527,8 @@ class Vault:
             lines += self._flashcards(c)
             self.put(("unit", c["id"]), props, "\n".join(lines))
 
+    def _module_notes(self) -> None:
+        t = self.t
         for module in dict.fromkeys(c["module"] for c in self.concepts):
             units = [c for c in self.concepts if c["module"] == module]
             projects = [k for k in self.capstones if k["module"] == module]
@@ -510,6 +538,12 @@ class Vault:
                 lines += ["", f"## {t['projects']}"] + [f"- {self.link(('project', k['id']))}" for k in projects]
             self.put(("module", module), props, "\n".join(lines))
 
+    def build(self) -> dict[str, bytes]:
+        self._lesson_notes()
+        self._mistake_notes()
+        self._project_notes()
+        self._unit_notes()
+        self._module_notes()
         if self.course["lang"]:
             self._word_notes()
 

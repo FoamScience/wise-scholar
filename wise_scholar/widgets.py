@@ -61,6 +61,24 @@ def describe(widget: dict, at: list[int]) -> str:
     return f"{sliders} -> {', '.join(readouts)}"
 
 
+def _positions(name: str, c: dict) -> tuple[list[float], int]:
+    """A slider's positions from its min, max and step, and the one its value starts at."""
+    try:
+        low, high, step, value = (float(c[k]) for k in ("min", "max", "step", "value"))
+    except (KeyError, TypeError, ValueError):
+        raise ValueError(f"control {name}: min, max, step and value must be numbers") from None
+    if not (low < high and step > 0):
+        raise ValueError(f"control {name}: needs min < max and step > 0")
+    count = math.floor((high - low) / step + 1e-9) + 1
+    if count > MAX_STEPS:
+        raise ValueError(f"control {name}: at most {MAX_STEPS} positions; make the step larger")
+    values = [round(low + k * step, 10) for k in range(count)]
+    start = min(range(count), key=lambda k: abs(values[k] - value))
+    if abs(values[start] - value) > step * 1e-6:
+        raise ValueError(f"control {name}: value {value:g} is not one of the slider's positions")
+    return values, start
+
+
 def _controls(raw) -> list[dict]:
     if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_CONTROLS:
         raise ValueError(f"controls must be a list of 1 to {MAX_CONTROLS} sliders")
@@ -73,19 +91,7 @@ def _controls(raw) -> list[dict]:
             raise ValueError(f"control {i}: name must be a short lowercase identifier other than x and the math names")
         if any(o["name"] == name for o in out):
             raise ValueError(f"control {i}: the name {name!r} is used twice")
-        try:
-            low, high, step, value = (float(c[k]) for k in ("min", "max", "step", "value"))
-        except (KeyError, TypeError, ValueError):
-            raise ValueError(f"control {name}: min, max, step and value must be numbers") from None
-        if not (low < high and step > 0):
-            raise ValueError(f"control {name}: needs min < max and step > 0")
-        count = math.floor((high - low) / step + 1e-9) + 1
-        if count > MAX_STEPS:
-            raise ValueError(f"control {name}: at most {MAX_STEPS} positions; make the step larger")
-        values = [round(low + k * step, 10) for k in range(count)]
-        start = min(range(count), key=lambda k: abs(values[k] - value))
-        if abs(values[start] - value) > step * 1e-6:
-            raise ValueError(f"control {name}: value {value:g} is not one of the slider's positions")
+        values, start = _positions(name, c)
         out.append({"name": name, "label": str(c.get("label") or name), "unit": str(c.get("unit", "")), "values": values, "start": start})
     if math.prod(len(c["values"]) for c in out) > MAX_STATES:
         raise ValueError(f"the sliders reach more than {MAX_STATES} settings together; use fewer positions")
@@ -109,23 +115,23 @@ def _readouts(raw, names: tuple[str, ...]) -> list[dict]:
 def _marks(raw, names: tuple[str, ...]) -> list[dict]:
     if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_MARKS:
         raise ValueError(f"plot.marks must be a list of 1 to {MAX_MARKS} marks")
-    out = []
-    for i, m in enumerate(raw):
-        kind = m.get("type") if isinstance(m, dict) else None
-        if kind in ("line", "area"):
-            domain = m.get("domain")
-            if not (isinstance(domain, list) and len(domain) == 2 and all(isinstance(v, (int, float)) for v in domain) and domain[0] < domain[1]):
-                raise ValueError(f"mark {i}: a {kind} needs domain [start, end] with start < end")
-            if not isinstance(m.get("fn"), str):
-                raise ValueError(f"mark {i}: a {kind} needs fn, an expression of x and the sliders")
-            xs = [domain[0] + (domain[1] - domain[0]) * k / (SAMPLES - 1) for k in range(SAMPLES)]
-            out.append({"type": kind, "label": str(m.get("label") or m["fn"]), "xs": xs, "fn": plots.compile_fn(m["fn"], ("x", *names))})
-        elif kind == "rule" and ("x" in m) != ("y" in m):
-            axis = "x" if "x" in m else "y"
-            out.append({"type": "rule", "axis": axis, "label": str(m.get("label", "")), "fn": plots.compile_fn(str(m[axis]), names)})
-        else:
-            raise ValueError(f"mark {i}: type must be line, area, or rule with one of x or y")
-    return out
+    return [_mark(i, m, names) for i, m in enumerate(raw)]
+
+
+def _mark(i: int, m: object, names: tuple[str, ...]) -> dict:
+    kind = m.get("type") if isinstance(m, dict) else None
+    if kind in ("line", "area"):
+        domain = m.get("domain")
+        if not (isinstance(domain, list) and len(domain) == 2 and all(isinstance(v, (int, float)) for v in domain) and domain[0] < domain[1]):
+            raise ValueError(f"mark {i}: a {kind} needs domain [start, end] with start < end")
+        if not isinstance(m.get("fn"), str):
+            raise ValueError(f"mark {i}: a {kind} needs fn, an expression of x and the sliders")
+        xs = [domain[0] + (domain[1] - domain[0]) * k / (SAMPLES - 1) for k in range(SAMPLES)]
+        return {"type": kind, "label": str(m.get("label") or m["fn"]), "xs": xs, "fn": plots.compile_fn(m["fn"], ("x", *names))}
+    if kind == "rule" and ("x" in m) != ("y" in m):
+        axis = "x" if "x" in m else "y"
+        return {"type": "rule", "axis": axis, "label": str(m.get("label", "")), "fn": plots.compile_fn(str(m[axis]), names)}
+    raise ValueError(f"mark {i}: type must be line, area, or rule with one of x or y")
 
 
 def _axis(raw) -> dict:
@@ -184,6 +190,27 @@ def _heights(marks: list[dict], states: list[dict]) -> list[float]:
     return ys
 
 
+def _state(setting: tuple[float, ...], readouts: list[dict], marks: list[dict], places: list) -> dict:
+    """What the widget shows at one setting: its readouts, its curves and rules, and its drawing's places."""
+    state = {"readouts": [_finite(r["fn"](*setting)) for r in readouts], "marks": []}
+    for m in marks:
+        if m["type"] == "rule":
+            state["marks"].append(_finite(m["fn"](*setting)))
+        else:
+            state["marks"].append([_finite(m["fn"](x, *setting)) for x in m["xs"]])
+    if places:
+        state["figure"] = [_finite(fn(*setting)) for fn in places]
+    return state
+
+
+def _plot(plot: dict, marks: list[dict], states: list[dict]) -> dict:
+    x, y = _axis(plot.get("x")), _axis(plot.get("y"))
+    # One y range over every setting, so moving a slider moves the curve, not the axis.
+    if "domain" not in y and (ys := _heights(marks, states)):
+        y["domain"] = [min(ys), max(ys)] if min(ys) < max(ys) else [min(ys) - 1, max(ys) + 1]
+    return {"x": x, "y": y, "marks": [{k: m[k] for k in ("type", "label", "xs", "axis") if k in m} for m in marks]}
+
+
 def resolve(spec: dict) -> dict:
     """The widget with every setting evaluated; raises ValueError for anything it cannot show."""
     if not isinstance(spec, dict):
@@ -199,28 +226,14 @@ def resolve(spec: dict) -> dict:
     settings = math.prod(len(c["values"]) for c in controls)
     if settings * SAMPLES * sum(m["type"] != "rule" for m in marks) > MAX_POINTS:
         raise ValueError(f"the curves over every setting pass {MAX_POINTS} points; use fewer slider positions or fewer curves")
-    states = []
-    for setting in itertools.product(*(c["values"] for c in controls)):
-        state = {"readouts": [_finite(r["fn"](*setting)) for r in readouts], "marks": []}
-        for m in marks:
-            if m["type"] == "rule":
-                state["marks"].append(_finite(m["fn"](*setting)))
-            else:
-                state["marks"].append([_finite(m["fn"](x, *setting)) for x in m["xs"]])
-        if drawing:
-            state["figure"] = [_finite(fn(*setting)) for fn in places]
-        states.append(state)
+    states = [_state(setting, readouts, marks, places if drawing else []) for setting in itertools.product(*(c["values"] for c in controls))]
     out = {
         "controls": [{k: c[k] for k in ("name", "label", "unit", "values", "start")} for c in controls],
         "readouts": [{k: r[k] for k in ("label", "unit", "digits")} for r in readouts],
         "states": states,
     }
     if plot:
-        x, y = _axis(plot.get("x")), _axis(plot.get("y"))
-        # One y range over every setting, so moving a slider moves the curve, not the axis.
-        if "domain" not in y and (ys := _heights(marks, states)):
-            y["domain"] = [min(ys), max(ys)] if min(ys) < max(ys) else [min(ys) - 1, max(ys) + 1]
-        out["plot"] = {"x": x, "y": y, "marks": [{k: m[k] for k in ("type", "label", "xs", "axis") if k in m} for m in marks]}
+        out["plot"] = _plot(plot, marks, states)
     if drawing:
         out["figure"] = drawing
     return out

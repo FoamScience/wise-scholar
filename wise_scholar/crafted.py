@@ -43,11 +43,8 @@ def help_text() -> str:
     return (KIT / "craft.md").read_text()
 
 
-async def render(script: str, workspace: Path) -> list[str]:
-    """The SVG the script exports, or the stages of its animation, each a whole SVG; raises ValueError with Node's
-    message when it does not run, and when a stage draws nothing from the kit or the stages differ in size."""
-    if len(script) > MAX_SCRIPT:
-        raise ValueError(f"the script is over {MAX_SCRIPT} characters; build fewer parts")
+async def _run_script(script: str, workspace: Path) -> list[str]:
+    """Run the script with the kit in the sandbox; the SVG stages it exported, or ValueError with Node's message."""
     with tempfile.TemporaryDirectory(prefix="wise-scholar-figure-") as folder:
         work = Path(folder)
         (work / "kit").mkdir()
@@ -62,18 +59,29 @@ async def render(script: str, workspace: Path) -> list[str]:
             said = "\n".join(line for line in result["output"].splitlines() if not line.startswith("    at "))
             why = "stopped at the time limit" if result["exit_code"] is None else said.strip()[-2000:] or "it exported nothing"
             raise ValueError(f"the script did not run: {why}")
-        stages = json.loads(drawn.read_text())
+        return json.loads(drawn.read_text())
+
+
+def _check_stage(svg: str) -> str:
+    """The root tag of one stage, once it is a whole SVG of fitting size drawn from the kit."""
+    if len(svg) > MAX_SVG:
+        raise ValueError(f"a figure is over {MAX_SVG} characters; build fewer or simpler parts")
+    if not (root := ROOT.match(svg)):
+        raise ValueError("a figure is not a whole <svg>; export what figureSvg returns, nothing before or after it")
+    if not any(mark in svg for mark in DRAWN):
+        raise ValueError("a figure draws nothing from the kit; build it from its prisms, tubes, turned bodies or soft bodies")
+    return root[1]
+
+
+async def render(script: str, workspace: Path) -> list[str]:
+    """The SVG the script exports, or the stages of its animation, each a whole SVG; raises ValueError with Node's
+    message when it does not run, and when a stage draws nothing from the kit or the stages differ in size."""
+    if len(script) > MAX_SCRIPT:
+        raise ValueError(f"the script is over {MAX_SCRIPT} characters; build fewer parts")
+    stages = await _run_script(script, workspace)
     if len(stages) != 1 and not MIN_STAGES <= len(stages) <= MAX_STAGES:
         raise ValueError(f"an animation has {MIN_STAGES} to {MAX_STAGES} stages; the script exported {len(stages)}")
-    heads = []
-    for svg in stages:
-        if len(svg) > MAX_SVG:
-            raise ValueError(f"a figure is over {MAX_SVG} characters; build fewer or simpler parts")
-        if not (root := ROOT.match(svg)):
-            raise ValueError("a figure is not a whole <svg>; export what figureSvg returns, nothing before or after it")
-        if not any(mark in svg for mark in DRAWN):
-            raise ValueError("a figure draws nothing from the kit; build it from its prisms, tubes, turned bodies or soft bodies")
-        heads.append(root[1])
+    heads = [_check_stage(svg) for svg in stages]
     if len({(VIEWBOX.search(head) or [None, None])[1] for head in heads}) > 1:
         raise ValueError("the stages differ in size; give every stage the same figureSvg width and height and the same camera")
     return stages
