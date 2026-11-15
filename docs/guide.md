@@ -97,6 +97,8 @@ WISE_SCHOLAR_AGENT=opencode WISE_SCHOLAR_MODELS='cards=openrouter/openrouter/fre
 
 The kinds are `interview`, `placement`, `lesson`, `practice`, `story`, `writing`, `contribution`, `graph`, `cards`, `cleanup`, `explore`, `recap` and `contribute`.
 
+Behind an Anthropic-compatible gateway (LiteLLM, for example), set `ANTHROPIC_BASE_URL` to its address and `ANTHROPIC_API_KEY` to your key there. Claude Code reads both; opencode ignores the address, so the server points opencode's Anthropic provider at `<address>/v1` for it.
+
 A lesson left for longer than the agent's prompt cache lasts goes on in a fresh session that starts from what happened in it so far, instead of writing its whole history to the cache again. That is an hour, Claude Code's cache on a subscription; on an API key, Bedrock or Vertex it caches for five minutes, so set `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` there.
 
 With `agy` the tutor runs in a home folder of its own, `data/agy-home/`, that links only your login from `~/.gemini`: your `GEMINI.md`, MCP servers, plugins and skills stay out of its sessions, which are kept there too. agy reports tokens but no price, so its usage shows no cost.

@@ -39,6 +39,15 @@ def _taken(port: int) -> bool:
         return probe.connect_ex(("127.0.0.1", port)) == 0
 
 
+def config() -> dict:
+    """The settings this server adds to opencode.json: the tutor's MCP server and, when ANTHROPIC_BASE_URL names a
+    gateway, the Anthropic provider pointed at it, which opencode does not take from that variable itself."""
+    settings: dict = {"mcp": {"scholar": {"type": "remote", "url": MCP_URL, "enabled": True, "headers": MCP_HEADERS}}}
+    if gateway := os.environ.get("ANTHROPIC_BASE_URL", "").rstrip("/").removesuffix("/v1"):
+        settings["provider"] = {"anthropic": {"options": {"baseURL": f"{gateway}/v1"}}}
+    return settings
+
+
 async def start() -> None:
     """Run `opencode serve` with the repo's opencode.json; the user's plugins and Claude files stay out."""
     global _server
@@ -57,7 +66,7 @@ async def start() -> None:
             **environment("OPENCODE_*", "ANTHROPIC_*", "OPENAI_*", "OPENROUTER_*", "GEMINI_*", "GOOGLE_*", "GROQ_*",
                           "MISTRAL_*", "DEEPSEEK_*", "XAI_*", "TOGETHER_*", "FIREWORKS_*", "OLLAMA_*", "AZURE_*", "AWS_*"),
             "OPENCODE_CONFIG": str(ROOT / "opencode.json"),
-            "OPENCODE_CONFIG_CONTENT": json.dumps({"mcp": {"scholar": {"type": "remote", "url": MCP_URL, "enabled": True, "headers": MCP_HEADERS}}}),
+            "OPENCODE_CONFIG_CONTENT": json.dumps(config()),
             "OPENCODE_CONFIG_DIR": str(CONFIG_DIR),
             # an opencode.json or .opencode/ a command plants in a session's folder is not read
             "OPENCODE_DISABLE_PROJECT_CONFIG": "1",
