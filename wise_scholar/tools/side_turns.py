@@ -31,21 +31,31 @@ async def split_card(course_id: int, card_id: int, parts: list[ShortCard]) -> st
     card = db.card(card_id)
     if not card or card["course_id"] != course_id or card_id not in card_jobs:
         return f"error: card {card_id} is not one of the cards this turn makes short"
-    made = []
-    for n, part in enumerate(parts, start=1):
-        options = [o.strip() for o in part.options] if part.kind == "choice" else []
-        made.append({"question": part.question.strip(), "kind": part.kind, "options": options,
-                     "answer_key": part.answer_key.strip(), "explanation": part.explanation.strip()})
-        if part.kind == "choice" and not (2 <= len(options) <= quiz.SHORT_OPTIONS and len(set(options)) == len(options) and made[-1]["answer_key"] in options):
-            return f"error: part {n}: a choice part has 2 to {quiz.SHORT_OPTIONS} distinct options, one of them exactly answer_key"
-        if not made[-1]["question"] or not made[-1]["answer_key"] or quiz.is_long(made[-1]) or len(made[-1]["explanation"]) > quiz.SHORT_EXPLANATION:
-            return f"error: part {n} is too long or empty; keep to the limits above"
+    made = [_short(part) for part in parts]
+    for n, part in enumerate(made, start=1):
+        if problem := _short_error(n, part):
+            return problem
     if not PARTS[0] <= len(made) <= PARTS[1]:
         return f"error: give {PARTS[0]} to {PARTS[1]} parts"
     for part in made:
         part["options"] = _shuffled(part["options"])
     ids = db.split_card(card_id, made, card_jobs.pop(card_id))
     return f"card {card_id} replaced by cards {', '.join(map(str, ids))}"
+
+
+def _short(part: ShortCard) -> dict:
+    options = [o.strip() for o in part.options] if part.kind == "choice" else []
+    return {"question": part.question.strip(), "kind": part.kind, "options": options,
+            "answer_key": part.answer_key.strip(), "explanation": part.explanation.strip()}
+
+
+def _short_error(n: int, part: dict) -> str | None:
+    options = part["options"]
+    if part["kind"] == "choice" and not (2 <= len(options) <= quiz.SHORT_OPTIONS and len(set(options)) == len(options) and part["answer_key"] in options):
+        return f"error: part {n}: a choice part has 2 to {quiz.SHORT_OPTIONS} distinct options, one of them exactly answer_key"
+    if not part["question"] or not part["answer_key"] or quiz.is_long(part) or len(part["explanation"]) > quiz.SHORT_EXPLANATION:
+        return f"error: part {n} is too long or empty; keep to the limits above"
+    return None
 
 
 SEARCH_RESULTS = 8
@@ -146,9 +156,8 @@ async def record_claims(lesson_id: int, claims: list[NewClaim], links: list[Clai
         if problem := _claim_error(c, text, lesson):
             return problem
         entries.append({"key": c.key, "id": c.id, "text": text, "evidence": c.evidence})
-    for link in links:
-        if {link.source, link.target} - set(keys) or link.source == link.target:
-            return f"error: link {link.source!r} to {link.target!r} must join two different keys of this call"
+    if bad := next((link for link in links if {link.source, link.target} - set(keys) or link.source == link.target), None):
+        return f"error: link {bad.source!r} to {bad.target!r} must join two different keys of this call"
     ids = db.record_claims(lesson["profile_id"], lesson_id, entries, [(l.source, l.target, l.kind) for l in links])
     return "recorded: " + ", ".join(f"{k} = claim {i}" for k, i in ids.items())
 
@@ -178,24 +187,31 @@ async def propose_edits(course_id: int, edits: list[Edit]) -> str:
     pieces = cleanup_jobs.get(course_id)
     if pieces is None:
         return f"error: course {course_id} is not being checked"
-    out = []
-    for n, e in enumerate(edits, start=1):
-        text = pieces.get((e.target, e.ref))
-        if text is None:
-            out.append(f"{n}: error: there is no {e.target} {e.ref!r} in this version")
-        elif not e.old or e.old not in text:
-            out.append(f"{n}: error: old is not in that {e.target}; copy it exactly")
-        elif e.old == e.new or max(len(e.old), len(e.new)) > EDIT_CHARS or not e.reason.strip() or len(e.reason) > REASON_CHARS:
-            out.append(f"{n}: error: old and new must differ, each under {EDIT_CHARS} characters, with a reason under {REASON_CHARS}")
-        elif db.row("SELECT 1 FROM publish_edits WHERE course_id = ? AND target = ? AND ref = ? AND old = ?", course_id, e.target, e.ref, e.old):
-            out.append(f"{n}: already proposed")
-        else:
-            db.conn.execute(
-                "INSERT INTO publish_edits (course_id, target, ref, old, new, reason) VALUES (?, ?, ?, ?, ?, ?)",
-                (course_id, e.target, e.ref, e.old, e.new, e.reason.strip()),
-            )
-            out.append(f"{n}: proposed")
+    out = [f"{n}: {_propose(course_id, pieces, e)}" for n, e in enumerate(edits, start=1)]
     return "\n".join(out) or "error: give at least one edit"
+
+
+def _propose(course_id: int, pieces: dict[tuple[str, str], str], e: Edit) -> str:
+    """Record one edit, or say why not."""
+    if problem := _edit_error(pieces.get((e.target, e.ref)), e):
+        return problem
+    if db.row("SELECT 1 FROM publish_edits WHERE course_id = ? AND target = ? AND ref = ? AND old = ?", course_id, e.target, e.ref, e.old):
+        return "already proposed"
+    db.conn.execute(
+        "INSERT INTO publish_edits (course_id, target, ref, old, new, reason) VALUES (?, ?, ?, ?, ?, ?)",
+        (course_id, e.target, e.ref, e.old, e.new, e.reason.strip()),
+    )
+    return "proposed"
+
+
+def _edit_error(text: str | None, e: Edit) -> str | None:
+    if text is None:
+        return f"error: there is no {e.target} {e.ref!r} in this version"
+    if not e.old or e.old not in text:
+        return f"error: old is not in that {e.target}; copy it exactly"
+    if e.old == e.new or max(len(e.old), len(e.new)) > EDIT_CHARS or not e.reason.strip() or len(e.reason) > REASON_CHARS:
+        return f"error: old and new must differ, each under {EDIT_CHARS} characters, with a reason under {REASON_CHARS}"
+    return None
 
 
 SUGGESTIONS = 6
@@ -225,6 +241,15 @@ async def suggest_courses(course_id: int, suggestions: list[Suggestion]) -> str:
     if job is None:
         return f"error: no suggestions are being written on course {course_id}"
     entries = [{k: " ".join(v.split()) for k, v in s.model_dump().items()} for s in suggestions]
+    if problem := _suggestions_error(entries, job["topics"]):
+        return problem
+    db.set_suggestions(job["profile_id"], entries, job["retire"])
+    job["done"] = True
+    return "recorded"
+
+
+def _suggestions_error(entries: list[dict], topics: list[str]) -> str | None:
+    """Six, both kinds, distinct new titles within the limits, each building on one of the learner's courses."""
     if len(entries) != SUGGESTIONS:
         return f"error: give exactly {SUGGESTIONS} suggestions"
     kinds = Counter(e["kind"] for e in entries)
@@ -233,15 +258,13 @@ async def suggest_courses(course_id: int, suggestions: list[Suggestion]) -> str:
     titles = [e["title"].casefold() for e in entries]
     if len(set(titles)) != len(titles):
         return "error: every suggestion needs its own title"
-    if taken := [e["title"] for e in entries if e["title"].casefold() in {t.casefold() for t in job["topics"]}]:
+    if taken := [e["title"] for e in entries if e["title"].casefold() in {t.casefold() for t in topics}]:
         return f"error: {taken} are already courses of this learner"
     if bad := [e["title"] for e in entries if not e["title"] or not e["pitch"] or len(e["title"]) > SUGGESTION_TITLE_CHARS or len(e["pitch"]) > SUGGESTION_PITCH_CHARS]:
         return f"error: {bad} need a title under {SUGGESTION_TITLE_CHARS} characters and a pitch under {SUGGESTION_PITCH_CHARS}"
-    if unknown := sorted({e["builds_on"] for e in entries} - set(job["topics"])):
+    if unknown := sorted({e["builds_on"] for e in entries} - set(topics)):
         return f"error: {unknown} are not courses of this learner; copy builds_on from a [course] line"
-    db.set_suggestions(job["profile_id"], entries, job["retire"])
-    job["done"] = True
-    return "recorded"
+    return None
 
 
 RECAP_INTRO_CHARS = 700
@@ -275,6 +298,17 @@ async def write_recap(course_id: int, intro: str, weeks: list[WeekCaption], can_
     can_do = [p for p in (" ".join(p.split()) for p in can_do) if p]
     strengthen = [p for p in (" ".join(p.split()) for p in strengthen) if p]
     captions = {w.week.strip(): " ".join(w.caption.split()) for w in weeks}
+    if problem := _points_error(intro, can_do, strengthen, next_step) or _captions_error(captions, job["weeks"]):
+        return problem
+    db.set_recap(course_id, narrative={
+        "intro": intro, "weeks": captions, "can_do": can_do, "strengthen": strengthen, "next_step": next_step,
+        "locale": job["locale"], "finished": job["finished"],
+    })
+    job["done"] = True
+    return "recorded"
+
+
+def _points_error(intro: str, can_do: list[str], strengthen: list[str], next_step: str) -> str | None:
     if not intro or len(intro) > RECAP_INTRO_CHARS:
         return f"error: the intro must be under {RECAP_INTRO_CHARS} characters"
     if not RECAP_CAN_DO[0] <= len(can_do) <= RECAP_CAN_DO[1]:
@@ -285,15 +319,15 @@ async def write_recap(course_id: int, intro: str, weeks: list[WeekCaption], can_
         return f"error: {[p[:40] for p in long]} must be one sentence under {RECAP_POINT_CHARS} characters"
     if not next_step or len(next_step) > RECAP_POINT_CHARS:
         return f"error: next_step must be one sentence under {RECAP_POINT_CHARS} characters"
-    if missing := [w for w in job["weeks"] if w not in captions]:
+    return None
+
+
+def _captions_error(captions: dict[str, str], weeks: list[str]) -> str | None:
+    """One caption for each week of the course, and none for another, each within the limit."""
+    if missing := [w for w in weeks if w not in captions]:
         return f"error: weeks {missing} need a caption"
-    if extra := sorted(set(captions) - set(job["weeks"])):
+    if extra := sorted(set(captions) - set(weeks)):
         return f"error: {extra} are not weeks of this course; copy them from the [week] lines"
     if long := [w for w, c in captions.items() if not c or len(c) > RECAP_CAPTION_CHARS]:
         return f"error: the captions of {long} must be one sentence under {RECAP_CAPTION_CHARS} characters"
-    db.set_recap(course_id, narrative={
-        "intro": intro, "weeks": captions, "can_do": can_do, "strengthen": strengthen, "next_step": next_step,
-        "locale": job["locale"], "finished": job["finished"],
-    })
-    job["done"] = True
-    return "recorded"
+    return None
