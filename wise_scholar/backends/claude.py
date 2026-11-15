@@ -47,6 +47,9 @@ def parse_event(line: str) -> dict | None:
     return None
 
 
+TOKENS = {"input": "input_tokens", "output": "output_tokens", "cache_read": "cache_read_input_tokens", "cache_write": "cache_creation_input_tokens"}
+
+
 def usage(result: dict) -> dict | None:
     """What a run used; Claude Code prices it at the API list price. On a resumed session `modelUsage` and the cost
     run over the whole session, while `usage` holds this turn's tokens: the cost goes out as the session's running
@@ -58,10 +61,7 @@ def usage(result: dict) -> dict | None:
     turn = result.get("usage") or {}
     return {
         "model": ", ".join(name for name, _ in ranked),
-        "input": turn.get("input_tokens") or 0,
-        "output": turn.get("output_tokens") or 0,
-        "cache_read": turn.get("cache_read_input_tokens") or 0,
-        "cache_write": turn.get("cache_creation_input_tokens") or 0,
+        **{key: turn.get(field) or 0 for key, field in TOKENS.items()},
         "cost": result.get("total_cost_usd", sum(m.get("costUSD") or 0 for m in models.values())),
         "session": result.get("session_id"),
     }
@@ -78,17 +78,11 @@ def mcp_config(token: str) -> Path:
     return path
 
 
-async def run_turn(
-    prompt: str, *, session_id: str, resume: bool, name: str, cwd: Path, phase: str, token: str
-) -> AsyncIterator[dict]:
-    session = ["--resume", session_id] if resume else ["--session-id", session_id, "--name", name]
+def command(phase: str, config: Path, session: list[str]) -> list[str]:
     system_prompt = "\n\n".join((PROMPTS / f"{part}.md").read_text() for part in ((phase,) if phase in ALONE else ("core", phase)))
-    home = AGENT_HOMES / cwd.name
-    home.mkdir(parents=True, exist_ok=True)
-    config = mcp_config(token)
     # Empty --setting-sources keeps user-level hooks, plugins and CLAUDE.md out of the tutor session, and with
     # --strict-mcp-config and no built-in tools nothing a command plants in the workspace is loaded or usable.
-    proc = await asyncio.create_subprocess_exec(
+    return [
         "claude", "-p",
         "--output-format", "stream-json", "--include-partial-messages", "--verbose",
         "--setting-sources", "", "--disable-slash-commands",
@@ -99,6 +93,23 @@ async def run_turn(
         "--allowedTools", "mcp__scholar",
         *(["--model", model] if (model := model_for(phase)) else []),
         *session,
+    ]
+
+
+def session_lost(event: dict, resume: bool) -> bool:
+    """A session started before the move out of the workspace is not found from here."""
+    return event["type"] == "turn.done" and resume and not event["ok"] and "conversation" in (event["error"] or "").lower()
+
+
+async def run_turn(
+    prompt: str, *, session_id: str, resume: bool, name: str, cwd: Path, phase: str, token: str
+) -> AsyncIterator[dict]:
+    session = ["--resume", session_id] if resume else ["--session-id", session_id, "--name", name]
+    home = AGENT_HOMES / cwd.name
+    home.mkdir(parents=True, exist_ok=True)
+    config = mcp_config(token)
+    proc = await asyncio.create_subprocess_exec(
+        *command(phase, config, session),
         cwd=home,
         # Its own settings and keys, and the cloud credentials a Bedrock or Vertex setup signs with.
         env=environment("ANTHROPIC_*", "CLAUDE_*", "AWS_*", "GOOGLE_*", "GCLOUD_*", "CLOUD_ML_REGION"),
@@ -117,9 +128,8 @@ async def run_turn(
             event = parse_event(line.decode())
             if not event:
                 continue
-            if event["type"] == "turn.done" and resume and not event["ok"] and "conversation" in (event["error"] or "").lower():
-                # A session started before the move out of the workspace is not found from here: the lesson goes on
-                # in a fresh one, and the state header of every turn carries it over.
+            if session_lost(event, resume):
+                # The lesson goes on in a fresh session, and the state header of every turn carries it over.
                 async for again in run_turn(prompt, session_id=str(uuid.uuid4()), resume=False, name=name, cwd=cwd, phase=phase, token=token):
                     yield again
                 return
