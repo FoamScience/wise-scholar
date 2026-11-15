@@ -18,7 +18,9 @@ Everything the [README](../README.md) leaves out: prerequisites, backends, optio
 > points into under your home directory (`~/.cargo`, `~/.nvm`, `~/go`, `~/.local/bin`, ...), and its own course workspace, which is the
 > only place it can write. It has no network and no access to the machine's sockets (Docker, D-Bus), sees nothing else of your home
 > directory, the database or other courses, and stops after 30 seconds. Where a user systemd runs it gets 4 GB of memory and
-> 256 tasks; elsewhere those two limits are missing and the server says so at start. Two commands run at a time.
+> 256 tasks. Without one, commands share the server's own limits when its cgroup caps memory with swap off and tasks (a container
+> started by `compose.yaml` does) and `choom` is installed, so the kernel stops a command before the server when memory runs out; otherwise those two limits
+> are missing. The server says at start which applies. Two commands run at a time.
 > Inside, the user is `learner` with the home directory `/home/learner`, and the course sits at
 > `/home/learner/wise-scholar/workspace/<course>`: paths, tracebacks, `whoami` and the environment name no real user or folder, and
 > the exercise card names files the same way. A command can still read the real folders behind the mounts in `/proc/self/mountinfo`.
@@ -56,7 +58,7 @@ docker compose exec wise-scholar claude   # once: log Claude Code in; the login 
 
 The image holds the server, the web interface, the diagram renderer and Claude Code (`--build-arg AGENT_PACKAGES="@anthropic-ai/claude-code opencode-ai"` adds opencode, about 830 MB more). The database and the course workspaces live in the `data` and `workspace` volumes. Compose publishes the server on `127.0.0.1:8321` (`WISE_SCHOLAR_PUBLISH` and `WISE_SCHOLAR_PORT` change that). Nothing signs anyone in: publish it on loopback or a tailnet address behind your own proxy, never on a public one. Compose passes on the settings of the table above from your environment or `.env`, except those that name paths or addresses (the container fixes them) and `WISE_SCHOLAR_SANDBOX`.
 
-bubblewrap needs the container started with seccomp, AppArmor and the system paths unconfined, so it can make its namespaces and mount `/proc` for each command; it needs no capabilities, so `compose.yaml` drops them all and sets `no-new-privileges`. A container has no user systemd: the whole container gets the memory limit instead (`WISE_SCHOLAR_CONTAINER_MEMORY`, 6 GB by default, swap off) and 1,024 tasks.
+bubblewrap needs the container started with seccomp, AppArmor and the system paths unconfined, so it can make its namespaces and mount `/proc` for each command; it needs no capabilities, so `compose.yaml` drops them all and sets `no-new-privileges`. A container has no user systemd: the whole container gets the memory limit instead (`WISE_SCHOLAR_CONTAINER_MEMORY`, 6 GB by default, swap off) and 1,024 tasks, and when memory runs out the kernel stops a learner command before the server (the image has `choom`).
 
 A new course opens on its interview page. Before the first question you can say more about what the course should cover (for example "science class, second year of high school") and how many hours of teaching the whole course should take. Both are optional: the tutor keeps the course inside that scope and sizes the course map so its sittings add up to the time. When you gave a time, the tutor says in the chat at the end of the interview whether your goal is doable in it or unlikely. It only says so; the plan and the map do not change because of it.
 
@@ -220,7 +222,7 @@ make test    # Python and web tests
 
 `make test-container` builds the image and runs the sandbox tests inside it, through compose's `test` service, which shares the server's security options and limits.
 
-Every run checks that a sandboxed command gets its memory and task limits. The test that proves the memory limit bites is skipped unless you ask for it: its command allocates more than the limit, so the kernel kills that command, and GNOME may show a notification that an app ran out of memory. Run it alone, on a machine with bubblewrap and a user systemd, with `WISE_SCHOLAR_TEST_OOM=1 uv run pytest tests/test_sandbox.py -k cannot_take_more_memory`.
+Every run checks that a sandboxed command gets its memory and task limits. The test that proves the memory limit bites is skipped unless you ask for it: its command allocates more than the limit, so the kernel kills that command, and GNOME may show a notification that an app ran out of memory. Run it alone, on a machine with bubblewrap and a user systemd, with `WISE_SCHOLAR_TEST_OOM=1 uv run pytest tests/test_sandbox.py -k cannot_take_more_memory`, or in the container with a small limit: `WISE_SCHOLAR_CONTAINER_MEMORY=1g docker compose --profile test run --rm -e WISE_SCHOLAR_TEST_OOM=1 test python -m pytest tests/test_sandbox.py -k cannot_take_more_memory`.
 
 ## Where things live
 

@@ -175,7 +175,7 @@ def _bytes(size: str) -> int:
 
 
 @needs_bwrap
-@pytest.mark.skipif(not sandbox.capped(), reason="no user systemd: sandboxed commands run without the memory limit here")
+@pytest.mark.skipif(sandbox.limits() != "scope", reason="no user systemd: sandboxed commands get no scope of their own here")
 def test_a_command_runs_under_its_memory_swap_and_task_limits(place):
     """The limits as the kernel holds them for a running command, read from outside: the command itself sees no cgroup."""
     job = threading.Thread(target=run, args=("sleep 2.71828", place / "courses/mine"))
@@ -205,12 +205,62 @@ def _cmdline(process: Path) -> list[str]:
 # Proves the limit bites: it allocates past MemoryMax, so the kernel kills the command, and the desktop may report that
 # as an app out of memory. The test above checks the limit is set on every run.
 @needs_bwrap
-@pytest.mark.skipif(not sandbox.capped(), reason="no user systemd: sandboxed commands run without the memory limit here")
+@pytest.mark.skipif(not sandbox.capped(), reason="sandboxed commands run without a memory limit here")
 @pytest.mark.skipif(os.environ.get("WISE_SCHOLAR_TEST_OOM") != "1", reason="set WISE_SCHOLAR_TEST_OOM=1 to run it: the kernel kills its command for memory on purpose")
 def test_a_command_cannot_take_more_memory_than_its_limit(place):
-    size = _bytes(sandbox.MEMORY) + 1024**3
+    limit = _bytes(sandbox.MEMORY) if sandbox.limits() == "scope" else int((sandbox._cgroup() / "memory.max").read_text())
+    size = limit + 1024**3
     hog = run(f"python3 -c 'x = bytearray({size}); print(len(x))'", place / "courses/mine")
-    assert hog["exit_code"] != 0 and str(size) not in hog["output"]
+    assert hog["exit_code"] == 137 and str(size) not in hog["output"]
+
+
+@needs_bwrap
+@pytest.mark.skipif(not sandbox._oom_first(), reason="choom is missing: commands keep the server's OOM score")
+def test_a_command_is_the_kernels_first_choice_when_memory_runs_out(place):
+    assert run("cat /proc/self/oom_score_adj", place / "courses/mine")["output"] == "1000\n"
+
+
+def _cgroups(root: Path, own: str, files: dict[str, dict[str, str]], monkeypatch) -> None:
+    monkeypatch.setattr(sandbox, "CGROUP", root)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "self").write_text(f"0::{own}\n")
+    monkeypatch.setattr(sandbox, "OWN_CGROUP", root / "self")
+    for folder, values in files.items():
+        (root / folder).mkdir(parents=True, exist_ok=True)
+        for name, value in values.items():
+            (root / folder / name).write_text(value + "\n")
+
+
+def test_commands_share_the_servers_limits_only_when_its_cgroups_cap_memory_without_swap_and_tasks(tmp_path, monkeypatch):
+    monkeypatch.setattr(sandbox, "_scope", lambda: ())
+    monkeypatch.setattr(sandbox, "_oom_first", lambda: ("choom", "-n", "1000", "--"))
+    capped = {"memory.max": "6442450944", "memory.swap.max": "0", "pids.max": "1024"}
+    for name, open_value in (("memory.max", "max"), ("memory.swap.max", "max"), ("pids.max", "max"), ("memory.swap.max", None)):
+        root = tmp_path / f"{name}-{open_value}"
+        values = {k: v for k, v in {**capped, name: open_value}.items() if v is not None}
+        _cgroups(root, "/", {".": values}, monkeypatch)
+        assert sandbox.limits() == "", (name, open_value)
+    _cgroups(tmp_path / "leaf", "/", {".": capped}, monkeypatch)
+    assert sandbox.limits() == "shared"
+    # A service whose slice holds the limits, its own group none of them.
+    open_leaf = {"memory.max": "max", "memory.swap.max": "max", "pids.max": "max"}
+    _cgroups(tmp_path / "ancestor", "/slice/app.scope", {"slice": capped, "slice/app.scope": open_leaf}, monkeypatch)
+    assert sandbox.limits() == "shared"
+    monkeypatch.setattr(sandbox, "_oom_first", lambda: ())
+    assert sandbox.limits() == ""
+    monkeypatch.setattr(sandbox, "_scope", lambda: ("systemd-run",))
+    assert sandbox.limits() == "scope"
+
+
+def test_the_servers_cgroup_is_found_only_in_the_unified_hierarchy_and_inside_its_namespace(tmp_path, monkeypatch):
+    _cgroups(tmp_path, "/a/b", {"a/b": {}}, monkeypatch)
+    assert sandbox._cgroup() == (tmp_path / "a/b").resolve()
+    (tmp_path / "self").write_text("0::/../../outside\n")
+    assert sandbox._cgroup() is None
+    (tmp_path / "self").write_text("4:memory:/a\n1:name=systemd:/a\n")
+    assert sandbox._cgroup() is None
+    monkeypatch.setattr(sandbox, "OWN_CGROUP", tmp_path / "missing")
+    assert sandbox._cgroup() is None
 
 
 def host_addresses() -> list[str]:

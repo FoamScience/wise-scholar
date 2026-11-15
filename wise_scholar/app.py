@@ -62,7 +62,9 @@ async def lifespan(app: FastAPI):
     elif sandbox.COMMANDS and not sandbox.SANDBOX:
         log.warning("commands run WITHOUT a sandbox: as this user, with network, the whole home directory and no limits")
     elif sandbox.COMMANDS and not sandbox.capped():
-        log.warning("no user systemd here: sandboxed commands run without the memory and task limits")
+        log.warning("no user systemd, and this server's cgroups do not cap memory with swap off and tasks (or choom is missing): sandboxed commands run without memory and task limits")
+    elif sandbox.COMMANDS and sandbox.limits() == "shared":
+        log.info("no user systemd: sandboxed commands share this server's memory and task limits, and the kernel stops them first when memory runs out")
     async with tutor.mcp.session_manager.run():
         await backend.start()
         sweeper = asyncio.create_task(cleanup.forever(_busy))

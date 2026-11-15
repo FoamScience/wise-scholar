@@ -60,6 +60,8 @@ ENV_NAMES = {
     "GOPATH", "GOROOT", "GOBIN", "GOFLAGS", "GOTOOLCHAIN", "JAVA_HOME",
 }  # fmt: skip
 ENV_PREFIXES = ("LC_", "PYENV_", "PYTHON", "NVM_", "NODE_", "BUN_", "CARGO_", "RUSTUP_", "GHCUP_", "JULIA_")
+CGROUP = Path("/sys/fs/cgroup")
+OWN_CGROUP = Path("/proc/self/cgroup")
 SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASS|CREDENTIAL|AUTH", re.IGNORECASE)
 
 
@@ -85,8 +87,40 @@ def networked() -> bool:
 
 
 def capped() -> bool:
-    """Whether sandboxed commands also get the memory and task limits, which need a user systemd."""
-    return bool(_scope())
+    """Whether sandboxed commands also get memory and task limits."""
+    return bool(limits())
+
+
+def limits() -> str:
+    """Where the memory and task limits of sandboxed commands come from: "scope", a systemd scope of their own;
+    "shared", the cgroups this server runs in (a container's), which cap memory with swap off and tasks, with each
+    command marked as the kernel's first choice to stop; "" none."""
+    if _scope():
+        return "scope"
+    group = _cgroup()
+    if group is None or not _oom_first():
+        return ""
+    capped = {name: False for name in ("memory.max", "memory.swap.max", "pids.max")}
+    for folder in (group, *group.parents):
+        for name in capped:
+            try:
+                value = (folder / name).read_text().strip()
+            except OSError:
+                continue
+            capped[name] |= value == "0" if name == "memory.swap.max" else value != "max"
+        if folder == CGROUP.resolve():
+            break
+    return "shared" if all(capped.values()) else ""
+
+
+def _cgroup() -> Path | None:
+    """This server's own cgroup, None without the unified (v2) hierarchy or outside what this namespace shows."""
+    try:
+        entry = next(line for line in OWN_CGROUP.read_text().splitlines() if line.startswith("0::"))
+    except (OSError, StopIteration):
+        return None
+    group = (CGROUP / entry[3:].strip().lstrip("/")).resolve()
+    return group if group.is_relative_to(CGROUP.resolve()) else None
 
 
 def _brought_in(path: Path, home: Path, exposes) -> list[Path]:
@@ -251,6 +285,11 @@ def _args(workspace: Path, extra: list[str]) -> list[str]:
     ]  # fmt: skip
 
 
+def _oom_first() -> tuple[str, ...]:
+    """Marks a command as the kernel's first choice when memory runs out, so a shared limit takes it, not the server."""
+    return ("choom", "-n", "1000", "--") if shutil.which("choom") else ()
+
+
 @functools.cache
 def _scope() -> tuple[str, ...]:
     """A systemd scope that caps memory and task count; empty where no user systemd is running."""
@@ -350,7 +389,7 @@ def _sandboxed(command: str, workspace: Path, wrapper: list[str], extra: list[st
     ]  # fmt: skip
     options.write(b"\0".join(arg.encode() for arg in _args(workspace, extra)) + b"\0")
     options.seek(0)
-    return [*_scope(), "bwrap", "--args", str(options.fileno()), *wrapper, "sh", "/run/command"]
+    return [*_scope(), *_oom_first(), "bwrap", "--args", str(options.fileno()), *wrapper, "sh", "/run/command"]
 
 
 async def _watch(proc: asyncio.subprocess.Process, folders: list[Path], before: list[int], limit: int) -> tuple[str, int | None]:
