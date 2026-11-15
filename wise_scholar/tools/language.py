@@ -5,7 +5,7 @@ from typing import Literal
 import simplemma
 from pydantic import BaseModel
 
-from .. import challenge, db, resources, speech, vocab
+from .. import challenge, db, lexicon, resources, speech, vocab
 from ..tutor import _patch_block, _show, _shuffled, log, mcp
 
 
@@ -184,6 +184,20 @@ async def offer_resources(course_id: int, lang: str) -> str:
     except (LookupError, ValueError):
         return f"error: {lang!r} is not a language code"
     return "; ".join(f"{kind}: {status}" for kind, status in outcome.items())
+
+
+@mcp.tool()
+async def lookup_word(course_id: int, word: str) -> str:
+    """Look a word of the course's language up in its Wiktionary lexicon: headword line, part of speech, pronunciation,
+    meanings in English, and its forms with their grammatical tags; for an inflected form, also the word it is a form
+    of. Check a form, gender, plural or conjugation here before you teach or correct it."""
+    folder = resources.course_resource(course_id, "lexicon")
+    if not folder or not (folder / lexicon.DB).exists():
+        return "the lexicon is not set up for this course; work from what you know"
+    found = await asyncio.to_thread(lexicon.lookup, folder, word.strip())
+    if not found:
+        return f"{word!r} is not in the lexicon"
+    return lexicon.answer(found)
 
 
 @mcp.tool()

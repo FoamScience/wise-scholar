@@ -1027,7 +1027,8 @@
       "download": "Download",
       "progress": "Downloading… {{percent}} %",
       "failed": "Failed: {{error}}. You can try again.",
-      "size": "{{size}} to download"
+      "size": "{{size}} to download",
+      "preparing": "Preparing…"
     }
   },
   "server": {}

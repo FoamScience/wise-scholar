@@ -640,7 +640,7 @@ function ResourcesCard(props: { resources: Resource[]; onDecide: (kind: Resource
           <div className="small">{t(`resources.${r.kind}Help`)}</div>
           <div className="row">
             {r.status === 'downloading' ? (
-              <span className="small">{r.size ? t('resources.progress', { percent: Math.min(100, Math.floor((100 * r.done) / r.size)) }) : t('replay.running')}</span>
+              <span className="small">{!r.size ? t('replay.running') : r.prepares && r.done >= r.size ? t('resources.preparing') : t('resources.progress', { percent: Math.min(100, Math.floor((100 * r.done) / r.size)) })}</span>
             ) : r.status === 'asked' || r.status === 'failed' ? (
               <>
                 {r.status === 'failed' && <span className="small">{t('resources.failed', { error: r.error ?? '' })}</span>}

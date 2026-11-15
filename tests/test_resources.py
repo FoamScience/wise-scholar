@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from wise_scholar import app as application
-from wise_scholar import db, resources
+from wise_scholar import db, lexicon, resources
 from wise_scholar.tools import language as language_tools
 
 LEXICON = "https://kaikki.org/dictionary/German/kaikki.org-dictionary-German.jsonl"
@@ -122,6 +122,36 @@ def test_a_failure_fails_every_waiting_course_leaves_nothing_behind_and_can_be_r
     asyncio.run(attempt())
     assert _row(first, "lexicon")["status"] == _row(second, "lexicon")["status"] == "ready"
     assert [p.name for p in (resources.ROOT / "lexicon").iterdir()] == ["de"]
+    # the lexicon is read from its database, made while downloading; the raw file goes
+    assert sorted(p.name for p in (resources.ROOT / "lexicon" / "de").iterdir()) == ["lexicon.db", "source.json"]
+    assert [e["word"] for e in lexicon.lookup(resources.ROOT / "lexicon" / "de", "haus")] == ["Haus"]
+
+
+def test_a_source_that_is_not_a_lexicon_fails_the_download(web, monkeypatch):
+    monkeypatch.setitem(FILES, LEXICON, b"<html>gateway error</html>")
+    course = _course()
+
+    async def run():
+        await resources.offer(course, "de", "en")
+        resources.decide(course, "lexicon", True)
+        await _settle()
+
+    asyncio.run(run())
+    assert _row(course, "lexicon")["status"] == "failed" and "no entries" in _row(course, "lexicon")["error"]
+    assert list((resources.ROOT / "lexicon").iterdir()) == []
+
+
+def test_a_course_joining_a_download_takes_its_progress(web):
+    first, second = _course(), _course()
+    asyncio.run(resources.offer(first, "de", "en"))
+    asyncio.run(resources.offer(second, "de", "en"))
+    db.conn.execute("UPDATE course_resources SET status = 'downloading', done = 9 WHERE course_id = ? AND kind = 'lexicon'", (first,))
+    resources._running[("lexicon", "de")] = None
+    try:
+        resources.decide(second, "lexicon", True)
+    finally:
+        resources._running.clear()
+    assert _row(second, "lexicon")["done"] == 9
 
 
 def test_offering_again_keeps_a_refusal_and_a_download_under_way_but_not_a_deleted_folder(web):

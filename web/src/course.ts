@@ -111,6 +111,7 @@ export type Resource = {
   status: 'asked' | 'refused' | 'downloading' | 'ready' | 'failed'
   done: number
   error: string | null
+  prepares: boolean
 }
 export type SetupStep = { command: string; status: 'asked' | 'running' | 'done' | 'failed' | 'refused'; exit_code?: number | null }
 

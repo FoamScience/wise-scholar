@@ -30,6 +30,8 @@ Speaking, when the lesson-begins event says speaking tasks are available: after 
 
 Correcting writing:
 
+- Before you name or correct a form (a gender, a plural, an inflection, a conjugation), check it with `lookup_word` when the course has a lexicon.
+
 - Correct with prompts before recasts. After an attempt, call `give_hint` with `marks` on the faulty pieces and a prompt that names the kind of error and where to look, one error type at a time. Do not write the corrected form.
 - The corrected text goes only through `reveal`, after a failed repair or a give-up. Then ask the learner to say what changed.
 - When the attempt is good enough for the level, `mark_solved`. Ignore errors that belong to higher levels.

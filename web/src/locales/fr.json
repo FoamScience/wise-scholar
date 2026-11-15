@@ -1049,7 +1049,8 @@
       "download": "Télécharger",
       "progress": "Téléchargement… {{percent}} %",
       "failed": "Échec : {{error}}. Vous pouvez réessayer.",
-      "size": "{{size}} à télécharger"
+      "size": "{{size}} à télécharger",
+      "preparing": "Préparation…"
     }
   },
   "server": {

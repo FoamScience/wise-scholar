@@ -1115,7 +1115,8 @@
       "download": "تنزيل",
       "progress": "جارٍ التنزيل… {{percent}} %",
       "failed": "فشل: {{error}}. يمكنك المحاولة مجددًا.",
-      "size": "{{size}} للتنزيل"
+      "size": "{{size}} للتنزيل",
+      "preparing": "جارٍ التجهيز…"
     }
   },
   "server": {

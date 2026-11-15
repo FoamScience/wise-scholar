@@ -14,7 +14,7 @@ from urllib.parse import quote
 import httpx
 import langcodes
 
-from . import db, hub
+from . import db, hub, lexicon
 
 log = logging.getLogger("wise_scholar")
 ROOT = db.DB_PATH.parent / "resources"
@@ -42,6 +42,8 @@ class Kind:
     # the folder a language (and the learner's own language) shares
     key: Callable[[str, str], str]
     files: Callable[[str, str], list[Source]]
+    # turns the downloaded files into what the tools read, before the folder counts as installed
+    prepare: Callable[[Path], None] | None = None
 
 
 def code(lang: str) -> str:
@@ -71,7 +73,7 @@ def _sentences(lang: str, own: str) -> list[Source]:
 
 
 CATALOG = {
-    "lexicon": Kind(lambda lang, own: code(lang), _lexicon),
+    "lexicon": Kind(lambda lang, own: code(lang), _lexicon, lexicon.prepare),
     "sentences": Kind(lambda lang, own: f"{code(lang)}-{code(own)}", _sentences),
 }
 # one download per shared folder, whichever courses wait on it
@@ -96,7 +98,9 @@ def course_resource(course_id: int, kind: str, lang: str | None = None) -> Path 
 
 
 def view(course_id: int) -> list[dict]:
-    return db.rows("SELECT kind, lang, size, status, done, error FROM course_resources WHERE course_id = ? ORDER BY kind", course_id)
+    """The course's resources; `prepares` says the page shows a finished download as being prepared."""
+    return [{**r, "prepares": CATALOG[r["kind"]].prepare is not None} for r in db.rows(
+        "SELECT kind, lang, size, status, done, error FROM course_resources WHERE course_id = ? ORDER BY kind", course_id)]
 
 
 def _publish(course_id: int) -> None:
@@ -161,15 +165,26 @@ async def offer(course_id: int, lang: str, own: str) -> dict[str, str]:
     return outcome
 
 
+def _waiting(kind: str, key: str) -> list[int]:
+    return [r["course_id"] for r in db.rows(
+        "SELECT course_id FROM course_resources WHERE kind = ? AND key = ? AND status = 'downloading'", kind, key)]
+
+
 def _set(kind: str, key: str, **values) -> None:
     """Updates every course waiting on this resource and tells their pages."""
-    courses = [r["course_id"] for r in db.rows(
-        "SELECT course_id FROM course_resources WHERE kind = ? AND key = ? AND status = 'downloading'", kind, key)]
+    courses = _waiting(kind, key)
     db.conn.execute(
         f"UPDATE course_resources SET {', '.join(f'{k} = ?' for k in values)} WHERE kind = ? AND key = ? AND status = 'downloading'",
         (*values.values(), kind, key),
     )
     for course_id in courses:
+        _publish(course_id)
+
+
+def _all_in(kind: str, key: str) -> None:
+    """Every waiting course shows its download complete, while what was downloaded is prepared."""
+    db.conn.execute("UPDATE course_resources SET done = COALESCE(size, done) WHERE kind = ? AND key = ? AND status = 'downloading'", (kind, key))
+    for course_id in _waiting(kind, key):
         _publish(course_id)
 
 
@@ -190,6 +205,9 @@ async def _download(kind: str, key: str, files: list[Source]) -> None:
                             # bytes as sent, as the offered size counts them: sources may send them compressed
                             _set(kind, key, done=done + response.num_bytes_downloaded)
                 done += response.num_bytes_downloaded
+    if prepare := CATALOG[kind].prepare:
+        _all_in(kind, key)
+        await asyncio.to_thread(prepare, part)
     (part / "source.json").write_text(json.dumps({"files": [s.url for s in files]}))
     part.rename(folder(kind, key))
 
@@ -220,7 +238,13 @@ def decide(course_id: int, kind: str, allow: bool) -> None:
         db.conn.execute("UPDATE course_resources SET status = 'refused' WHERE course_id = ? AND kind = ?", (course_id, kind))
         _publish(course_id)
         return
-    db.conn.execute("UPDATE course_resources SET status = 'downloading', done = 0, error = NULL WHERE course_id = ? AND kind = ?", (course_id, kind))
+    # a course joining a download under way takes its progress
+    db.conn.execute(
+        "UPDATE course_resources SET status = 'downloading', error = NULL, done = COALESCE((SELECT MAX(o.done) FROM course_resources o "
+        "WHERE o.kind = course_resources.kind AND o.key = course_resources.key AND o.status = 'downloading'), 0) "
+        "WHERE course_id = ? AND kind = ?",
+        (course_id, kind),
+    )
     _publish(course_id)
     if (kind, row["key"]) not in _running:
         _running[(kind, row["key"])] = asyncio.create_task(_fetch(kind, row["key"], row["lang"], row["own"]))
