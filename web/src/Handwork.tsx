@@ -198,7 +198,7 @@ export function AttemptWork(props: { blockId: number; data: ChallengeData; attem
         ))}
       </ul>
       {reading && (
-        <div className="reading">
+        <div className="hand-reading">
           <div className="label">
             {t(reading.by === 'learner' ? 'hand.readByYou' : 'hand.readByTutor')}
             {draft === null && (
