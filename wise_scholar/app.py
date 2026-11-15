@@ -746,7 +746,8 @@ async def _shorten(job: tuple[str, int]) -> str:
 def _job_cards(kind: str, ref: int) -> tuple[int, list[dict], str | None] | None:
     """The course, the cards a cards job works on, and for a missed card what the learner said; None for a card gone."""
     if kind == "short":
-        return ref, [c for c in db.scheduled_cards(ref) if quiz.is_long(c)][:CARDS_PER_TURN], None
+        # a card not yet answered has no schedule for its parts to keep: it is made short once answered
+        return ref, [c for c in db.scheduled_cards(ref) if c["due"] is not None and quiz.is_long(c)][:CARDS_PER_TURN], None
     card = db.card(ref)
     if not card or card["retired"]:
         return None

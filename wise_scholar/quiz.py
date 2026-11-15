@@ -140,6 +140,8 @@ def grade(answer_id: int, correct: bool, misconception: str = "") -> dict:
         db.conn.execute(
             "UPDATE cards SET fsrs = ?, due = ?, confident_miss = ? WHERE id = ?", (fsrs, due, int(miss), card["id"])
         )
+        if card["retired"]:
+            db.schedule_parts(card["id"], fsrs, due)
     return {
         "correct": correct,
         "confident_miss": miss,

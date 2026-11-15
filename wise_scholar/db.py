@@ -572,6 +572,16 @@ MIGRATIONS = [
     ) WHERE phase = 'practice';
     """,
     _usage_per_turn,
+    # Parts of a card made short before it was answered took no schedule, and the answer scheduled the retired card:
+    # they take the schedule it was given.
+    """
+    UPDATE cards SET
+        fsrs = (SELECT p.fsrs FROM cards p WHERE p.id = cards.parent_id),
+        due = (SELECT p.due FROM cards p WHERE p.id = cards.parent_id)
+    WHERE origin = 'short' AND retired = 0 AND due IS NULL
+        AND NOT EXISTS (SELECT 1 FROM answers a WHERE a.card_id = cards.id)
+        AND (SELECT p.due FROM cards p WHERE p.id = cards.parent_id) IS NOT NULL;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -1341,6 +1351,15 @@ def scheduled_cards(course_id: int) -> list[dict]:
     return [_card(c) for c in rows(
         "SELECT * FROM cards WHERE course_id = ? AND scheduled = 1 AND retired = 0 AND vocab = 0 AND lemma IS NULL ORDER BY id", course_id,
     )]
+
+
+def schedule_parts(card_id: int, fsrs: str, due: str) -> None:
+    """A card made short before it was answered hands the schedule its answer gave it to its parts not yet answered."""
+    conn.execute(
+        _CARD_LINE + "UPDATE cards SET fsrs = ?, due = ? WHERE id IN (SELECT id FROM line) AND id != ? AND retired = 0 "
+        "AND origin = 'short' AND NOT EXISTS (SELECT 1 FROM answers a WHERE a.card_id = cards.id)",
+        (card_id, fsrs, due, card_id),
+    )
 
 
 def split_card(card_id: int, parts: list[dict], origin: str) -> list[int]:

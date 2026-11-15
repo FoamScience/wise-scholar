@@ -2116,7 +2116,7 @@ def test_a_cards_job_goes_on_while_turns_make_cards_short(monkeypatch):
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Shortener')").lastrowid
     course = db.create_course("Pumps", who)["id"]
-    longs = [db.add_card(course, None, "Long " * 40, "open", [], "a", "e", scheduled=True) for _ in range(app.CARDS_PER_TURN + 1)]
+    longs = [db.add_card(course, None, "Long " * 40, "open", [], "a", "e", scheduled=True, due="2026-01-01T00:00:00+00:00") for _ in range(app.CARDS_PER_TURN + 1)]
     seen = []
 
     async def turn(lesson, prompt, kind, what):
@@ -2130,6 +2130,32 @@ def test_a_cards_job_goes_on_while_turns_make_cards_short(monkeypatch):
     assert asyncio.run(app._shorten(("short", course))) == "more"
     assert asyncio.run(app._shorten(("short", course))) == "done" and len(seen) == 2
     assert all(db.card(c)["retired"] for c in longs) and side_tools.card_jobs == {}
+
+
+def test_a_card_made_short_before_its_answer_hands_its_schedule_to_its_parts():
+    import asyncio
+
+    from wise_scholar import app, quiz
+    from wise_scholar.tools import side_turns as side_tools
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Early')").lastrowid
+    course = db.create_course("Impellers", who)["id"]
+    long = db.add_card(course, None, "Long " * 40, "open", [], "a", "e", scheduled=True)
+    assert app._job_cards("short", course)[1] == []  # not answered yet: nothing for its parts to keep
+
+    side_tools.card_jobs[long] = "short"
+    asyncio.run(side_tools.split_card(course, long, [side_tools.ShortCard(question=f"Part {n}?", kind="open", answer_key="a") for n in (1, 2)]))
+    first, second = (p["id"] for p in db.rows("SELECT id FROM cards WHERE parent_id = ? ORDER BY id", long))
+    assert db.card(first)["due"] is None
+    quiz.grade(quiz.submit(db.card(first), "a", 0.9), True)
+    before = db.card(first)["due"]
+
+    quiz.grade(quiz.submit(db.card(long), "b", 0.9), False)
+    parent = db.card(long)
+    assert db.card(second)["due"] == parent["due"] and db.card(second)["fsrs"] == parent["fsrs"]
+    assert db.card(first)["due"] == before  # a part already answered keeps its own schedule
+    db.delete_course(course)
+    db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
 
 
 def test_each_turn_records_its_tokens_and_cost_against_its_lesson_and_course(monkeypatch):
