@@ -3540,6 +3540,28 @@ dialog.handoff::backdrop {
   background: color-mix(in srgb, var(--ink) 35%, transparent);
 }
 
+dialog.confirm {
+  width: min(24rem, calc(100vw - 2 * var(--space-md)));
+  padding: var(--space-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+}
+
+dialog.confirm::backdrop {
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+
+dialog.confirm p {
+  margin-top: 0;
+}
+
+dialog.confirm .row {
+  justify-content: flex-end;
+}
+
 dialog.handoff h2 {
   margin-top: 0;
   font-size: var(--text-section);
