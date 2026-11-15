@@ -20,17 +20,9 @@ type Settings = { settings: Setting[]; editable: boolean; restart: boolean }
 const RESTART_POLL_MS = 1000
 
 /** The server's settings: the safe ones edited here and saved to .env, the rest shown as they run. */
-export function SettingsPage() {
-  const { t } = useTranslation()
-  const [state, setState] = useState<Settings | null>(null)
-  const [draft, setDraft] = useState<Record<string, string | null>>({})
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+/** Restarting the server for saved settings to take hold; the page is back once the server answers again. */
+function useRestart(setState: (state: Settings) => void, setError: (message: string) => void) {
   const [restarting, setRestarting] = useState(false)
-
-  useEffect(() => {
-    api<Settings>('/api/settings').then(setState, (e: Error) => setError(e.message))
-  }, [])
 
   useEffect(() => {
     if (!restarting) return
@@ -44,7 +36,50 @@ export function SettingsPage() {
       RESTART_POLL_MS,
     )
     return () => clearInterval(timer)
-  }, [restarting])
+  }, [restarting, setState])
+
+  function restart() {
+    setError('')
+    api('/api/settings/restart', {}).then(
+      () => setRestarting(true),
+      (e: Error) => setError(e.message),
+    )
+  }
+
+  return { restarting, restart }
+}
+
+function RestartNotice(props: { state: Settings; restarting: boolean; changed: boolean; onRestart: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="block stack">
+      <div>{t('settings.pending')}</div>
+      {props.state.restart ? (
+        <div className="row">
+          <button type="button" className="btn primary" disabled={!props.state.editable || props.restarting || props.changed} onClick={props.onRestart}>
+            {props.restarting ? t('settings.restarting') : t('settings.restart')}
+          </button>
+          <span className="small">{t('settings.restartNote')}</span>
+        </div>
+      ) : (
+        <div className="small">{t('settings.restartByHand')}</div>
+      )}
+    </div>
+  )
+}
+
+export function SettingsPage() {
+  const { t } = useTranslation()
+  const [state, setState] = useState<Settings | null>(null)
+  const [draft, setDraft] = useState<Record<string, string | null>>({})
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    api<Settings>('/api/settings').then(setState, (e: Error) => setError(e.message))
+  }, [])
+
+  const { restarting, restart } = useRestart(setState, setError)
 
   if (!state) return <main className="home">{error && <div className="error">{error}</div>}</main>
 
@@ -72,14 +107,6 @@ export function SettingsPage() {
         setError(e.message)
         setBusy(false)
       },
-    )
-  }
-
-  function restart() {
-    setError('')
-    api('/api/settings/restart', {}).then(
-      () => setRestarting(true),
-      (e: Error) => setError(e.message),
     )
   }
 
@@ -134,21 +161,7 @@ export function SettingsPage() {
       <div className="muted">{t('settings.intro')}</div>
       {!state.editable && <div className="error">{t('settings.remote')}</div>}
       {error && <div className="error">{error}</div>}
-      {pending && (
-        <div className="block stack">
-          <div>{t('settings.pending')}</div>
-          {state.restart ? (
-            <div className="row">
-              <button type="button" className="btn primary" disabled={!state.editable || restarting || changed} onClick={restart}>
-                {restarting ? t('settings.restarting') : t('settings.restart')}
-              </button>
-              <span className="small">{t('settings.restartNote')}</span>
-            </div>
-          ) : (
-            <div className="small">{t('settings.restartByHand')}</div>
-          )}
-        </div>
-      )}
+      {pending && <RestartNotice state={state} restarting={restarting} changed={changed} onRestart={restart} />}
       <h2>{t('settings.editableHeading')}</h2>
       {state.settings.filter((s) => s.changeable).map(row)}
       {state.editable && (

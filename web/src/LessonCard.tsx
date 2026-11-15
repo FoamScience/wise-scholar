@@ -334,7 +334,6 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
   const { files, reads, flushes } = useExerciseFiles(blockId, open)
   const { running, error, setError, allSaved, run } = useExerciseRun(blockId, flushes)
   const kept = files.length > 0 && files.every((f) => f.kept)
-  const editing = open && files.some((f) => f.editable)
 
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
@@ -345,21 +344,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       <Markdown>{props.block.markdown}</Markdown>
       <Helper data={d} />
 
-      {files.map((f) => (
-        <ExerciseFileView
-          key={f.path}
-          blockId={blockId}
-          file={f}
-          editable={open && f.editable}
-          completions={d.completions ?? []}
-          onSaving={() => reads.current++}
-          register={(flush) => {
-            flushes.current.set(f.path, flush)
-            return () => flushes.current.delete(f.path)
-          }}
-        />
-      ))}
-      <div className="small">{kept ? t('exercise.cleaned') : editing ? t('exercise.editHere') : t('exercise.follows')}</div>
+      <ExerciseFiles blockId={blockId} files={files} open={open} completions={d.completions ?? []} reads={reads} flushes={flushes} />
 
       {open && (
         <form onSubmit={(e) => e.preventDefault()}>
@@ -392,6 +377,39 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       <Ladder data={d} blockId={blockId} onError={props.onError} />
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}
     </section>
+  )
+}
+
+function ExerciseFiles(props: {
+  blockId: number
+  files: ExerciseFile[]
+  open: boolean
+  completions: NonNullable<ExerciseData['completions']>
+  reads: ReturnType<typeof useExerciseFiles>['reads']
+  flushes: ReturnType<typeof useExerciseFiles>['flushes']
+}) {
+  const { t } = useTranslation()
+  const { files, flushes } = props
+  const kept = files.length > 0 && files.every((f) => f.kept)
+  const editing = props.open && files.some((f) => f.editable)
+  return (
+    <>
+      {files.map((f) => (
+        <ExerciseFileView
+          key={f.path}
+          blockId={props.blockId}
+          file={f}
+          editable={props.open && f.editable}
+          completions={props.completions}
+          onSaving={() => props.reads.current++}
+          register={(flush) => {
+            flushes.current.set(f.path, flush)
+            return () => flushes.current.delete(f.path)
+          }}
+        />
+      ))}
+      <div className="small">{kept ? t('exercise.cleaned') : editing ? t('exercise.editHere') : t('exercise.follows')}</div>
+    </>
   )
 }
 
