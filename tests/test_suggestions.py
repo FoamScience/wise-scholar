@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from mcp.server.mcpserver.exceptions import ToolError
 
 from wise_scholar import app, db, tutor
+from wise_scholar.routes import learner as learner_routes  # noqa: E402
 
 
 def _learner(name: str = "Learner", mode: str = "learner") -> int:
@@ -48,10 +49,10 @@ def turns(monkeypatch):
 
 
 async def _ask(profile: int, others: bool = False) -> dict:
-    state = await app.ask_suggestions(app.SuggestionAsk(profile_id=profile, others=others))
-    if task := app._suggesting.get(profile):
+    state = await learner_routes.ask_suggestions(learner_routes.SuggestionAsk(profile_id=profile, others=others))
+    if task := learner_routes._suggesting.get(profile):
         await task
-    return app._suggestions_state(profile) if state["running"] else state
+    return learner_routes._suggestions_state(profile) if state["running"] else state
 
 
 def test_nothing_is_written_before_a_course_has_its_map(turns):
@@ -74,7 +75,7 @@ def test_written_once_then_again_only_when_due(turns):
     assert [s["title"] for s in first["suggestions"]] == [f"Round 1 {n}" for n in range(6)] and turns[1] == ["recorded"]
 
     asyncio.run(_ask(who))
-    for _ in range(app.SUGGEST_AFTER_LESSONS - 1):
+    for _ in range(learner_routes.SUGGEST_AFTER_LESSONS - 1):
         _finish_lesson(course)
     asyncio.run(_ask(who))
     assert len(turns[0]) == 1
@@ -91,7 +92,7 @@ def test_a_new_language_calls_for_new_suggestions(turns):
     who = _learner("Polyglot")
     _mapped(who)
     asyncio.run(_ask(who))
-    app.set_profile_locale(who, app.ProfileLocale(locale="fr"))
+    learner_routes.set_profile_locale(who, learner_routes.ProfileLocale(locale="fr"))
     asyncio.run(_ask(who))
     assert len(turns[0]) == 2 and "French" in turns[0][1]
 
@@ -110,8 +111,8 @@ def test_the_prompt_carries_courses_claims_links_and_what_was_turned_down(turns)
     assert f"[claim {ids['a']}, unseen] Head grows with speed squared" in prompt and f"[link] {ids['a']} follows {ids['b']}" in prompt
     assert "\n[event]" not in prompt
 
-    dismissed = app._suggestions_state(who)["suggestions"][0]
-    asyncio.run(app.dismiss_suggestion(dismissed["id"]))
+    dismissed = learner_routes._suggestions_state(who)["suggestions"][0]
+    asyncio.run(learner_routes.dismiss_suggestion(dismissed["id"]))
     asyncio.run(_ask(who, others=True))
     assert f"[not wanted] {dismissed['title']}" in turns[0][1] and "[not wanted] Round 1 1" in turns[0][1]
 
@@ -129,7 +130,7 @@ def test_a_failed_turn_keeps_the_old_set(turns, monkeypatch):
     assert state["failed"] and state["suggestions"] == first
 
     # failed: not tried again on its own, only when the learner asks
-    assert asyncio.run(_ask(who))["suggestions"] == first and who in app._suggest_failed
+    assert asyncio.run(_ask(who))["suggestions"] == first and who in learner_routes._suggest_failed
 
 
 def test_asking_for_others_retires_the_old_set(turns):
@@ -160,8 +161,8 @@ def test_too_few_left_are_refilled(turns):
 
     async def dismiss_four():
         for s in cards[:4]:
-            await app.dismiss_suggestion(s["id"])
-        if task := app._suggesting.get(who):
+            await learner_routes.dismiss_suggestion(s["id"])
+        if task := learner_routes._suggesting.get(who):
             await task
 
     asyncio.run(dismiss_four())
@@ -173,11 +174,11 @@ def test_starting_one_makes_the_course_once(turns):
     who = _learner("Starter")
     _mapped(who)
     chosen = asyncio.run(_ask(who))["suggestions"][0]
-    course = asyncio.run(app.start_suggestion(chosen["id"]))
+    course = asyncio.run(learner_routes.start_suggestion(chosen["id"]))
     assert course["topic"] == chosen["title"] and course["profile_id"] == who
     assert chosen["id"] not in {s["id"] for s in db.suggestions(who)}
     with pytest.raises(HTTPException):
-        asyncio.run(app.start_suggestion(chosen["id"]))
+        asyncio.run(learner_routes.start_suggestion(chosen["id"]))
 
 
 @pytest.mark.parametrize("change, error", [

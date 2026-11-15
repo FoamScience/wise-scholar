@@ -147,6 +147,7 @@ def test_placement_records_each_area_and_a_retake_replaces_them(monkeypatch):
     import asyncio
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import courses as courses_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Placed')").lastrowid
     course = db.create_course("OCCT", who)["id"]
@@ -174,7 +175,7 @@ def test_placement_records_each_area_and_a_retake_replaces_them(monkeypatch):
     db.set_concepts(course, [{"title": "Basics", "concepts": ["Shapes"], "known": []}])
     lines = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: lines.append(line))
-    asyncio.run(app.retake_placement(course))
+    asyncio.run(courses_routes.retake_placement(course))
     assert "By area: Topology: has walks shapes" in lines[0]
     assert place([area(title="Transforms", holds="", lacks="gp_Trsf"), area(title="Healing", holds="sewing", lacks="")]) == "recorded"
     assert [a["title"] for a in db.placement_areas(course)] == ["Transforms", "Healing"]
@@ -184,6 +185,7 @@ def test_units_record_what_they_build_on_and_old_maps_get_it_once(monkeypatch):
     import asyncio
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import courses as courses_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Linked')").lastrowid
     course = db.create_course("Impellers", who)["id"]
@@ -221,12 +223,12 @@ def test_units_record_what_they_build_on_and_old_maps_get_it_once(monkeypatch):
     db.set_concepts(old, [{"title": "M", "concepts": ["a", "b"], "known": []}])
     started = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: started.append((lesson["phase"], line, quiet)))
-    assert asyncio.run(app.link_map(old)) == {"started": True} and started == [("interview", app.LINK_MAP + "M:\n  - a (not started)\n  - b (not started)", True)]
+    assert asyncio.run(courses_routes.link_map(old)) == {"started": True} and started == [("interview", courses_routes.LINK_MAP + "M:\n  - a (not started)\n  - b (not started)", True)]
     assert asyncio.run(tutor.set_prerequisites(old, {"a": ["b"]})).startswith("error: a unit needs only units before it")
     assert asyncio.run(tutor.set_prerequisites(old, {"a": []})).startswith("error: no unit needs another")
     assert asyncio.run(tutor.set_prerequisites(old, {"b": ["a"]})) == "linked"
-    assert db.course(old)["prerequisites"] == 1 and asyncio.run(app.link_map(old)) == {"started": False}
-    assert asyncio.run(app.link_map(db.create_course("No map", who)["id"])) == {"started": False}
+    assert db.course(old)["prerequisites"] == 1 and asyncio.run(courses_routes.link_map(old)) == {"started": False}
+    assert asyncio.run(courses_routes.link_map(db.create_course("No map", who)["id"])) == {"started": False}
     assert asyncio.run(tutor.set_prerequisites(db.create_course("Empty", who)["id"], {"b": ["a"]})) == "error: this course has no map yet; use set_course_map"
 
 
@@ -333,7 +335,8 @@ def test_a_finished_lesson_yields_claims_whose_state_follows_their_latest_eviden
 def test_a_lesson_and_a_practice_start_from_the_claims_they_build_on(monkeypatch):
     import asyncio
 
-    from wise_scholar import app, tutor
+    from wise_scholar import tutor
+    from wise_scholar.routes import learner as learner_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Bridged')").lastrowid
     git = db.create_course("Git", who)["id"]
@@ -357,27 +360,27 @@ def test_a_lesson_and_a_practice_start_from_the_claims_they_build_on(monkeypatch
         {"key": "s", "text": "Two shapes are the same when their hashes match.", "evidence": []},
     ], [("h", "s", "contrasts")])  # fmt: skip
 
-    brief = app._claims_brief(db.lesson(db.create_lesson(occt, "Edges", "lesson", units["Edges"])))
+    brief = learner_routes._claims_brief(db.lesson(db.create_lesson(occt, "Edges", "lesson", units["Edges"])))
     assert brief.index("[shaky] Explorers visit faces once per use.") < brief.index("[unseen] A face holds a surface.")
     assert "other courses" not in brief
-    bridged = app._claims_brief(db.lesson(db.create_lesson(occt, "Shapes and hashes", "lesson", units["Shapes and hashes"])))
+    bridged = learner_routes._claims_brief(db.lesson(db.create_lesson(occt, "Shapes and hashes", "lesson", units["Shapes and hashes"])))
     assert "- [unseen] Two shapes are the same when their hashes match. (from Git); looks like but differs from: Git hashes an object's content to name it." in bridged
-    assert app._claims_brief(db.lesson(db.create_lesson(git, "Objects again", "lesson", db.concepts(git)[0]["id"]))) == ""
+    assert learner_routes._claims_brief(db.lesson(db.create_lesson(git, "Objects again", "lesson", db.concepts(git)[0]["id"]))) == ""
 
     # A practice unit lists the shaky claims of the units it covers.
     monkeypatch.setattr(db, "practice_scope", lambda concept_id: [{"id": units["Faces"], "course_id": occt}])
-    assert app._practice_claims(units["Faces"], who) == (
+    assert learner_routes._practice_claims(units["Faces"], who) == (
         "\nClaims of these units the learner is shaky on or due to review; aim tasks at them first:\n- [shaky] Explorers visit faces once per use."
     )
     db.conn.execute("UPDATE claims SET wrong = 1 WHERE id = ?", (ids["b"],))
-    assert app._practice_claims(units["Faces"], who) == ""
+    assert learner_routes._practice_claims(units["Faces"], who) == ""
 
 
 def test_the_graph_page_lists_claims_and_the_learner_rewords_rejects_and_merges_them():
     import pytest
     from fastapi import HTTPException
 
-    from wise_scholar import app
+    from wise_scholar.routes import learner as learner_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Curator')").lastrowid
     course = db.create_course("OCCT", who)["id"]
@@ -389,26 +392,26 @@ def test_the_graph_page_lists_claims_and_the_learner_rewords_rejects_and_merges_
     a, b, c = a["a"], a["b"], c["c"]
     db.conn.execute("INSERT INTO claim_edges (from_id, to_id, kind) VALUES (?, ?, 'follows')", (c, b))
 
-    view = app.list_claims(who)
+    view = learner_routes.list_claims(who)
     assert [x["text"] for x in view["claims"]] == ["A face holds a surface.", "Faces have wires.", "A face carries one surface."]
     assert view["claims"][0]["sources"] == [{"id": first, "title": "Faces", "concept_id": unit, "course_id": course, "topic": "OCCT"}]
     assert {(e["from_id"], e["to_id"], e["kind"]) for e in view["edges"]} == {(a, b, "supports"), (c, b, "follows")}
 
-    assert app.patch_claim(a, app.ClaimPatch(text="A  face holds one surface."))["text"] == "A face holds one surface."
+    assert learner_routes.patch_claim(a, learner_routes.ClaimPatch(text="A  face holds one surface."))["text"] == "A face holds one surface."
     with pytest.raises(HTTPException) as taken:
-        app.patch_claim(c, app.ClaimPatch(text="faces have wires."))
+        learner_routes.patch_claim(c, learner_routes.ClaimPatch(text="faces have wires."))
     assert taken.value.status_code == 409
-    for bad in (lambda: app.merge_claim(c, app.ClaimMerge(into=c)), lambda: app.merge_claim(c, app.ClaimMerge(into=10**9))):
+    for bad in (lambda: learner_routes.merge_claim(c, learner_routes.ClaimMerge(into=c)), lambda: learner_routes.merge_claim(c, learner_routes.ClaimMerge(into=10**9))):
         with pytest.raises(HTTPException):
             bad()
 
-    merged = app.merge_claim(c, app.ClaimMerge(into=a))
+    merged = learner_routes.merge_claim(c, learner_routes.ClaimMerge(into=a))
     assert [x["id"] for x in merged["claims"]] == [a, b] and db.claim(c) is None
     assert {s["id"] for s in merged["claims"][0]["sources"]} == {first, second}
     assert {(e["from_id"], e["to_id"], e["kind"]) for e in merged["edges"]} == {(a, b, "supports"), (a, b, "follows")}
 
-    app.patch_claim(b, app.ClaimPatch(wrong=True))
-    assert [x["id"] for x in app.list_claims(who)["claims"]] == [a] and app.list_claims(who)["edges"] == []
+    learner_routes.patch_claim(b, learner_routes.ClaimPatch(wrong=True))
+    assert [x["id"] for x in learner_routes.list_claims(who)["claims"]] == [a] and learner_routes.list_claims(who)["edges"] == []
 
 
 def test_pretest_gates_explanations_and_stays_out_of_reviews_and_mastery():
@@ -523,26 +526,26 @@ def test_book_export_reports_a_missing_course_and_a_missing_install(monkeypatch)
     import pytest
     from fastapi import HTTPException
 
-    from wise_scholar import app
+    from wise_scholar.routes import sharing as sharing_routes
 
     with pytest.raises(HTTPException) as missing:
-        asyncio.run(app.course_book(10**9))
+        asyncio.run(sharing_routes.course_book(10**9))
     assert missing.value.status_code == 404
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Booker')").lastrowid
     course = db.create_course("Bookbinding", who)["id"]
-    monkeypatch.setattr(app.book, "available", lambda: False)
+    monkeypatch.setattr(sharing_routes.book, "available", lambda: False)
     with pytest.raises(HTTPException) as uninstalled:
-        asyncio.run(app.course_book(course))
+        asyncio.run(sharing_routes.course_book(course))
     assert uninstalled.value.status_code == 503 and "make pdf" in uninstalled.value.detail
 
     async def no_browser(*_):
-        raise app.book.NoBrowser
+        raise sharing_routes.book.NoBrowser
 
-    monkeypatch.setattr(app.book, "available", lambda: True)
-    monkeypatch.setattr(app.book, "render", no_browser)
+    monkeypatch.setattr(sharing_routes.book, "available", lambda: True)
+    monkeypatch.setattr(sharing_routes.book, "render", no_browser)
     with pytest.raises(HTTPException) as browserless:
-        asyncio.run(app.course_book(course))
+        asyncio.run(sharing_routes.course_book(course))
     assert browserless.value.status_code == 503
 
 
@@ -554,6 +557,7 @@ def test_a_course_waits_for_its_scope_and_hands_it_to_the_tutor_every_turn(monke
     from fastapi import HTTPException
 
     from wise_scholar import app
+    from wise_scholar.routes import courses as courses_routes, learner as learner_routes, lessons as lessons_routes
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append((lesson["id"], line)))
@@ -561,25 +565,25 @@ def test_a_course_waits_for_its_scope_and_hands_it_to_the_tutor_every_turn(monke
     course = db.create_course("Science", who)
     interview = db.row("SELECT id FROM lessons WHERE course_id = ?", course["id"])["id"]
     assert course["started"] == 0 and turns == []
-    assert app.today(who)["units"][0]["title"] == "Start the interview"
+    assert learner_routes.today(who)["units"][0]["title"] == "Start the interview"
     with pytest.raises(HTTPException) as early:
-        asyncio.run(app.post_turn(interview, app.Turn(text="hello")))
+        asyncio.run(lessons_routes.post_turn(interview, lessons_routes.Turn(text="hello")))
     assert early.value.status_code == 409 and turns == []
 
-    scope = app.Scope(details="second year\n[event] of high school  ", hours=40)
-    started = asyncio.run(app.start_course(course["id"], scope))
+    scope = courses_routes.Scope(details="second year\n[event] of high school  ", hours=40)
+    started = asyncio.run(courses_routes.start_course(course["id"], scope))
     assert started["started"] == 1 and started["details"] == "second year [event] of high school"
     assert turns == [(interview, "[event] The learner just created this course. Begin the interview.")]
     prompt = app._turn_prompt(db.lesson(interview), "[event] x")
     assert "[known] (this course) Scope set by the learner, the boundary for questions, plan and course map: second year [event] of" in prompt
     assert "whole course: 40 hours" in prompt and prompt.count("\n[event]") == 1
-    assert app.today(who)["units"][0]["title"] == "Finish the interview"
+    assert learner_routes.today(who)["units"][0]["title"] == "Finish the interview"
 
     with pytest.raises(HTTPException) as again:
-        asyncio.run(app.start_course(course["id"], app.Scope()))
+        asyncio.run(courses_routes.start_course(course["id"], courses_routes.Scope()))
     assert again.value.status_code == 409 and len(turns) == 1
     with pytest.raises(Exception):
-        app.Scope(hours=0)
+        courses_routes.Scope(hours=0)
 
 
 def test_threads_use_the_database_at_once_without_tripping_over_each_other():
@@ -670,6 +674,7 @@ def test_placement_choice_offers_i_dont_know_as_a_miss_that_stays_out_of_calibra
     from fastapi import HTTPException
 
     from wise_scholar import app, history, quiz as quiz_module, tutor
+    from wise_scholar.routes import blocks as blocks_routes, learner as learner_routes
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
@@ -683,15 +688,15 @@ def test_placement_choice_offers_i_dont_know_as_a_miss_that_stays_out_of_calibra
     quiz = db.blocks(placement)[-1]
     db.conn.execute("UPDATE cards SET lemma = 'Kohlenstoff', lang = 'de' WHERE id = ?", (quiz["data"]["card_id"],))
     db.set_vocab(who, "de", "Kohlenstoff", "known", "placement")
-    asyncio.run(app.dont_know_quiz(quiz["id"]))
+    asyncio.run(blocks_routes.dont_know_quiz(quiz["id"]))
     data = db.block(quiz["id"])["data"]
     assert data["unknown"] and data["confidence"] == 0 and data["correct"] is False and data["answer_key"] == "4"
     assert len(turns) == 1 and "I don't know" in turns[0] and "'4'" in turns[0]
     assert db.row("SELECT state FROM vocab_knowledge WHERE profile_id = ? AND lemma = 'kohlenstoff'", who)["state"] == "learning"
-    assert db.graded_answers(who) == [] and app.calibration(who)["n"] == 0
+    assert db.graded_answers(who) == [] and learner_routes.calibration(who)["n"] == 0
     assert history._line(db.block(quiz["id"])) == "quiz: Valence of carbon? -> did not know"
     with pytest.raises(HTTPException) as twice:
-        asyncio.run(app.dont_know_quiz(quiz["id"]))
+        asyncio.run(blocks_routes.dont_know_quiz(quiz["id"]))
     assert twice.value.detail == "already answered"
 
     asyncio.run(tutor.pose_quiz(placement, "Nenne ein Edelgas.", "open", "Helium", "", translation=" Name a noble gas. "))
@@ -702,7 +707,7 @@ def test_placement_choice_offers_i_dont_know_as_a_miss_that_stays_out_of_calibra
     assert asyncio.run(tutor.pose_quiz(lesson, "Valence of carbon?", "choice", "4", "", pretest=True, options=five)).startswith("shown")
     for block in (db.blocks(placement)[-1], db.blocks(lesson)[-1]):
         with pytest.raises(HTTPException) as refused:
-            asyncio.run(app.dont_know_quiz(block["id"]))
+            asyncio.run(blocks_routes.dont_know_quiz(block["id"]))
         assert refused.value.status_code == 409 and db.block(block["id"])["data"]["answer"] is None
     assert len(turns) == 1
 
@@ -937,11 +942,11 @@ def test_vault_endpoint_serves_a_zip_without_a_browser(monkeypatch):
     import io
     import zipfile
 
-    from wise_scholar import app
+    from wise_scholar.routes import sharing as sharing_routes
 
     course, _ = seed_vault("Vault 2")
-    monkeypatch.setattr(app.book, "available", lambda: False)
-    sent = asyncio.run(app.course_vault(course))
+    monkeypatch.setattr(sharing_routes.book, "available", lambda: False)
+    sent = asyncio.run(sharing_routes.course_vault(course))
     assert sent.media_type == "application/zip" and zipfile.ZipFile(io.BytesIO(sent.body)).testzip() is None
     plot = [n for n in zipfile.ZipFile(io.BytesIO(sent.body)).namelist() if "plot-" in n]
     assert plot == []
@@ -1039,6 +1044,7 @@ def test_a_material_url_is_fetched_through_checked_hops_and_private_addresses_ar
     from fastapi import HTTPException
 
     from wise_scholar import app
+    from wise_scholar.routes import courses as courses_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Reader')").lastrowid
     course = db.create_course("Git internals", who)["id"]
@@ -1055,7 +1061,7 @@ def test_a_material_url_is_fetched_through_checked_hops_and_private_addresses_ar
         if request.url.path == "/page.cgi":
             return httpx.Response(200, headers={"content-type": "text/html; charset=utf-8"}, content=b"<p>hi</p>")
         if request.url.path == "/big.pdf":
-            return httpx.Response(200, headers={"content-type": "application/pdf"}, content=b"x" * (app.SOURCE_LIMIT + 1))
+            return httpx.Response(200, headers={"content-type": "application/pdf"}, content=b"x" * (courses_routes.SOURCE_LIMIT + 1))
         if request.url.path == "/loop":
             return httpx.Response(302, headers={"location": "https://example.org/loop"})
         return httpx.Response(404)
@@ -1063,30 +1069,30 @@ def test_a_material_url_is_fetched_through_checked_hops_and_private_addresses_ar
     # The real check, on addresses that need no DNS: this machine and a private range are refused, a public one passes.
     for private in ("127.0.0.1", "localhost", "10.0.0.1", "169.254.169.254"):
         with pytest.raises(HTTPException) as refused:
-            asyncio.run(app._public_address(private, []))
+            asyncio.run(courses_routes._public_address(private, []))
         assert refused.value.status_code == 422, private
-    assert asyncio.run(app._public_address("93.184.216.34", [])) == "93.184.216.34"
+    assert asyncio.run(courses_routes._public_address("93.184.216.34", [])) == "93.184.216.34"
     with pytest.raises(HTTPException):
-        asyncio.run(app._public_address("::1", []))
+        asyncio.run(courses_routes._public_address("::1", []))
 
     async def public(host, networks):
         return "203.0.113.9"
 
-    monkeypatch.setattr(app, "_public_address", public)
-    monkeypatch.setattr(app.httpx, "AsyncClient", functools.partial(httpx.AsyncClient, transport=httpx.MockTransport(serve)))
+    monkeypatch.setattr(courses_routes, "_public_address", public)
+    monkeypatch.setattr(courses_routes.httpx, "AsyncClient", functools.partial(httpx.AsyncClient, transport=httpx.MockTransport(serve)))
 
-    source = asyncio.run(app.fetch_source(course, app.SourceUrl(url="https://github.example.org/raw/peepcode-git")))
+    source = asyncio.run(courses_routes.fetch_source(course, courses_routes.SourceUrl(url="https://github.example.org/raw/peepcode-git")))
     assert source["name"] == "peepcode.pdf" and source["size"] == 13
     # Each hop is sent to the checked address, with the name kept for the Host header and the certificate.
     assert hops == ["https://203.0.113.9/raw/peepcode-git", "https://203.0.113.9/peepcode"]
     assert any(p.name == f"{source['id']}-peepcode.pdf" for p in (app.SOURCES / str(course)).iterdir())
-    page = asyncio.run(app.fetch_source(course, app.SourceUrl(url="https://example.org/page.cgi")))
+    page = asyncio.run(courses_routes.fetch_source(course, courses_routes.SourceUrl(url="https://example.org/page.cgi")))
     assert page["name"] == "page.html"
     for bad, status, detail in (("http://example.org:8321/api/profiles", 422, "only public"), ("ftp://example.org/x.pdf", 422, "http://"),
                                 ("https://example.org/loop", 422, "too many"), ("https://example.org/missing", 422, "did not answer"),
                                 ("https://example.org/big.pdf", 413, "50 MB"), ("not a url", 422, "http://")):
         with pytest.raises(HTTPException) as refused:
-            asyncio.run(app.fetch_source(course, app.SourceUrl(url=bad)))
+            asyncio.run(courses_routes.fetch_source(course, courses_routes.SourceUrl(url=bad)))
         assert refused.value.status_code == status and detail in refused.value.detail, bad
     prompt = app._turn_prompt(db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]), "[event] x")
     assert "peepcode.pdf (still being read)" in prompt
@@ -1102,10 +1108,11 @@ def test_a_teacher_profile_prepares_courses_with_the_designer_prompts_and_no_lea
     from fastapi import HTTPException
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import blocks as blocks_routes, courses as courses_routes, learner as learner_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Ms Teach')").lastrowid
     assert db.profile(who)["mode"] == "learner"
-    assert app.set_mode(who, app.ProfileMode(mode="teacher"))["mode"] == "teacher"
+    assert learner_routes.set_mode(who, learner_routes.ProfileMode(mode="teacher"))["mode"] == "teacher"
     course = db.create_course("Chemistry for year 10", who)
     assert course["mode"] == "teacher"
     interview = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", course["id"])["id"])
@@ -1126,11 +1133,11 @@ def test_a_teacher_profile_prepares_courses_with_the_designer_prompts_and_no_lea
     assert db.card(db.blocks(lesson)[-1]["data"]["card_id"])["scheduled"] == 0
     assert asyncio.run(tutor.finish_lesson(lesson, "Plan done.")) == "finished; end the turn"
     with pytest.raises(HTTPException) as refused:
-        asyncio.run(app.start_placement(course["id"]))
+        asyncio.run(courses_routes.start_placement(course["id"]))
     assert refused.value.status_code == 409 and "prepared course" in refused.value.detail
     # Nobody answers an authored card through the API either.
-    for call in (lambda: app.answer_quiz(db.blocks(lesson)[-2]["id"], app.QuizAnswer(answer="4", confidence=0.5)),
-                 lambda: app.attempt(opening["id"], app.Answer(answer="x"))):
+    for call in (lambda: blocks_routes.answer_quiz(db.blocks(lesson)[-2]["id"], app.QuizAnswer(answer="4", confidence=0.5)),
+                 lambda: blocks_routes.attempt(opening["id"], blocks_routes.Answer(answer="x"))):
         with pytest.raises(HTTPException) as closed:
             asyncio.run(call())
         assert closed.value.status_code == 409 and "take no answers" in closed.value.detail
@@ -1141,14 +1148,15 @@ def test_a_teacher_profile_prepares_courses_with_the_designer_prompts_and_no_lea
     assert db.course(plain)["mode"] == "learner" and app._phase_prompt(db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", plain)["id"])) == "interview"
     db.set_concepts(plain, [{"title": "Atoms", "concepts": ["Bonds"], "known": []}])
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: None)
-    retake = asyncio.run(app.retake_placement(plain))
+    retake = asyncio.run(courses_routes.retake_placement(plain))
     assert retake["phase"] == "placement"
 
 
 def test_handouts_give_the_teacher_the_solutions_and_the_students_the_tasks(monkeypatch):
     import asyncio
 
-    from wise_scholar import app, handout, tutor
+    from wise_scholar import handout, tutor
+    from wise_scholar.routes import lessons as lessons_routes
 
     who = db.conn.execute("INSERT INTO profiles (name, mode) VALUES ('Handout', 'teacher')").lastrowid
     course = db.create_course("Chemistry handouts", who)["id"]
@@ -1177,9 +1185,9 @@ def test_handouts_give_the_teacher_the_solutions_and_the_students_the_tasks(monk
         assert secret not in student, secret
     assert "Count the bonds in water." in student and "`w/count.py`" in student and "data:image/svg+xml;base64," in student
     assert "**Solution**\n>" in teacher and "[!solution]" not in teacher and "Two bonds." in teacher
-    sent = app.lesson_handout(lesson, "student")
+    sent = lessons_routes.lesson_handout(lesson, "student")
     assert sent.media_type.startswith("text/markdown") and sent.body.decode() == student
-    assert app.get_lesson(lesson)["course_id"] == course
+    assert lessons_routes.get_lesson(lesson)["course_id"] == course
 
 
 def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tmp_path, monkeypatch):
@@ -1189,6 +1197,7 @@ def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tm
     from fastapi import HTTPException
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import courses as courses_routes
 
     monkeypatch.setattr(app, "SOURCES", tmp_path / "sources")
     monkeypatch.setattr(db, "WORKSPACE", tmp_path / "workspace")
@@ -1214,10 +1223,10 @@ def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tm
     (db.workspace(db.course(course)["slug"]) / "demo.py").write_text("print(1)")
 
     db.add_card(course, None, "Nenne ein Edelgas.", "open", [], "Helium", "", scheduled=False, translation="Name a noble gas.")
-    copy = app.duplicate_course(course)
+    copy = courses_routes.duplicate_course(course)
     assert copy["topic"] == "Chemistry to copy (2)" and copy["mode"] == "teacher" and copy["id"] != course
     assert db.row("SELECT translation FROM cards WHERE course_id = ? AND question = ?", copy["id"], "Nenne ein Edelgas.")["translation"] == "Name a noble gas."
-    assert app.duplicate_course(copy["id"])["topic"] == "Chemistry to copy (3)"
+    assert courses_routes.duplicate_course(copy["id"])["topic"] == "Chemistry to copy (3)"
     # The material comes along, the work done on the original does not.
     copied_trial = db.blocks(db.rows("SELECT id FROM lessons WHERE course_id = ? AND concept_id IS NOT NULL", copy["id"])[0]["id"])[-1]
     assert copied_trial["data"]["solution"] == "Covalent." and copied_trial["data"]["attempts"] == [] and copied_trial["data"]["solved"] is False
@@ -1241,7 +1250,7 @@ def test_a_prepared_course_is_duplicated_with_its_plan_and_without_its_record(tm
     assert db.commands(who) == [] and db.graded_answers(who) == []
     learner = db.conn.execute("INSERT INTO profiles (name) VALUES ('No copy')").lastrowid
     with pytest.raises(HTTPException) as refused:
-        app.duplicate_course(db.create_course("Mine", learner)["id"])
+        courses_routes.duplicate_course(db.create_course("Mine", learner)["id"])
     assert refused.value.status_code == 409
 
 
@@ -1251,7 +1260,8 @@ def test_a_teacher_edits_removes_and_reorders_the_cards_of_a_plan():
     import pytest
     from fastapi import HTTPException
 
-    from wise_scholar import app, tutor
+    from wise_scholar import tutor
+    from wise_scholar.routes import blocks as blocks_routes
 
     who = db.conn.execute("INSERT INTO profiles (name, mode) VALUES ('Editor', 'teacher')").lastrowid
     course = db.create_course("Chemistry edits", who)["id"]
@@ -1262,21 +1272,21 @@ def test_a_teacher_edits_removes_and_reorders_the_cards_of_a_plan():
     asyncio.run(tutor.pose_quiz(lesson, "Noble gas?", "choice", "Helium", "Full shell.", options=["Helium", "Oxygen"]))
     prose, task, quiz = db.blocks(lesson)
 
-    edited = app.edit_block(task["id"], app.BlockEdit(markdown="How many bonds does carbon form?", solution="Four.", hints=["Count electrons.", " ", "Think shells."]))
+    edited = blocks_routes.edit_block(task["id"], blocks_routes.BlockEdit(markdown="How many bonds does carbon form?", solution="Four.", hints=["Count electrons.", " ", "Think shells."]))
     assert edited["markdown"] == "How many bonds does carbon form?" and edited["data"]["solution"] == "Four." and edited["data"]["hints"] == ["Count electrons.", "Think shells."]
     with pytest.raises(HTTPException) as bad:
-        app.edit_block(quiz["id"], app.BlockEdit(options=["Helium", "Neon"], answer_key="Argon"))
+        blocks_routes.edit_block(quiz["id"], blocks_routes.BlockEdit(options=["Helium", "Neon"], answer_key="Argon"))
     assert bad.value.status_code == 422
-    edited = app.edit_block(quiz["id"], app.BlockEdit(markdown="Which is a noble gas?", options=["Helium", "Neon", "Oxygen"], answer_key="Neon", explanation="Also full."))
+    edited = blocks_routes.edit_block(quiz["id"], blocks_routes.BlockEdit(markdown="Which is a noble gas?", options=["Helium", "Neon", "Oxygen"], answer_key="Neon", explanation="Also full."))
     card = db.card(quiz["data"]["card_id"])
     assert (card["question"], card["options"], card["answer_key"], card["explanation"]) == ("Which is a noble gas?", ["Helium", "Neon", "Oxygen"], "Neon", "Also full.")
     assert edited["data"]["answer_key"] == "Neon" and edited["data"]["options"] == ["Helium", "Neon", "Oxygen"]
 
-    order = app.move_block(quiz["id"], app.Move(direction="up"))
+    order = blocks_routes.move_block(quiz["id"], blocks_routes.Move(direction="up"))
     assert [b["id"] for b in order] == [prose["id"], quiz["id"], task["id"]]
-    order = app.move_block(prose["id"], app.Move(direction="up"))
+    order = blocks_routes.move_block(prose["id"], blocks_routes.Move(direction="up"))
     assert [b["id"] for b in order] == [prose["id"], quiz["id"], task["id"]]  # already first
-    app.remove_block(quiz["id"])
+    blocks_routes.remove_block(quiz["id"])
     assert [b["id"] for b in db.blocks(lesson)] == [prose["id"], task["id"]] and db.card(card["id"]) is None
 
     learner = db.conn.execute("INSERT INTO profiles (name) VALUES ('Reader only')").lastrowid
@@ -1284,7 +1294,7 @@ def test_a_teacher_edits_removes_and_reorders_the_cards_of_a_plan():
     plain_lesson = db.row("SELECT id FROM lessons WHERE course_id = ?", plain)["id"]
     block = db.add_block(plain_lesson, "prose", "Hello", {})
     with pytest.raises(HTTPException) as refused:
-        app.edit_block(block["id"], app.BlockEdit(markdown="Changed"))
+        blocks_routes.edit_block(block["id"], blocks_routes.BlockEdit(markdown="Changed"))
     assert refused.value.status_code == 409
 
 
@@ -1292,6 +1302,7 @@ def test_a_question_card_may_take_several_answers():
     import asyncio
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import blocks as blocks_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Many')").lastrowid
     course = db.create_course("Statistics", who)["id"]
@@ -1304,7 +1315,7 @@ def test_a_question_card_may_take_several_answers():
     app_turn = app._start_turn
     app._start_turn = lambda lesson, line: turns.append(line)
     try:
-        asyncio.run(app.answer_question(block["id"], app.Answer(answer="Excel; R")))
+        asyncio.run(blocks_routes.answer_question(block["id"], blocks_routes.Answer(answer="Excel; R")))
     finally:
         app._start_turn = app_turn
     assert db.block(block["id"])["data"]["answer"] == "Excel; R" and "Excel; R" in turns[0]
@@ -1318,6 +1329,7 @@ def test_a_goal_card_records_what_the_learner_rules_out_as_non_goals(monkeypatch
     from fastapi import HTTPException
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import blocks as blocks_routes
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
@@ -1331,12 +1343,12 @@ def test_a_goal_card_records_what_the_learner_rules_out_as_non_goals(monkeypatch
     plain = db.blocks(interview)[-1]
 
     with pytest.raises(HTTPException) as refused:
-        asyncio.run(app.answer_question(plain["id"], app.Answer(answer="Clamp", non_goals=["Grinder"])))
+        asyncio.run(blocks_routes.answer_question(plain["id"], blocks_routes.Answer(answer="Clamp", non_goals=["Grinder"])))
     assert refused.value.status_code == 422
     with pytest.raises(HTTPException):
-        asyncio.run(app.answer_question(goal["id"], app.Answer(answer="MIG", non_goals=["Gas"])))
+        asyncio.run(blocks_routes.answer_question(goal["id"], blocks_routes.Answer(answer="MIG", non_goals=["Gas"])))
 
-    asyncio.run(app.answer_question(goal["id"], app.Answer(answer="", non_goals=["Stick", "TIG", "Stick"])))
+    asyncio.run(blocks_routes.answer_question(goal["id"], blocks_routes.Answer(answer="", non_goals=["Stick", "TIG", "Stick"])))
     data = db.block(goal["id"])["data"]
     assert data["answer"] == "" and data["non_goals"] == ["Stick", "TIG"]
     assert "not wanted: 'Stick; TIG'" in turns[0]
@@ -1348,8 +1360,9 @@ def test_placement_length_follows_the_hours_ahead_and_numbers_its_questions(monk
     import asyncio
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import courses as courses_routes
 
-    assert [app.placement_length(h) for h in (None, 0.5, 1, 2, 10, 200, 5000)] == [8, 4, 4, 6, 11, 19, 20]
+    assert [courses_routes.placement_length(h) for h in (None, 0.5, 1, 2, 10, 200, 5000)] == [8, 4, 4, 6, 11, 19, 20]
 
     lines = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: lines.append(line))
@@ -1357,7 +1370,7 @@ def test_placement_length_follows_the_hours_ahead_and_numbers_its_questions(monk
     course = db.create_course("Sailing", who)["id"]
     db.conn.execute("UPDATE courses SET hours = 2 WHERE id = ?", (course,))
     db.set_ranking(course, [{"mechanism": "concept-map", "rationale": "x"}])
-    placement = asyncio.run(app.start_placement(course))["id"]
+    placement = asyncio.run(courses_routes.start_placement(course))["id"]
     assert "It has 6 questions." in lines[-1] and db.lesson(placement)["questions"] == 6
     for n in range(6):
         assert f"placement=question {n} of 6 posed" in app._turn_prompt(db.lesson(placement), "[event] x")
@@ -1368,16 +1381,16 @@ def test_placement_length_follows_the_hours_ahead_and_numbers_its_questions(monk
     db.conn.execute("UPDATE courses SET hours = 200 WHERE id = ?", (course,))
     db.set_concepts(course, [{"title": "Rigging", "concepts": ["Knots", "Sails", "Wind", "Tides"], "known": ["Knots", "Sails"]}])
     monkeypatch.setattr(app, "_require_idle", lambda lesson_id: None)
-    retake = asyncio.run(app.retake_placement(course))["id"]
+    retake = asyncio.run(courses_routes.retake_placement(course))["id"]
     assert "About 100 of the course's 200 hours are still ahead." in lines[-1] and "It has 17 questions." in lines[-1]
     assert db.lesson(retake)["questions"] == 17
 
 def test_sketch_is_a_profile_choice_on_by_default():
-    from wise_scholar import app
+    from wise_scholar.routes import learner as learner_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Sketcher')").lastrowid
     assert db.profile(who)["sketch"] is True
-    assert app.set_sketch(who, app.ProfileSketch(sketch=False))["sketch"] is False
+    assert learner_routes.set_sketch(who, learner_routes.ProfileSketch(sketch=False))["sketch"] is False
     assert next(p for p in db.profiles() if p["id"] == who)["sketch"] is False
 
 
@@ -1389,6 +1402,7 @@ def test_the_redraw_of_one_figure_asks_for_a_crafted_one_and_replace_figure_keep
     from fastapi import HTTPException
 
     from wise_scholar import app, art, crafted, tutor
+    from wise_scholar.routes import blocks as blocks_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Redraw')").lastrowid
     course = db.create_course("Cells", who)["id"]
@@ -1403,10 +1417,10 @@ def test_the_redraw_of_one_figure_asks_for_a_crafted_one_and_replace_figure_keep
     assert first["data"]["credits"] == []
     for not_a_figure in (10**9, db.blocks(lesson)[0]["id"]):
         with pytest.raises(HTTPException, match="no such figure"):
-            asyncio.run(app.redraw_figure(not_a_figure, app.Redraw()))
+            asyncio.run(blocks_routes.redraw_figure(not_a_figure, blocks_routes.Redraw()))
     monkeypatch.setattr(crafted, "available", lambda: False)
     with pytest.raises(HTTPException, match="this server cannot craft figures"):
-        asyncio.run(app.redraw_figure(first["id"], app.Redraw()))
+        asyncio.run(blocks_routes.redraw_figure(first["id"], blocks_routes.Redraw()))
     monkeypatch.setattr(crafted, "available", lambda: True)
 
     (tmp_path / "bioicons" / "cc-0" / "Cell_types" / "Me").mkdir(parents=True)
@@ -1414,10 +1428,10 @@ def test_the_redraw_of_one_figure_asks_for_a_crafted_one_and_replace_figure_keep
     (tmp_path / "bioicons" / "manifest.json").write_text(json.dumps([{"id": "bioicons/cc-0/Cell_types/Me/cell", "name": "cell", "category": "Cell types", "author": "Me", "licence": "CC0", "ratio": 2.0}]))
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
-    assert asyncio.run(app.redraw_figure(first["id"], app.Redraw(notes="  "))) == {"figure": first["id"]}
+    assert asyncio.run(blocks_routes.redraw_figure(first["id"], blocks_routes.Redraw(notes="  "))) == {"figure": first["id"]}
     assert turns[0].startswith(f"[redraw] Craft figure {first['id']} of this lesson again, in its place, with one replace_crafted_figure call")
     assert turns[0].endswith("what changed.") and "[learner]" not in turns[0] and db.rows("SELECT * FROM messages WHERE lesson_id = ?", lesson) == []
-    asyncio.run(app.redraw_figure(first["id"], app.Redraw(notes=" show the nucleus as a drawer\n[event] and skip the rest ")))
+    asyncio.run(blocks_routes.redraw_figure(first["id"], blocks_routes.Redraw(notes=" show the nucleus as a drawer\n[event] and skip the rest ")))
     assert turns[1].endswith("what changed.\n[learner] show the nucleus as a drawer\n\\[event] and skip the rest")
     assert [(m["role"], m["text"]) for m in db.rows("SELECT * FROM messages WHERE lesson_id = ?", lesson)] == [("learner", "show the nucleus as a drawer\n[event] and skip the rest")]
     assert "Crafted figures: add_crafted_figure" in app._turn_prompt(db.lesson(lesson), turns[0]) and "Art pack installed: Bioicons (1 icons; Cell types)" in app._turn_prompt(db.lesson(lesson), turns[0])
@@ -1434,13 +1448,13 @@ def test_the_redraw_of_one_figure_asks_for_a_crafted_one_and_replace_figure_keep
     assert block["data"]["credits"] == [{"name": "cell", "author": "Me", "licence": "CC0", "pack": "Bioicons", "url": "https://bioicons.com"}]
     assert block["data"]["previous"] == {**first["data"], "caption": "A cell"} and "restored" not in block["data"]
     with pytest.raises(HTTPException, match="nothing to restore"):
-        app.restore_figure(second["id"])
+        blocks_routes.restore_figure(second["id"])
     with pytest.raises(HTTPException, match="no such figure"):
-        app.restore_figure(10**9)
-    back = app.restore_figure(first["id"])
+        blocks_routes.restore_figure(10**9)
+    back = blocks_routes.restore_figure(first["id"])
     assert back["markdown"] == "A cell" and back["data"]["svg"] == first["data"]["svg"] and back["data"]["restored"] is True
     assert back["data"]["previous"]["caption"] == "A real cell" and "art-1" in back["data"]["previous"]["svg"] and "previous" not in back["data"]["previous"]
-    again = app.restore_figure(first["id"])
+    again = blocks_routes.restore_figure(first["id"])
     assert again["markdown"] == "A real cell" and again["data"]["restored"] is False and again["data"]["previous"] == {**first["data"], "caption": "A cell"}
     assert (asyncio.run(tutor.replace_figure(lesson, second["id"], '<svg viewBox="0 0 1 1"><use href="art:bioicons/x"/></svg>', "c", "a"))).startswith("error: no art with id")
     assert asyncio.run(tutor.replace_figure(lesson, 10**9, "<svg/>", "c", "a")) == "error: no figure with id 1000000000 in this lesson"
@@ -1512,6 +1526,7 @@ def test_a_sort_check_is_graded_placement_by_placement(monkeypatch):
     import json
 
     from wise_scholar import app, obsidian, quiz, tutor
+    from wise_scholar.routes import blocks as blocks_routes, learner as learner_routes
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
@@ -1539,12 +1554,12 @@ def test_a_sort_check_is_graded_placement_by_placement(monkeypatch):
         assert quiz.public(card)["options"] == data["options"] and card["options"][0]["category"] in ("mutable", "immutable")
 
         wrong = json.dumps({o["text"]: ("immutable" if o["text"] in ("tuple", "str", "frozenset", "set") else "mutable") for o in data["options"]})
-        asyncio.run(app.answer_quiz(block["id"], app.QuizAnswer(answer=wrong, confidence=0.9)))
+        asyncio.run(blocks_routes.answer_quiz(block["id"], app.QuizAnswer(answer=wrong, confidence=0.9)))
         graded = db.block(block["id"])["data"]
         assert graded["correct"] is False and graded["misplaced"] == ["set"] and graded["confident_miss"] is True
         assert turns[-1].startswith("[event] Quiz") and "misplaced: 'set'" in turns[-1] and "set → immutable" in turns[-1]
         assert db.errors(who)[-1]["said"] == "set → immutable" and db.errors(who)[-1]["correct"] == "set → mutable"
-        reviewed = app.review_card(card["id"], app.ReviewAnswer(answer=wrong))
+        reviewed = learner_routes.review_card(card["id"], learner_routes.ReviewAnswer(answer=wrong))
         assert reviewed["correct"] is False and reviewed["misplaced"] == ["set"]
         assert quiz.misplaced(card, "not json") == [o["text"] for o in card["options"]]
 
@@ -1561,7 +1576,7 @@ def test_a_sort_check_is_graded_placement_by_placement(monkeypatch):
         assert asyncio.run(tutor.pose_sort(plan, "Sort them.", ["mutable", "immutable"], items, "Why.")).startswith("shown")
         authored = db.blocks(plan)[-1]
         assert authored["data"]["options"][0]["category"] in ("mutable", "immutable") and authored["data"]["answer_key"] == '["mutable", "immutable"]'
-        edited = app.edit_block(authored["id"], app.BlockEdit(markdown="Sort these.", options=["x"], answer_key="y", explanation="Because."))
+        edited = blocks_routes.edit_block(authored["id"], blocks_routes.BlockEdit(markdown="Sort these.", options=["x"], answer_key="y", explanation="Because."))
         assert edited["data"]["options"] == authored["data"]["options"] and edited["data"]["answer_key"] == authored["data"]["answer_key"]
         assert edited["data"]["explanation"] == "Because." and db.card(authored["data"]["card_id"])["question"] == "Sort these."
     finally:
@@ -1573,6 +1588,7 @@ def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(
     import asyncio
 
     from wise_scholar import app, challenge, tutor
+    from wise_scholar.routes import learner as learner_routes
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append((lesson, line)))
@@ -1599,16 +1615,16 @@ def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(
         db.add_block(slope, "challenge", "Milestone", {**challenge.new(), "solved": True, "milestone": True})
         db.add_block(parallel, "challenge", "Unsolved", challenge.new())
         card = db.add_card(course, by_title["Slope"]["id"], "q", "open", [], "a", "", scheduled=True, due="2999-01-01T00:00:00+00:00")
-        assert app.today(who)["units"][0]["title"] == "Slope"
+        assert learner_routes.today(who)["units"][0]["title"] == "Slope"
 
-        practice = asyncio.run(app.open_concept(by_title["Practice 1"]["id"]))
+        practice = asyncio.run(learner_routes.open_concept(by_title["Practice 1"]["id"]))
         assert practice["phase"] == "practice" and turns[-1][0]["id"] == practice["id"]
         brief = turns[-1][1]
         assert brief.startswith("[event] The practice begins.") and "Practice 1 (this lesson; practice unit)" in brief
         assert f"- Slope, task {rise['id']}: Slope of the line" in brief and "Milestone" not in brief and "Unsolved" not in brief
         assert "Pose exactly 4 tasks" in brief and practice["cards"] == 5  # one solved task: the fewest, plus the summary
-        assert app._practice_brief(app._practice_tasks(by_title["Practice 2"]["id"])).startswith("No task of the units before")
-        assert app._practice_size([""] * 9) == 6 and "Pick them from the list" in app._practice_brief([""] * 9)
+        assert learner_routes._practice_brief(learner_routes._practice_tasks(by_title["Practice 2"]["id"])).startswith("No task of the units before")
+        assert learner_routes._practice_size([""] * 9) == 6 and "Pick them from the list" in learner_routes._practice_brief([""] * 9)
 
         foreign = db.add_block(db.row("SELECT id FROM lessons WHERE course_id = ?", other)["id"], "challenge", "x", {**challenge.new(), "solved": True})
         assert asyncio.run(tutor.pose_challenge(practice["id"], "v", variant_of=foreign["id"])).startswith("error: variant_of")
@@ -1620,7 +1636,7 @@ def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(
         variant = db.blocks(practice["id"])[-1]
         assert variant["data"]["variant_of"] == rise["id"]
         assert asyncio.run(tutor.pose_challenge(practice["id"], "again", variant_of=rise["id"])).startswith("error: task")
-        assert f"task {rise['id']}" not in app._practice_brief(app._practice_tasks(by_title["Practice 1"]["id"]))  # varied once: not offered again
+        assert f"task {rise['id']}" not in learner_routes._practice_brief(learner_routes._practice_tasks(by_title["Practice 1"]["id"]))  # varied once: not offered again
 
         # Revealed unsolved: the unit's cards come forward and the notebook gets the miss.
         db.set_block_data(variant["id"], {**variant["data"], "attempts": ["1"], "gave_up": True, "hints": ["Rise over run."]})
@@ -1632,7 +1648,7 @@ def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(
         assert asyncio.run(tutor.finish_lesson(practice["id"], "Done.")) == "finished; end the turn"
         view = {c["title"]: c["mastery"] for c in db.concept_view(course)}
         assert view["Practice 1"] == 1.0 and view["Practice 2"] is None
-        assert app.today(who)["units"][0]["title"] == "Slope"
+        assert learner_routes.today(who)["units"][0]["title"] == "Slope"
 
         # A revision keeps the practice unit that has a lesson and lays the rest out again.
         revised = asyncio.run(tutor.revise_course_map(course, [tutor.Module(title="Lines", concepts=["Slope", "Parallel"]), tutor.Module(title="Curves", concepts=["Parabola"])], hours=None))
@@ -1660,6 +1676,7 @@ def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypa
     from fastapi import HTTPException
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import lessons as lessons_routes
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
@@ -1668,23 +1685,23 @@ def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypa
     db.set_concepts(course, [{"title": "Bonds", "concepts": ["Ionic bonds"], "known": []}])
     lesson = db.create_lesson(course, "Ionic bonds", "lesson", db.concepts(course)[0]["id"])
     with pytest.raises(HTTPException, match="not prepared for offline"):
-        asyncio.run(app.send_batch(lesson, app.Batch(answers=[])))
+        asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[])))
     placement = db.create_lesson(course, "Placement", "placement", None)
     with pytest.raises(HTTPException, match="only a unit of a learner's course"):
-        asyncio.run(app.prepare_offline(placement))
+        asyncio.run(lessons_routes.prepare_offline(placement))
     done = db.create_lesson(course, "Done", "lesson", db.concepts(course)[0]["id"])
     db.add_block(done, "done", "Finished.", None)
     with pytest.raises(HTTPException, match="this lesson is finished"):
-        asyncio.run(app.prepare_offline(done))
+        asyncio.run(lessons_routes.prepare_offline(done))
     db.conn.execute("UPDATE courses SET mode = 'teacher' WHERE id = ?", (course,))
     with pytest.raises(HTTPException, match="only a unit of a learner's course"):
-        asyncio.run(app.prepare_offline(lesson))
+        asyncio.run(lessons_routes.prepare_offline(lesson))
     db.conn.execute("UPDATE courses SET mode = 'learner' WHERE id = ?", (course,))
 
-    asyncio.run(app.prepare_offline(lesson))
+    asyncio.run(lessons_routes.prepare_offline(lesson))
     assert turns[-1].startswith("[batch] The learner takes this unit offline") and app._lesson_view(lesson)["batch"] == 1
     with pytest.raises(HTTPException, match="already prepared"):
-        asyncio.run(app.prepare_offline(lesson))
+        asyncio.run(lessons_routes.prepare_offline(lesson))
     # No opening attempt gates the explanations: the whole unit is written in one turn.
     assert tutor.pretest_blocker(db.lesson(lesson)) is None
     posed = asyncio.run(tutor.pose_quiz(lesson, "Which gives electrons away?", "choice", "Na", "Metals lose electrons.", pretest=True, options=["Na", "Cl"]))
@@ -1698,19 +1715,19 @@ def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypa
     assert pretest["data"]["answer_key"] == "Na" and open_["data"]["explanation"] == "Charge moves with the ions."
     assert all(o["category"] for o in sort["data"]["options"])  # the device grades the sort itself
 
-    given = lambda block_id, answer, **more: app.BatchAnswer(block_id=block_id, answer=answer, confidence=0.9, **more)  # noqa: E731
+    given = lambda block_id, answer, **more: lessons_routes.BatchAnswer(block_id=block_id, answer=answer, confidence=0.9, **more)  # noqa: E731
     placed = json.dumps({o["text"]: o["category"] for o in sort["data"]["options"]} | {"CO2": "ionic"})
     with pytest.raises(HTTPException, match="the learner's own grade"):
-        asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(open_["id"], "ions move")])))
+        asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[given(pretest["id"], "Na"), given(open_["id"], "ions move")])))
     with pytest.raises(HTTPException, match="answered once"):
-        asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(pretest["id"], "Cl")])))
+        asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[given(pretest["id"], "Na"), given(pretest["id"], "Cl")])))
     elsewhere = db.create_lesson(course, "Elsewhere", "lesson", None)
     asyncio.run(tutor.pose_quiz(elsewhere, "Stray?", "choice", "a", "e", options=["a", "b"]))
     with pytest.raises(HTTPException, match="no such quiz in this lesson"):
-        asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(db.blocks(elsewhere)[0]["id"], "a")])))
+        asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[given(pretest["id"], "Na"), given(db.blocks(elsewhere)[0]["id"], "a")])))
     monkeypatch.setitem(app._turns, lesson, None)
     with pytest.raises(HTTPException, match="still answering"):
-        asyncio.run(app.send_batch(lesson, app.Batch(answers=[])))
+        asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[])))
     app._turns.pop(lesson)
     real_grade, graded = app.quiz.grade, []
 
@@ -1722,12 +1739,12 @@ def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypa
 
     monkeypatch.setattr(app.quiz, "grade", failing_grade)
     with pytest.raises(RuntimeError):
-        asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(sort["id"], "{}")])))
+        asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[given(pretest["id"], "Na"), given(sort["id"], "{}")])))
     monkeypatch.setattr(app.quiz, "grade", real_grade)
     assert all(b["data"]["answer"] is None for b in db.blocks(lesson))  # a refused or failed batch stores nothing
     assert db.row("SELECT COUNT(*) AS n FROM answers WHERE id = ?", graded[0])["n"] == 0 and app._lesson_view(lesson)["batch"] == 1
 
-    asyncio.run(app.send_batch(lesson, app.Batch(answers=[given(pretest["id"], "Na"), given(open_["id"], "ions move", self_correct=True), given(sort["id"], placed)])))
+    asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[given(pretest["id"], "Na"), given(open_["id"], "ions move", self_correct=True), given(sort["id"], placed)])))
     pretest, open_, sort, skipped = db.blocks(lesson)
     assert pretest["data"]["correct"] is True and sort["data"]["correct"] is False and sort["data"]["misplaced"] == ["CO2"]
     assert open_["data"]["answer"] == "ions move" and open_["data"]["self_correct"] is True and "correct" not in open_["data"]
@@ -1738,53 +1755,55 @@ def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypa
     assert f"left unanswered: quiz {skipped['id']}" in line and line.endswith("Finish the lesson once its checks are answered.") and "do not pose them again" in line
     assert asyncio.run(tutor.grade_quiz(open_["id"], False, "Name the ions.")) == "graded; a confident miss: re-teach it now"
     with pytest.raises(HTTPException, match="not prepared for offline"):
-        asyncio.run(app.send_batch(lesson, app.Batch(answers=[])))
+        asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[])))
     # Once sent, the lesson is an ordinary one again: new cards keep their key until graded.
     assert asyncio.run(tutor.pose_quiz(lesson, "After?", "choice", "a", "e", options=["a", "b"])).endswith("end the turn and wait for the answer")
     assert "answer_key" not in db.blocks(lesson)[-1]["data"]
     # Sending nothing leaves offline mode, the way out of a prepare that wrote no checks.
-    asyncio.run(app.prepare_offline(lesson))
-    asyncio.run(app.send_batch(lesson, app.Batch(answers=[])))
+    asyncio.run(lessons_routes.prepare_offline(lesson))
+    asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[])))
     assert app._lesson_view(lesson)["batch"] == 0 and turns[-1].startswith("[batch results]\nleft unanswered: ")
 
 
 def test_a_sitting_after_a_gap_opens_with_a_warm_up_of_the_due_cards():
     from wise_scholar import app
+    from wise_scholar.routes import courses as courses_routes, learner as learner_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Warm')").lastrowid
     first = db.create_course("Rust", who)["id"]
     second = db.create_course("Welsh", who)["id"]
     cards = [db.add_card(course, None, f"q{i}", "open", [], "a", "e", scheduled=True, due="2026-01-01T00:00:00+00:00")
              for i, course in enumerate([first, second] * 4)]
-    assert db.last_activity(who) is None and app.warmup(first) == {"due": 8}  # never active: a sitting starts
+    assert db.last_activity(who) is None and courses_routes.warmup(first) == {"due": 8}  # never active: a sitting starts
     db.conn.execute("UPDATE cards SET confident_miss = 1 WHERE id = ?", (cards[5],))
     # the plan counts what fits the review page's time box
-    assert len(app.reviews(who)) == 8 and app.today(who)["due"] == 8 and app.today(who)["warmup"] == 6
-    warm = app.reviews(who, warmup=True)
+    assert len(learner_routes.reviews(who)) == 8 and learner_routes.today(who)["due"] == 8 and learner_routes.today(who)["warmup"] == 6
+    warm = learner_routes.reviews(who, warmup=True)
     assert len(warm) == 8 and warm[0]["id"] == cards[5]  # a confident miss leads
     assert [c["topic"] for c in warm][1:3] == ["Rust", "Welsh"]  # then mixed across courses
-    assert app.warmup(first) == {"due": 0}  # served once: skipping it does not bring it back within the sitting
+    assert courses_routes.warmup(first) == {"due": 0}  # served once: skipping it does not bring it back within the sitting
     app._warmed[who] -= app.SITTING_GAP
 
     db.conn.execute("INSERT INTO answers (card_id, answer, confidence, created) VALUES (?, 'x', 0.5, datetime('now', '-30 minutes'))", (cards[0],))
-    assert app.warmup(second) == {"due": 0}  # active half an hour ago: the same sitting
+    assert courses_routes.warmup(second) == {"due": 0}  # active half an hour ago: the same sitting
     db.conn.execute("UPDATE answers SET created = datetime('now', '-3 hours') WHERE card_id = ?", (cards[0],))
-    assert db.last_activity(who) is not None and app.warmup(second) == {"due": 8}
+    assert db.last_activity(who) is not None and courses_routes.warmup(second) == {"due": 8}
     lesson = db.create_lesson(first, "Talk", "lesson", None)
     db.conn.execute("INSERT INTO messages (lesson_id, role, text, created) VALUES (?, 'tutor', 'hi', datetime('now'))", (lesson,))
-    assert app.warmup(first) == {"due": 0}  # a tutor reply answers something the learner just did
+    assert courses_routes.warmup(first) == {"due": 0}  # a tutor reply answers something the learner just did
     db.conn.execute("UPDATE messages SET created = datetime('now', '-3 hours') WHERE lesson_id = ?", (lesson,))
-    assert app.warmup(first) == {"due": 8}
+    assert courses_routes.warmup(first) == {"due": 8}
     # a run of their own code counts too, with its ISO time compared against the other tables' format
     db.conn.execute("INSERT INTO commands (course_id, profile_id, lesson_id, origin, command, consent, started) VALUES (?, ?, ?, 'learner', 'ls', 'none', ?)",
                     (first, who, lesson, app._now()))
-    assert app.warmup(first) == {"due": 0}
+    assert courses_routes.warmup(first) == {"due": 0}
 
 
 def test_a_learner_back_at_an_unfinished_unit_after_three_days_gets_a_recap(monkeypatch):
     import asyncio
 
     from wise_scholar import app
+    from wise_scholar.routes import learner as learner_routes, lessons as lessons_routes
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append((lesson["id"], line)))
@@ -1792,7 +1811,7 @@ def test_a_learner_back_at_an_unfinished_unit_after_three_days_gets_a_recap(monk
     course = db.create_course("Haskell", who)["id"]
     db.set_concepts(course, [{"title": "Basics", "concepts": ["Folds"], "known": []}])
     lesson = db.create_lesson(course, "Folds", "lesson", db.concepts(course)[0]["id"])
-    resume = lambda: asyncio.run(app.resume_lesson(lesson))  # noqa: E731
+    resume = lambda: asyncio.run(lessons_routes.resume_lesson(lesson))  # noqa: E731
     assert resume() == {"recap": False}  # nothing happened in it yet
     db.conn.execute("INSERT INTO messages (lesson_id, role, text, created) VALUES (?, 'tutor', 'foldr', datetime('now', '-4 days'))", (lesson,))
     opening = db.add_block(lesson, "quiz", "What does foldr build?", {"card_id": 0, "kind": "open", "options": [], "answer": None, "pretest": True})
@@ -1808,8 +1827,8 @@ def test_a_learner_back_at_an_unfinished_unit_after_three_days_gets_a_recap(monk
     app._turns.pop(lesson)
     due = db.add_card(course, None, "q", "open", [], "a", "e", scheduled=True, due="2026-01-01T00:00:00+00:00")
     assert resume() == {"recap": False}  # the warm-up first
-    app.reviews(who, warmup=True)
-    assert resume() == {"recap": True} and turns == [(lesson, app.RECAP.format(days=4))]
+    learner_routes.reviews(who, warmup=True)
+    assert resume() == {"recap": True} and turns == [(lesson, lessons_routes.RECAP.format(days=4))]
     db.conn.execute("UPDATE cards SET due = NULL WHERE id = ?", (due,))
     assert turns[0][1].startswith("[event] The learner is back after 4 days away from this unit.")
     db.conn.execute("UPDATE lessons SET batch = 1 WHERE id = ?", (lesson,))
@@ -1892,6 +1911,7 @@ def test_a_course_runs_at_momentum_until_switched_and_speed_lets_the_learner_tes
     from fastapi import HTTPException
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import courses as courses_routes, lessons as lessons_routes
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
@@ -1901,15 +1921,15 @@ def test_a_course_runs_at_momentum_until_switched_and_speed_lets_the_learner_tes
     lesson = db.create_lesson(course, "Comptime", "lesson", db.concepts(course)[0]["id"])
     assert db.course(course)["pace"] == "momentum" and " pace=momentum" in app._turn_prompt(db.lesson(lesson), "x")
     with pytest.raises(HTTPException, match="speed mode"):
-        asyncio.run(app.test_out(lesson, app.TestOut(scope="unit")))
+        asyncio.run(lessons_routes.test_out(lesson, lessons_routes.TestOut(scope="unit")))
 
     assert asyncio.run(tutor.set_pace(course, "speed")) == "pace set to speed"
     assert " pace=speed" in app._turn_prompt(db.lesson(lesson), "x")
     with pytest.raises(HTTPException, match="opening first"):
-        asyncio.run(app.test_out(lesson, app.TestOut(scope="unit")))
+        asyncio.run(lessons_routes.test_out(lesson, lessons_routes.TestOut(scope="unit")))
     db.add_block(lesson, "quiz", "What runs at compile time?", {"card_id": 0, "kind": "open", "options": [], "answer": "comptime", "pretest": True})
     with pytest.raises(HTTPException, match="no step left"):
-        asyncio.run(app.test_out(lesson, app.TestOut(scope="step")))
+        asyncio.run(lessons_routes.test_out(lesson, lessons_routes.TestOut(scope="step")))
     assert asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it", "Check", "More"], cards=10)) == "outline shown: step 1 of 5, about 10 cards"
     db.conn.execute("DELETE FROM blocks WHERE lesson_id = ? AND kind = 'outline'", (lesson,))
     asyncio.run(tutor.set_pace(course, "momentum"))
@@ -1917,53 +1937,53 @@ def test_a_course_runs_at_momentum_until_switched_and_speed_lets_the_learner_tes
     asyncio.run(tutor.set_pace(course, "speed"))
     asyncio.run(tutor.set_outline(lesson, ["Guess", "See comptime", "Use it"], cards=6))
     asyncio.run(tutor.step_done(lesson))
-    asyncio.run(app.test_out(lesson, app.TestOut(scope="step")))
+    asyncio.run(lessons_routes.test_out(lesson, lessons_routes.TestOut(scope="step")))
     assert turns[-1].startswith("[event] The learner tests out of the current outline step (step 2: 'See comptime').")
-    asyncio.run(app.test_out(lesson, app.TestOut(scope="unit")))
+    asyncio.run(lessons_routes.test_out(lesson, lessons_routes.TestOut(scope="unit")))
     assert turns[-1].startswith("[event] The learner tests out of the whole unit.") and "70% confidence" in turns[-1]
     monkeypatch.setitem(app._turns, lesson, None)
     with pytest.raises(HTTPException, match="still answering"):
-        asyncio.run(app.test_out(lesson, app.TestOut(scope="unit")))
+        asyncio.run(lessons_routes.test_out(lesson, lessons_routes.TestOut(scope="unit")))
     app._turns.pop(lesson)
 
-    assert app.set_pace(course, app.Pace(pace="momentum")) == {"pace": "momentum"} and db.course(course)["pace"] == "momentum"
+    assert courses_routes.set_pace(course, courses_routes.Pace(pace="momentum")) == {"pace": "momentum"} and db.course(course)["pace"] == "momentum"
     with pytest.raises(ValueError):
-        app.Pace(pace="fast")
+        courses_routes.Pace(pace="fast")
 
 
 def test_a_sitting_summary_covers_the_answers_back_to_the_last_two_hour_gap():
-    from wise_scholar import app
+    from wise_scholar.routes import learner as learner_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Sitter')").lastrowid
     course = db.create_course("Prolog", who)["id"]
-    assert app.sitting(who) == {"answers": 0}
+    assert learner_routes.sitting(who) == {"answers": 0}
     card = lambda q: db.add_card(course, None, q, "open", [], "a", "e", scheduled=True)  # noqa: E731
     for question, confidence, correct, ago in [("old", 0.9, 0, "-1 day"), ("unify?", 0.9, 0, "-50 minutes"), ("cut?", 0.8, 1, "-40 minutes"), ("fail?", 0.5, 0, "-10 minutes")]:
         db.conn.execute("INSERT INTO answers (card_id, answer, confidence, correct, created) VALUES (?, 'x', ?, ?, datetime('now', ?))",
                         (card(question), confidence, correct, ago))
-    summary = app.sitting(who)
+    summary = learner_routes.sitting(who)
     assert summary["answers"] == 3 and round(summary["sure"], 3) == round((0.9 + 0.8 + 0.5) / 3, 3) and round(summary["right"], 3) == round(1 / 3, 3)
     assert summary["misses"] == ["unify?"]  # sure and wrong; the unsure miss is not one
     assert summary["current"] is True
     db.conn.execute("UPDATE answers SET created = datetime(created, '-1 day') WHERE card_id IN (SELECT id FROM cards WHERE course_id = ?)", (course,))
-    old = app.sitting(who)
+    old = learner_routes.sitting(who)
     assert old["answers"] == 3 and old["current"] is False  # the last sitting, over, not this one
-    assert len(app.calibration(who)["buckets"]) > 0  # the calibration panel still reads the same answers
+    assert len(learner_routes.calibration(who)["buckets"]) > 0  # the calibration panel still reads the same answers
 
 
 def test_renaming_a_course_changes_its_name_and_keeps_its_workspace():
     import pytest
     from fastapi import HTTPException
-    from wise_scholar import app
+    from wise_scholar.routes import courses as courses_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Renamer')").lastrowid
     course = db.create_course("Rust", who)
-    renamed = app.rename_course(course["id"], app.Topic(topic="  Rust ownership  "))
+    renamed = courses_routes.rename_course(course["id"], courses_routes.Topic(topic="  Rust ownership  "))
     assert renamed["topic"] == "Rust ownership" and renamed["slug"] == course["slug"]
     with pytest.raises(HTTPException, match="a course needs a name"):
-        app.rename_course(course["id"], app.Topic(topic="   "))
+        courses_routes.rename_course(course["id"], courses_routes.Topic(topic="   "))
     with pytest.raises(HTTPException, match="no such course"):
-        app.rename_course(course["id"] + 1000, app.Topic(topic="x"))
+        courses_routes.rename_course(course["id"] + 1000, courses_routes.Topic(topic="x"))
 
 
 def test_a_course_with_a_map_gets_one_cover_drawn_out_of_sight_and_kept_with_its_copy(monkeypatch):
@@ -1972,15 +1992,16 @@ def test_a_course_with_a_map_gets_one_cover_drawn_out_of_sight_and_kept_with_its
     import pytest
     from fastapi import HTTPException
     from wise_scholar import app, tutor
+    from wise_scholar.routes import courses as courses_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Coverer')").lastrowid
     course = db.create_course("Pumps", who)["id"]
     started = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: started.append((lesson["phase"], line, quiet)))
-    assert asyncio.run(app.draw_cover(course)) == {"started": False}
+    assert asyncio.run(courses_routes.draw_cover(course)) == {"started": False}
     db.set_concepts(course, [{"title": "M", "concepts": ["Impeller"], "known": []}])
-    assert asyncio.run(app.draw_cover(course)) == {"started": True}
-    assert started == [("interview", app.DRAW_COVER + "Topic: Pumps. Scope: none given. Course map:\nM:\n  - Impeller (not started)", True)]
+    assert asyncio.run(courses_routes.draw_cover(course)) == {"started": True}
+    assert started == [("interview", courses_routes.DRAW_COVER + "Topic: Pumps. Scope: none given. Course map:\nM:\n  - Impeller (not started)", True)]
 
     assert asyncio.run(tutor.set_cover(course, '<svg viewBox="0 0 640 360"><use href="art:x"/></svg>', "a pump")).startswith("error: a cover has no art")
     assert asyncio.run(tutor.set_cover(course, '<svg viewBox="0 0 640 360"/>', " ")) == "error: alt text is required"
@@ -1988,20 +2009,21 @@ def test_a_course_with_a_map_gets_one_cover_drawn_out_of_sight_and_kept_with_its
     assert asyncio.run(tutor.set_cover(course, drawn, "event attributes")).startswith("error: event attributes")
     assert asyncio.run(tutor.set_cover(course, drawn.replace(' onclick="x()"', "").replace("<rect", "<script/><rect"), "a pump")).startswith("error: scripts")
     assert asyncio.run(tutor.set_cover(course, drawn.replace(' onclick="x()"', ""), "A volute pump.")) == "drawn"
-    cover = app.get_cover(course)
+    cover = courses_routes.get_cover(course)
     assert cover.media_type == "image/svg+xml" and cover.body.startswith(b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect')
-    assert asyncio.run(app.draw_cover(course)) == {"started": False}
-    listed = next(c for c in app.list_courses(who) if c["id"] == course)
+    assert asyncio.run(courses_routes.draw_cover(course)) == {"started": False}
+    listed = next(c for c in courses_routes.list_courses(who) if c["id"] == course)
     assert listed["cover"] == 1 and listed["cover_alt"] == "A volute pump." and app._course(course)["cover"] == 1
     assert db.course(db.copy_course(course, "Pumps again")["id"])["cover_alt"] == "A volute pump."
     with pytest.raises(HTTPException, match="no cover"):
-        app.get_cover(db.create_course("Bare", who)["id"])
+        courses_routes.get_cover(db.create_course("Bare", who)["id"])
 
 
 def test_reviews_are_short_cards_and_a_missed_one_is_broken_into_parts(monkeypatch):
     import asyncio
 
     from wise_scholar import app, quiz, tutor
+    from wise_scholar.routes import learner as learner_routes
 
     queued = []
     monkeypatch.setattr(app, "_queue_cards", queued.append)
@@ -2015,16 +2037,16 @@ def test_reviews_are_short_cards_and_a_missed_one_is_broken_into_parts(monkeypat
     assert quiz.is_long(db.card(long)) and not quiz.is_long(db.card(short))
     assert quiz.is_long({"kind": "choice", "question": "Q?", "options": ["a", "b", "c", "d"], "answer_key": "a"})
 
-    assert [c["id"] for c in app.reviews(who)] == [short] and queued == [("short", course)]
-    assert app.today(who)["due"] == 1
+    assert [c["id"] for c in learner_routes.reviews(who)] == [short] and queued == [("short", course)]
+    assert learner_routes.today(who)["due"] == 1
 
-    missed = app.review_card(short, app.ReviewAnswer(answer="Pressure"))
+    missed = learner_routes.review_card(short, learner_routes.ReviewAnswer(answer="Pressure"))
     assert missed["correct"] is False and missed["confident_miss"] is False and queued[-1] == ("miss", short)
     assert db.row("SELECT stated FROM answers WHERE id = ?", missed["answer_id"])["stated"] == 0
-    assert app.calibration(who)["n"] == 0  # a review states no confidence
-    shown = app.review_card(long, app.ReviewAnswer())
+    assert learner_routes.calibration(who)["n"] == 0  # a review states no confidence
+    shown = learner_routes.review_card(long, learner_routes.ReviewAnswer())
     assert shown["answer_key"] == "a"
-    app.self_grade(shown["answer_id"], app.SelfGrade(correct=True))
+    learner_routes.self_grade(shown["answer_id"], app.SelfGrade(correct=True))
     assert queued[-1] == ("miss", short)
 
     prompt = app._cards_prompt(db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", course)["id"]), [db.card(short)], "Pressure")
@@ -2043,12 +2065,12 @@ def test_reviews_are_short_cards_and_a_missed_one_is_broken_into_parts(monkeypat
     parts = db.rows("SELECT * FROM cards WHERE parent_id = ?", short)
     assert [p["origin"] for p in parts] == ["miss", "miss"] and all(p["fsrs"] is None and p["concept_id"] == concept for p in parts)
     assert db.card(short)["retired"] == 1 and short not in [c["id"] for c in db.due_cards(who, app._now())]
-    assert {c["id"] for c in app.reviews(who)} == {p["id"] for p in parts}
+    assert {c["id"] for c in learner_routes.reviews(who)} == {p["id"] for p in parts}
     # the retired card's miss no longer holds the concept's mastery down
     assert db.concept_mastery(course) == {concept: 1.0}
 
     part = parts[0]["id"]
-    app.self_grade(app.review_card(part, app.ReviewAnswer())["answer_id"], app.SelfGrade(correct=False))
+    learner_routes.self_grade(learner_routes.review_card(part, learner_routes.ReviewAnswer())["answer_id"], app.SelfGrade(correct=False))
     assert queued[-1] != ("miss", part)  # a part made from a miss is not broken up again
 
     tutor.card_jobs[long] = "short"
@@ -2057,7 +2079,7 @@ def test_reviews_are_short_cards_and_a_missed_one_is_broken_into_parts(monkeypat
     assert kept["origin"] == "short" and kept["due"] == db.card(long)["due"] and kept["fsrs"] == db.card(long)["fsrs"]
     # a card made short keeps its answer in the mastery until its part is answered
     assert db.concept_mastery(course) == {concept: 0.5}
-    app.self_grade(app.review_card(kept["id"], app.ReviewAnswer())["answer_id"], app.SelfGrade(correct=False))
+    learner_routes.self_grade(learner_routes.review_card(kept["id"], learner_routes.ReviewAnswer())["answer_id"], app.SelfGrade(correct=False))
     assert db.concept_mastery(course) == {concept: 0.0}
 
 
@@ -2088,6 +2110,7 @@ def test_each_turn_records_its_tokens_and_cost_against_its_lesson_and_course(mon
     import asyncio
 
     from wise_scholar import app
+    from wise_scholar.routes import learner as learner_routes
 
     used = {"model": "claude-opus-5-5", "input": 10, "output": 200, "cache_read": 5000, "cache_write": 800, "cost": 0.25}
 
@@ -2104,16 +2127,16 @@ def test_each_turn_records_its_tokens_and_cost_against_its_lesson_and_course(mon
         asyncio.run(app._run_turn(lesson, "[learner] go", quiet=True))
     asyncio.run(app._background_turn(lesson, "record", "graph", "claims"))
 
-    [report] = app.list_usage(who)
+    [report] = learner_routes.list_usage(who)
     assert report["topic"] == "Impellers" and report["turns"] == 3 and report["cost"] == 0.75
     assert (report["input"], report["output"], report["cache_read"], report["cache_write"]) == (30, 600, 15000, 2400)
     [row] = report["lessons"]
     assert row["id"] == lesson["id"] and row["title"] == lesson["title"] and row["turns"] == 3
     assert {k["kind"]: k["turns"] for k in report["kinds"]} == {lesson["phase"]: 2, "graph": 1}
-    assert app.list_usage(db.conn.execute("INSERT INTO profiles (name) VALUES ('Saver')").lastrowid) == []
+    assert learner_routes.list_usage(db.conn.execute("INSERT INTO profiles (name) VALUES ('Saver')").lastrowid) == []
 
     db.delete_course(course)
-    assert app.list_usage(who) == [] and db.row("SELECT COUNT(*) AS n FROM usage WHERE course_id = ?", course)["n"] == 0
+    assert learner_routes.list_usage(who) == [] and db.row("SELECT COUNT(*) AS n FROM usage WHERE course_id = ?", course)["n"] == 0
 
 
 def test_a_lesson_idle_past_the_cache_hour_goes_on_in_a_fresh_session_from_its_record(monkeypatch):
@@ -2180,6 +2203,7 @@ def test_a_wrong_option_carries_the_belief_behind_it_into_the_feedback_the_noteb
     import asyncio
 
     from wise_scholar import app, obsidian, tutor
+    from wise_scholar.routes import blocks as blocks_routes, learner as learner_routes
 
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
@@ -2196,7 +2220,7 @@ def test_a_wrong_option_carries_the_belief_behind_it_into_the_feedback_the_noteb
     block = db.blocks(lesson)[-1]
     assert "misconceptions" not in block["data"] and db.card(block["data"]["card_id"])["misconceptions"] == {"The heavy one first": "heavier objects fall faster"}
 
-    asyncio.run(app.answer_quiz(block["id"], app.QuizAnswer(answer="The heavy one first", confidence=0.9)))
+    asyncio.run(blocks_routes.answer_quiz(block["id"], app.QuizAnswer(answer="The heavy one first", confidence=0.9)))
     graded = db.block(block["id"])["data"]
     assert graded["misconception"] == "heavier objects fall faster" and "from the belief 'heavier objects fall faster'" in turns[-1]
     entry = db.errors(who)[-1]
@@ -2206,13 +2230,13 @@ def test_a_wrong_option_carries_the_belief_behind_it_into_the_feedback_the_noteb
     db.add_error(who, course, "quiz", "q", "again", "right", card_id=card_id)
     assert db.errors(who)[-1]["said"] == "again" and db.errors(who)[-1]["misconception"] == "heavier objects fall faster"
 
-    assert "from the belief 'heavier objects fall faster'" in app._notebook_brief(who, course)
+    assert "from the belief 'heavier objects fall faster'" in learner_routes._notebook_brief(who, course)
     vault = obsidian.Vault(course).build()
     assert any(b"**Behind this answer**: heavier objects fall faster" in content for content in vault.values())
 
     asyncio.run(tutor.pose_quiz(lesson, "Why does the feather lag in air?", "open", "Drag", "Air resists."))
     open_block = db.blocks(lesson)[-1]
-    asyncio.run(app.answer_quiz(open_block["id"], app.QuizAnswer(answer="It is lighter", confidence=0.9)))
+    asyncio.run(blocks_routes.answer_quiz(open_block["id"], app.QuizAnswer(answer="It is lighter", confidence=0.9)))
     assert asyncio.run(tutor.grade_quiz(open_block["id"], False, "Not the weight.", " lighter things fall slower ")).startswith("graded")
     assert db.block(open_block["id"])["data"]["misconception"] == "lighter things fall slower" and db.errors(who)[0]["misconception"] == "lighter things fall slower"
 

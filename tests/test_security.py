@@ -8,6 +8,7 @@ import pytest
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
 from wise_scholar import app as application, backends, db, sources, tutor  # noqa: E402
+from wise_scholar.routes import courses as courses_routes  # noqa: E402
 
 
 @pytest.fixture
@@ -184,18 +185,18 @@ def test_a_course_holds_a_bounded_amount_of_files(monkeypatch):
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Bytes')").lastrowid
     try:
         course = db.create_course("Big", who)["id"]
-        monkeypatch.setattr(application, "COURSE_SOURCE_BYTES", 10)
+        monkeypatch.setattr(courses_routes, "COURSE_SOURCE_BYTES", 10)
         monkeypatch.setattr(application, "SOURCES", application.SOURCES.parent / "sources-test")
 
         async def nothing(*args):
             pass
 
-        monkeypatch.setattr(application, "_process_source", nothing)
+        monkeypatch.setattr(courses_routes, "_process_source", nothing)
 
         async def store():
-            application._store_source(course, "a.txt", b"12345678")
+            courses_routes._store_source(course, "a.txt", b"12345678")
             with pytest.raises(HTTPException, match="200 MB"):
-                application._store_source(course, "b.txt", b"12345")
+                courses_routes._store_source(course, "b.txt", b"12345")
 
         asyncio.run(store())
     finally:
