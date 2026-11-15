@@ -805,13 +805,21 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       <Helper data={d} />
 
       {files.map((f) => (
-        <div key={f.path} className="file">
-          <div className="file-head">
+        // closed at first: a card with several files stays short, and the run button stays in reach
+        <details key={f.path} className="file">
+          <summary className="file-head">
             <code>{f.location}</code>
-            <button type="button" className="link" onClick={() => navigator.clipboard.writeText(f.location)}>
+            <button
+              type="button"
+              className="link"
+              onClick={(e) => {
+                e.preventDefault()
+                navigator.clipboard.writeText(f.location)
+              }}
+            >
               {t('exercise.copyPath')}
             </button>
-          </div>
+          </summary>
           {f.content === null ? (
             <pre>{t('exercise.missing')}</pre>
           ) : open && f.editable ? (
@@ -830,7 +838,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
               <Markdown>{`\`\`\`\`${f.path.split('.').pop() ?? ''}\n${f.content}\n\`\`\`\``}</Markdown>
             </div>
           )}
-        </div>
+        </details>
       ))}
       <div className="small">{kept ? t('exercise.cleaned') : editing ? t('exercise.editHere') : t('exercise.follows')}</div>
 
@@ -2110,30 +2118,52 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
           <button
             key={p}
             aria-pressed={pane === p && !open}
+            aria-label={p === 'map' ? t('map.label') : t('panes.lesson')}
+            title={p === 'map' ? t('map.label') : t('panes.lesson')}
             onClick={() => {
               setPane(p)
               setAsking(false)
             }}
           >
-            {p === 'map' ? t('map.label') : t('panes.lesson')}
-            {p === 'lesson' && p !== pane && lesson.running && <span className="live"> ({t('activity.working')})</span>}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {p === 'map' ? (
+                <>
+                  <path d="M14.1 6.3 9.9 4.2a2 2 0 0 0-1.8 0L3.6 6.4A1 1 0 0 0 3 7.3v12.1a1 1 0 0 0 1.4.9l3.7-1.9a2 2 0 0 1 1.8 0l4.2 2.1a2 2 0 0 0 1.8 0l4.5-2.2a1 1 0 0 0 .6-.9V5.3a1 1 0 0 0-1.4-.9l-3.7 1.9a2 2 0 0 1-1.8 0z" />
+                  <path d="M15 5.8v15M9 3.2v15" />
+                </>
+              ) : (
+                <>
+                  <path d="M12 7v14" />
+                  <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
+                </>
+              )}
+            </svg>
           </button>
         ))}
         <button
           aria-pressed={open}
+          aria-label={t('chat.ask')}
+          title={t('chat.ask')}
           onClick={() => {
             setPane('lesson')
             setAsking(true)
             requestAnimationFrame(() => document.getElementById('chat')?.focus())
           }}
         >
-          {t('chat.ask')}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+          </svg>
           {unread > 0 && !open && (
             <span className="badge">
               <span aria-hidden="true">{unread}</span>
               <span className="visually-hidden"> {t('chat.unread', { count: unread })}</span>
             </span>
           )}
+          {/* the chat's head names what the tutor is doing; with the chat closed, a pulse here says it is at work */}
+          {lesson.running && !open && <span className="live" aria-hidden="true" />}
+          <span className="visually-hidden" role="status">
+            {lesson.running && !open && (activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working'))}
+          </span>
         </button>
       </nav>
     </div>

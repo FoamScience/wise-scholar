@@ -859,6 +859,9 @@ a.btn.primary:hover {
     border-top: 3px solid transparent;
     color: var(--muted);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* the chat opens from the pane switcher here, so no button floats over the lesson */
@@ -885,8 +888,13 @@ a.btn.primary:hover {
   }
 
   .panes .live {
-    color: var(--teal);
-    font-weight: 400;
+    width: 8px;
+    height: 8px;
+    margin-inline-start: var(--space-2xs);
+    margin-block-end: 14px;
+    background: var(--teal);
+    border-radius: 50%;
+    animation: pulse 1.4s ease-in-out infinite;
   }
 
   /* the backend name is for the desk; a phone needs the room */
@@ -1217,7 +1225,7 @@ a.btn.primary:hover {
 
 .bubble {
   align-self: flex-start;
-  max-width: 310px;
+  max-width: 90%;
   padding: var(--space-sm) var(--space-md);
   background: var(--well);
   border-radius: var(--radius-card);
@@ -1300,7 +1308,8 @@ a.btn.primary:hover {
   }
 
   .skeleton span,
-  .status.live::before {
+  .status.live::before,
+  .panes .live {
     animation: none;
   }
 
@@ -2173,6 +2182,39 @@ td {
 
 .file-head .label {
   margin-bottom: 0;
+}
+
+summary.file-head {
+  justify-content: flex-start;
+  cursor: pointer;
+  list-style: none;
+}
+
+summary.file-head::-webkit-details-marker {
+  display: none;
+}
+
+summary.file-head::before {
+  content: '';
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform var(--motion-fast) var(--ease);
+}
+
+summary.file-head:dir(rtl)::before {
+  transform: rotate(135deg);
+}
+
+details[open] > summary.file-head::before {
+  transform: rotate(45deg);
+}
+
+summary.file-head code {
+  flex: 1;
 }
 
 .file pre {
@@ -3522,7 +3564,7 @@ dialog.handoff .qr {
   height: 120px;
 }
 
-.reading {
+.hand-reading {
   display: flex;
   flex-direction: column;
   gap: var(--space-2xs);
@@ -3533,7 +3575,7 @@ dialog.handoff .qr {
   border-radius: var(--radius-inner);
 }
 
-.reading .label {
+.hand-reading .label {
   display: flex;
   gap: var(--space-sm);
   align-items: baseline;
@@ -3590,9 +3632,10 @@ dialog.handoff .qr {
 
 .pad-task {
   position: absolute;
-  inset-block: calc(var(--space-xs) + 60px) var(--space-xs);
+  inset-block-start: calc(var(--space-xs) + 60px);
   inset-inline-start: var(--space-xs);
   width: min(24rem, calc(100% - 2 * var(--space-xs)));
+  max-height: calc(100% - 2 * var(--space-xs) - 60px);
   overflow-y: auto;
   padding: var(--space-md);
   border: 1px solid var(--line);
@@ -3600,6 +3643,14 @@ dialog.handoff .qr {
   background: var(--panel);
   color: var(--ink);
   box-shadow: var(--shadow-float);
+}
+
+.pad-task > :first-child {
+  margin-top: 0;
+}
+
+.pad-task > :last-child {
+  margin-bottom: 0;
 }
 
 .code-editor .cm-editor {
