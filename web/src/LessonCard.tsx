@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { api, failure, transcribe } from './api'
 import { lookup, percent } from './i18n'
@@ -26,22 +27,11 @@ import { Mic } from './Mic'
 function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answer: string, nonGoals?: string[]) => void }) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
-  const [picked, setPicked] = useState<string[]>([])
-  const [ruled, setRuled] = useState<string[]>([])
   const { options, answer, multiple, non_goals } = props.block.data as QuestionData
   const goals = non_goals !== undefined
+  const { picked, ruled, toggle } = usePicks(Boolean(multiple), goals)
 
   if (answer !== null) return <AnsweredQuestion block={props.block} />
-
-  // on a goal card a tap picks an option, a second marks it not wanted, a third clears it
-  function toggle(o: string) {
-    if (!multiple) setPicked(picked.includes(o) ? [] : [o])
-    else if (picked.includes(o)) {
-      setPicked((all) => all.filter((x) => x !== o))
-      if (goals) setRuled((all) => [...all, o])
-    } else if (ruled.includes(o)) setRuled((all) => all.filter((x) => x !== o))
-    else setPicked((all) => [...all, o])
-  }
 
   const given = [...picked, text.trim()].filter(Boolean).join('; ')
 
@@ -69,16 +59,36 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
             onChange={(e) => setText(e.target.value)}
           />
           <button className="btn primary" disabled={props.disabled || !(given || ruled.length)}>
-            {goals && ruled.length > 0
-              ? t('question.doneRuled', { count: picked.length, ruled: ruled.length })
-              : multiple && picked.length > 0 && !text.trim()
-                ? t('question.done', { count: picked.length })
-                : t('question.answer')}
+            {submitLabel(t, picked.length, ruled.length, Boolean(multiple) && !text.trim())}
           </button>
         </div>
       </form>
     </section>
   )
+}
+
+function usePicks(multiple: boolean, goals: boolean) {
+  const [picked, setPicked] = useState<string[]>([])
+  const [ruled, setRuled] = useState<string[]>([])
+
+  // on a goal card a tap picks an option, a second marks it not wanted, a third clears it
+  function toggle(o: string) {
+    if (!multiple) setPicked(picked.includes(o) ? [] : [o])
+    else if (picked.includes(o)) {
+      setPicked((all) => all.filter((x) => x !== o))
+      if (goals) setRuled((all) => [...all, o])
+    } else if (ruled.includes(o)) setRuled((all) => all.filter((x) => x !== o))
+    else setPicked((all) => [...all, o])
+  }
+
+  return { picked, ruled, toggle }
+}
+
+/** picksOnly: several options may be picked and nothing is typed. */
+function submitLabel(t: TFunction, picked: number, ruled: number, picksOnly: boolean) {
+  if (ruled > 0) return t('question.doneRuled', { count: picked, ruled })
+  if (picksOnly && picked > 0) return t('question.done', { count: picked })
+  return t('question.answer')
 }
 
 function AnsweredQuestion({ block }: { block: Block }) {
@@ -318,28 +328,13 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
 function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolean; authored: boolean; onAct: Act; onError: (m: string) => void }) {
   const { t } = useTranslation()
   const d = props.block.data as ExerciseData
-  const [running, setRunning] = useState(false)
-  const [error, setError] = useState('')
   const [answer, setAnswer] = useState('')
   const open = !d.solved && d.solution === null && !props.authored
   const blockId = props.block.id
   const { files, reads, flushes } = useExerciseFiles(blockId, open)
+  const { running, error, setError, allSaved, run } = useExerciseRun(blockId, flushes)
   const kept = files.length > 0 && files.every((f) => f.kept)
   const editing = open && files.some((f) => f.editable)
-
-  async function allSaved() {
-    const results = await Promise.all([...flushes.current.values()].map((flush) => flush()))
-    if (results.every(Boolean)) return true
-    setError(t('exercise.unsaved'))
-    return false
-  }
-
-  async function run() {
-    setRunning(true)
-    setError('')
-    if (await allSaved()) await api(`/api/blocks/${blockId}/run`, {}).catch((err: Error) => setError(err.message))
-    setRunning(false)
-  }
 
   return (
     <section id={`block-${props.block.id}`} className="block challenge">
@@ -406,6 +401,29 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}
     </section>
   )
+}
+
+/** Running the exercise's command, once every edited file is saved. */
+function useExerciseRun(blockId: number, flushes: ReturnType<typeof useExerciseFiles>['flushes']) {
+  const { t } = useTranslation()
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState('')
+
+  async function allSaved() {
+    const results = await Promise.all([...flushes.current.values()].map((flush) => flush()))
+    if (results.every(Boolean)) return true
+    setError(t('exercise.unsaved'))
+    return false
+  }
+
+  async function run() {
+    setRunning(true)
+    setError('')
+    if (await allSaved()) await api(`/api/blocks/${blockId}/run`, {}).catch((err: Error) => setError(err.message))
+    setRunning(false)
+  }
+
+  return { running, error, setError, allSaved, run }
 }
 
 /** The exercise's files, read again every 2 s while it is open; the refs let a save outrun a read in flight. */
