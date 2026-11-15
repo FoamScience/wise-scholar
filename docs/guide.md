@@ -207,6 +207,8 @@ make dev     # API with reload on :8321, web dev server on :5173
 make test    # Python and web tests
 ```
 
+Every run checks that a sandboxed command gets its memory and task limits. The test that proves the memory limit bites is skipped unless you ask for it: its command allocates more than the limit, so the kernel kills that command, and GNOME may show a notification that an app ran out of memory. Run it alone, on a machine with bubblewrap and a user systemd, with `WISE_SCHOLAR_TEST_OOM=1 uv run pytest tests/test_sandbox.py -k cannot_take_more_memory`.
+
 ## Where things live
 
 - `data/` holds the database, recordings and casts under `data/audio/`, the art packs under `data/art/`, language data under `data/resources/`, and the files you add to a course under `data/sources/` (PDF, EPUB, HTML, Markdown, text, code; the tutor searches them and reads one section at a time). Before a schema upgrade the database is copied to `data/wise-scholar.db.v<N>.bak`.

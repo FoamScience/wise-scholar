@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -169,8 +170,43 @@ def test_the_disk_limit_setting_must_be_a_positive_number_of_megabytes(monkeypat
             sandbox._megabytes("WISE_SCHOLAR_WORKSPACE_MB", 2048)
 
 
+def _bytes(size: str) -> int:
+    return int(size[:-1]) * 1024 ** "KMG".index(size[-1].upper()) * 1024 if size[-1].isalpha() else int(size)
+
+
 @needs_bwrap
 @pytest.mark.skipif(not sandbox.capped(), reason="no user systemd: sandboxed commands run without the memory limit here")
+def test_a_command_runs_under_its_memory_swap_and_task_limits(place):
+    """The limits as the kernel holds them for a running command, read from outside: the command itself sees no cgroup."""
+    job = threading.Thread(target=run, args=("sleep 2.71828", place / "courses/mine"))
+    job.start()
+    try:
+        deadline, sleeper = time.monotonic() + 5, None
+        while not sleeper and time.monotonic() < deadline:
+            sleeper = next((p for p in Path("/proc").iterdir() if p.name.isdigit() and _cmdline(p) == ["sleep", "2.71828"]), None)
+            time.sleep(0.05)
+        assert sleeper, "the sandboxed command never started"
+        scope = Path("/sys/fs/cgroup") / (sleeper / "cgroup").read_text().split("::", 1)[1].strip().lstrip("/")
+        assert scope.name.endswith(".scope")
+        assert (scope / "memory.max").read_text().strip() == str(_bytes(sandbox.MEMORY))
+        assert (scope / "memory.swap.max").read_text().strip() == "0"
+        assert (scope / "pids.max").read_text().strip() == str(sandbox.TASKS)
+    finally:
+        job.join()
+
+
+def _cmdline(process: Path) -> list[str]:
+    try:
+        return (process / "cmdline").read_bytes().decode(errors="replace").split("\0")[:-1]
+    except OSError:
+        return []
+
+
+# Proves the limit bites: it allocates past MemoryMax, so the kernel kills the command, and the desktop may report that
+# as an app out of memory. The test above checks the limit is set on every run.
+@needs_bwrap
+@pytest.mark.skipif(not sandbox.capped(), reason="no user systemd: sandboxed commands run without the memory limit here")
+@pytest.mark.skipif(os.environ.get("WISE_SCHOLAR_TEST_OOM") != "1", reason="set WISE_SCHOLAR_TEST_OOM=1 to run it: the kernel kills its command for memory on purpose")
 def test_a_command_cannot_take_more_memory_than_its_limit(place):
     hog = run("python3 -c 'x = bytearray(3 * 1024**3); print(len(x))'", place / "courses/mine")
     assert hog["exit_code"] != 0 and "3221225472" not in hog["output"]
@@ -187,7 +223,6 @@ def host_addresses() -> list[str]:
 def listener():
     """A web server on every address of this machine: what an allowed command must not reach."""
     import http.server
-    import threading
 
     server = http.server.HTTPServer(("0.0.0.0", 0), http.server.SimpleHTTPRequestHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
