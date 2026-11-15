@@ -21,6 +21,56 @@ export type Entry = {
   created: string
 }
 
+type Patch = { note?: string; pinned?: boolean; resolved?: boolean }
+
+function kindLabel(kind: Entry['kind']) {
+  return kind === 'writing' ? 'common.correctedText' : kind === 'practice' ? 'notebook.practiceMiss' : 'notebook.confidentMiss'
+}
+
+function EntryCard({ entry: e, onPatch }: { entry: Entry; onPatch: (body: Patch) => void }) {
+  const { t } = useTranslation()
+  const writing = e.kind === 'writing'
+  return (
+    <section className={`block entry${e.resolved ? ' resolved' : ''}`}>
+      <div className="label">
+        {t(kindLabel(e.kind))}, {e.topic}, {day(e.created)}
+        {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
+      </div>
+      {!writing && <Markdown>{e.prompt}</Markdown>}
+      <div className="attempt">
+        <span className="label">{writing ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
+        <span className="said" dir={textDirection(e.said)}>
+          {writing ? e.said : <AnswerText text={e.said} />}
+        </span>
+      </div>
+      <div className="solution">
+        <div className="label">{writing ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
+        {writing ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
+        {e.explanation && <Markdown>{e.explanation}</Markdown>}
+        {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
+      </div>
+      <label className="small" htmlFor={`note-${e.id}`}>
+        {t('notebook.note')}
+      </label>
+      <textarea
+        id={`note-${e.id}`}
+        className="field" dir="auto"
+        rows={2}
+        defaultValue={e.note}
+        onBlur={(ev) => ev.target.value !== e.note && onPatch({ note: ev.target.value })}
+      />
+      <div className="row">
+        <button type="button" className="btn" onClick={() => onPatch({ pinned: !e.pinned })}>
+          {e.pinned ? t('notebook.unpin') : t('notebook.pin')}
+        </button>
+        <button type="button" className="btn" onClick={() => onPatch({ resolved: !e.resolved })}>
+          {e.resolved ? t('notebook.reopen') : t('notebook.resolve')}
+        </button>
+      </div>
+    </section>
+  )
+}
+
 /** The learner's own confident misses and corrected texts, with a note in their words; open ones lead the reviews. */
 export function ErrorsPage({ profile }: { profile: number }) {
   const { t } = useTranslation()
@@ -32,7 +82,7 @@ export function ErrorsPage({ profile }: { profile: number }) {
     api<Entry[]>(`/api/errors?profile=${profile}`).then(setEntries, (e: Error) => setError(e.message))
   }, [profile])
 
-  function patch(id: number, body: { note?: string; pinned?: boolean; resolved?: boolean }) {
+  function patch(id: number, body: Patch) {
     api<Entry>(`/api/errors/${id}`, body).then(
       (updated) => setEntries((all) => all && all.map((e) => (e.id === id ? updated : e))),
       (e: Error) => setError(e.message),
@@ -55,43 +105,7 @@ export function ErrorsPage({ profile }: { profile: number }) {
       {shown.length === 0 && <div className="muted">{t('notebook.empty')}</div>}
       <div className="notebook">
         {shown.map((e) => (
-          <section key={e.id} className={`block entry${e.resolved ? ' resolved' : ''}`}>
-            <div className="label">
-              {e.kind === 'writing' ? t('common.correctedText') : e.kind === 'practice' ? t('notebook.practiceMiss') : t('notebook.confidentMiss')}, {e.topic}, {day(e.created)}
-              {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
-            </div>
-            {e.kind !== 'writing' && <Markdown>{e.prompt}</Markdown>}
-            <div className="attempt">
-              <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
-              <span className="said" dir={textDirection(e.said)}>
-                {e.kind === 'writing' ? e.said : <AnswerText text={e.said} />}
-              </span>
-            </div>
-            <div className="solution">
-              <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
-              {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
-              {e.explanation && <Markdown>{e.explanation}</Markdown>}
-              {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
-            </div>
-            <label className="small" htmlFor={`note-${e.id}`}>
-              {t('notebook.note')}
-            </label>
-            <textarea
-              id={`note-${e.id}`}
-              className="field" dir="auto"
-              rows={2}
-              defaultValue={e.note}
-              onBlur={(ev) => ev.target.value !== e.note && patch(e.id, { note: ev.target.value })}
-            />
-            <div className="row">
-              <button type="button" className="btn" onClick={() => patch(e.id, { pinned: !e.pinned })}>
-                {e.pinned ? t('notebook.unpin') : t('notebook.pin')}
-              </button>
-              <button type="button" className="btn" onClick={() => patch(e.id, { resolved: !e.resolved })}>
-                {e.resolved ? t('notebook.reopen') : t('notebook.resolve')}
-              </button>
-            </div>
-          </section>
+          <EntryCard key={e.id} entry={e} onPatch={(body) => patch(e.id, body)} />
         ))}
       </div>
     </main>

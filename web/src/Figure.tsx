@@ -97,13 +97,54 @@ function Stages({ box, count }: { box: React.RefObject<HTMLDivElement | null>; c
   )
 }
 
+/** "Redraw", then the learner's notes on what to change. */
+function Redraw(props: { disabled?: boolean; onRedraw: (notes: string) => void }) {
+  const { t } = useTranslation()
+  const [notes, setNotes] = useState<string | null>(null)
+  if (notes === null) {
+    return (
+      <button type="button" className="link small" disabled={props.disabled} onClick={() => setNotes('')}>
+        {t('block.redraw')}
+      </button>
+    )
+  }
+  return (
+    <form
+      className="redraw"
+      onSubmit={(e) => {
+        e.preventDefault()
+        props.onRedraw(notes)
+        setNotes(null)
+      }}
+    >
+      <input
+        className="field"
+        dir="auto"
+        maxLength={1000}
+        aria-label={t('block.redrawNotes')}
+        placeholder={t('block.redrawNotes')}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && setNotes(null)}
+        autoFocus
+      />
+      <div className="row">
+        <button className="btn small primary" disabled={props.disabled}>
+          {t('block.redrawGo')}
+        </button>
+        <button type="button" className="btn small" onClick={() => setNotes(null)}>
+          {t('common.cancel')}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 /** A tutor-drawn figure; click to see it large. */
 export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void; onRedraw?: (notes: string) => void }) {
   const { t } = useTranslation()
   const d = props.data as FigureData
   const [large, setLarge] = useState(false)
-  const [notes, setNotes] = useState<string | null>(null)
-  const redraw = props.onRedraw
   const box = useRef<HTMLDivElement>(null)
   return (
     <section id={`block-${props.id}`} className="block figure">
@@ -122,41 +163,7 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
       {props.caption && <div className="caption"><InlineMarkdown>{props.caption}</InlineMarkdown></div>}
       <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />
-      {redraw && notes === null && (
-        <button type="button" className="link small" disabled={props.disabled} onClick={() => setNotes('')}>
-          {t('block.redraw')}
-        </button>
-      )}
-      {redraw && notes !== null && (
-        <form
-          className="redraw"
-          onSubmit={(e) => {
-            e.preventDefault()
-            redraw(notes)
-            setNotes(null)
-          }}
-        >
-          <input
-            className="field"
-            dir="auto"
-            maxLength={1000}
-            aria-label={t('block.redrawNotes')}
-            placeholder={t('block.redrawNotes')}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onKeyDown={(e) => e.key === 'Escape' && setNotes(null)}
-            autoFocus
-          />
-          <div className="row">
-            <button className="btn small primary" disabled={props.disabled}>
-              {t('block.redrawGo')}
-            </button>
-            <button type="button" className="btn small" onClick={() => setNotes(null)}>
-              {t('common.cancel')}
-            </button>
-          </div>
-        </form>
-      )}
+      {props.onRedraw && <Redraw disabled={props.disabled} onRedraw={props.onRedraw} />}
       {d.previous && props.onRestore && (
         <button type="button" className="link small" disabled={props.disabled} onClick={props.onRestore}>
           {d.restored ? t('block.backToRedrawn') : t('block.restoreDrawing')}
