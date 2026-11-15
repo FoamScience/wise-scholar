@@ -1,0 +1,16 @@
+**/node_modules
+**/__pycache__
+.venv
+.pytest_cache
+.git
+.env
+data
+workspace
+web/dist
+speech
+.claude
+.beads
+.git*
+docs
+design.md
+.repowise

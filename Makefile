@@ -1,4 +1,4 @@
-.PHONY: help dev dev-server dev-web build serve test speech pdf art search morphology
+.PHONY: help dev dev-server dev-web build serve test image test-container speech pdf art search morphology
 .DEFAULT_GOAL := help
 
 # this machine's own settings (`export NAME=value` lines), kept out of git
@@ -34,6 +34,12 @@ serve: build ## build, then serve on WISE_SCHOLAR_PORT (8321 unless set), WISE_S
 test: web/node_modules ## Python and web tests
 	uv run pytest -q
 	cd web && npm test
+
+image: ## container image `wise-scholar`; `docker compose up -d` runs it with its volumes and limits
+	docker build --target app -t wise-scholar .
+
+test-container: ## the sandbox tests inside the container image, started as compose starts it
+	docker compose --profile test run --rm --build test
 
 speech: ## opt-in: torch, Chatterbox, whisper, Piper and models, about 7 GB
 	cd speech && uv sync && uv run --no-sync python worker.py --download

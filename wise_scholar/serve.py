@@ -1,5 +1,6 @@
 """Serve the app on 127.0.0.1 and every address in WISE_SCHOLAR_LISTEN. The agents always call back on 127.0.0.1;
-a second address (the tailnet one) lets a proxy reach the server without opening it to the LAN."""
+a second address (the tailnet one) lets a proxy reach the server without opening it to the LAN. 0.0.0.0 takes
+the place of 127.0.0.1, which it covers: a container listens there."""
 
 import logging
 import os
@@ -21,14 +22,21 @@ def _bind(host: str) -> socket.socket:
     return sock
 
 
+def hosts() -> list[str]:
+    """The addresses to listen on, the one that must work first."""
+    listen = sorted({h.strip() for h in os.environ.get("WISE_SCHOLAR_LISTEN", "").split(",") if h.strip()} - {"127.0.0.1"})
+    return ["0.0.0.0"] if "0.0.0.0" in listen else ["127.0.0.1", *listen]
+
+
 def main() -> None:
     config = uvicorn.Config("wise_scholar.app:app", port=PORT)
+    first, *others = hosts()
     try:
-        sockets = [_bind("127.0.0.1")]
+        sockets = [_bind(first)]
     except OSError as e:
-        log.error("cannot listen on 127.0.0.1:%d: %s", PORT, e)
+        log.error("cannot listen on %s:%d: %s", first, PORT, e)
         sys.exit(1)
-    for host in sorted({h.strip() for h in os.environ.get("WISE_SCHOLAR_LISTEN", "").split(",") if h.strip()} - {"127.0.0.1"}):
+    for host in others:
         try:
             sockets.append(_bind(host))
         except OSError as e:

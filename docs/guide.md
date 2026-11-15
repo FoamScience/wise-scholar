@@ -47,6 +47,17 @@ make serve
 
 This builds the web interface and serves everything at <http://127.0.0.1:8321>.
 
+### In a container
+
+```bash
+docker compose up -d --build
+docker compose exec wise-scholar claude   # once: log Claude Code in; the login stays in the home volume
+```
+
+The image holds the server, the web interface, the diagram renderer and Claude Code (`--build-arg AGENT_PACKAGES="@anthropic-ai/claude-code opencode-ai"` adds opencode, about 830 MB more). The database and the course workspaces live in the `data` and `workspace` volumes. Compose publishes the server on `127.0.0.1:8321` (`WISE_SCHOLAR_PUBLISH` and `WISE_SCHOLAR_PORT` change that). Nothing signs anyone in: publish it on loopback or a tailnet address behind your own proxy, never on a public one. Compose passes on the settings of the table above from your environment or `.env`, except those that name paths or addresses (the container fixes them) and `WISE_SCHOLAR_SANDBOX`.
+
+bubblewrap needs the container started with seccomp, AppArmor and the system paths unconfined, so it can make its namespaces and mount `/proc` for each command; it needs no capabilities, so `compose.yaml` drops them all and sets `no-new-privileges`. A container has no user systemd: the whole container gets the memory limit instead (`WISE_SCHOLAR_CONTAINER_MEMORY`, 6 GB by default, swap off) and 1,024 tasks.
+
 A new course opens on its interview page. Before the first question you can say more about what the course should cover (for example "science class, second year of high school") and how many hours of teaching the whole course should take. Both are optional: the tutor keeps the course inside that scope and sizes the course map so its sittings add up to the time. When you gave a time, the tutor says in the chat at the end of the interview whether your goal is doable in it or unlikely. It only says so; the plan and the map do not change because of it.
 
 When the interview asks what you want to be able to do, tap an option once to pick it as a goal and again to mark it as not wanted. The options you rule out are kept as the course's non-goals, and the course map leaves them out.
@@ -101,7 +112,7 @@ The profile page links to **Server settings**, which shows every setting below w
 | `WISE_SCHOLAR_COMMANDS` | `0` serves without command execution: the tutor gets no workspace tools and poses no runnable exercises, and Run is refused. For instances opened to other people | `1` |
 | `WISE_SCHOLAR_VAULT` | an Obsidian vault folder on this machine (or one synced to it): the server keeps `Wise Scholar/<course>/` inside it current: a few seconds after a course changes its notes are rewritten (an edit you made to one of them is lost; keep your own writing in files of your own, which are never touched) and notes it wrote that the course no longer has, or a folder left by a renamed course, are removed. Plots stay as specs in the synced notes | unset |
 | `WISE_SCHOLAR_HOSTS` | host names the server answers to, comma-separated, ports ignored | `127.0.0.1,localhost,::1` |
-| `WISE_SCHOLAR_LISTEN` | extra addresses `make serve` listens on, comma-separated, beside `127.0.0.1` (which the agents call back on): a tailnet address lets a proxy reach the server without opening it to the LAN; add the proxied name to `WISE_SCHOLAR_HOSTS` too. An address that cannot be bound is skipped with a warning. | unset |
+| `WISE_SCHOLAR_LISTEN` | extra addresses `make serve` listens on, comma-separated, beside `127.0.0.1` (which the agents call back on): a tailnet address lets a proxy reach the server without opening it to the LAN; add the proxied name to `WISE_SCHOLAR_HOSTS` too. An address that cannot be bound is skipped with a warning. `0.0.0.0` listens on every address instead, `127.0.0.1` included; the container image sets it. | unset |
 | `WISE_SCHOLAR_MCP_SECRET` | the bearer token on `/mcp`; a fresh one per start when unset | unset |
 | `WISE_SCHOLAR_GITHUB_TOKEN` | a GitHub token for the open-source contribution search: it lets the search read code and ask GitHub more often. Read-only access to public repositories is enough | unset |
 | `WISE_SCHOLAR_MODELS` | the model of some kinds of turn, `kind=model` pairs separated by commas (see above) | unset |
@@ -206,6 +217,8 @@ make build   # once, to install the web dependencies
 make dev     # API with reload on :8321, web dev server on :5173
 make test    # Python and web tests
 ```
+
+`make test-container` builds the image and runs the sandbox tests inside it, through compose's `test` service, which shares the server's security options and limits.
 
 Every run checks that a sandboxed command gets its memory and task limits. The test that proves the memory limit bites is skipped unless you ask for it: its command allocates more than the limit, so the kernel kills that command, and GNOME may show a notification that an app ran out of memory. Run it alone, on a machine with bubblewrap and a user systemd, with `WISE_SCHOLAR_TEST_OOM=1 uv run pytest tests/test_sandbox.py -k cannot_take_more_memory`.
 

@@ -1,0 +1,59 @@
+x-confined: &confined
+  # bubblewrap makes its own namespaces and mounts a fresh /proc for each learner command; it needs no capabilities
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges
+    - seccomp=unconfined
+    - apparmor=unconfined
+    - systempaths=unconfined
+  # no user systemd here: the whole container carries the memory and task limits, swap off
+  mem_limit: ${WISE_SCHOLAR_CONTAINER_MEMORY:-6g}
+  memswap_limit: ${WISE_SCHOLAR_CONTAINER_MEMORY:-6g}
+  pids_limit: 1024
+
+services:
+  wise-scholar:
+    <<: *confined
+    build:
+      context: .
+      target: app
+    image: wise-scholar
+    restart: unless-stopped
+    # no sign-in in front of the server: publish it on loopback or a tailnet address, behind your own proxy
+    ports:
+      - "${WISE_SCHOLAR_PUBLISH:-127.0.0.1}:${WISE_SCHOLAR_PORT:-8321}:8321"
+    environment:
+      WISE_SCHOLAR_HOSTS: ${WISE_SCHOLAR_HOSTS:-127.0.0.1,localhost,::1}
+      WISE_SCHOLAR_AGENT: ${WISE_SCHOLAR_AGENT:-claude}
+      # passed on when set where compose runs
+      WISE_SCHOLAR_MODELS:
+      WISE_SCHOLAR_COMMANDS:
+      WISE_SCHOLAR_TURNS:
+      WISE_SCHOLAR_TURNS_PER_HOUR:
+      WISE_SCHOLAR_TOOL_CALLS:
+      WISE_SCHOLAR_MCP_CALLS:
+      WISE_SCHOLAR_WORKSPACE_MB:
+      WISE_SCHOLAR_KEEP_DAYS:
+      WISE_SCHOLAR_PODCASTS:
+      WISE_SCHOLAR_RECAP_PREVIEW:
+      WISE_SCHOLAR_SEARCH_MODEL:
+      WISE_SCHOLAR_AGENT_ENV:
+      WISE_SCHOLAR_MCP_SECRET:
+      WISE_SCHOLAR_GITHUB_TOKEN:
+    volumes:
+      - data:/app/data
+      - workspace:/app/workspace
+      - home:/home/app
+
+  test:
+    <<: *confined
+    build:
+      context: .
+      target: test
+    image: wise-scholar:test
+    profiles: [test]
+
+volumes:
+  data:
+  workspace:
+  home:

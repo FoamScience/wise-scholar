@@ -3948,6 +3948,9 @@ dev = [
     { name = "spacy", extra = ["ja"] },
     { name = "spacy-pkuseg" },
 ]
+test = [
+    { name = "pytest" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -3988,6 +3991,7 @@ dev = [
     { name = "spacy", extras = ["ja"], specifier = ">=3.8" },
     { name = "spacy-pkuseg", specifier = ">=1.0" },
 ]
+test = [{ name = "pytest", specifier = ">=9.2.0" }]
 
 [[package]]
 name = "wordfreq"

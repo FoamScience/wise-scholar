@@ -43,9 +43,12 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [dependency-groups]
-dev = [
-    "model2vec>=0.10.0",
+test = [
     "pytest>=9.2.0",
+]
+dev = [
+    {include-group = "test"},
+    "model2vec>=0.10.0",
     "spacy[ja]>=3.8",
     "spacy-pkuseg>=1.0",
     "pymorphy3>=2.0",
