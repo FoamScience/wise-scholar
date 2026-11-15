@@ -37,18 +37,7 @@ function EntryCard({ entry: e, onPatch }: { entry: Entry; onPatch: (body: Patch)
         {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
       </div>
       {!writing && <Markdown>{e.prompt}</Markdown>}
-      <div className="attempt">
-        <span className="label">{writing ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
-        <span className="said" dir={textDirection(e.said)}>
-          {writing ? e.said : <AnswerText text={e.said} />}
-        </span>
-      </div>
-      <div className="solution">
-        <div className="label">{writing ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
-        {writing ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
-        {e.explanation && <Markdown>{e.explanation}</Markdown>}
-        {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
-      </div>
+      <EntryAnswer entry={e} />
       <label className="small" htmlFor={`note-${e.id}`}>
         {t('notebook.note')}
       </label>
@@ -68,6 +57,28 @@ function EntryCard({ entry: e, onPatch }: { entry: Entry; onPatch: (body: Patch)
         </button>
       </div>
     </section>
+  )
+}
+
+/** What the learner said or wrote, and the right answer or the corrected text. */
+function EntryAnswer({ entry: e }: { entry: Entry }) {
+  const { t } = useTranslation()
+  const writing = e.kind === 'writing'
+  return (
+    <>
+      <div className="attempt">
+        <span className="label">{writing ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
+        <span className="said" dir={textDirection(e.said)}>
+          {writing ? e.said : <AnswerText text={e.said} />}
+        </span>
+      </div>
+      <div className="solution">
+        <div className="label">{writing ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
+        {writing ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
+        {e.explanation && <Markdown>{e.explanation}</Markdown>}
+        {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
+      </div>
+    </>
   )
 }
 

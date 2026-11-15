@@ -372,25 +372,17 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       <div className="row">
         <code className="grow">$ {d.run}</code>
         {open && <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />}
-        {props.commands && !kept && (
-          <button type="button" className="btn" disabled={running} onClick={run}>
-            {running ? t('exercise.running') : t('exercise.run')}
-          </button>
-        )}
+        {props.commands && !kept && <RunButton running={running} onRun={run} />}
         {open && (
-          <button
-            type="button"
-            className="btn primary"
+          <CheckButton
             disabled={props.disabled}
-            onClick={async () => {
+            onCheck={async () => {
               setError('')
               if (!(await allSaved())) return
               props.onAct('check', { answer: answer.trim() })
               setAnswer('')
             }}
-          >
-            {t('exercise.check')}
-          </button>
+          />
         )}
       </div>
 
@@ -400,6 +392,24 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       <Ladder data={d} blockId={blockId} onError={props.onError} />
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}
     </section>
+  )
+}
+
+function RunButton({ running, onRun }: { running: boolean; onRun: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <button type="button" className="btn" disabled={running} onClick={onRun}>
+      {running ? t('exercise.running') : t('exercise.run')}
+    </button>
+  )
+}
+
+function CheckButton({ disabled, onCheck }: { disabled: boolean; onCheck: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <button type="button" className="btn primary" disabled={disabled} onClick={onCheck}>
+      {t('exercise.check')}
+    </button>
   )
 }
 

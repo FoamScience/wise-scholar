@@ -55,6 +55,33 @@ function saveSeen(lesson: number, message: number) {
 
 type Opening = { courseId: number; concept: number | null; start: 'episode' | 'writing' | null; foundLesson: number | null }
 
+function askWarmup(courseId: number) {
+  const here = location.hash
+  api<{ due: number }>(`/api/courses/${courseId}/warmup`).then(
+    (w) => {
+      // only from the page that asked: a second answer, or one arriving after the learner moved on, does nothing
+      // replaced, not pushed: going back from the lesson must not land on the warm-up again
+      if (w.due && location.hash === here) location.replace(`#/review?then=${encodeURIComponent(here)}`)
+    },
+    () => {},
+  )
+}
+
+/** The lesson a search result or a unit on the map asked for, if the course has it. */
+function wantedLesson(c: CourseDetail, foundLesson: number | null, concept: number | null) {
+  if (foundLesson !== null) return c.lessons.find((l) => l.id === foundLesson)
+  return concept === null ? undefined : c.lessons.find((l) => l.concept_id === concept)
+}
+
+/** Work the server does out of sight once the course opens. */
+function courseUpkeep(c: CourseDetail) {
+  // a map made before units had prerequisites gets them worked out once, out of sight
+  if (c.concepts.length > 0 && !c.prerequisites) api(`/api/courses/${c.id}/prerequisites`, {}).catch(() => {})
+  if (c.concepts.length > 0 && !c.cover) api(`/api/courses/${c.id}/cover`, {}).catch(() => {})
+  // finished lessons whose claims were not taken out yet, older ones included, go to the extractor
+  if (c.mode === 'learner') api(`/api/courses/${c.id}/claims`, {}).catch(() => {})
+}
+
 /** The course, its sources, the shown lesson and the last error, loaded once and kept current by the course's event stream. */
 export function useCourseStream({ courseId, concept, start, foundLesson }: Opening) {
   const [error, setError] = useState('')
@@ -125,45 +152,29 @@ export function useCourseStream({ courseId, concept, start, foundLesson }: Openi
       }
     }
     // a sitting opens with a few due reviews before the lesson; a card looked up by search opens straight away
-    const here = location.hash
-    if (!start && foundLesson === null && navigator.onLine)
-      api<{ due: number }>(`/api/courses/${courseId}/warmup`).then(
-        (w) => {
-          // only from the page that asked: a second answer, or one arriving after the learner moved on, does nothing
-          // replaced, not pushed: going back from the lesson must not land on the warm-up again
-          if (w.due && location.hash === here) location.replace(`#/review?then=${encodeURIComponent(here)}`)
-        },
-        () => {},
-      )
+    if (!start && foundLesson === null && navigator.onLine) askWarmup(courseId)
     api<Source[]>(`/api/courses/${courseId}/sources`).then(setSources, () => {})
+
+    function create(path: string, then?: () => void) {
+      api<Lesson>(path, {}).then(
+        (created) => {
+          setCourse((cur) => cur && { ...cur, lessons: [...cur.lessons, created] })
+          setLessonId(created.id)
+          then?.()
+        },
+        (err: Error) => setError(err.message),
+      )
+    }
+
     api<CourseDetail>(`/api/courses/${courseId}`).then(
       (c) => {
         setCourse(c)
-        const wanted = foundLesson !== null ? c.lessons.find((l) => l.id === foundLesson) : concept === null ? undefined : c.lessons.find((l) => l.concept_id === concept)
+        const wanted = wantedLesson(c, foundLesson, concept)
         setLessonId(wanted ? wanted.id : c.lessons[c.lessons.length - 1].id)
-        if (start)
-          api<Lesson>(`/api/courses/${courseId}/${start}`, {}).then(
-            (created) => {
-              setCourse((cur) => cur && { ...cur, lessons: [...cur.lessons, created] })
-              setLessonId(created.id)
-              location.hash = `#/course/${courseId}`
-            },
-            (err: Error) => setError(err.message),
-          )
-        if (!wanted && concept !== null)
-          api<Lesson>(`/api/concepts/${concept}/lesson`, {}).then(
-            (created) => {
-              setCourse((cur) => cur && { ...cur, lessons: [...cur.lessons, created] })
-              setLessonId(created.id)
-            },
-            (err: Error) => setError(err.message),
-          )
+        if (start) create(`/api/courses/${courseId}/${start}`, () => (location.hash = `#/course/${courseId}`))
+        if (!wanted && concept !== null) create(`/api/concepts/${concept}/lesson`)
         if (c.lessons.some((l) => l.running)) setActivity('thinking')
-        // a map made before units had prerequisites gets them worked out once, out of sight
-        if (c.concepts.length > 0 && !c.prerequisites) api(`/api/courses/${courseId}/prerequisites`, {}).catch(() => {})
-        if (c.concepts.length > 0 && !c.cover) api(`/api/courses/${courseId}/cover`, {}).catch(() => {})
-        // finished lessons whose claims were not taken out yet, older ones included, go to the extractor
-        if (c.mode === 'learner') api(`/api/courses/${courseId}/claims`, {}).catch(() => {})
+        courseUpkeep(c)
       },
       (e) => setError(e.message),
     )

@@ -1,4 +1,5 @@
 import { Fragment, useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { useArrivals } from './arrive'
@@ -243,14 +244,8 @@ function SetupCard(props: { steps: SetupStep[]; onDecide: (index: number, allow:
 export function Workspace({ profile, courseId, speech, commands, crafted, sketched, concept, start, found }: { profile: number; courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null; found: { lesson: number; at: string } | null }) {
   const { t } = useTranslation()
   const foundLesson = found?.lesson ?? null
-  // the unit asked for while units it needs are still open: the map says so before it starts
-  const [held, setHeld] = useState<number | null>(null)
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({})
   const online = useOnline()
-  // which column a phone shows; wider screens show all three
-  const [pane, setPane] = useState<'map' | 'lesson'>('lesson')
-  // the chat sidebar; unset, it follows the lesson: open in the interview, which is a conversation
-  const [asking, setAsking] = useState<boolean | null>(null)
   const { course, setCourse, sources, setSources, lessonId, setLessonId, streaming, activity, writing, error, setError, patchLesson, addLesson } = useCourseStream({
     courseId,
     concept,
@@ -260,6 +255,7 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
   const lessonBox = useRef<HTMLElement>(null)
 
   const lesson = course?.lessons.find((l) => l.id === lessonId) ?? null
+  const { held, pane, setPane, asking, setAsking, showLesson, unmetNeeds, openConcept, opened, openLesson } = useUnitNav(course, setLessonId, addLesson, setError)
   const { upgrading, upgrade } = useUpgrade(courseId, setCourse, setLessonId, setError)
   const { draft, setDraft, changing, setChanging, send, onKey } = useChatDraft(lesson, patchLesson, setError)
   const open = lesson ? (asking ?? (lesson.phase === 'interview' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))) : false
@@ -269,42 +265,10 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
   useArrivals(lessonBox, lesson?.id)
   useArrivals(messagesBox, lesson?.id)
 
-  function showLesson(id: number) {
-    setLessonId(id)
-    setPane('lesson')
-    setAsking(null)
-  }
-
   function closeChat() {
     setAsking(false)
     // the sidebar hides with the focus in it: hand it back to the button that opens it
     requestAnimationFrame(() => document.getElementById('ask')?.focus())
-  }
-
-  function unmetNeeds(concept: Concept): Concept[] {
-    if (!course) return []
-    return concept.needs
-      .map((id) => course.concepts.find((c) => c.id === id))
-      .filter((c): c is Concept => c !== undefined && !c.known && !unitDone(c, course.lessons.find((l) => l.concept_id === c.id)))
-  }
-
-  function openConcept(concept: Concept, anyway = false) {
-    const existing = course?.lessons.find((l) => l.concept_id === concept.id)
-    if (existing) return showLesson(existing.id)
-    if (!anyway && concept.unwritten) return setHeld(concept.id)
-    if (!anyway && course?.mode !== 'teacher' && unmetNeeds(concept).length > 0) return setHeld(concept.id)
-    setHeld(null)
-    openLesson(`/api/concepts/${concept.id}/lesson`)
-  }
-
-  function opened(created: Lesson) {
-    addLesson(created)
-    showLesson(created.id)
-  }
-
-  /** Create a lesson (a unit's, an episode, a placement) and show it. */
-  function openLesson(path: string) {
-    api<Lesson>(path, {}).then(opened, (err: Error) => setError(err.message))
   }
 
   useLessonVisits(course, courseId, lessonId)
@@ -321,7 +285,6 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
 
   const { showPlan, finished, nextUnit, cardTotal, empty, canPrepare } = lessonView(course, lesson)
   const doing = activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working')
-  const outline = outlineOf(lesson)
 
   return (
     <div className="workspace" data-pane={pane}>
@@ -364,37 +327,7 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
           onDecide={(i, allow) => api(`/api/courses/${course.id}/setup/${i}`, { allow }).catch((e: Error) => setError(e.message))}
         />
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
-        {/* first, wherever the tutor posted it: the plan and the counter belong under the title */}
-        {outline && (
-          <OutlineCard
-            key={lesson.id}
-            data={outline}
-            onTestOut={course.pace === 'speed' && !finished && !lesson.running ? (scope) => post(`/api/lessons/${lesson.id}/testout`, { scope }) : undefined}
-          />
-        )}
-        {course.mode === 'teacher' && lesson.concept_id !== null && (
-          <div className="small handouts">
-            {t('handout.label')}{' '}
-            <a href={`#/lesson/${lesson.id}/handout/teacher`}>{t('handout.teacher')}</a>,{' '}
-            <a href={`#/lesson/${lesson.id}/handout/student`}>{t('handout.student')}</a>
-          </div>
-        )}
-        {lesson.phase === 'interview' &&
-          (course.started ? (
-            <ScopeCard course={course} />
-          ) : (
-            <ScopeForm
-              disabled={lesson.running}
-              onStart={(scope) =>
-                api<CourseDetail>(`/api/courses/${course.id}/start`, scope).then(
-                  ({ details, hours, started }) => {
-                    setCourse((c) => c && { ...c, details, hours, started })
-                  },
-                  (err: Error) => setError(err.message),
-                )
-              }
-            />
-          ))}
+        <LessonIntro course={course} lesson={lesson} finished={finished} setCourse={setCourse} post={post} onError={setError} />
         <LessonCards
           course={course}
           lesson={lesson}
@@ -405,21 +338,8 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
           post={post}
           onError={setError}
         />
-        {showPlan && (
-          <Plan
-            ranking={course.ranking}
-            mechanism={course.mechanism}
-            accepted={course.concepts.length > 0 || course.lessons.some((l) => l.phase === 'placement')}
-            prepared={course.mode === 'teacher'}
-            disabled={lesson.running}
-            onChoose={(mechanism) => post(`/api/courses/${course.id}/mechanism`, { mechanism })}
-            onAccept={() => post(`/api/courses/${course.id}/plan/accept`, {})}
-            onPlacement={() => openLesson(`/api/courses/${course.id}/placement`)}
-          />
-        )}
-        {lesson.phase === 'placement' && course.placement && course.lessons.find((l) => l.phase === 'placement')?.id === lesson.id && !lesson.blocks.some((b) => b.kind === 'placement') && (
-          <PlacementResult level={course.level} text={course.placement} areas={course.areas} />
-        )}
+        {showPlan && <CoursePlan course={course} lesson={lesson} post={post} onPlacement={() => openLesson(`/api/courses/${course.id}/placement`)} />}
+        <PlacementNote course={course} lesson={lesson} />
         {lesson.running && (empty || writing) && <Skeleton />}
         {!lesson.running && (lesson.batch || canPrepare) && (
           <OfflineRow lesson={lesson} given={given} online={online} sending={sending} onSend={sendBatch} onPrepare={prepareOffline} />
@@ -475,6 +395,121 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
       />
     </div>
   )
+}
+
+/** Moving between units: opening one shows the lesson pane; a unit whose needs are still open waits on the map. */
+function useUnitNav(course: CourseDetail | null, setLessonId: (id: number) => void, addLesson: (lesson: Lesson) => void, setError: (message: string) => void) {
+  // the unit asked for while units it needs are still open: the map says so before it starts
+  const [held, setHeld] = useState<number | null>(null)
+  // which column a phone shows; wider screens show all three
+  const [pane, setPane] = useState<'map' | 'lesson'>('lesson')
+  // the chat sidebar; unset, it follows the lesson: open in the interview, which is a conversation
+  const [asking, setAsking] = useState<boolean | null>(null)
+
+  function showLesson(id: number) {
+    setLessonId(id)
+    setPane('lesson')
+    setAsking(null)
+  }
+
+  function unmetNeeds(concept: Concept): Concept[] {
+    if (!course) return []
+    return concept.needs
+      .map((id) => course.concepts.find((c) => c.id === id))
+      .filter((c): c is Concept => c !== undefined && !c.known && !unitDone(c, course.lessons.find((l) => l.concept_id === c.id)))
+  }
+
+  function openConcept(concept: Concept, anyway = false) {
+    const existing = course?.lessons.find((l) => l.concept_id === concept.id)
+    if (existing) return showLesson(existing.id)
+    if (!anyway && concept.unwritten) return setHeld(concept.id)
+    if (!anyway && course?.mode !== 'teacher' && unmetNeeds(concept).length > 0) return setHeld(concept.id)
+    setHeld(null)
+    openLesson(`/api/concepts/${concept.id}/lesson`)
+  }
+
+  function opened(created: Lesson) {
+    addLesson(created)
+    showLesson(created.id)
+  }
+
+  /** Create a lesson (a unit's, an episode, a placement) and show it. */
+  function openLesson(path: string) {
+    api<Lesson>(path, {}).then(opened, (err: Error) => setError(err.message))
+  }
+
+  return { held, pane, setPane, asking, setAsking, showLesson, unmetNeeds, openConcept, opened, openLesson }
+}
+
+/** Under the title: the unit's outline, a prepared course's handouts, and the interview's scope. */
+function LessonIntro(props: {
+  course: CourseDetail
+  lesson: Lesson
+  finished: boolean
+  setCourse: Dispatch<SetStateAction<CourseDetail | null>>
+  post: (path: string, body: unknown) => void
+  onError: (message: string) => void
+}) {
+  const { t } = useTranslation()
+  const { course, lesson } = props
+  const outline = outlineOf(lesson)
+  return (
+    <>
+      {/* first, wherever the tutor posted it: the plan and the counter belong under the title */}
+      {outline && (
+        <OutlineCard
+          key={lesson.id}
+          data={outline}
+          onTestOut={course.pace === 'speed' && !props.finished && !lesson.running ? (scope) => props.post(`/api/lessons/${lesson.id}/testout`, { scope }) : undefined}
+        />
+      )}
+      {course.mode === 'teacher' && lesson.concept_id !== null && (
+        <div className="small handouts">
+          {t('handout.label')}{' '}
+          <a href={`#/lesson/${lesson.id}/handout/teacher`}>{t('handout.teacher')}</a>,{' '}
+          <a href={`#/lesson/${lesson.id}/handout/student`}>{t('handout.student')}</a>
+        </div>
+      )}
+      {lesson.phase === 'interview' &&
+        (course.started ? (
+          <ScopeCard course={course} />
+        ) : (
+          <ScopeForm
+            disabled={lesson.running}
+            onStart={(scope) =>
+              api<CourseDetail>(`/api/courses/${course.id}/start`, scope).then(
+                ({ details, hours, started }) => {
+                  props.setCourse((c) => c && { ...c, details, hours, started })
+                },
+                (err: Error) => props.onError(err.message),
+              )
+            }
+          />
+        ))}
+    </>
+  )
+}
+
+function CoursePlan(props: { course: CourseDetail; lesson: Lesson; post: (path: string, body: unknown) => void; onPlacement: () => void }) {
+  const { course } = props
+  return (
+    <Plan
+      ranking={course.ranking}
+      mechanism={course.mechanism}
+      accepted={course.concepts.length > 0 || course.lessons.some((l) => l.phase === 'placement')}
+      prepared={course.mode === 'teacher'}
+      disabled={props.lesson.running}
+      onChoose={(mechanism) => props.post(`/api/courses/${course.id}/mechanism`, { mechanism })}
+      onAccept={() => props.post(`/api/courses/${course.id}/plan/accept`, {})}
+      onPlacement={props.onPlacement}
+    />
+  )
+}
+
+/** The placement's result, in the course's placement lesson until the tutor posts it as a card. */
+function PlacementNote({ course, lesson }: { course: CourseDetail; lesson: Lesson }) {
+  const shown = lesson.phase === 'placement' && course.placement && course.lessons.find((l) => l.phase === 'placement')?.id === lesson.id && !lesson.blocks.some((b) => b.kind === 'placement')
+  return shown ? <PlacementResult level={course.level} text={course.placement!} areas={course.areas} /> : null
 }
 
 function MapNav(props: {

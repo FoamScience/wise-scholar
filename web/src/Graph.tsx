@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CollectionReturnValue, Core, Position } from 'cytoscape'
+import type { CollectionReturnValue, Core, Position, StylesheetJson } from 'cytoscape'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { useTheme } from './theme'
@@ -82,6 +82,69 @@ function focus(c: Core, id: number | null, home: Map<string, Position>) {
     .run()
 }
 
+function graphElements(shown: { claims: Claim[]; edges: Edge[] }, courses: [number, string][], grouped: boolean, ctx: CanvasRenderingContext2D) {
+  return [
+    ...(grouped ? courses.map(([id, topic]) => ({ data: { id: `course-${id}`, label: topic } })) : []),
+    ...shown.claims.map((c) => ({
+      data: {
+        id: String(c.id),
+        label: c.text,
+        ...cardSize(ctx, c.text),
+        claim: true,
+        color: token(STATE_COLOR[c.state]),
+        ...(grouped && c.sources[0] ? { parent: `course-${c.sources[0].course_id}` } : {}),
+      },
+    })),
+    ...shown.edges.map((e) => ({ data: { id: `${e.from_id}-${e.to_id}-${e.kind}`, source: String(e.from_id), target: String(e.to_id), kind: e.kind } })),
+  ]
+}
+
+function graphStyle(font: string): StylesheetJson {
+  const ink = token('--ink')
+  return [
+    {
+      selector: 'node[?claim]',
+      style: {
+        shape: 'round-rectangle',
+        width: 'data(w)',
+        height: 'data(h)',
+        'background-color': 'data(color)',
+        'background-opacity': 0.16,
+        'border-color': 'data(color)',
+        'border-width': 2,
+        label: 'data(label)',
+        color: ink,
+        'font-family': font,
+        'font-size': FONT_SIZE,
+        'line-height': LINE_HEIGHT,
+        'min-zoomed-font-size': 7,
+        'text-wrap': 'wrap',
+        'text-max-width': `${CARD_TEXT}px`,
+        'text-valign': 'center',
+        'text-halign': 'center',
+      },
+    },
+    {
+      selector: ':parent',
+      style: {
+        label: 'data(label)',
+        color: token('--muted'),
+        'font-size': 12,
+        'text-valign': 'top',
+        'background-color': token('--panel'),
+        'border-color': token('--line'),
+        'border-width': 1,
+      },
+    },
+    { selector: 'node:selected', style: { 'border-width': 3, 'border-color': ink } },
+    { selector: '.away', style: { display: 'none' } },
+    { selector: 'edge', style: { width: 1.2, 'line-color': token('--line-strong'), 'target-arrow-color': token('--line-strong'), 'curve-style': 'bezier' } },
+    { selector: 'edge[kind = "follows"]', style: { 'target-arrow-shape': 'triangle' } },
+    { selector: 'edge[kind = "supports"]', style: { 'line-style': 'dashed', 'target-arrow-shape': 'triangle' } },
+    { selector: 'edge[kind = "contrasts"]', style: { 'line-style': 'dotted', 'line-color': token('--danger') } },
+  ]
+}
+
 /** The learner's claims from every course as a network: coloured by where they stand, linked by how they follow. */
 export function GraphPage({ profile, course }: { profile: number; course: number | null }) {
   const { t } = useTranslation()
@@ -118,69 +181,14 @@ export function GraphPage({ profile, course }: { profile: number; course: number
     let gone = false
     loadCytoscape().then((cytoscape) => {
       if (gone || !box.current) return
-      const ink = token('--ink')
       const grouped = filter === null && courses.length > 1
       const font = getComputedStyle(document.body).fontFamily
       const ctx = document.createElement('canvas').getContext('2d')!
       ctx.font = `${FONT_SIZE}px ${font}`
       cy.current = cytoscape({
         container: box.current,
-        elements: [
-          ...(grouped ? courses.map(([id, topic]) => ({ data: { id: `course-${id}`, label: topic } })) : []),
-          ...shown.claims.map((c) => ({
-            data: {
-              id: String(c.id),
-              label: c.text,
-              ...cardSize(ctx, c.text),
-              claim: true,
-              color: token(STATE_COLOR[c.state]),
-              ...(grouped && c.sources[0] ? { parent: `course-${c.sources[0].course_id}` } : {}),
-            },
-          })),
-          ...shown.edges.map((e) => ({ data: { id: `${e.from_id}-${e.to_id}-${e.kind}`, source: String(e.from_id), target: String(e.to_id), kind: e.kind } })),
-        ],
-        style: [
-          {
-            selector: 'node[?claim]',
-            style: {
-              shape: 'round-rectangle',
-              width: 'data(w)',
-              height: 'data(h)',
-              'background-color': 'data(color)',
-              'background-opacity': 0.16,
-              'border-color': 'data(color)',
-              'border-width': 2,
-              label: 'data(label)',
-              color: ink,
-              'font-family': font,
-              'font-size': FONT_SIZE,
-              'line-height': LINE_HEIGHT,
-              'min-zoomed-font-size': 7,
-              'text-wrap': 'wrap',
-              'text-max-width': `${CARD_TEXT}px`,
-              'text-valign': 'center',
-              'text-halign': 'center',
-            },
-          },
-          {
-            selector: ':parent',
-            style: {
-              label: 'data(label)',
-              color: token('--muted'),
-              'font-size': 12,
-              'text-valign': 'top',
-              'background-color': token('--panel'),
-              'border-color': token('--line'),
-              'border-width': 1,
-            },
-          },
-          { selector: 'node:selected', style: { 'border-width': 3, 'border-color': ink } },
-          { selector: '.away', style: { display: 'none' } },
-          { selector: 'edge', style: { width: 1.2, 'line-color': token('--line-strong'), 'target-arrow-color': token('--line-strong'), 'curve-style': 'bezier' } },
-          { selector: 'edge[kind = "follows"]', style: { 'target-arrow-shape': 'triangle' } },
-          { selector: 'edge[kind = "supports"]', style: { 'line-style': 'dashed', 'target-arrow-shape': 'triangle' } },
-          { selector: 'edge[kind = "contrasts"]', style: { 'line-style': 'dotted', 'line-color': token('--danger') } },
-        ],
+        elements: graphElements(shown, courses, grouped, ctx),
+        style: graphStyle(font),
         layout: { name: 'fcose', quality: 'proof', animate: false, packComponents: false, nodeRepulsion: () => 20000, idealEdgeLength: () => 120, padding: PADDING } as cytoscape.LayoutOptions,
       })
       show(cy.current, cy.current.elements())
