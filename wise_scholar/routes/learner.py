@@ -1,12 +1,13 @@
 import asyncio
 import sqlite3
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Literal
 
 from .. import app as core
-from .. import book, crafted, db, history, hub, quiz, review, sandbox, settings, speech, tutor
+from .. import book, crafted, db, history, hub, quiz, remind, review, sandbox, settings, speech, tutor
 from ..tools import language as language_tools, practice as practice_tools, side_turns as side_tools
 from ..backends import AGENT
 from ..app import LOCALE_NAMES, SITTING_GAP, SelfGrade, _due, _hostname, _lesson, _lesson_view, _map_outline, _now, _profile, _untrusted, _warmed, app, log
@@ -36,6 +37,25 @@ class ProfileMode(BaseModel):
 
 class ProfileSketch(BaseModel):
     sketch: bool
+
+
+class Reminder(BaseModel):
+    at: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    tz: str = Field(min_length=1, max_length=64)
+
+
+class PushKeys(BaseModel):
+    p256dh: str = Field(min_length=1, max_length=200)
+    auth: str = Field(min_length=1, max_length=100)
+
+
+class PushSubscription(BaseModel):
+    endpoint: str = Field(min_length=1, max_length=2000)
+    keys: PushKeys
+
+
+class PushEndpoint(BaseModel):
+    endpoint: str = Field(min_length=1, max_length=2000)
 
 
 class SettingChanges(BaseModel):
@@ -229,6 +249,57 @@ def set_profile_locale(profile_id: int, body: ProfileLocale) -> dict:
     # suggestions are written in the profile's language, so a new one calls for new ones
     db.conn.execute("UPDATE profiles SET locale = ?, suggested_courses = NULL WHERE id = ?", (body.locale, profile_id))
     return db.profile(profile_id)
+
+
+@app.post("/api/profiles/{profile_id}/remind")
+def set_reminder(profile_id: int, body: Reminder) -> dict:
+    """The local time of the daily review reminder, or none; a time already past today first reminds tomorrow."""
+    _profile(profile_id)
+    try:
+        ZoneInfo(body.tz)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise HTTPException(422, "unknown time zone") from None
+    reminded = remind.settled_on_save(body.at, body.tz, datetime.now(timezone.utc))
+    db.conn.execute("UPDATE profiles SET remind_at = ?, remind_tz = ?, reminded = ? WHERE id = ?", (body.at, body.tz, reminded, profile_id))
+    return db.profile(profile_id)
+
+
+@app.get("/api/push/key")
+def push_key() -> dict:
+    return {"key": remind.public_key()}
+
+
+@app.post("/api/profiles/{profile_id}/push", status_code=204)
+def subscribe_push(profile_id: int, body: PushSubscription, request: Request) -> None:
+    """A device the profile's reminders go to; a device moved to another profile goes with it."""
+    _profile(profile_id)
+    if not remind.push_service(body.endpoint):
+        raise HTTPException(422, "not a browser push service")
+    # the push service asks who sends; the page's own address answers it without naming anyone
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    db.conn.execute(
+        "INSERT INTO push_subscriptions (endpoint, profile_id, keys, origin) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(endpoint) DO UPDATE SET profile_id = excluded.profile_id, keys = excluded.keys, origin = excluded.origin",
+        (body.endpoint, profile_id, body.keys.model_dump_json(), origin),
+    )
+
+
+@app.post("/api/push/device")
+def push_device(body: PushEndpoint) -> dict:
+    """Which profile this device's reminders go to, if any; one device follows one profile."""
+    found = db.row("SELECT profile_id FROM push_subscriptions WHERE endpoint = ?", body.endpoint)
+    return {"profile": found["profile_id"] if found else None}
+
+
+@app.post("/api/push/forget", status_code=204)
+def forget_push(body: PushEndpoint) -> None:
+    db.conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (body.endpoint,))
+
+
+@app.post("/api/profiles/{profile_id}/remind/test")
+async def test_reminder(profile_id: int) -> dict:
+    """Pushes a test note now, to check the profile's devices get reminders."""
+    return {"sent": await remind.send(profile_id, remind.test_message(_profile(profile_id)["locale"]))}
 
 
 @app.post("/api/facts/{fact_id}/forget", status_code=204)

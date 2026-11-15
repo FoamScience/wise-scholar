@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from './api'
 import type { Locale } from './locale'
 
-export type Profile = { id: number; name: string; courses: number; locale: Locale; mode: 'learner' | 'teacher'; sketch: boolean }
+export type Profile = { id: number; name: string; courses: number; locale: Locale; mode: 'learner' | 'teacher'; sketch: boolean; remind_at: string | null }
 
 const KEY = 'wise-scholar.profile'
 

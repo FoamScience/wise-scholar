@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import type { Locale } from './locale'
 import type { Profile } from './profiles'
+import { Reminder } from './Reminder'
 
 type Fact = { id: number; text: string }
 
@@ -104,6 +105,8 @@ export function ProfilePage(props: {
         <div className="small">{t('profile.sketchHelp')}</div>
         {error && <div className="error">{error}</div>}
       </section>
+
+      {current.mode === 'learner' && <Reminder key={`${current.id} ${current.remind_at}`} profile={current} onChanged={props.onChanged} />}
 
       <section className="block stack">
         <div className="label">{t('profile.knows')}</div>

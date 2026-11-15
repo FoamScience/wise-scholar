@@ -73,3 +73,17 @@ async function prune(cache, old, fresh) {
     if (pathname.startsWith('/assets/') && !named.has(pathname)) await cache.delete(request)
   }
 }
+
+// the daily review reminder; the server writes the text in the profile's language
+self.addEventListener('push', (event) => {
+  const { title, body, url } = event.data?.json() ?? {}
+  event.waitUntil(self.registration.showNotification(title ?? 'wise-scholar', { body, tag: 'reminder', icon: '/icon-192.png', data: { url: url ?? '/' } }))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const url = new URL(event.notification.data?.url ?? '/', location.origin).href
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then(([open]) => (open ? open.focus().then((client) => client.navigate(url)) : self.clients.openWindow(url))),
+  )
+})

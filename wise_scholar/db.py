@@ -599,6 +599,19 @@ MIGRATIONS = [
     CREATE INDEX contributions_course ON contributions(course_id, status);
     ALTER TABLE courses ADD COLUMN contributions_for TEXT;
     """,
+    # reminded: the profile's local date of the last day the reminder was settled, sent or not
+    """
+    ALTER TABLE profiles ADD COLUMN remind_at TEXT;
+    ALTER TABLE profiles ADD COLUMN remind_tz TEXT;
+    ALTER TABLE profiles ADD COLUMN reminded TEXT;
+    CREATE TABLE push_subscriptions (
+        endpoint TEXT PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        keys TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)

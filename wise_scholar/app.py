@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 
-from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, sandbox, speech, tutor, vault, vocab, widgets
+from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, remind, sandbox, speech, tutor, vault, vocab, widgets
 from .tools import course_plan as plan_tools, lesson_flow as flow_tools, quizzes as quiz_tools, side_turns as side_tools
 from .backends import BACKEND, MCP_SECRET, agy, claude, opencode
 from .playbooks import describe
@@ -67,6 +67,8 @@ async def lifespan(app: FastAPI):
         sweeper = asyncio.create_task(cleanup.forever(_busy))
         extractor = asyncio.create_task(_extract_forever())
         shortener = asyncio.create_task(_shorten_forever())
+        learner = importlib.import_module(".routes.learner", __package__)
+        reminder = asyncio.create_task(remind.forever(lambda profile: len(_due(profile)), learner.REVIEW_MINUTES))
         for course in db.rows("SELECT id FROM courses WHERE archived = 0"):
             _queue_cards(("short", course["id"]))
         await vault.start()
@@ -76,6 +78,7 @@ async def lifespan(app: FastAPI):
             sweeper.cancel()
             extractor.cancel()
             shortener.cancel()
+            reminder.cancel()
             await vault.stop()
             await backend.stop()
             speech.worker.stop()

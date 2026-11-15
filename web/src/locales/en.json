@@ -994,6 +994,18 @@
         "deeper": "Next level",
         "adjacent": "Nearby field"
       }
+    },
+    "remind": {
+      "heading": "Daily reminder",
+      "toggle": "Remind me when reviews are due",
+      "at": "At",
+      "help": "Once a day from this time, if reviews are due and you have not studied yet that day. It goes to every device you turned it on from.",
+      "test": "Send one now",
+      "sent": "Sent. It should show on your devices within a minute.",
+      "none": "No device got it. Turn the reminder off and on again on this device.",
+      "unsupported": "This browser cannot get reminders. Install the app from Chrome on your phone, over HTTPS.",
+      "noWorker": "Reminders need the installed app, not the development server.",
+      "blocked": "Notifications are blocked for this site. Allow them in the browser's site settings."
     }
   },
   "server": {}

@@ -1016,6 +1016,18 @@
         "deeper": "Niveau suivant",
         "adjacent": "Domaine voisin"
       }
+    },
+    "remind": {
+      "heading": "Rappel quotidien",
+      "toggle": "Me rappeler quand des révisions sont à faire",
+      "at": "À",
+      "help": "Une fois par jour à partir de cette heure, s'il y a des révisions à faire et que vous n'avez pas encore étudié ce jour-là. Il arrive sur chaque appareil depuis lequel vous l'avez activé.",
+      "test": "En envoyer un maintenant",
+      "sent": "Envoyé. Il devrait s'afficher sur vos appareils d'ici une minute.",
+      "none": "Aucun appareil ne l'a reçu. Désactivez puis réactivez le rappel sur cet appareil.",
+      "unsupported": "Ce navigateur ne peut pas recevoir de rappels. Installez l'application depuis Chrome sur votre téléphone, en HTTPS.",
+      "noWorker": "Les rappels demandent l'application installée, pas le serveur de développement.",
+      "blocked": "Les notifications sont bloquées pour ce site. Autorisez-les dans les paramètres du site du navigateur."
     }
   },
   "server": {
@@ -1115,6 +1127,8 @@
     "that value cannot be written to .env": "cette valeur ne peut pas être écrite dans .env",
     "that number is too small or not a whole number": "ce nombre est trop petit ou n'est pas entier",
     "the agent must start with claude, opencode or agy": "l'agent doit commencer par claude, opencode ou agy",
-    "no such contribution": "cette contribution n'existe pas"
+    "no such contribution": "cette contribution n'existe pas",
+    "unknown time zone": "fuseau horaire inconnu",
+    "not a browser push service": "ce n'est pas un service de notification de navigateur"
   }
 }
