@@ -24,7 +24,7 @@ SANDBOX = os.environ.get("WISE_SCHOLAR_SANDBOX", "1") != "0"
 TIMEOUT = 30
 NETWORK_TIMEOUT = 120
 OUTPUT_LIMIT = 20_000
-MEMORY = "2G"
+MEMORY = "4G"
 TASKS = 256
 SCRATCH = 256 * 1024 * 1024
 def _megabytes(name: str, default: int) -> int:

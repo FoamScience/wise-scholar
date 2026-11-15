@@ -17,7 +17,7 @@ Everything the [README](../README.md) leaves out: prerequisites, backends, optio
 > Every such command runs inside bubblewrap. It sees the system's programs (`/usr`, `/etc`, `/opt`), the toolchain folders your `PATH`
 > points into under your home directory (`~/.cargo`, `~/.nvm`, `~/go`, `~/.local/bin`, ...), and its own course workspace, which is the
 > only place it can write. It has no network and no access to the machine's sockets (Docker, D-Bus), sees nothing else of your home
-> directory, the database or other courses, and stops after 30 seconds. Where a user systemd runs it gets 2 GB of memory and
+> directory, the database or other courses, and stops after 30 seconds. Where a user systemd runs it gets 4 GB of memory and
 > 256 tasks; elsewhere those two limits are missing and the server says so at start. Two commands run at a time.
 > Inside, the user is `learner` with the home directory `/home/learner`, and the course sits at
 > `/home/learner/wise-scholar/workspace/<course>`: paths, tracebacks, `whoami` and the environment name no real user or folder, and

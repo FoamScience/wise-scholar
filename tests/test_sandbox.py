@@ -208,8 +208,9 @@ def _cmdline(process: Path) -> list[str]:
 @pytest.mark.skipif(not sandbox.capped(), reason="no user systemd: sandboxed commands run without the memory limit here")
 @pytest.mark.skipif(os.environ.get("WISE_SCHOLAR_TEST_OOM") != "1", reason="set WISE_SCHOLAR_TEST_OOM=1 to run it: the kernel kills its command for memory on purpose")
 def test_a_command_cannot_take_more_memory_than_its_limit(place):
-    hog = run("python3 -c 'x = bytearray(3 * 1024**3); print(len(x))'", place / "courses/mine")
-    assert hog["exit_code"] != 0 and "3221225472" not in hog["output"]
+    size = _bytes(sandbox.MEMORY) + 1024**3
+    hog = run(f"python3 -c 'x = bytearray({size}); print(len(x))'", place / "courses/mine")
+    assert hog["exit_code"] != 0 and str(size) not in hog["output"]
 
 
 def host_addresses() -> list[str]:
