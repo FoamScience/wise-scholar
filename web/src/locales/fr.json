@@ -1050,7 +1050,9 @@
       "progress": "Téléchargement… {{percent}} %",
       "failed": "Échec : {{error}}. Vous pouvez réessayer.",
       "size": "{{size}} à télécharger",
-      "preparing": "Préparation…"
+      "preparing": "Préparation…",
+      "morphology": "Analyseur grammatical",
+      "morphologyHelp": "Repère les catégories et formes grammaticales dans vos textes (cas, temps, mode…), avec un modèle spaCy pour cette langue (MIT)."
     }
   },
   "server": {

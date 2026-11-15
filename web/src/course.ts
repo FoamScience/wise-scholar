@@ -105,7 +105,7 @@ export type CourseDetail = Course & {
 }
 export type UpgradeOffer = { hash: string; number: number; notes: string; published: string; kept: string[]; restarted: string[]; added: string[]; removed: string[] }
 export type Resource = {
-  kind: 'lexicon' | 'sentences'
+  kind: 'lexicon' | 'sentences' | 'morphology'
   lang: string
   size: number | null
   status: 'asked' | 'refused' | 'downloading' | 'ready' | 'failed'

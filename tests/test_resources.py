@@ -47,6 +47,8 @@ def web(tmp_path, monkeypatch):
         return httpx.Response(200, headers={"content-length": str(len(body))}, content=b"" if request.method == "HEAD" else body)
 
     monkeypatch.setattr(resources, "ROOT", tmp_path / "resources")
+    # the grammar analyser has tests of its own; here the server lacks spaCy, as it does by default
+    monkeypatch.setattr(resources.morphology, "available", lambda: False)
     monkeypatch.setattr(resources.httpx, "AsyncClient", partial(httpx.AsyncClient, transport=httpx.MockTransport(answer)))
     return broken, missing, gets, cut
 
@@ -77,9 +79,9 @@ def test_the_catalog_names_each_source_by_language():
 def test_offering_records_sizes_and_says_why_a_kind_is_not_offered(web):
     broken, missing, _, _ = web
     course = _course()
-    assert asyncio.run(resources.offer(course, "de", "en")) == {"lexicon": "asked", "sentences": "asked"}
+    assert asyncio.run(resources.offer(course, "de", "en")) == {"lexicon": "asked", "sentences": "asked", "morphology": resources.NOT_INSTALLED}
     assert _row(course, "lexicon")["size"] == 17 and _row(course, "sentences")["size"] == SENTENCES_SIZE
-    assert asyncio.run(resources.offer(_course(), "tlh", "en")) == {"lexicon": resources.MISSING, "sentences": resources.MISSING}
+    assert asyncio.run(resources.offer(_course(), "tlh", "en")) == {"lexicon": resources.MISSING, "sentences": resources.MISSING, "morphology": resources.NOT_INSTALLED}
     broken.add(LEXICON)
     assert asyncio.run(resources.offer(_course(), "de", "en"))["lexicon"] == resources.UNREACHABLE
     missing.add(AUDIO)
@@ -167,7 +169,7 @@ def test_offering_again_keeps_a_refusal_and_a_download_under_way_but_not_a_delet
     asyncio.run(resources.offer(course, "de", "en"))
     resources.decide(course, "lexicon", False)
     db.conn.execute("UPDATE course_resources SET status = 'downloading', done = 5 WHERE course_id = ? AND kind = 'sentences'", (course,))
-    assert asyncio.run(resources.offer(course, "de", "en")) == {"lexicon": "refused", "sentences": "downloading"}
+    assert asyncio.run(resources.offer(course, "de", "en")) == {"lexicon": "refused", "sentences": "downloading", "morphology": resources.NOT_INSTALLED}
     assert _row(course, "sentences")["done"] == 5
     (resources.ROOT / "sentences" / "de-en").mkdir(parents=True)
     db.conn.execute("UPDATE course_resources SET status = 'ready' WHERE course_id = ? AND kind = 'sentences'", (course,))
@@ -209,4 +211,4 @@ def test_the_learner_decides_once_through_the_api(web, monkeypatch):
 def test_the_tutor_offers_with_a_language_code(web):
     course = _course()
     assert asyncio.run(language_tools.offer_resources(course, "not a language!")).startswith("error:")
-    assert asyncio.run(language_tools.offer_resources(course, "de")) == "lexicon: asked; sentences: asked"
+    assert asyncio.run(language_tools.offer_resources(course, "de")) == f"lexicon: asked; sentences: asked; morphology: {resources.NOT_INSTALLED}"

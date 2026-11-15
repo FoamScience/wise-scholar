@@ -165,6 +165,16 @@ This creates a separate environment under `speech/` (torch, Chatterbox Multiling
 
 With speech installed, `WISE_SCHOLAR_PODCASTS=1 make serve` lets the tutor turn a two-voice dialogue it writes into a 5 to 8 minute audio cast (`ffmpeg` must be on the path): a recap of the lesson, or a quiz-cast that pauses for a confidence-rated question every couple of minutes. The two voices are Chatterbox and Piper. Rendering runs in the background and takes about a minute per five minutes of audio on a GPU.
 
+## Language data (optional)
+
+When a new course teaches a natural language, the tutor offers open data for that language once the plan is set, and a card above the lesson lists each item with its download size. Nothing is fetched unless you choose Download; Refuse stands even if the tutor offers again. Each item is downloaded once into `data/resources/<kind>/<language>` and shared by every course in the same language:
+
+- Dictionary: Wiktionary's entries for the language from [kaikki.org](https://kaikki.org) (CC BY-SA), reduced to a small database. The tutor checks genders, plurals, inflections and conjugations with it before it names or corrects a form. A large language downloads about 100 MB compressed.
+- Example sentences: [Tatoeba](https://tatoeba.org) sentences (CC BY 2.0 FR) with their translation into your interface language. Recordings are kept only under a licence that allows any use (CC0, CC BY, CC BY-SA); recordings with no licence or a non-commercial one are dropped. The tutor picks sentences that suit your vocabulary for readings, cards and listening.
+- Grammar analyser: a small [spaCy](https://spacy.io) model (MIT) that tags each word's part of speech and grammatical features. The tutor uses it to see which forms your writing already uses and to steer practice to the ones it lacks. It needs spaCy and the extra packages its Japanese, Chinese, Russian and Ukrainian models use, about 430 MB, installed once with `make morphology`; without it the analyser is not offered. spaCy has models for about 25 languages.
+
+A language without one of these simply goes without it; the tutor works from what it knows.
+
 ## Art packs (optional)
 
 The tutor draws its figures as SVG. With an art pack installed it composes them from professional illustrations instead of drawing a cell or a flask from scratch: it searches the pack, places the icons and adds its own labels and arrows. Each figure then carries the credit the icons' licences ask for, in the app, the book, the hand-outs and the Obsidian notes.
@@ -199,7 +209,7 @@ make test    # Python and web tests
 
 ## Where things live
 
-- `data/` holds the database, recordings and casts under `data/audio/`, the art packs under `data/art/`, and the files you add to a course under `data/sources/` (PDF, EPUB, HTML, Markdown, text, code; the tutor searches them and reads one section at a time). Before a schema upgrade the database is copied to `data/wise-scholar.db.v<N>.bak`.
+- `data/` holds the database, recordings and casts under `data/audio/`, the art packs under `data/art/`, language data under `data/resources/`, and the files you add to a course under `data/sources/` (PDF, EPUB, HTML, Markdown, text, code; the tutor searches them and reads one section at a time). Before a schema upgrade the database is copied to `data/wise-scholar.db.v<N>.bak`.
 - `workspace/<course>/` holds each course's exercise files. Deleting a course removes its folder.
 - `.mcp.json` and `opencode.json` declare the tutor's MCP server for this repository only.
 - `data/agy-home/` holds the agy sessions; `WISE_SCHOLAR_KEEP_DAYS` does not clean them.

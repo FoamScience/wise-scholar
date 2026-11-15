@@ -30,6 +30,13 @@ pdf = [
 search = [
     "model2vec>=0.10.0",
 ]
+morphology = [
+    "spacy[ja]>=3.8",
+    "spacy-pkuseg>=1.0",
+    "pymorphy3>=2.0",
+    "pymorphy3-dicts-ru>=2.4",
+    "pymorphy3-dicts-uk>=2.4",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -39,4 +46,9 @@ testpaths = ["tests"]
 dev = [
     "model2vec>=0.10.0",
     "pytest>=9.2.0",
+    "spacy[ja]>=3.8",
+    "spacy-pkuseg>=1.0",
+    "pymorphy3>=2.0",
+    "pymorphy3-dicts-ru>=2.4",
+    "pymorphy3-dicts-uk>=2.4",
 ]

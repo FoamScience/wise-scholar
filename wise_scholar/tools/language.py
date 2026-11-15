@@ -5,7 +5,7 @@ from typing import Literal
 import simplemma
 from pydantic import BaseModel
 
-from .. import challenge, db, lexicon, resources, sentences, speech, vocab
+from .. import challenge, db, lexicon, morphology, resources, sentences, speech, vocab
 from ..tutor import _patch_block, _show, _shuffled, log, mcp
 
 
@@ -172,8 +172,8 @@ async def pose_writing(
 
 @mcp.tool()
 async def offer_resources(course_id: int, lang: str) -> str:
-    """Offer the learner open data for the natural language this course teaches: a Wiktionary lexicon and
-    sentence pairs with their own language. Call it once, for a course that teaches a natural language. The learner
+    """Offer the learner open data for the natural language this course teaches: a Wiktionary lexicon,
+    sentence pairs with their own language, and a grammar analyser. Call it once, for a course that teaches a natural language. The learner
     allows or refuses each one, seeing its download size; you are not told and need not wait. lang: the taught
     language's code, e.g. 'es' or 'pt-BR'."""
     course = db.course(course_id)
@@ -245,6 +245,61 @@ async def example_sentences(course_id: int, word: str, n: int = 5) -> str:
     words = {lexicon.fold(f) for f in forms}
     ranked = (await asyncio.to_thread(sorted, found, key=lambda s: _fit(s, scope, word, words), reverse=True))[:max(1, min(n, EXAMPLES))]
     return "\n".join([*(sentences.describe(i, s) for i, s in enumerate(ranked, 1)), sentences.CREDIT])
+
+
+GRAMMAR_ATTEMPTS = 50
+GRAMMAR_SHOWN = 60
+NO_ANALYSER = "the grammar analyser is not set up for this course; judge the grammar yourself"
+BROKEN_ANALYSER = "the grammar analyser could not be loaded on this server; judge the grammar yourself"
+
+
+def _analyser(course_id: int):
+    folder = resources.course_resource(course_id, "morphology")
+    return folder if folder and morphology.available() and (folder / morphology.MODEL).is_dir() else None
+
+
+async def _run(job, *args):
+    """A call into the analyser; a pipeline that will not load (damaged, or made for another spaCy) is reported."""
+    try:
+        return await asyncio.to_thread(job, *args)
+    except (OSError, ValueError, ImportError) as e:
+        log.warning("grammar analyser: %s", e)
+        return None
+
+
+@mcp.tool()
+async def analyze_text(course_id: int, text: str) -> str:
+    """Analyse a text in the course's language: each word's lemma, part of speech, grammatical features in Universal
+    Dependencies terms (Case, Gender, Number, Tense, Mood, VerbForm, ...) and dependency relation, sentence by sentence.
+    A statistical model: right most of the time, not always; check a doubtful form with lookup_word."""
+    folder = _analyser(course_id)
+    if not folder:
+        return NO_ANALYSER
+    result = await _run(morphology.analyze, folder, text)
+    return morphology.describe(*result) if result else BROKEN_ANALYSER
+
+
+@mcp.tool()
+async def grammar_used(course_id: int) -> str:
+    """Which parts of speech and grammatical features (Universal Dependencies terms) the learner's own writing in this
+    course has used, and how often, over the final version of their latest written tasks. Steer practice toward the
+    forms the level calls for that are rare or missing here."""
+    folder = _analyser(course_id)
+    if not folder:
+        return NO_ANALYSER
+    # the last attempt of each written task is the learner's final version; spoken answers are transcripts, not writing
+    texts = [a for r in db.rows(
+        "SELECT json_extract(b.data, '$.attempts[#-1]') AS a FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+        "WHERE l.course_id = ? AND b.kind = 'challenge' AND json_extract(b.data, '$.writing') = 1 "
+        "AND COALESCE(json_extract(b.data, '$.spoken'), 0) = 0 AND json_array_length(b.data, '$.attempts') > 0 "
+        "ORDER BY b.id DESC LIMIT ?", course_id, GRAMMAR_ATTEMPTS) if isinstance(a := r["a"], str) and a.strip()]
+    if not texts:
+        return "the learner has not written anything in this course yet"
+    counts = await _run(morphology.features, folder, texts)
+    if counts is None:
+        return BROKEN_ANALYSER
+    shown = ", ".join(f"{name} {n}" for name, n in counts.most_common(GRAMMAR_SHOWN))
+    return f"over the latest {len(texts)} written tasks: {shown}"
 
 
 @mcp.tool()

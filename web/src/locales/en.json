@@ -1028,7 +1028,9 @@
       "progress": "Downloading… {{percent}} %",
       "failed": "Failed: {{error}}. You can try again.",
       "size": "{{size}} to download",
-      "preparing": "Preparing…"
+      "preparing": "Preparing…",
+      "morphology": "Grammar analyser",
+      "morphologyHelp": "Tells the parts of speech and grammatical forms in your writing (case, tense, mood…), with a spaCy model for this language (MIT)."
     }
   },
   "server": {}

@@ -2,11 +2,12 @@
 into data/resources/<kind>/<key> and shared by every course that needs the same one; a course only records whether
 its learner allowed it."""
 import asyncio
+import inspect
 import json
 import logging
 import shutil
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
@@ -14,7 +15,7 @@ from urllib.parse import quote
 import httpx
 import langcodes
 
-from . import db, hub, lexicon, sentences
+from . import db, hub, lexicon, morphology, sentences
 
 log = logging.getLogger("wise_scholar")
 ROOT = db.DB_PATH.parent / "resources"
@@ -27,6 +28,7 @@ CHUNK = 1 << 20
 PUBLISH_SECONDS = 1.0
 UNREACHABLE = "source unreachable, offer again later"
 MISSING = "none for this language"
+NOT_INSTALLED = "needs an optional part this server lacks (`make morphology`)"
 
 
 @dataclass(frozen=True)
@@ -41,7 +43,8 @@ class Source:
 class Kind:
     # the folder a language (and the learner's own language) shares
     key: Callable[[str, str], str]
-    files: Callable[[str, str], list[Source]]
+    # the files to fetch, or why there are none; may need to ask the source first
+    files: Callable[[str, str], list[Source] | Awaitable[list[Source] | str]]
     # turns the downloaded files into what the tools read, before the folder counts as installed
     prepare: Callable[[Path], None] | None = None
 
@@ -72,9 +75,24 @@ def _sentences(lang: str, own: str) -> list[Source]:
     return files
 
 
+async def _morphology(lang: str, own: str) -> list[Source] | str:
+    if not morphology.available():
+        return NOT_INSTALLED
+    try:
+        found = await morphology.pipeline(code(lang))
+    except httpx.HTTPError as e:
+        log.warning("spaCy pipelines: %s", e)
+        return UNREACHABLE
+    if not found:
+        return MISSING
+    name, version = found
+    return [Source(morphology.RELEASE.format(name=name, version=version), morphology.ARCHIVE)]
+
+
 CATALOG = {
     "lexicon": Kind(lambda lang, own: code(lang), _lexicon, lexicon.prepare),
     "sentences": Kind(lambda lang, own: f"{code(lang)}-{code(own)}", _sentences, sentences.prepare),
+    "morphology": Kind(lambda lang, own: code(lang), _morphology, morphology.prepare),
 }
 # one download per shared folder, whichever courses wait on it
 _running: dict[tuple[str, str], asyncio.Task] = {}
@@ -125,8 +143,13 @@ async def _size(client: httpx.AsyncClient, url: str) -> int | str | None:
 
 async def _files(client: httpx.AsyncClient, spec: Kind, lang: str, own: str) -> tuple[list[Source], int | None] | str:
     """The files to fetch and their total size (None when a source does not say), or why there are none."""
+    listed = spec.files(lang, own)
+    if inspect.isawaitable(listed):
+        listed = await listed
+    if isinstance(listed, str):
+        return listed
     files, total = [], 0
-    for source in spec.files(lang, own):
+    for source in listed:
         size = await _size(client, source.url)
         if size == MISSING and not source.required:
             continue
