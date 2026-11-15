@@ -15,7 +15,8 @@ from typing import Literal
 from urllib.parse import unquote
 
 from .. import app as core
-from .. import db, egress, handwork, hub, sandbox, search, sources, tutor, vault
+from .. import db, egress, handwork, hub, sandbox, search, sources, vault
+from ..tools import course_plan as plan_tools, practice as practice_tools
 from ..app import Decision, SITTING_GAP, SOURCES_PER_COURSE, _areas_line, _course, _due, _lesson, _lesson_view, _map_outline, _profile, _queue_claims, _turns, _untrusted, _warmed, app, log
 
 
@@ -188,7 +189,7 @@ async def decide_setup(course_id: int, index: int, body: Decision) -> dict:
 
     async def run() -> None:
         try:
-            result = await tutor._logged(lesson, "network", command, sandbox.run(command, db.workspace(course["slug"]), network=True), consent="allowed")
+            result = await practice_tools._logged(lesson, "network", command, sandbox.run(command, db.workspace(course["slug"]), network=True), consent="allowed")
             save("done" if result["exit_code"] == 0 else "failed", exit_code=result["exit_code"])
         except Exception as e:
             log.warning("setup command of course %s failed: %s", course_id, e)
@@ -289,7 +290,7 @@ def set_pace(course_id: int, body: Pace) -> dict:
     """momentum: short units at a steady pace; speed: longer units the learner can test out of. Changeable any time."""
     if _course(course_id)["mode"] == "teacher":
         raise HTTPException(409, "a prepared course has no pace")
-    tutor.save_pace(course_id, body.pace)
+    plan_tools.save_pace(course_id, body.pace)
     return {"pace": body.pace}
 
 

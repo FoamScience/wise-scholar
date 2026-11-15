@@ -51,7 +51,7 @@ def test_files_become_searchable_sections_read_one_at_a_time(tmp_path: Path):
 def test_a_course_search_finds_its_cards_chats_and_code_and_follows_their_changes(monkeypatch, tmp_path: Path):
     import asyncio
 
-    from wise_scholar import tutor
+    from wise_scholar.tools import lookup as lookup_tools
     from wise_scholar.routes import courses as courses_routes
 
     monkeypatch.setattr(db, "WORKSPACE", tmp_path)
@@ -71,9 +71,9 @@ def test_a_course_search_finds_its_cards_chats_and_code_and_follows_their_change
     assert hits[0]["kind"] == "card" and hits[0]["ref"] == str(card["id"]) and hits[0]["concept_id"] == concept
     assert [h["ref"] for h in search.search(course["id"], "outward", 5)] == ["faces/orient.py:1-2"]
     assert search.search(course["id"], "explorer corner", 1)[0]["by"] == "both"
-    found = asyncio.run(tutor.search_course(course["id"], "explorer corner"))
+    found = asyncio.run(lookup_tools.search_course(course["id"], "explorer corner"))
     assert found.startswith(f"chat {chat['id']} · Faces · learner: why does the [explorer] visit a [corner]")
-    assert "nothing found" in asyncio.run(tutor.search_course(course["id"], "lattice"))
+    assert "nothing found" in asyncio.run(lookup_tools.search_course(course["id"], "lattice"))
     assert courses_routes.search_course(course["id"], "explorer")[0]["snippet"][1] == ("explorer", True)
 
     db.conn.execute("UPDATE messages SET text = 'a lattice of points' WHERE id = ?", (chat["id"],))

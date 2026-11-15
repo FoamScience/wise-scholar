@@ -6,6 +6,7 @@ from fastapi import HTTPException, UploadFile
 from PIL import Image
 
 from wise_scholar import app, challenge, db, handwork, search, tutor
+from wise_scholar.tools import practice as practice_tools  # noqa: E402
 from wise_scholar.routes import blocks as blocks_routes, courses as courses_routes, media as media_routes  # noqa: E402
 
 
@@ -60,9 +61,9 @@ def test_photos_go_with_the_next_attempt_and_the_tutor_sees_them(monkeypatch, tm
         asyncio.run(blocks_routes.delete_photo(block, first))
     assert sent.value.status_code == 404
 
-    seen = asyncio.run(tutor.view_handwork(block))
+    seen = asyncio.run(practice_tools.view_handwork(block))
     assert seen[0].startswith("Attempt 1: 1 photo(s)") and seen[1].to_image_content().mime_type == "image/jpeg"
-    assert asyncio.run(tutor.view_handwork(block, attempt=2))[0].startswith("error: attempt 2 came without photos")
+    assert asyncio.run(practice_tools.view_handwork(block, attempt=2))[0].startswith("error: attempt 2 came without photos")
     # through the MCP server, as the agent calls it: the photos arrive as image content
     from types import SimpleNamespace
 
@@ -76,19 +77,19 @@ def test_photos_go_with_the_next_attempt_and_the_tutor_sees_them(monkeypatch, tm
     finally:
         tutor.turn_ended(lesson)
 
-    assert asyncio.run(tutor.transcribe_handwork(block, "Let $u = x^2$, so $du = 2x\\,dx$ and the integral is $\\sin(u)$.")) == (
+    assert asyncio.run(practice_tools.transcribe_handwork(block, "Let $u = x^2$, so $du = 2x\\,dx$ and the integral is $\\sin(u)$.")) == (
         "recorded; the learner sees it under their photos"
     )
     data = db.block(block)["data"]
     assert data["transcripts"]["0"]["by"] == "tutor" and challenge.said(data).startswith("Let $u = x^2$")
-    assert asyncio.run(tutor.give_hint(block, "Check the factor in front.", ["$\\sin(u)$"])).startswith("shown as hint 1")
+    assert asyncio.run(practice_tools.give_hint(block, "Check the factor in front.", ["$\\sin(u)$"])).startswith("shown as hint 1")
     assert search.search(course, "integral", 3, ("card",))[0]["ref"] == str(block)
 
     turns.clear()
     corrected = asyncio.run(blocks_routes.correct_reading(block, 0, blocks_routes.Reading(text="Let $u = x^2$; the integral is $\\sin(u)/2$.")))
     assert corrected["data"]["transcripts"]["0"] == {"text": "Let $u = x^2$; the integral is $\\sin(u)/2$.", "by": "learner"}
     assert "corrected how you read their paper work for attempt 1" in turns[-1]
-    assert asyncio.run(tutor.transcribe_handwork(block, "something else")).startswith("refused: the learner corrected")
+    assert asyncio.run(practice_tools.transcribe_handwork(block, "something else")).startswith("refused: the learner corrected")
     with pytest.raises(HTTPException) as unread:
         asyncio.run(blocks_routes.correct_reading(block, 3, blocks_routes.Reading(text="x")))
     assert unread.value.status_code == 404

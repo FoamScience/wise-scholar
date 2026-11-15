@@ -6,7 +6,8 @@ import pytest
 
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
-from wise_scholar import db, figcheck, figures, tutor  # noqa: E402
+from wise_scholar import db, figcheck, figures  # noqa: E402
+from wise_scholar.tools import visuals as visual_tools  # noqa: E402
 
 
 def check(svg: str, **k) -> list[str]:
@@ -45,7 +46,7 @@ def test_the_tool_refuses_a_figure_with_overlapping_labels_and_shows_nothing():
     try:
         lesson = db.create_lesson(course, "Chambers", "lesson", None)
         svg = '<svg viewBox="0 0 300 150"><rect width="100" height="80"/><text x="20" y="60" font-size="14">Ventricle</text><text x="25" y="62" font-size="14">Atrium</text></svg>'
-        reply = asyncio.run(tutor.add_figure(lesson, svg, "c", "a", figures.Teaches(claim="c", notice="n")))
+        reply = asyncio.run(visual_tools.add_figure(lesson, svg, "c", "a", figures.Teaches(claim="c", notice="n")))
         assert reply == 'error: the figure was not shown; fix these and draw it again: the labels "Ventricle" and "Atrium" overlap'
         assert db.blocks(lesson) == []
     finally:
@@ -65,7 +66,7 @@ def test_a_widget_drawing_is_checked_where_the_sliders_take_it():
             "readouts": [{"label": "w", "expr": "w"}],
             "figure": '<svg viewBox="0 0 300 100"><rect width="300" height="100" fill="none"/><text x="{{w}}" y="50" font-size="14">Label</text></svg>',
         }
-        reply = asyncio.run(tutor.add_widget(lesson, "Width", spec, "a label sliding right", figures.Teaches(claim="c", notice="n")))
+        reply = asyncio.run(visual_tools.add_widget(lesson, "Width", spec, "a label sliding right", figures.Teaches(claim="c", notice="n")))
         assert reply == 'error: the figure was not shown; fix these and draw it again: with Width = 290: the label "Label" runs past the edge of the viewBox'
         assert db.blocks(lesson) == []
     finally:

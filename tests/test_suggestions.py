@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from mcp.server.mcpserver.exceptions import ToolError
 
 from wise_scholar import app, db, tutor
+from wise_scholar.tools import side_turns as side_tools  # noqa: E402
 from wise_scholar.routes import learner as learner_routes  # noqa: E402
 
 
@@ -20,9 +21,9 @@ def _mapped(profile: int, topic: str = "Pumps") -> int:
     return course
 
 
-def _six(builds_on: str = "Pumps", title: str = "Topic") -> list[tutor.Suggestion]:
+def _six(builds_on: str = "Pumps", title: str = "Topic") -> list[side_tools.Suggestion]:
     return [
-        tutor.Suggestion(title=f"{title} {n}", pitch="You will size one.", kind="deeper" if n < 3 else "adjacent", builds_on=builds_on)
+        side_tools.Suggestion(title=f"{title} {n}", pitch="You will size one.", kind="deeper" if n < 3 else "adjacent", builds_on=builds_on)
         for n in range(6)
     ]
 
@@ -41,7 +42,7 @@ def turns(monkeypatch):
     async def turn(lesson, prompt, kind, what):
         assert kind == "explore"
         seen.append(prompt)
-        replies.append(await tutor.suggest_courses(lesson["course_id"], _six(lesson["topic"], f"Round {len(seen)}")))
+        replies.append(await side_tools.suggest_courses(lesson["course_id"], _six(lesson["topic"], f"Round {len(seen)}")))
         return True
 
     monkeypatch.setattr(app, "_background_turn", turn)
@@ -193,16 +194,16 @@ def test_starting_one_makes_the_course_once(turns):
 def test_suggest_courses_refuses_what_is_not_a_set_of_six(change, error):
     who = _learner()
     course = _mapped(who)
-    tutor.suggestion_jobs[course] = {"profile_id": who, "topics": ["Pumps"], "retire": False, "done": False}
+    side_tools.suggestion_jobs[course] = {"profile_id": who, "topics": ["Pumps"], "retire": False, "done": False}
     try:
-        reply = asyncio.run(tutor.suggest_courses(course, change(_six())))
+        reply = asyncio.run(side_tools.suggest_courses(course, change(_six())))
     finally:
-        tutor.suggestion_jobs.pop(course)
+        side_tools.suggestion_jobs.pop(course)
     assert reply.startswith("error") and error in reply and db.suggestions(who) == []
 
 
 def test_suggest_courses_needs_a_running_job():
-    assert asyncio.run(tutor.suggest_courses(-1, _six())).startswith("error: no suggestions")
+    assert asyncio.run(side_tools.suggest_courses(-1, _six())).startswith("error: no suggestions")
 
 
 def test_a_lesson_turn_cannot_suggest():

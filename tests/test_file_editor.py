@@ -7,7 +7,8 @@ from fastapi import HTTPException
 
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
-from wise_scholar import bundle, course_files, db, sandbox, tutor  # noqa: E402
+from wise_scholar import bundle, course_files, db, sandbox  # noqa: E402
+from wise_scholar.tools import practice as practice_tools  # noqa: E402
 from wise_scholar.routes import blocks as blocks_routes  # noqa: E402
 
 
@@ -20,8 +21,8 @@ def exercise(tmp_path, monkeypatch):
     course = db.create_course(f"Editing {tmp_path.name}", who)
     db.set_concepts(course["id"], [{"title": "M", "concepts": ["c"], "known": []}])
     lesson = db.create_lesson(course["id"], "c", "lesson", db.concepts(course["id"])[0]["id"])
-    reply = asyncio.run(tutor.pose_exercise(
-        lesson, "Write it.", [tutor.ExerciseFile(path="c/main.py", content="a = 1\n")], "uv run c/main.py",
+    reply = asyncio.run(practice_tools.pose_exercise(
+        lesson, "Write it.", [practice_tools.ExerciseFile(path="c/main.py", content="a = 1\n")], "uv run c/main.py",
         completions=[course_files.Completion(label="math.sqrt", signature="sqrt(x)", doc="Square root.")],
     ))
     assert reply.startswith("shown"), reply

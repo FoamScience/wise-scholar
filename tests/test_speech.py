@@ -16,18 +16,19 @@ def test_word_match_marks_what_the_recogniser_heard():
 def test_make_podcast_checks_the_dialogue_before_rendering():
     import asyncio
 
-    from wise_scholar import db, tutor
+    from wise_scholar import db
+    from wise_scholar.tools import language as language_tools
 
     profile = db.conn.execute("INSERT INTO profiles (name) VALUES ('Pod')").lastrowid
     lesson = db.create_lesson(db.create_course("Rust", profile)["id"], "Ownership", "lesson")
-    line = tutor.Line(speaker="Anna", text="Heute reden wir über Ownership. " * 4)
-    other = tutor.Line(speaker="Tom", text="Ja, und über Borrowing. " * 4)
-    run = lambda **kw: asyncio.run(tutor.make_podcast(lesson, "Cast", "de-DE", **kw))  # noqa: E731
+    line = language_tools.Line(speaker="Anna", text="Heute reden wir über Ownership. " * 4)
+    other = language_tools.Line(speaker="Tom", text="Ja, und über Borrowing. " * 4)
+    run = lambda **kw: asyncio.run(language_tools.make_podcast(lesson, "Cast", "de-DE", **kw))  # noqa: E731
 
     assert "exactly two speakers" in run(lines=[line] * 10)
     assert "words" in run(lines=[line, other] * 5)
-    assert "split them" in run(lines=[tutor.Line(speaker="Anna", text="x " * 200), other] * 50)
+    assert "split them" in run(lines=[language_tools.Line(speaker="Anna", text="x " * 200), other] * 50)
     full = [line, other] * 28
-    assert "outside the dialogue" in run(lines=full, questions=[tutor.CastQuestion(after_line=60, question="q", kind="open", answer_key="a", explanation="e")])
-    assert "glossary words" in run(lines=full, glossary=[tutor.Gloss(word="Nope", meaning="x")])
-    assert sum(len(l.text.split()) for l in full) in range(*tutor.CAST_WORDS)
+    assert "outside the dialogue" in run(lines=full, questions=[language_tools.CastQuestion(after_line=60, question="q", kind="open", answer_key="a", explanation="e")])
+    assert "glossary words" in run(lines=full, glossary=[language_tools.Gloss(word="Nope", meaning="x")])
+    assert sum(len(l.text.split()) for l in full) in range(*language_tools.CAST_WORDS)

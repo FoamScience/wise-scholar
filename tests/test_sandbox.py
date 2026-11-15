@@ -12,7 +12,8 @@ import pytest
 
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
-from wise_scholar import course_files, db, egress, sandbox, tutor  # noqa: E402
+from wise_scholar import course_files, db, egress, sandbox  # noqa: E402
+from wise_scholar.tools import practice as practice_tools  # noqa: E402
 
 needs_bwrap = pytest.mark.skipif(not sandbox.available(), reason="bubblewrap is not usable on this machine")
 
@@ -325,10 +326,10 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
     async def scenario():
         hold.append(asyncio.Event())
         for bad in ("pip install x\nrm -rf .", "pip install \u202egnp.x", "curl " + "a" * 300, " "):
-            assert (await tutor.ask_network(lesson, bad, "why")).startswith("error:")
+            assert (await practice_tools.ask_network(lesson, bad, "why")).startswith("error:")
         assert db.blocks(lesson) == []
 
-        assert (await tutor.ask_network(lesson, "pip install requests", "The exercise needs requests.")).startswith("asked on card")
+        assert (await practice_tools.ask_network(lesson, "pip install requests", "The exercise needs requests.")).startswith("asked on card")
         first = db.blocks(lesson)[-1]
         assert status(first) == "asked" and runs == []
         assert (await blocks_routes.decide_network(first["id"], app.Decision(allow=False)))["data"]["status"] == "refused"
@@ -338,7 +339,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
         assert twice.value.status_code == 409 and runs == []
 
         # Allowed: the lesson is busy while the command runs, and the tutor hears about it afterwards.
-        await tutor.ask_network(lesson, "pip install requests", "Once more.")
+        await practice_tools.ask_network(lesson, "pip install requests", "Once more.")
         second = db.blocks(lesson)[-1]
         assert (await blocks_routes.decide_network(second["id"], app.Decision(allow=True)))["data"]["status"] == "running"
         await asyncio.sleep(0)
@@ -357,7 +358,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
             raise RuntimeError("no sandbox")
 
         monkeypatch.setattr(sandbox, "run", broken)
-        await tutor.ask_network(lesson, "pip install broken", "Fails.")
+        await practice_tools.ask_network(lesson, "pip install broken", "Fails.")
         failed = db.blocks(lesson)[-1]
         await blocks_routes.decide_network(failed["id"], app.Decision(allow=True))
         await app._turns[lesson]
@@ -366,7 +367,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
 
         # Stopped while it runs: the request is open again and no turn follows.
         hold.append(asyncio.Event())
-        await tutor.ask_network(lesson, "git clone https://example.com/x", "A third time.")
+        await practice_tools.ask_network(lesson, "git clone https://example.com/x", "A third time.")
         third = db.blocks(lesson)[-1]
         await blocks_routes.decide_network(third["id"], app.Decision(allow=True))
         await asyncio.sleep(0)
@@ -377,7 +378,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
 
         # Stopped in the same moment it was allowed, before the task took a step: the request is open again too.
         hold.append(asyncio.Event())
-        await tutor.ask_network(lesson, "curl https://example.com", "A fourth time.")
+        await practice_tools.ask_network(lesson, "curl https://example.com", "A fourth time.")
         fourth = db.blocks(lesson)[-1]
         await blocks_routes.decide_network(fourth["id"], app.Decision(allow=True))
         task = app._turns[lesson]
@@ -389,8 +390,8 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
         # While an allowed command waits or runs, the tutor cannot rewrite the files the learner agreed to run.
         workspace = db.workspace(db.lesson(lesson)["slug"])
         monkeypatch.setattr(sandbox, "_awaiting_internet", {workspace.resolve()})
-        assert (await tutor.write_file(lesson, "swap.py", "x")).startswith("error: a command the learner allowed")
-        posed = await tutor.pose_exercise(lesson, "x", [tutor.ExerciseFile(path="swap.py", content="x")], "true")
+        assert (await practice_tools.write_file(lesson, "swap.py", "x")).startswith("error: a command the learner allowed")
+        posed = await practice_tools.pose_exercise(lesson, "x", [practice_tools.ExerciseFile(path="swap.py", content="x")], "true")
         assert posed.startswith("error: a command the learner allowed") and not (workspace / "swap.py").exists()
 
     asyncio.run(scenario())
@@ -427,17 +428,17 @@ def test_file_tools_stay_inside_the_course_workspace(tmp_path, monkeypatch):
     (workspace / "folder").symlink_to(tmp_path / "elsewhere")
     os.mkfifo(workspace / "pipe")
 
-    assert asyncio.run(tutor.write_file(lesson, "unit1/main.py", "print(1)")) == "written"
-    assert asyncio.run(tutor.read_file(lesson, "unit1/main.py")) == "print(1)"
+    assert asyncio.run(practice_tools.write_file(lesson, "unit1/main.py", "print(1)")) == "written"
+    assert asyncio.run(practice_tools.read_file(lesson, "unit1/main.py")) == "print(1)"
     for path in ("../secret.txt", "link", "folder/new.txt", "/etc/passwd", ".", "unit1", "pipe"):
-        assert asyncio.run(tutor.read_file(lesson, path)).startswith("error:"), path
-        assert asyncio.run(tutor.write_file(lesson, path, "x")).startswith("error:"), path
+        assert asyncio.run(practice_tools.read_file(lesson, path)).startswith("error:"), path
+        assert asyncio.run(practice_tools.write_file(lesson, path, "x")).startswith("error:"), path
     assert (tmp_path / "secret.txt").read_text() == "not yours" and not (tmp_path / "elsewhere" / "new.txt").exists()
 
     # The exercise card and the check read the listed files outside the sandbox: a planted link reads as missing.
     block = {"data": {"files": ["link", "folder/new.txt", "unit1/main.py"]}}
     assert [f["content"] for f in blocks_routes._read_files(block, workspace)] == [None, None, "print(1)"]
-    posed = asyncio.run(tutor.pose_exercise(lesson, "x", [tutor.ExerciseFile(path="folder/a.py", content="x")], "true"))
+    posed = asyncio.run(practice_tools.pose_exercise(lesson, "x", [practice_tools.ExerciseFile(path="folder/a.py", content="x")], "true"))
     assert posed.startswith("error:") and not (tmp_path / "elsewhere" / "a.py").exists()
 
 
@@ -522,8 +523,8 @@ def test_every_command_is_logged_with_its_origin_and_consent(place, monkeypatch)
     course = db.create_course("Shell", who)["id"]
     lesson = db.create_lesson(course, "Echo", "lesson")
     monkeypatch.setattr(sandbox, "SANDBOX", False)
-    assert asyncio.run(tutor.run_command(lesson, "echo tutor")).startswith("exit code 0")
-    assert asyncio.run(tutor.pose_exercise(lesson, "Run it", [tutor.ExerciseFile(path="e/x.sh", content="echo learner")], "sh e/x.sh")).startswith("shown")
+    assert asyncio.run(practice_tools.run_command(lesson, "echo tutor")).startswith("exit code 0")
+    assert asyncio.run(practice_tools.pose_exercise(lesson, "Run it", [practice_tools.ExerciseFile(path="e/x.sh", content="echo learner")], "sh e/x.sh")).startswith("shown")
     block = db.blocks(lesson)[-1]
     asyncio.run(blocks_routes.run_exercise(block["id"]))
     ask = db.add_block(lesson, "network", "needs pip", {"command": "pip install x", "status": "asked"})
@@ -544,7 +545,7 @@ def test_every_command_is_logged_with_its_origin_and_consent(place, monkeypatch)
 
     monkeypatch.setattr(sandbox, "run", broken)
     with pytest.raises(OSError):
-        asyncio.run(tutor.run_command(lesson, "echo never"))
+        asyncio.run(practice_tools.run_command(lesson, "echo never"))
 
     other = db.conn.execute("INSERT INTO profiles (name) VALUES ('Other')").lastrowid
     logged = db.commands(who)
@@ -573,7 +574,7 @@ def test_cleanup_removes_an_old_courses_folders_and_keeps_its_record(place, monk
     fresh = db.create_course("Fresh shell", who)["id"]
     lessons = {c: db.create_lesson(c, "Echo", "lesson") for c in (old, fresh)}
     for c in (old, fresh):
-        asyncio.run(tutor.pose_exercise(lessons[c], "Run it", [tutor.ExerciseFile(path="e/x.sh", content="echo kept")], "sh e/x.sh"))
+        asyncio.run(practice_tools.pose_exercise(lessons[c], "Run it", [practice_tools.ExerciseFile(path="e/x.sh", content="echo kept")], "sh e/x.sh"))
         (db.workspace(db.course(c)["slug"]) / "big.bin").write_bytes(b"\0" * 10_000)
         (db.DB_PATH.parent / "sandbox-cache" / db.course(c)["slug"]).mkdir(parents=True)
     db.conn.execute("UPDATE blocks SET created = '2020-01-01 00:00:00' WHERE lesson_id = ?", (lessons[old],))
@@ -600,7 +601,7 @@ def test_cleanup_removes_an_old_courses_folders_and_keeps_its_record(place, monk
         asyncio.run(blocks_routes.run_exercise(block["id"]))
     assert refused.value.status_code == 409 and "cleaned up" in refused.value.detail
     # The tutor poses a new exercise: files are back, the course is live again and the new card runs.
-    asyncio.run(tutor.pose_exercise(lessons[old], "Again", [tutor.ExerciseFile(path="e/y.sh", content="echo back")], "sh e/y.sh"))
+    asyncio.run(practice_tools.pose_exercise(lessons[old], "Again", [practice_tools.ExerciseFile(path="e/y.sh", content="echo back")], "sh e/y.sh"))
     assert db.course(old)["cleaned"] is None
     assert asyncio.run(blocks_routes.run_exercise(db.blocks(lessons[old])[-1]["id"]))["output"].strip() == "back"
     assert cleanup.stale() == []
@@ -613,7 +614,7 @@ def test_an_exercise_check_carries_the_written_answer_to_the_tutor(place, monkey
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Writer')").lastrowid
     lesson = db.create_lesson(db.create_course("Shell", who)["id"], "Echo", "lesson")
     monkeypatch.setattr(sandbox, "SANDBOX", False)
-    assert asyncio.run(tutor.pose_exercise(lesson, "Run it, then say why", [tutor.ExerciseFile(path="e/x.sh", content="echo hi")], "sh e/x.sh")).startswith("shown")
+    assert asyncio.run(practice_tools.pose_exercise(lesson, "Run it, then say why", [practice_tools.ExerciseFile(path="e/x.sh", content="echo hi")], "sh e/x.sh")).startswith("shown")
     block = db.blocks(lesson)[-1]
     asyncio.run(blocks_routes.run_exercise(block["id"]))
     turns = []

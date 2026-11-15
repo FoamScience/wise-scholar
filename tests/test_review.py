@@ -60,7 +60,8 @@ def test_confident_misses_and_corrected_texts_fill_the_error_notebook():
     import tempfile
 
     os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
-    from wise_scholar import challenge, db, quiz, tutor
+    from wise_scholar import challenge, db, quiz
+    from wise_scholar.tools import practice as practice_tools
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Err')").lastrowid
     course = db.create_course("German", who)["id"]
@@ -73,7 +74,7 @@ def test_confident_misses_and_corrected_texts_fill_the_error_notebook():
 
     block = db.add_block(lesson, "challenge", "Schreib einen Satz mit Dativ.", {**challenge.new(reveal_after=1), "writing": True, "marks": []})
     db.set_block_data(block["id"], {**block["data"], "attempts": ["Ich helfe den Mann."], "hints": ["Dativ nach helfen"]})
-    assert asyncio.run(tutor.reveal(block["id"], "Ich helfe dem Mann.")) == "shown"
+    assert asyncio.run(practice_tools.reveal(block["id"], "Ich helfe dem Mann.")) == "shown"
     writing = [e for e in db.errors(who) if e["kind"] == "writing"][0]
     assert writing["said"] == "Ich helfe den Mann." and writing["correct"] == "Ich helfe dem Mann." and writing["explanation"] == "Dativ nach helfen"
     assert db.card(writing["card_id"])["due"] is not None

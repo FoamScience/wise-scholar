@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 
 from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, sandbox, speech, tutor, vault, vocab, widgets
+from .tools import course_plan as plan_tools, lesson_flow as flow_tools, quizzes as quiz_tools, side_turns as side_tools
 from .backends import BACKEND, MCP_SECRET, agy, claude, opencode
 from .playbooks import describe
 
@@ -263,27 +264,27 @@ def _state_line(lesson: dict) -> str:
     if lesson["level"]:
         state += f" level={lesson['level']!r}"
     if lesson["mode"] != "teacher":
-        state += f" sitting={lesson['sitting'] or tutor.SITTING_MINUTES} min"
+        state += f" sitting={lesson['sitting'] or plan_tools.SITTING_MINUTES} min"
         if pace := db.unit_pace(lesson["profile_id"]):
             state += f" task={pace['task']:.0f} min"
     if lesson["concept"]:
         state += f" module={lesson['module']!r} concept={lesson['concept']!r}"
-    if outline := tutor._outline(lesson["id"]):
+    if outline := flow_tools._outline(lesson["id"]):
         # every turn carries where the unit's counter stands, so step_done keeps up with the lesson
         steps, at = outline["data"]["steps"], outline["data"]["at"]
         state += f" outline=step {at + 1} of {len(steps)}: {steps[at]!r}" if at < len(steps) else f" outline=all {len(steps)} steps done"
         if cards := outline["data"].get("cards"):
-            state += f" cards={tutor.cards_shown(lesson['id'])} of about {cards} shown"
+            state += f" cards={flow_tools.cards_shown(lesson['id'])} of about {cards} shown"
     elif lesson["cards"]:
-        state += f" cards={tutor.cards_shown(lesson['id'])} of {lesson['cards']} shown"
+        state += f" cards={flow_tools.cards_shown(lesson['id'])} of {lesson['cards']} shown"
     if lesson["questions"]:
-        state += f" placement=question {tutor.placement_posed(lesson['id'])} of {lesson['questions']} posed"
+        state += f" placement=question {quiz_tools.placement_posed(lesson['id'])} of {lesson['questions']} posed"
     return state
 
 
 def _time_line(lesson: dict) -> str | None:
-    if budget := tutor.map_budget(lesson):
-        minutes, measured = tutor.unit_minutes(lesson)
+    if budget := plan_tools.map_budget(lesson):
+        minutes, measured = plan_tools.unit_minutes(lesson)
         return (
             f"[known] (this course) Teaching time the learner plans for the whole course: {lesson['hours']} hours. A unit takes "
             f"this learner about {minutes:.0f} minutes ({f'measured over their last {measured} units' if measured else 'twice the sitting, until units are measured'}), "
@@ -441,8 +442,8 @@ def _replay_progress(lesson: dict) -> None:
     if any(_check_done(b) is False for b in blocks):
         return
     summary = _placed_from_cards(lesson, blocks) if lesson["phase"] == "placement" else lesson["summary"] or ""
-    if (outline := tutor._outline(lesson["id"])) and outline["data"]["at"] < len(outline["data"]["steps"]):
-        tutor._show(lesson, tutor._write_outline(outline, {**outline["data"], "at": len(outline["data"]["steps"])}), "block.updated")
+    if (outline := flow_tools._outline(lesson["id"])) and outline["data"]["at"] < len(outline["data"]["steps"]):
+        tutor._show(lesson, flow_tools._write_outline(outline, {**outline["data"], "at": len(outline["data"]["steps"])}), "block.updated")
     tutor._show(lesson, db.add_block(lesson["id"], "done", summary, {}))
 
 
@@ -700,12 +701,12 @@ async def _shorten(job: tuple[str, int]) -> str:
     if not cards or not first:
         return "done"
     lesson = db.lesson(first["id"])
-    tutor.card_jobs.update({c["id"]: kind for c in cards})
+    side_tools.card_jobs.update({c["id"]: kind for c in cards})
     try:
         ok = await _background_turn(lesson, _cards_prompt(lesson, cards, missed), "cards", "short review cards")
     finally:
         for c in cards:
-            tutor.card_jobs.pop(c["id"], None)
+            side_tools.card_jobs.pop(c["id"], None)
     if not ok:
         return "failed"
     return "more" if kind == "short" and any(db.card(c["id"])["retired"] for c in cards) else "done"

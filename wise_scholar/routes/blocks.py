@@ -9,6 +9,7 @@ from typing import Literal
 
 from .. import app as core
 from .. import challenge, course_files, crafted, db, handwork, hub, quiz, sandbox, speech, tutor, vocab, widgets
+from ..tools import language as language_tools, practice as practice_tools
 from ..app import CLIP_LIMIT, Decision, QuizAnswer, SelfGrade, _add_photo, _handwork_block, _lesson, _now, _pending_photos, _record_answer, _replay_progress, _replayed, _require_answerable, _turns, _unanswered_quiz, _untrusted, _update_block, app, log
 
 
@@ -276,7 +277,7 @@ async def know_word(block_id: int, body: Word) -> dict:
     lesson = _lesson(block["lesson_id"])
     lang = block["data"]["lang"].split("-")[0].lower()
     db.set_vocab(lesson["profile_id"], lang, simplemma.lemmatize(body.word, lang=lang), "known", "learner")
-    tutor.advance_tier(lesson["profile_id"], lang, db.vocab_tier(lesson["profile_id"], lang, vocab.starting_tier(lesson["level"], lang)))
+    language_tools.advance_tier(lesson["profile_id"], lang, db.vocab_tier(lesson["profile_id"], lang, vocab.starting_tier(lesson["level"], lang)))
     known = block["data"].get("known", [])
     _, block = _update_block(block, {"known": known if body.word in known else [*known, body.word]})
     return block
@@ -417,7 +418,7 @@ async def run_exercise(block_id: int) -> dict:
     if block["data"].get("files_kept") and all(f["kept"] for f in _read_files(block, workspace)):
         raise HTTPException(409, "this course's files were cleaned up; ask the tutor to pose the exercise again")
     run = block["data"]["run"]
-    last_run = await tutor._logged(_lesson(block["lesson_id"]), "learner", run, sandbox.run(run, workspace))
+    last_run = await practice_tools._logged(_lesson(block["lesson_id"]), "learner", run, sandbox.run(run, workspace))
     _update_block(db.block(block_id), {"last_run": last_run})
     return last_run
 
@@ -461,7 +462,7 @@ def _reopen_unrun(lesson: dict, block_id: int, task: asyncio.Task) -> None:
 async def _run_allowed(lesson: dict, block_id: int, command: str) -> None:
     try:
         run = sandbox.run(command, db.workspace(lesson["slug"]), network=True)
-        result = await tutor._logged(lesson, "network", command, run, consent="allowed")
+        result = await practice_tools._logged(lesson, "network", command, run, consent="allowed")
         _update_block(db.block(block_id), {"status": "allowed", "result": result})
     except BaseException as e:
         # Stopped by the learner, or the command could not be run or recorded: the lesson is free again and the

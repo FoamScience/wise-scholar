@@ -7,6 +7,7 @@ from typing import Literal
 
 from .. import app as core
 from .. import book, crafted, db, history, hub, quiz, review, sandbox, settings, speech, tutor
+from ..tools import language as language_tools, practice as practice_tools, side_turns as side_tools
 from ..backends import AGENT
 from ..app import LOCALE_NAMES, SITTING_GAP, SelfGrade, _due, _hostname, _lesson, _lesson_view, _map_outline, _now, _profile, _untrusted, _warmed, app, log
 
@@ -60,13 +61,13 @@ def _practice_tasks(concept_id: int) -> list[str]:
     """The solved tasks of the units a practice unit covers, not yet varied, as lines for the tutor."""
     lines = []
     scope = db.practice_scope(concept_id)
-    done = tutor.varied(scope[0]["course_id"]) if scope else set()
+    done = practice_tools.varied(scope[0]["course_id"]) if scope else set()
     for unit in scope:
         blocks = [b for r in db.rows("SELECT id FROM lessons WHERE concept_id = ? ORDER BY id", unit["id"]) for b in db.blocks(r["id"])]
         lines += [
             f"- {unit['title']}, task {b['id']}: {_untrusted(b['markdown'][:PRACTICE_TASK_CHARS])}"
             for b in blocks
-            if tutor.variable(b) and b["id"] not in done
+            if practice_tools.variable(b) and b["id"] not in done
         ]
     return lines
 
@@ -291,12 +292,12 @@ async def _suggest(profile: dict, retire: bool) -> None:
     lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ? ORDER BY id LIMIT 1", host)["id"])
     topics = [r["topic"] for r in db.rows("SELECT topic FROM courses WHERE profile_id = ?", profile_id)]
     job = {"profile_id": profile_id, "topics": topics, "retire": retire, "done": False}
-    tutor.suggestion_jobs[host] = job
+    side_tools.suggestion_jobs[host] = job
     try:
         prompt = await asyncio.to_thread(_explore_prompt, profile, host, retire)
         ok = await core._background_turn(lesson, prompt, "explore", "suggested courses")
     finally:
-        tutor.suggestion_jobs.pop(host, None)
+        side_tools.suggestion_jobs.pop(host, None)
     if not ok or not job["done"]:
         _suggest_failed.add(profile_id)
         return
@@ -406,7 +407,7 @@ async def open_concept(concept_id: int) -> dict:
         strands = "\nActivities per strand in the last 7 days: " + ", ".join(f"{k} {v}" for k, v in counts.items())
         strands += "\nSpeaking tasks: " + ("available" if speech.available() else "off on this install, use writing instead")
         if lesson["lang"]:
-            strands += "\n" + tutor.vocab_brief(lesson, lesson["lang"])
+            strands += "\n" + language_tools.vocab_brief(lesson, lesson["lang"])
     if speech.PODCASTS and speech.available():
         strands += "\nCasts (experimental): make_podcast is available when a recap or quiz-cast would serve this lesson"
     strands += tutor.capstone_brief(lesson)
@@ -439,7 +440,7 @@ def list_claims(profile: int) -> dict:
 
 
 class ClaimPatch(BaseModel):
-    text: str | None = Field(default=None, min_length=1, max_length=tutor.CLAIM_CHARS)
+    text: str | None = Field(default=None, min_length=1, max_length=side_tools.CLAIM_CHARS)
     wrong: bool | None = None
 
 
