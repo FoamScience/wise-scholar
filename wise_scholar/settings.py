@@ -98,6 +98,30 @@ def view() -> list[dict]:
     return out
 
 
+def _kind_problem(s: Setting, value: str) -> str | None:
+    if s.kind == "bool" and value not in ("0", "1"):
+        return "that value cannot be written to .env"
+    if s.kind == "int" and not (value.isdigit() and int(value) >= s.minimum):
+        return "that number is too small or not a whole number"
+    if s.kind == "agent" and value.partition("/")[0] not in BACKENDS:
+        return "the agent must start with claude, opencode or agy"
+    return None
+
+
+def _value_problem(s: Setting, value: str) -> str | None:
+    # make reads .env: a newline, # or $ would end or expand the value.
+    if not value or re.search(r"[\n\r#$\\]", value) or value != value.strip():
+        return "that value cannot be written to .env"
+    if problem := _kind_problem(s, value):
+        return problem
+    if s.name == "WISE_SCHOLAR_MODELS":
+        try:
+            parse_models(value)
+        except ValueError as e:
+            return str(e)
+    return None
+
+
 def check(name: str, value: str | None) -> str | None:
     """Why a value is refused for a setting; None when it is fine. None as a value means back to the default."""
     s = BY_NAME.get(name)
@@ -107,21 +131,7 @@ def check(name: str, value: str | None) -> str | None:
         return "this setting is set in the shell, which overrides .env"
     if value is None:
         return None
-    # make reads .env: a newline, # or $ would end or expand the value.
-    if not value or re.search(r"[\n\r#$\\]", value) or value != value.strip():
-        return "that value cannot be written to .env"
-    if s.kind == "bool" and value not in ("0", "1"):
-        return "that value cannot be written to .env"
-    if s.kind == "int" and not (value.isdigit() and int(value) >= s.minimum):
-        return "that number is too small or not a whole number"
-    if s.kind == "agent" and value.partition("/")[0] not in BACKENDS:
-        return "the agent must start with claude, opencode or agy"
-    if name == "WISE_SCHOLAR_MODELS":
-        try:
-            parse_models(value)
-        except ValueError as e:
-            return str(e)
-    return None
+    return _value_problem(s, value)
 
 
 def write(changes: dict[str, str | None]) -> None:

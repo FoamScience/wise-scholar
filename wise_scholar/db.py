@@ -1064,6 +1064,19 @@ def _card_due(card_id: int | None, now: str) -> bool:
     return bool(card_id and row(_CARD_LINE + "SELECT 1 FROM cards k JOIN line ON line.id = k.id WHERE k.retired = 0 AND k.due <= ?", card_id, now))
 
 
+def _place_unit(course_id: int, kept: list[dict], order: list[int], n: int, module: str) -> None:
+    if kept:
+        unit = kept.pop(0)
+        conn.execute("UPDATE concepts SET module = ?, title = ? WHERE id = ?", (module, practice_title(n), unit["id"]))
+        conn.execute("UPDATE lessons SET title = ? WHERE concept_id = ?", (practice_title(n), unit["id"]))
+        order.append(unit["id"])
+    else:
+        order.append(conn.execute(
+            "INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, ?, ?, 0, 0, 'practice')",
+            (course_id, module, practice_title(n)),
+        ).lastrowid)
+
+
 def place_practice(course_id: int) -> None:
     """Lay the practice units of a learner's course out again: one after every PRACTICE_EVERY units not placed out,
     in the module of the unit before it. A practice unit that already has a lesson is kept, in map order and
@@ -1077,28 +1090,15 @@ def place_practice(course_id: int) -> None:
     kept = [c for c in concepts(course_id) if c["kind"] == "practice"]  # in map order, each with a lesson
     studied = [c for c in concepts(course_id) if c["kind"] == "concept"]
     order, to_study, n = [], 0, 0
-
-    def place(n: int, module: str) -> None:
-        if kept:
-            unit = kept.pop(0)
-            conn.execute("UPDATE concepts SET module = ?, title = ? WHERE id = ?", (module, practice_title(n), unit["id"]))
-            conn.execute("UPDATE lessons SET title = ? WHERE concept_id = ?", (practice_title(n), unit["id"]))
-            order.append(unit["id"])
-        else:
-            order.append(conn.execute(
-                "INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, ?, ?, 0, 0, 'practice')",
-                (course_id, module, practice_title(n)),
-            ).lastrowid)
-
     for c in studied:
         order.append(c["id"])
         to_study += not c["known"]
         if to_study and to_study % PRACTICE_EVERY == 0:
             n += 1
-            place(n, c["module"])
+            _place_unit(course_id, kept, order, n, c["module"])
     while kept:  # kept units the rule no longer places close the map
         n += 1
-        place(n, studied[-1]["module"] if studied else kept[0]["module"])
+        _place_unit(course_id, kept, order, n, studied[-1]["module"] if studied else kept[0]["module"])
     conn.executemany("UPDATE concepts SET position = ? WHERE id = ?", [(pos, cid) for pos, cid in enumerate(order, start=1)])
 
 
@@ -1831,10 +1831,7 @@ def _quiz_verdict(d: dict) -> str | None:
     return "held" if d["correct"] and not d.get("unknown") and d.get("confidence", 0) >= 0.5 else "shaky"
 
 
-def claim_states(profile_id: int, now: str) -> dict[int, str]:
-    """Each claim's state from its latest evidence, in a lesson or in a review of its cards: held (fading once a linked
-    review card is due), shaky, or unseen."""
-    states = {c["id"]: "unseen" for c in rows("SELECT id FROM claims WHERE profile_id = ? AND wrong = 0", profile_id)}
+def _claim_evidence(profile_id: int, now: str) -> tuple[dict[int, tuple[str, str]], set[int]]:
     latest: dict[int, tuple[str, str]] = {}
     due: set[int] = set()
     for e in rows(
@@ -1847,6 +1844,14 @@ def claim_states(profile_id: int, now: str) -> dict[int, str]:
                 latest[e["claim_id"]] = (when, verdict)
         if _card_due((block["data"] or {}).get("card_id"), now):
             due.add(e["claim_id"])
+    return latest, due
+
+
+def claim_states(profile_id: int, now: str) -> dict[int, str]:
+    """Each claim's state from its latest evidence, in a lesson or in a review of its cards: held (fading once a linked
+    review card is due), shaky, or unseen."""
+    states = {c["id"]: "unseen" for c in rows("SELECT id FROM claims WHERE profile_id = ? AND wrong = 0", profile_id)}
+    latest, due = _claim_evidence(profile_id, now)
     for claim_id, (_, verdict) in latest.items():
         states[claim_id] = "fading" if verdict == "held" and claim_id in due else verdict
     return states

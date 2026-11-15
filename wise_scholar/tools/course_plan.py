@@ -175,6 +175,62 @@ def _module_needs(modules: list[Module]) -> tuple[dict[str, list[str]], str | No
     return {unit: ns for m in modules for unit, ns in m.needs.items()}, None
 
 
+def _plan_needs(modules: list[Module], order: list[str]) -> tuple[dict[str, list[str]], str | None]:
+    """The prerequisites a map's modules give, and why they or the known titles do not fit, or None when they do."""
+    if stray := [k for m in modules for k in m.known if k not in m.concepts]:
+        return {}, f"error: known titles {stray} are not concepts of their module"
+    needs, problem = _module_needs(modules)
+    return needs, problem or _needs_problem(order, needs)
+
+
+def _titles_of(course_id: int, kind: str) -> set[str]:
+    return {c["title"] for c in db.concepts(course_id) if c["kind"] == kind}
+
+
+def _repeats_problem(titles: list[str], module_titles: list[str]) -> str | None:
+    if repeated := sorted({t for t in titles if titles.count(t) > 1}):
+        return f"error: titles {repeated} appear more than once"
+    if repeated := sorted({t for t in module_titles if module_titles.count(t) > 1}):
+        return f"error: modules {repeated} appear more than once; give each module once, with all its units"
+    return None
+
+
+def _revise_titles_problem(course_id: int, modules: list[Module], titles: list[str], hours: int | None) -> str | None:
+    if not titles:
+        return "error: the map has no concepts"
+    if practice := [t for t in titles if t in _titles_of(course_id, "practice")]:
+        return f"error: {practice} are practice units the server places by itself; give the concept units only"
+    if problem := _repeats_problem(titles, [m.title for m in modules]):
+        return problem
+    if hours is not None and not 1 <= hours <= 5000:
+        return "error: hours must be between 1 and 5000"
+    return None
+
+
+def _rename_problem(names: dict[str, str], current: set[str]) -> str | None:
+    if unknown := sorted(set(names) - current):
+        return f"error: renamed titles {unknown} are not in the current map"
+    if clash := sorted(new for new in names.values() if new in current - set(names) or list(names.values()).count(new) > 1):
+        return f"error: new titles {clash} are taken"
+    return None
+
+
+def _revise_budget_problem(course_id: int, modules: list[Module], names: dict[str, str], titles: list[str], hours: int | None) -> str | None:
+    after = {names.get(t, t) for t in db.started_concepts(course_id)}
+    if lost := sorted(after - set(titles)):
+        return f"error: units {lost} already have a lesson and cannot be dropped; keep them, and list them in known if the learner is done with them"
+    units = [c for c in db.concepts(course_id) if c["kind"] == "concept"]
+    known = frozenset(names.get(c["title"], c["title"]) for c in units if c["known"])
+    return _over_budget(db.course(course_id), modules, hours, known, allowed=sum(not c["known"] for c in units))
+
+
+def _revise_note(current: set[str], names: dict[str, str], titles: list[str], removed: list) -> str:
+    dropped = sorted(current - set(names) - set(titles))
+    note = f"; dropped {dropped}" if dropped else ""
+    note += f"; capstones removed with their units: {removed}" if removed else ""
+    return note
+
+
 @mcp.tool()
 async def set_course_map(course_id: int, modules: list[Module]) -> str:
     """Lay out the course as ordered modules, each a list of concept titles, and show it as the course map.
@@ -193,10 +249,8 @@ async def set_course_map(course_id: int, modules: list[Module]) -> str:
         return "error: this course already has a map"
     if not any(m.concepts for m in modules):
         return "error: the map has no concepts"
-    if stray := [k for m in modules for k in m.known if k not in m.concepts]:
-        return f"error: known titles {stray} are not concepts of their module"
-    needs, problem = _module_needs(modules)
-    if problem or (problem := _needs_problem([t for m in modules for t in m.concepts], needs)):
+    needs, problem = _plan_needs(modules, [t for m in modules for t in m.concepts])
+    if problem:
         return problem
     if problem := _over_budget(db.course(course_id), modules):
         return problem
@@ -226,37 +280,19 @@ async def revise_course_map(course_id: int, modules: list[Module], renamed: list
     """
     if not db.course(course_id):
         return f"error: no course with id {course_id}"
-    current = {c["title"] for c in db.concepts(course_id) if c["kind"] == "concept"}
+    current = _titles_of(course_id, "concept")
     if not current:
         return "error: this course has no map yet; use set_course_map"
     titles = [title for m in modules for title in m.concepts]
-    if not titles:
-        return "error: the map has no concepts"
-    if practice := [t for t in titles if t in {c["title"] for c in db.concepts(course_id) if c["kind"] == "practice"}]:
-        return f"error: {practice} are practice units the server places by itself; give the concept units only"
-    if repeated := sorted({t for t in titles if titles.count(t) > 1}):
-        return f"error: titles {repeated} appear more than once"
-    module_titles = [m.title for m in modules]
-    if repeated := sorted({t for t in module_titles if module_titles.count(t) > 1}):
-        return f"error: modules {repeated} appear more than once; give each module once, with all its units"
-    if hours is not None and not 1 <= hours <= 5000:
-        return "error: hours must be between 1 and 5000"
-    if stray := [k for m in modules for k in m.known if k not in m.concepts]:
-        return f"error: known titles {stray} are not concepts of their module"
-    needs, problem = _module_needs(modules)
-    if problem or (problem := _needs_problem(titles, needs)):
+    if problem := _revise_titles_problem(course_id, modules, titles, hours):
+        return problem
+    needs, problem = _plan_needs(modules, titles)
+    if problem:
         return problem
     names = {r.old: r.new for r in renamed}
-    if unknown := sorted(set(names) - current):
-        return f"error: renamed titles {unknown} are not in the current map"
-    if clash := sorted(new for new in names.values() if new in current - set(names) or list(names.values()).count(new) > 1):
-        return f"error: new titles {clash} are taken"
-    after = {names.get(t, t) for t in db.started_concepts(course_id)}
-    if lost := sorted(after - set(titles)):
-        return f"error: units {lost} already have a lesson and cannot be dropped; keep them, and list them in known if the learner is done with them"
-    units = [c for c in db.concepts(course_id) if c["kind"] == "concept"]
-    known = frozenset(names.get(c["title"], c["title"]) for c in units if c["known"])
-    if problem := _over_budget(db.course(course_id), modules, hours, known, allowed=sum(not c["known"] for c in units)):
+    if problem := _rename_problem(names, current):
+        return problem
+    if problem := _revise_budget_problem(course_id, modules, names, titles, hours):
         return problem
     try:
         removed = db.revise_concepts(course_id, [m.model_dump() for m in modules], names, hours)
@@ -264,10 +300,7 @@ async def revise_course_map(course_id: int, modules: list[Module], renamed: list
         return f"error: units {started} already have a lesson and cannot be dropped"
     db.set_needs(course_id, needs, replace=False, linked=bool(needs))
     hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id), "capstones": db.capstones(course_id)})
-    dropped = sorted(current - set(names) - set(titles))
-    note = f"; dropped {dropped}" if dropped else ""
-    note += f"; capstones removed with their units: {removed}" if removed else ""
-    return f"shown{note}"
+    return f"shown{_revise_note(current, names, titles, removed)}"
 
 
 @mcp.tool()
@@ -357,6 +390,16 @@ async def set_known(course_id: int, known: list[str], unknown: list[str]) -> str
     return "updated"
 
 
+def _area_problem(entries: list[dict]) -> str | None:
+    if not all(e["title"] for e in entries):
+        return "error: every area needs a title"
+    if twice := sorted(t for t, n in Counter(e["title"] for e in entries).items() if n > 1):
+        return f"error: areas {twice} appear more than once"
+    if long := [e["title"] for e in entries if max(len(v) for v in e.values()) > AREA_CHARS]:
+        return f"error: areas {long} are too long; one sentence each, under {AREA_CHARS} characters"
+    return None
+
+
 @mcp.tool()
 async def set_placement(course_id: int, level: str, summary: str, areas: list[Area]) -> str:
     """Record the result of the placement check.
@@ -375,12 +418,8 @@ async def set_placement(course_id: int, level: str, summary: str, areas: list[Ar
     if not low <= len(areas) <= high:
         return f"error: give {low} to {high} areas"
     entries = [{k: " ".join(v.split()) for k, v in a.model_dump().items()} for a in areas]
-    if not all(e["title"] for e in entries):
-        return "error: every area needs a title"
-    if twice := sorted(t for t, n in Counter(e["title"] for e in entries).items() if n > 1):
-        return f"error: areas {twice} appear more than once"
-    if long := [e["title"] for e in entries if max(len(v) for v in e.values()) > AREA_CHARS]:
-        return f"error: areas {long} are too long; one sentence each, under {AREA_CHARS} characters"
+    if problem := _area_problem(entries):
+        return problem
     db.set_placement(course_id, level, summary, entries)
     hub.publish(course_id, {"type": "placement.set", "level": level, "placement": summary, "areas": entries})
     # Each check keeps its own result card, so a retake leaves the earlier ones readable.

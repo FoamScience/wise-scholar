@@ -109,24 +109,33 @@ RECAP = (
 )
 
 
+def _not_resumable(lesson: dict, last: dict | None) -> bool:
+    return bool(
+        not last or lesson["phase"] != "lesson" or lesson["concept_id"] is None or lesson["mode"] == "teacher"
+        or lesson["batch"] or lesson["id"] in _turns
+        # the learner's last message never got its answer (a failed turn); answering it comes first
+        or last["role"] == "learner"
+        # nothing worked out yet to recall, and the server holds explanations until the opening is tried
+        or tutor.pretest_blocker(lesson)
+    )
+
+
+def _card_pending(blocks: list[dict]) -> bool:
+    return (
+        any(b["kind"] == "done" for b in blocks)
+        # an open card is where the learner picks up; a recap on top of it would leave two things waiting
+        or any(b["kind"] == "quiz" and b["data"]["answer"] is None for b in blocks)
+        or any(b["kind"] in challenge.KINDS and challenge.is_open(b["data"]) for b in blocks)
+    )
+
+
 @app.post("/api/lessons/{lesson_id}/resume")
 async def resume_lesson(lesson_id: int) -> dict:
     """A learner back at an unfinished unit after RECAP_GAP or more gets a recap and two recall checks first."""
     lesson = _lesson(lesson_id)
     last = db.row("SELECT created, role FROM messages WHERE lesson_id = ? ORDER BY id DESC LIMIT 1", lesson_id)
     blocks = db.blocks(lesson_id)
-    if (
-        not last or lesson["phase"] != "lesson" or lesson["concept_id"] is None or lesson["mode"] == "teacher"
-        or lesson["batch"] or lesson_id in _turns
-        # the learner's last message never got its answer (a failed turn); answering it comes first
-        or last["role"] == "learner"
-        # nothing worked out yet to recall, and the server holds explanations until the opening is tried
-        or tutor.pretest_blocker(lesson)
-        or any(b["kind"] == "done" for b in blocks)
-        # an open card is where the learner picks up; a recap on top of it would leave two things waiting
-        or any(b["kind"] == "quiz" and b["data"]["answer"] is None for b in blocks)
-        or any(b["kind"] in challenge.KINDS and challenge.is_open(b["data"]) for b in blocks)
-    ):
+    if _not_resumable(lesson, last) or _card_pending(blocks):
         return {"recap": False}
     away = datetime.now(timezone.utc) - datetime.fromisoformat(last["created"]).replace(tzinfo=timezone.utc)
     # the sitting's warm-up comes first; the recap starts when the learner is back from it
@@ -151,14 +160,7 @@ async def prepare_offline(lesson_id: int) -> None:
     core._start_turn(db.lesson(lesson_id), BATCH_PREPARE)
 
 
-@app.post("/api/lessons/{lesson_id}/batch", status_code=202)
-async def send_batch(lesson_id: int, body: Batch) -> None:
-    """The answers given offline, in the order given: the server grades what it can, open answers keep the learner's
-    own grade until the tutor confirms it, and one tutor turn takes them all."""
-    lesson = _lesson(lesson_id)
-    if not lesson["batch"]:
-        raise HTTPException(409, "this lesson is not prepared for offline")
-    core._require_idle(lesson_id)
+def _checked_batch(lesson_id: int, body: Batch) -> list[tuple[dict, dict, BatchAnswer]]:
     if len({g.block_id for g in body.answers}) != len(body.answers):
         raise HTTPException(422, "a quiz is answered once")
     # Every answer is checked before any is stored, so a refused batch leaves nothing half-recorded.
@@ -170,6 +172,10 @@ async def send_batch(lesson_id: int, body: Batch) -> None:
         if card["kind"] == "open" and given.self_correct is None:
             raise HTTPException(422, "an open answer carries the learner's own grade")
         checked.append((block, card, given))
+    return checked
+
+
+def _record_batch(lesson_id: int, checked: list[tuple[dict, dict, BatchAnswer]]) -> list[str]:
     lines = []
     db.conn.execute("BEGIN")
     try:
@@ -185,6 +191,19 @@ async def send_batch(lesson_id: int, body: Batch) -> None:
     except BaseException:
         db.conn.execute("ROLLBACK")
         raise
+    return lines
+
+
+@app.post("/api/lessons/{lesson_id}/batch", status_code=202)
+async def send_batch(lesson_id: int, body: Batch) -> None:
+    """The answers given offline, in the order given: the server grades what it can, open answers keep the learner's
+    own grade until the tutor confirms it, and one tutor turn takes them all."""
+    lesson = _lesson(lesson_id)
+    if not lesson["batch"]:
+        raise HTTPException(409, "this lesson is not prepared for offline")
+    core._require_idle(lesson_id)
+    checked = _checked_batch(lesson_id, body)
+    lines = _record_batch(lesson_id, checked)
     left = [b["id"] for b in db.blocks(lesson_id) if b["kind"] == "quiz" and b["data"]["answer"] is None]
     if left:
         lines.append("left unanswered: " + ", ".join(f"quiz {i}" for i in left))

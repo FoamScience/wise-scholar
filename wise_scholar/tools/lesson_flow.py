@@ -71,6 +71,56 @@ def _write_outline(block: dict, data: dict) -> dict:
     return db.set_block_data(block["id"], data)
 
 
+def _steps_error(steps: list[str]) -> str | None:
+    if not (OUTLINE_STEPS[0] <= len(steps) <= OUTLINE_STEPS[1] + 1) or not all(steps):
+        return f"error: an outline has {OUTLINE_STEPS[0]} to {OUTLINE_STEPS[1]} non-empty steps"
+    if len(set(steps)) != len(steps):
+        return "error: each step is named differently"
+    return None
+
+
+def _first_outline(lesson: dict, steps: list[str], reason: str, cards: int) -> str:
+    # a momentum unit stays short; speed allows the full range
+    most = MOMENTUM_STEPS if lesson["pace"] == "momentum" else OUTLINE_STEPS[1]
+    if len(steps) > most or reason.strip():
+        return f"error: a first outline here has {OUTLINE_STEPS[0]} to {most} steps and no reason"
+    if not cards:
+        return "error: cards is required: how many cards the whole unit will show"
+    if problem := _cards_error(lesson["id"], cards, len(steps)):
+        return problem
+    block = db.add_block(lesson["id"], "outline", "", {"steps": steps, "at": 0, "added": None, "cards": cards})
+    _show(lesson, _write_outline(block, block["data"]))
+    return f"outline shown: step 1 of {len(steps)}, about {cards} cards"
+
+
+def _new_step(old: list[str], steps: list[str]) -> int | None:
+    # steps are unique, so the one new step has a single place
+    return next((i for i in range(len(steps)) if steps[:i] + steps[i + 1:] == old), None) if len(steps) == len(old) + 1 else None
+
+
+def _add_step(lesson: dict, block: dict, steps: list[str], reason: str, cards: int) -> str:
+    data = block["data"]
+    if cards and (problem := _cards_error(lesson["id"], cards, len(steps))):
+        return problem
+    if data["added"]:
+        return "refused: the outline already took its one added step"
+    if not reason.strip():
+        return "error: reason is required when adding a step"
+    old = data["steps"]
+    if data["at"] >= len(old):
+        return "refused: every step is already done"
+    if missing := [step for step in old if step not in steps]:
+        return f"error: keep every earlier step word for word; missing: {missing[0]!r}"
+    new = _new_step(old, steps)
+    if new is None:
+        return "error: keep every earlier step in its order and add exactly one"
+    if new < data["at"]:
+        return "error: a step goes after the step the learner is on, not before"
+    data = {**data, "steps": steps, "added": {"step": steps[new], "reason": " ".join(reason.split())}} | ({"cards": cards} if cards else {})
+    _show(lesson, _write_outline(block, data), "block.updated")
+    return f"step added: now step {data['at'] + 1} of {len(steps)}"
+
+
 @mcp.tool()
 async def set_outline(lesson_id: int, steps: list[str], reason: str = "", cards: int = 0) -> str:
     """Show the unit's plan: 3 to 6 short steps (at most 4 when the course's pace is momentum), each one thing the learner does or gets ("Predict what foldr
@@ -91,44 +141,12 @@ async def set_outline(lesson_id: int, steps: list[str], reason: str = "", cards:
     if lesson["phase"] != "lesson" or lesson["concept_id"] is None:
         return "error: only a unit lesson has an outline"
     steps = [" ".join(s.split()) for s in steps]
-    if not (OUTLINE_STEPS[0] <= len(steps) <= OUTLINE_STEPS[1] + 1) or not all(steps):
-        return f"error: an outline has {OUTLINE_STEPS[0]} to {OUTLINE_STEPS[1]} non-empty steps"
-    if len(set(steps)) != len(steps):
-        return "error: each step is named differently"
+    if problem := _steps_error(steps):
+        return problem
     block = _outline(lesson_id)
     if not block:
-        # a momentum unit stays short; speed allows the full range
-        most = MOMENTUM_STEPS if lesson["pace"] == "momentum" else OUTLINE_STEPS[1]
-        if len(steps) > most or reason.strip():
-            return f"error: a first outline here has {OUTLINE_STEPS[0]} to {most} steps and no reason"
-        if not cards:
-            return "error: cards is required: how many cards the whole unit will show"
-        if problem := _cards_error(lesson_id, cards, len(steps)):
-            return problem
-        block = db.add_block(lesson_id, "outline", "", {"steps": steps, "at": 0, "added": None, "cards": cards})
-        _show(lesson, _write_outline(block, block["data"]))
-        return f"outline shown: step 1 of {len(steps)}, about {cards} cards"
-    data = block["data"]
-    if cards and (problem := _cards_error(lesson_id, cards, len(steps))):
-        return problem
-    if data["added"]:
-        return "refused: the outline already took its one added step"
-    if not reason.strip():
-        return "error: reason is required when adding a step"
-    old = data["steps"]
-    if data["at"] >= len(old):
-        return "refused: every step is already done"
-    if missing := [step for step in old if step not in steps]:
-        return f"error: keep every earlier step word for word; missing: {missing[0]!r}"
-    # steps are unique, so the one new step has a single place
-    new = next((i for i in range(len(steps)) if steps[:i] + steps[i + 1:] == old), None) if len(steps) == len(old) + 1 else None
-    if new is None:
-        return "error: keep every earlier step in its order and add exactly one"
-    if new < data["at"]:
-        return "error: a step goes after the step the learner is on, not before"
-    data = {**data, "steps": steps, "added": {"step": steps[new], "reason": " ".join(reason.split())}} | ({"cards": cards} if cards else {})
-    _show(lesson, _write_outline(block, data), "block.updated")
-    return f"step added: now step {data['at'] + 1} of {len(steps)}"
+        return _first_outline(lesson, steps, reason, cards)
+    return _add_step(lesson, block, steps, reason, cards)
 
 
 @mcp.tool()
@@ -151,6 +169,14 @@ async def step_done(lesson_id: int, cards: int = 0) -> str:
     return f"step {data['at']} of {len(data['steps'])} done" + ("" if left else "; every step is done, finish the lesson when its checks are answered")
 
 
+def _unfinished(lesson: dict, blocks: list[dict]) -> str | None:
+    if any(b["kind"] == "done" for b in blocks):
+        return "refused: this lesson is already finished"
+    if not prepared(lesson) and any(b["kind"] == "quiz" and b["data"].get("correct") is None for b in blocks):
+        return "refused: a quick check is still unanswered or ungraded"
+    return None
+
+
 @mcp.tool()
 async def finish_lesson(lesson_id: int, summary: str) -> str:
     """Close a unit lesson once its concept is covered and the quick checks are answered.
@@ -163,11 +189,8 @@ async def finish_lesson(lesson_id: int, summary: str) -> str:
         return f"error: no lesson with id {lesson_id}"
     if lesson["concept_id"] is None:
         return "error: only a unit lesson is finished this way"
-    blocks = db.blocks(lesson_id)
-    if any(b["kind"] == "done" for b in blocks):
-        return "refused: this lesson is already finished"
-    if not prepared(lesson) and any(b["kind"] == "quiz" and b["data"].get("correct") is None for b in blocks):
-        return "refused: a quick check is still unanswered or ungraded"
+    if problem := _unfinished(lesson, db.blocks(lesson_id)):
+        return problem
     if (outline := _outline(lesson_id)) and outline["data"]["at"] < len(outline["data"]["steps"]):
         _show(lesson, _write_outline(outline, {**outline["data"], "at": len(outline["data"]["steps"])}), "block.updated")
     _show(lesson, db.add_block(lesson_id, "done", summary, {}))

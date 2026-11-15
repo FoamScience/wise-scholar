@@ -31,15 +31,21 @@ def _questions_error(question: str) -> str | None:
     )
 
 
-def _quiz_error(
-    lesson: dict, question: str, kind: str, answer_key: str, options: list[str], misconceptions: dict[str, str],
-    number: int | None, lemma: str, pretest: bool,
-) -> str | None:
+def _choice_error(lesson: dict, kind: str, answer_key: str, options: list[str], misconceptions: dict[str, str]) -> str | None:
     if misconceptions and (kind != "choice" or not set(misconceptions) <= set(options) - {answer_key}):
         return "error: misconceptions maps wrong options of a choice quiz, each exactly as written, to the belief behind it"
     most = PLACEMENT_OPTIONS if lesson["phase"] == "placement" else 5
     if kind == "choice" and not (2 <= len(options) <= most and answer_key in options):
         return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
+    return None
+
+
+def _quiz_error(
+    lesson: dict, question: str, kind: str, answer_key: str, options: list[str], misconceptions: dict[str, str],
+    number: int | None, lemma: str, pretest: bool,
+) -> str | None:
+    if problem := _choice_error(lesson, kind, answer_key, options, misconceptions):
+        return problem
     if number and number > lesson["questions"]:
         return f"error: the placement check has {lesson['questions']} questions and all are posed; call set_placement"
     if lemma and not lesson["lang"]:
@@ -49,6 +55,42 @@ def _quiz_error(
     if pretest and not prepared(lesson) and (problem := _pretest_length_error("\n".join([question, *options]))):
         return problem
     return None
+
+
+def _quiz_card(
+    lesson: dict, question: str, kind: str, options: list[str], answer_key: str, explanation: str, lemma: str, pretest: bool,
+    translation: str, misconceptions: dict[str, str],
+) -> int:
+    card_id = db.add_card(
+        lesson["course_id"], None if pretest else lesson["concept_id"], question, kind, options, answer_key, explanation,
+        scheduled=lesson["phase"] != "placement" and not pretest and not prepared(lesson), translation=translation,
+        misconceptions=misconceptions,
+    )
+    if lemma:
+        lemma = simplemma.lemmatize(lemma, lang=lesson["lang"]).lower()
+        db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lesson["lang"], card_id))
+    return card_id
+
+
+def _quiz_shown(
+    lesson: dict, card_id: int, kind: str, options: list[str], answer_key: str, explanation: str, pretest: bool, form: str,
+    translation: str, misconceptions: dict[str, str], number: int | None,
+) -> dict:
+    shown = {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest, "form": form.strip()}
+    if translation:
+        shown["translation"] = translation
+    if number:
+        shown.update({"number": number, "of": lesson["questions"]})
+    if keyed(lesson):
+        # Material for the teacher, or a card answered offline: the key, the explanation and the beliefs come with it.
+        shown.update({"answer_key": answer_key, "explanation": explanation} | ({"misconceptions": misconceptions} if misconceptions else {}))
+    return shown
+
+
+def _show_quiz(lesson: dict, question: str, shown: dict) -> str:
+    block = db.add_block(lesson["id"], "quiz", question, shown)
+    _show(lesson, block)
+    return f"shown as quiz {block['id']}; {'go on with the unit' if lesson['batch'] else 'end the turn and wait for the answer'}"
 
 
 @mcp.tool()
@@ -98,25 +140,9 @@ async def pose_quiz(
     if problem := _quiz_error(lesson, question, kind, answer_key, options, misconceptions, number, lemma, pretest):
         return problem
     options = _shuffled(options) if kind == "choice" else []
-    card_id = db.add_card(
-        lesson["course_id"], None if pretest else lesson["concept_id"], question, kind, options, answer_key, explanation,
-        scheduled=lesson["phase"] != "placement" and not pretest and not prepared(lesson), translation=translation,
-        misconceptions=misconceptions,
-    )
-    if lemma:
-        lemma = simplemma.lemmatize(lemma, lang=lesson["lang"]).lower()
-        db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lesson["lang"], card_id))
-    shown = {"card_id": card_id, "kind": kind, "options": options, "answer": None, "pretest": pretest, "form": form.strip()}
-    if translation:
-        shown["translation"] = translation
-    if number:
-        shown.update({"number": number, "of": lesson["questions"]})
-    if keyed(lesson):
-        # Material for the teacher, or a card answered offline: the key, the explanation and the beliefs come with it.
-        shown.update({"answer_key": answer_key, "explanation": explanation} | ({"misconceptions": misconceptions} if misconceptions else {}))
-    block = db.add_block(lesson_id, "quiz", question, shown)
-    _show(lesson, block)
-    return f"shown as quiz {block['id']}; {'go on with the unit' if lesson['batch'] else 'end the turn and wait for the answer'}"
+    card_id = _quiz_card(lesson, question, kind, options, answer_key, explanation, lemma, pretest, translation, misconceptions)
+    shown = _quiz_shown(lesson, card_id, kind, options, answer_key, explanation, pretest, form, translation, misconceptions, number)
+    return _show_quiz(lesson, question, shown)
 
 
 def placement_posed(lesson_id: int) -> int:
@@ -125,6 +151,20 @@ def placement_posed(lesson_id: int) -> int:
 
 SORT_CATEGORIES = (2, 4)
 SORT_ITEMS = (6, 12)
+
+
+def _sort_error(categories: list[str], placed: list[dict]) -> str | None:
+    if not (SORT_CATEGORIES[0] <= len(categories) <= SORT_CATEGORIES[1]) or len(set(categories)) != len(categories) or not all(categories):
+        return f"error: a sort needs {SORT_CATEGORIES[0]} to {SORT_CATEGORIES[1]} distinct categories"
+    return _sort_items_error(categories, placed)
+
+
+def _sort_items_error(categories: list[str], placed: list[dict]) -> str | None:
+    if not (SORT_ITEMS[0] <= len(placed) <= SORT_ITEMS[1]) or len({i["text"] for i in placed}) != len(placed) or not all(i["text"] for i in placed):
+        return f"error: a sort needs {SORT_ITEMS[0]} to {SORT_ITEMS[1]} distinct items"
+    if not all(i["category"] in categories for i in placed) or {i["category"] for i in placed} != set(categories):
+        return "error: every item names one of the categories, and every category has at least one item"
+    return None
 
 
 @mcp.tool()
@@ -146,12 +186,8 @@ async def pose_sort(lesson_id: int, question: str, categories: list[str], items:
         return "error: the question and the explanation are required"
     categories = [c.strip() for c in categories]
     placed = [{"text": i.text.strip(), "category": i.category.strip()} for i in items]
-    if not (SORT_CATEGORIES[0] <= len(categories) <= SORT_CATEGORIES[1]) or len(set(categories)) != len(categories) or not all(categories):
-        return f"error: a sort needs {SORT_CATEGORIES[0]} to {SORT_CATEGORIES[1]} distinct categories"
-    if not (SORT_ITEMS[0] <= len(placed) <= SORT_ITEMS[1]) or len({i["text"] for i in placed}) != len(placed) or not all(i["text"] for i in placed):
-        return f"error: a sort needs {SORT_ITEMS[0]} to {SORT_ITEMS[1]} distinct items"
-    if not all(i["category"] in categories for i in placed) or {i["category"] for i in placed} != set(categories):
-        return "error: every item names one of the categories, and every category has at least one item"
+    if problem := _sort_error(categories, placed):
+        return problem
     options = _shuffled(placed)
     card_id = db.add_card(
         lesson["course_id"], lesson["concept_id"], question.strip(), "sort", options, json.dumps(categories), explanation.strip(),
@@ -161,9 +197,7 @@ async def pose_sort(lesson_id: int, question: str, categories: list[str], items:
     shown = {"card_id": card_id, "kind": "sort", "options": [{"text": o["text"]} for o in options], "categories": categories, "answer": None}
     if keyed(lesson):
         shown.update({"options": options, "answer_key": json.dumps(categories), "explanation": explanation.strip()})
-    block = db.add_block(lesson_id, "quiz", question.strip(), shown)
-    _show(lesson, block)
-    return f"shown as quiz {block['id']}; {'go on with the unit' if lesson['batch'] else 'end the turn and wait for the answer'}"
+    return _show_quiz(lesson, question.strip(), shown)
 
 
 @mcp.tool()

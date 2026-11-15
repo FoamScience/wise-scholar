@@ -452,10 +452,14 @@ def apply_edit(manifest: dict, assets: dict[str, bytes], edit: dict) -> bool:
     return True
 
 
+def _card_key(blocks: list[dict], target: str, ref: str) -> str | None:
+    return ref if target == "card" else (next(b for b in blocks if b["key"] == ref)["data"] or {}).get("card")
+
+
 def _edit_card(manifest: dict, target: str, ref: str, old: str, new: str) -> bool:
     """A quiz block shows its card, so the two change together; False when a sort card's key would stop parsing."""
     blocks = [b for x in manifest["lessons"] for b in x["blocks"]]
-    card_key = ref if target == "card" else (next(b for b in blocks if b["key"] == ref)["data"] or {}).get("card")
+    card_key = _card_key(blocks, target, ref)
     cards = [c for c in manifest["cards"] if c["key"] == card_key]
     changed = [_swap(_card_text(c), old, new) for c in cards]
     if any(c["kind"] == "sort" and not _json(x["answer_key"]) for c, x in zip(cards, changed)):
@@ -815,11 +819,16 @@ def _put_units(course_id: int, new: Manifest, concepts: dict[str, dict], redo: s
     return unit_ids
 
 
+def _setup_steps(course: dict, new: Manifest) -> list[dict]:
+    steps = json.loads(course["setup"]) if course["setup"] else []
+    steps += [{"command": command, "status": "asked"} for command in new.setup if command not in {s["command"] for s in steps}]
+    return steps
+
+
 def _update_course(course: dict, version_hash: str, new: Manifest, old: Manifest | None) -> None:
     """The course row from the new version. A topic the learner renamed stays theirs; setup steps are added, never dropped."""
     c, before = new.course, old.course if old else None
-    steps = json.loads(course["setup"]) if course["setup"] else []
-    steps += [{"command": command, "status": "asked"} for command in new.setup if command not in {s["command"] for s in steps}]
+    steps = _setup_steps(course, new)
     cover = figures.clean(c.cover) if c.cover else None
     db.conn.execute(
         "UPDATE courses SET topic = ?, details = ?, hours = ?, mechanism = ?, ranking = ?, prerequisites = ?, cover = ?, cover_alt = ?, "
