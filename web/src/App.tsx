@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent } from 'react'
-import type { TFunction } from 'i18next'
+import type { FormEvent, KeyboardEvent, RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { api, failure } from './api'
@@ -17,7 +16,7 @@ import { ErrorsPage } from './Errors'
 import { CommandsPage } from './Commands'
 import { UsagePage } from './Usage'
 import { PublishPage } from './Publish'
-import { challengeLabel, lessonTitle, outlineOf, pendingPhotos, practiceTitle, replayShown, searchHref, type TodayPlan, unitTitle } from './course'
+import { challengeLabel, lessonTitle, moduleRuns, outlineOf, pendingPhotos, replayShown, unitDone, searchHref, type TodayPlan, unitTitle } from './course'
 import { OutlineCard } from './Outline'
 import { PlacementAreas } from './Areas'
 import { FileEditor } from './FileEditor'
@@ -28,7 +27,7 @@ import { SettingsPage } from './Settings'
 import { SearchPage } from './Search'
 import { HandPage, PhotoTray } from './Handwork'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
-import type { Area, Block, Capstone, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SetupStep, SpeakingData } from './course'
+import type { Area, Block, ChallengeData, Concept, Course, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, Ranked, SetupStep, SpeakingData } from './course'
 import { FigureCard } from './Figure'
 import { WidgetCard } from './Widget'
 import { NetworkCard } from './Network'
@@ -37,8 +36,10 @@ import { ScopeCard, ScopeForm } from './Scope'
 import { Book } from './Book'
 import { Recap } from './Recap'
 import { Handout } from './Handout'
-import { SourcesPanel, SOURCE_TYPES } from './Sources'
+import { SOURCE_TYPES } from './Sources'
 import type { Source } from './Sources'
+import { ModuleGroup, SideMenu } from './CourseMap'
+import { courseChange, lessonChange, sourcesChange, type TutorEvent } from './courseEvents'
 import { usePlayer } from './player'
 import { splitBy, textDirection } from './text'
 import { FirstProfile, ProfilePage } from './Profile'
@@ -47,25 +48,6 @@ import { useSuggestedPlaceholder } from './suggestedPlaceholder'
 import { clearTabMark, markTab } from './tabMark'
 import { LOCALES, browserLocale, rememberLocale } from './locale'
 import type { Locale } from './locale'
-
-type TutorEvent =
-  | { type: 'turn.started'; lesson_id: number }
-  | { type: 'chat.delta'; lesson_id: number; text: string }
-  | { type: 'activity'; lesson_id: number; tool: string }
-  | { type: 'block.added' | 'block.updated'; lesson_id: number; block: Block }
-  | { type: 'block.removed'; lesson_id: number; id: number }
-  | { type: 'lesson.ordered'; lesson_id: number; blocks: Block[] }
-  | { type: 'plan.ranked'; ranking: Ranked[]; mechanism: string }
-  | { type: 'plan.chosen'; mechanism: string }
-  | { type: 'course.pace'; pace: 'momentum' | 'speed' }
-  | { type: 'placement.set'; level: string; placement: string; areas: Area[] }
-  | { type: 'map.set'; concepts: Concept[]; capstones?: Capstone[] }
-  | { type: 'capstone.set'; capstone: Capstone }
-  | { type: 'source.updated'; source: Source }
-  | { type: 'source.removed'; id: number }
-  | { type: 'lesson.created'; lesson: Lesson }
-  | { type: 'setup.updated'; setup: SetupStep[] }
-  | { type: 'turn.done'; lesson_id: number; ok: boolean; error: string | null; message: Message | null }
 
 const LESSON_AREA_TOOLS = [
   'add_block',
@@ -927,10 +909,6 @@ function saveSeen(lesson: number, message: number) {
   }
 }
 
-function squares(concept: Concept): number {
-  return Math.round((concept.mastery ?? 0) * 3)
-}
-
 type Draft = { markdown: string; solution: string; hints: string; run: string; options: string; answer_key: string; explanation: string }
 
 function draftOf(block: Block): Draft {
@@ -1051,48 +1029,6 @@ function EditBar(props: { block: Block; first: boolean; last: boolean; disabled:
   )
 }
 
-function moduleRuns(concepts: Concept[]): Concept[][] {
-  const runs: Concept[][] = []
-  for (const c of concepts) {
-    if (runs.at(-1)?.[0].module === c.module) runs.at(-1)!.push(c)
-    else runs.push([c])
-  }
-  return runs
-}
-
-/** A unit is done once its lesson is finished, or placed out with no lesson begun. */
-function unitDone(concept: Concept, lesson: Lesson | undefined): boolean {
-  return lesson ? lesson.blocks.some((b) => b.kind === 'done') : Boolean(concept.known)
-}
-
-function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction, prepared = false): string {
-  if (prepared) return !lesson ? t('map.notPlanned') : lesson.blocks.some((b) => b.kind === 'done') ? t('map.planned') : t('map.drafting')
-  const due = concept.due ? t('map.reviewDue', { count: concept.due }) : ''
-  if (!lesson) return [concept.known ? t('map.placedOut') : t('map.notStarted'), due].filter(Boolean).join(', ')
-  if (concept.kind === 'practice') return lesson.blocks.some((b) => b.kind === 'done') ? t('common.done') : t('map.started')
-  const outline = outlineOf(lesson)
-  const where = unitDone(concept, lesson)
-    ? t('common.done')
-    : outline && outline.at < outline.steps.length
-      ? t('outline.step', { n: outline.at + 1, total: outline.steps.length })
-      : ''
-  const cs = lesson.blocks
-    .filter((b) => b.kind === 'challenge' || b.kind === 'exercise' || b.kind === 'speaking')
-    .map((b) => b.data as ChallengeData)
-  if (cs.length === 0) return [where || t('map.started'), due].filter(Boolean).join(', ')
-  const hints = cs.reduce((n, c) => n + c.hints.length, 0)
-  const gaveUp = cs.filter((c) => c.gave_up).length
-  return [
-    where,
-    t('map.solved', { solved: cs.filter((c) => c.solved).length, total: cs.length }),
-    hints > 0 && t('map.hints', { count: hints }),
-    gaveUp > 0 && t('map.gaveUp', { n: gaveUp }),
-    due,
-  ]
-    .filter(Boolean)
-    .join(', ')
-}
-
 function Plan(props: {
   ranking: Ranked[]
   mechanism: string | null
@@ -1157,6 +1093,440 @@ function Plan(props: {
   )
 }
 
+/** The map's head: progress, level, the language panel and the search. */
+function MapHead(props: { course: CourseDetail; running: boolean; onStart: (kind: 'episode' | 'writing') => void }) {
+  const { t } = useTranslation()
+  const { course } = props
+  const units = course.concepts.filter((c) => c.kind === 'concept')
+  const unitsDone = units.filter((c) => unitDone(c, course.lessons.find((l) => l.concept_id === c.id))).length
+  const reviewDue = units.filter((c) => c.due).length
+  return (
+    <>
+      <div className="label">{t('map.label')}</div>
+      {course.mode !== 'teacher' && units.length > 0 && (
+        <div className="small">
+          {reviewDue ? t('map.summary', { done: unitsDone, total: units.length, count: reviewDue }) : t('map.summaryDone', { done: unitsDone, total: units.length })}
+        </div>
+      )}
+      {course.level && (
+        <div className="level-row">
+          <span>
+            {t('map.level')} <span className="chip">{course.level}</span>
+          </span>
+        </div>
+      )}
+      {course.strands && course.concepts.length > 0 && (
+        <LevelPanel
+          level={course.level}
+          strands={course.strands}
+          vocabulary={course.vocabulary}
+          units={course.concepts}
+          disabled={props.running}
+          onStart={props.onStart}
+          story={course.lang !== null}
+        />
+      )}
+      <form
+        className="map-search"
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const query = String(new FormData(e.currentTarget).get('q') ?? '')
+          if (query.trim()) location.hash = searchHref(course.id, query)
+        }}
+      >
+        <input type="search" name="q" className="field" dir="auto" aria-label={t('search.label')} placeholder={t('search.placeholder')} />
+      </form>
+    </>
+  )
+}
+
+/** A lesson's checks taken offline: how many are answered and sending them, or preparing them in the first place. */
+function OfflineRow(props: {
+  lesson: Lesson
+  given: Record<number, Given>
+  online: boolean
+  sending: boolean
+  onSend: (ready: Block[]) => void
+  onPrepare: () => void
+}) {
+  const { t } = useTranslation()
+  const { lesson, given } = props
+  if (!lesson.batch) {
+    return (
+      <div className="lesson-next batch">
+        <span className="small">{t('offline.help')}</span>
+        <button className="btn" disabled={!props.online} onClick={props.onPrepare}>
+          {t('offline.prepare')}
+        </button>
+      </div>
+    )
+  }
+  const batchCards = lesson.blocks.filter((b) => b.kind === 'quiz' && (b.data as QuizData).answer === null)
+  const ready = batchCards.filter((b) => given[b.id] && ((b.data as QuizData).kind !== 'open' || given[b.id].self_correct !== undefined))
+  return (
+    <div className="lesson-next batch">
+      <span className="small">{t('offline.answered', { n: ready.length, total: batchCards.length })}</span>
+      {/* with nothing answered it leaves offline mode, the way out of a prepare that wrote no checks */}
+      <button className={ready.length ? 'btn primary' : 'btn'} disabled={!props.online || props.sending} onClick={() => props.onSend(ready)}>
+        {ready.length ? t('offline.send') : t('offline.leave')}
+      </button>
+    </div>
+  )
+}
+
+function ChatIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+    </svg>
+  )
+}
+
+function UnreadBadge({ unread }: { unread: number }) {
+  const { t } = useTranslation()
+  return (
+    <span className="badge">
+      <span aria-hidden="true">{unread}</span>
+      <span className="visually-hidden"> {t('chat.unread', { count: unread })}</span>
+    </span>
+  )
+}
+
+/** The button that opens the chat beside the lesson; it says what the tutor is doing while it works. */
+function AskButton(props: { unread: number; working: string | null; onAsk: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <button type="button" id="ask" className="btn primary icon ask" aria-label={t('chat.ask')} title={t('chat.ask')} onClick={props.onAsk}>
+      <ChatIcon size={20} />
+      {props.unread > 0 && <UnreadBadge unread={props.unread} />}
+      <span className="live" role="status">
+        {props.working !== null && ` (${props.working})`}
+      </span>
+    </button>
+  )
+}
+
+/** The chat with the tutor: its messages, the reply coming in, and the composer. */
+function ChatPanel({ messagesRef, ...props }: {
+  open: boolean
+  running: boolean
+  doing: string
+  messages: Message[]
+  streaming: string
+  draft: string
+  onDraft: (update: (draft: string) => string) => void
+  placeholder: string | undefined
+  onKey: (e: KeyboardEvent<HTMLTextAreaElement>) => void
+  speech: boolean
+  canSend: boolean
+  onSend: () => void
+  onStop: () => void
+  onClose: () => void
+  onError: (message: string) => void
+  messagesRef: RefObject<HTMLDivElement | null>
+}) {
+  const { t } = useTranslation()
+  return (
+    <aside
+      className="chat"
+      aria-label={t('chat.label')}
+      hidden={!props.open}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') props.onClose()
+      }}
+    >
+      <div className="chat-head">
+        <strong>{t('chat.tutor')}</strong>
+        <span className={props.running ? 'status live' : 'status'} role="status">
+          {props.running && props.doing}
+        </span>
+        <button type="button" className="link" onClick={props.onClose}>
+          {t('chat.close')}
+        </button>
+      </div>
+      <div ref={messagesRef} className="messages">
+        {props.messages.map((m) => (
+          <Remark key={m.id} message={m} />
+        ))}
+        {props.open && props.streaming && (
+          <div className="bubble">
+            <Markdown>{props.streaming}</Markdown>
+            <span className="caret" />
+          </div>
+        )}
+      </div>
+      <div className="composer">
+        <label htmlFor="chat">{t('chat.message')}</label>
+        <textarea
+          id="chat"
+          className="field" dir="auto"
+          rows={3}
+          value={props.draft}
+          placeholder={props.placeholder}
+          onChange={(e) => props.onDraft(() => e.target.value)}
+          onKeyDown={props.onKey}
+        />
+        <div className="row">
+          {props.speech && <Mic onClip={(clip) => transcribe(clip).then((t) => props.onDraft((d) => (d ? `${d} ${t}` : t)))} onError={props.onError} />}
+          {props.running && (
+            <button className="btn" onClick={props.onStop}>
+              {t('common.stop')}
+            </button>
+          )}
+          <button className="btn primary" onClick={props.onSend} disabled={!props.canSend}>
+            {t('common.send')}
+          </button>
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+const PANE_ICONS = {
+  map: (
+    <>
+      <path d="M14.1 6.3 9.9 4.2a2 2 0 0 0-1.8 0L3.6 6.4A1 1 0 0 0 3 7.3v12.1a1 1 0 0 0 1.4.9l3.7-1.9a2 2 0 0 1 1.8 0l4.2 2.1a2 2 0 0 0 1.8 0l4.5-2.2a1 1 0 0 0 .6-.9V5.3a1 1 0 0 0-1.4-.9l-3.7 1.9a2 2 0 0 1-1.8 0z" />
+      <path d="M15 5.8v15M9 3.2v15" />
+    </>
+  ),
+  lesson: (
+    <>
+      <path d="M12 7v14" />
+      <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
+    </>
+  ),
+}
+
+/** On a phone, the bar that switches between the map, the lesson and the chat. */
+function PaneSwitcher(props: {
+  pane: 'map' | 'lesson'
+  open: boolean
+  unread: number
+  working: string | null
+  onPane: (pane: 'map' | 'lesson') => void
+  onChat: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <nav className="panes" aria-label={t('panes.label')}>
+      {(['map', 'lesson'] as const).map((p) => (
+        <button
+          key={p}
+          aria-pressed={props.pane === p && !props.open}
+          aria-label={p === 'map' ? t('map.label') : t('panes.lesson')}
+          title={p === 'map' ? t('map.label') : t('panes.lesson')}
+          onClick={() => props.onPane(p)}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            {PANE_ICONS[p]}
+          </svg>
+        </button>
+      ))}
+      <button aria-pressed={props.open} aria-label={t('chat.ask')} title={t('chat.ask')} onClick={props.onChat}>
+        <ChatIcon size={22} />
+        {props.unread > 0 && !props.open && <UnreadBadge unread={props.unread} />}
+        {/* the chat's head names what the tutor is doing; with the chat closed, a pulse here says it is at work */}
+        {props.working !== null && <span className="live" aria-hidden="true" />}
+        <span className="visually-hidden" role="status">
+          {props.working}
+        </span>
+      </button>
+    </nav>
+  )
+}
+
+function UpgradeCard(props: { upgrade: NonNullable<CourseDetail['upgrade']>; upgrading: boolean; onUpgrade: () => void; onStay: () => void }) {
+  const { t } = useTranslation()
+  const { upgrade } = props
+  return (
+    <section className="block upgrade">
+      <div className="label">{t('replay.upgrade', { number: upgrade.number, date: day(upgrade.published.slice(0, 10)) })}</div>
+      {upgrade.notes && (
+        <div className="small" dir="auto">
+          {upgrade.notes}
+        </div>
+      )}
+      {(['kept', 'restarted', 'added', 'removed'] as const).map(
+        (part) =>
+          upgrade[part].length > 0 && (
+            <div key={part} className="small" dir="auto">
+              {t(`replay.${part}`, { count: upgrade[part].length, units: upgrade[part].join(', ') })}
+            </div>
+          ),
+      )}
+      <div className="row">
+        <button type="button" className="btn primary" disabled={props.upgrading} onClick={props.onUpgrade}>
+          {props.upgrading ? t('replay.upgrading') : t('replay.upgradeNow')}
+        </button>
+        <button type="button" className="btn" disabled={props.upgrading} onClick={props.onStay}>
+          {t('replay.stay')}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/** The commands a replayed course asks to run once, each allowed or refused by the learner. */
+function SetupCard(props: { steps: SetupStep[]; onDecide: (index: number, allow: boolean) => void }) {
+  const { t } = useTranslation()
+  return (
+    <section className="block setup">
+      <div className="label">{t('replay.setup')}</div>
+      <div className="small">{t('replay.setupHelp')}</div>
+      {props.steps.map((step, i) => (
+        <div key={i} className="setup-step">
+          <pre dir="ltr">{step.command}</pre>
+          <div className="row">
+            {step.status === 'running' ? (
+              <span className="small">{t('replay.running')}</span>
+            ) : step.status === 'asked' || step.status === 'failed' ? (
+              <>
+                {step.status === 'failed' && <span className="small">{t('replay.failed', { code: step.exit_code ?? '–' })}</span>}
+                <button type="button" className="btn primary" onClick={() => props.onDecide(i, true)}>
+                  {t('network.allow')}
+                </button>
+                <button type="button" className="btn" onClick={() => props.onDecide(i, false)}>
+                  {t('network.refuse')}
+                </button>
+              </>
+            ) : (
+              <span className="small">{t(`replay.${step.status}`)}</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+function PlacementResult(props: { id?: number; level: string | null; text: string | null; areas: Area[] | undefined }) {
+  const { t } = useTranslation()
+  return (
+    <section id={props.id ? `block-${props.id}` : undefined} className="block">
+      <div className="label">
+        {t('block.placementResult')} <span className="chip">{props.level}</span>
+      </div>
+      <Markdown>{props.text ?? ''}</Markdown>
+      <PlacementAreas areas={props.areas} />
+    </section>
+  )
+}
+
+type Features = { speech: boolean; commands: boolean; crafted: boolean; sketched: boolean }
+
+/** One card of a lesson, by its kind, with the calls it makes back to the server. */
+function LessonCard(props: {
+  block: Block
+  lesson: Lesson
+  authored: boolean
+  given: Given | undefined
+  onGive: (answer: Given) => void
+  features: Features
+  post: (path: string, body: unknown) => void
+  onError: (message: string) => void
+}) {
+  const { block: b, lesson, authored, features } = props
+  return b.kind === 'question' ? (
+      <QuestionCard
+        key={b.id}
+        block={b}
+        disabled={lesson.running}
+        onAnswer={(answer, nonGoals) => props.post(`/api/blocks/${b.id}/answer`, { answer, non_goals: nonGoals ?? [] })}
+      />
+    ) : b.kind === 'quiz' ? (
+      <QuizCard
+        key={b.id}
+        id={b.id}
+        question={b.markdown}
+        data={b.data as QuizData}
+        disabled={lesson.running}
+        authored={authored}
+        offline={lesson.batch ? { given: props.given, onGive: props.onGive } : undefined}
+        onUnknown={lesson.phase === 'placement' ? () => props.post(`/api/blocks/${b.id}/quiz/unknown`, {}) : undefined}
+        onSelfGrade={lesson.replay ? (correct) => props.post(`/api/blocks/${b.id}/self-grade`, { correct }) : undefined}
+        onSubmit={(answer, confidence) => props.post(`/api/blocks/${b.id}/quiz`, { answer, confidence })}
+      />
+    ) : b.kind === 'reading' ? (
+      <ReadingCard
+        key={b.id}
+        id={b.id}
+        text={b.markdown}
+        data={b.data}
+        speech={features.speech}
+        onAdd={(word) => props.post(`/api/blocks/${b.id}/vocabulary`, { word })}
+        onKnown={(word) => props.post(`/api/blocks/${b.id}/known`, { word })}
+      />
+    ) : b.kind === 'vocab' ? (
+      <VocabCheckCard
+        key={b.id}
+        id={b.id}
+        data={b.data}
+        disabled={lesson.running}
+        onSubmit={(known) => props.post(`/api/blocks/${b.id}/vocab`, { known })}
+      />
+    ) : b.kind === 'exercise' ? (
+      <ExerciseCard
+        key={b.id}
+        block={b}
+        disabled={lesson.running}
+        commands={features.commands}
+        authored={authored}
+        onAct={(action, body = {}) => props.post(`/api/blocks/${b.id}/${action}`, body)}
+        onError={props.onError}
+      />
+    ) : b.kind === 'challenge' ? (
+      <ChallengeCard
+        key={b.id}
+        block={b}
+        disabled={lesson.running}
+        speech={features.speech}
+        authored={authored}
+        onAct={(action, body = {}) => props.post(`/api/blocks/${b.id}/${action}`, body)}
+        onError={props.onError}
+      />
+    ) : b.kind === 'network' ? (
+      <NetworkCard
+        key={b.id}
+        id={b.id}
+        reason={b.markdown}
+        data={b.data}
+        disabled={lesson.running}
+        onDecide={(allow) => props.post(`/api/blocks/${b.id}/network`, { allow })}
+      />
+    ) : b.kind === 'plot' ? (
+      <PlotCard key={b.id} id={b.id} title={b.markdown} data={b.data} />
+    ) : b.kind === 'widget' ? (
+      <WidgetCard key={b.id} id={b.id} title={b.markdown} data={b.data} onTry={authored ? undefined : (at) => props.post(`/api/blocks/${b.id}/widget`, { at })} />
+    ) : b.kind === 'figure' ? (
+      <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={features.sketched} disabled={lesson.running} onRestore={() => props.post(`/api/blocks/${b.id}/restore`, {})} onRedraw={features.crafted ? (notes) => props.post(`/api/blocks/${b.id}/redraw`, { notes }) : undefined} />
+    ) : b.kind === 'placement' ? (
+      <PlacementResult key={b.id} id={b.id} level={(b.data as { level: string }).level} text={b.markdown} areas={(b.data as { areas?: Area[] }).areas} />
+    ) : b.kind === 'podcast' ? (
+      <PodcastCard
+        key={b.id}
+        id={b.id}
+        title={b.markdown}
+        data={b.data}
+        answered={(id) => (lesson.blocks.find((q) => q.id === id)?.data as QuizData | undefined)?.answer != null}
+      />
+    ) : b.kind === 'speaking' ? (
+      <SpeakingCard
+        key={b.id}
+        block={b}
+        disabled={lesson.running}
+        speech={features.speech}
+        onAct={(action, body = {}) => props.post(`/api/blocks/${b.id}/${action}`, body)}
+        onError={props.onError}
+      />
+    ) : (
+      <section key={b.id} id={`block-${b.id}`} className="block">
+        <div className="label">{lookup(`block.${b.kind}`, b.kind)}</div>
+        <Markdown>{b.markdown}</Markdown>
+      </section>
+    )
+}
+
 function Workspace({ profile, courseId, speech, commands, crafted, sketched, concept, start, found }: { profile: number; courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null; found: { lesson: number; at: string } | null }) {
   const { t } = useTranslation()
   const [course, setCourse] = useState<CourseDetail | null>(null)
@@ -1180,7 +1550,6 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
   const [asking, setAsking] = useState<boolean | null>(null)
   const [kept, setKept] = useState<{ lesson: number | null; answers: Record<number, Given> }>({ lesson: null, answers: {} })
   const lessonBottom = useRef<HTMLDivElement>(null)
-  const sideMenu = useRef<HTMLDetailsElement>(null)
   const lessonBox = useRef<HTMLElement>(null)
   const messagesBox = useRef<HTMLDivElement>(null)
 
@@ -1283,6 +1652,23 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
     )
   }
 
+  function finishTurn(ev: Extract<TutorEvent, { type: 'turn.done' }>) {
+    const { message } = ev
+    patchLesson(ev.lesson_id, (l) => ({
+      ...l,
+      running: false,
+      messages: message ? [...l.messages, message] : l.messages,
+    }))
+    setStreaming('')
+    setActivity('')
+    setWriting(false)
+    if (ev.ok) markTab('✓')
+    else if (ev.error !== 'stopped') {
+      markTab('✕')
+      setError(ev.error ?? i18n.t('chat.turnFailed'))
+    }
+  }
+
   useEffect(() => {
     const refreshTotals = () =>
       api<CourseDetail>(`/api/courses/${courseId}`).then(
@@ -1292,6 +1678,14 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
     const source = new EventSource(`/api/courses/${courseId}/events`)
     source.onmessage = (raw) => {
       const ev: TutorEvent = JSON.parse(raw.data)
+      const toLesson = lessonChange(ev)
+      if (toLesson) patchLesson(...toLesson)
+      const toCourse = courseChange(ev)
+      if (toCourse) setCourse((c) => c && toCourse(c))
+      const toSources = sourcesChange(ev)
+      if (toSources) setSources(toSources)
+      if (ev.type === 'block.added' || ev.type === 'plan.ranked') setWriting(false)
+      if (ev.type === 'block.added' || ev.type === 'block.updated') refreshTotals()
       if (ev.type === 'turn.started') {
         patchLesson(ev.lesson_id, (l) => ({ ...l, running: true }))
         clearTabMark()
@@ -1303,61 +1697,10 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
       } else if (ev.type === 'activity') {
         setActivity(ev.tool)
         setWriting(LESSON_AREA_TOOLS.includes(ev.tool))
-      } else if (ev.type === 'block.added') {
-        setWriting(false)
-        patchLesson(ev.lesson_id, (l) => ({ ...l, blocks: [...l.blocks, ev.block] }))
-        refreshTotals()
-      } else if (ev.type === 'block.updated') {
-        patchLesson(ev.lesson_id, (l) => ({ ...l, blocks: l.blocks.map((b) => (b.id === ev.block.id ? ev.block : b)) }))
-        refreshTotals()
-      } else if (ev.type === 'block.removed') {
-        patchLesson(ev.lesson_id, (l) => ({ ...l, blocks: l.blocks.filter((b) => b.id !== ev.id) }))
-      } else if (ev.type === 'lesson.ordered') {
-        patchLesson(ev.lesson_id, (l) => ({ ...l, blocks: ev.blocks }))
-      } else if (ev.type === 'plan.ranked') {
-        setWriting(false)
-        setCourse((c) => c && { ...c, ranking: ev.ranking, mechanism: ev.mechanism })
-      } else if (ev.type === 'plan.chosen') {
-        setCourse((c) => c && { ...c, mechanism: ev.mechanism })
-      } else if (ev.type === 'course.pace') {
-        setCourse((c) => c && { ...c, pace: ev.pace })
-      } else if (ev.type === 'placement.set') {
-        setCourse((c) => c && { ...c, level: ev.level, placement: ev.placement, areas: ev.areas })
-      } else if (ev.type === 'capstone.set') {
-        setCourse(
-          (c) =>
-            c && {
-              ...c,
-              capstones: c.capstones.some((k) => k.id === ev.capstone.id)
-                ? c.capstones.map((k) => (k.id === ev.capstone.id ? ev.capstone : k))
-                : [...c.capstones, ev.capstone],
-            },
-        )
-      } else if (ev.type === 'source.updated') {
-        setSources((all) => (all.some((s) => s.id === ev.source.id) ? all.map((s) => (s.id === ev.source.id ? ev.source : s)) : [...all, ev.source]))
-      } else if (ev.type === 'source.removed') {
-        setSources((all) => all.filter((s) => s.id !== ev.id))
-      } else if (ev.type === 'map.set') {
-        setCourse((c) => c && { ...c, concepts: ev.concepts, capstones: ev.capstones ?? c.capstones })
       } else if (ev.type === 'lesson.created') {
         addLesson(ev.lesson)
-      } else if (ev.type === 'setup.updated') {
-        setCourse((c) => c && { ...c, setup: ev.setup })
       } else if (ev.type === 'turn.done') {
-        const { message } = ev
-        patchLesson(ev.lesson_id, (l) => ({
-          ...l,
-          running: false,
-          messages: message ? [...l.messages, message] : l.messages,
-        }))
-        setStreaming('')
-        setActivity('')
-        setWriting(false)
-        if (ev.ok) markTab('✓')
-        else if (ev.error !== 'stopped') {
-          markTab('✕')
-          setError(ev.error ?? i18n.t('chat.turnFailed'))
-        }
+        finishTurn(ev)
       }
     }
     // a sitting opens with a few due reviews before the lesson; a card looked up by search opens straight away
@@ -1493,147 +1836,57 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
     : undefined
   const seenUpTo = loadSeen(lesson.id) ?? lastTutor
   const unread = open ? 0 : lesson.messages.filter((m) => m.role === 'tutor' && m.id > seenUpTo).length
+  const doing = activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working')
   const outline = outlineOf(lesson)
   const cards = lesson.blocks.filter((b) => b.kind !== 'outline').length
   // the summary card still to come keeps the total above the cards already shown
   const estimate = outline?.cards ?? lesson.cards
   const cardTotal = estimate && (lessonDone ? cards : Math.max(estimate, cards + 1))
   const cardNumber = (i: number) => (cardTotal ? { n: lesson.blocks.slice(0, i + 1).filter((b) => b.kind !== 'outline').length, total: cardTotal } : null)
-  const units = course.concepts.filter((c) => c.kind === 'concept')
-  const unitsDone = units.filter((c) => unitDone(c, course.lessons.find((l) => l.concept_id === c.id))).length
-  const reviewDue = units.filter((c) => c.due).length
   const empty = lesson.blocks.length === 0 && !showPlan
   const canPrepare = lesson.phase === 'lesson' && lesson.concept_id !== null && course.mode !== 'teacher' && !lesson.batch && !lesson.replay && !finished
-  const batchCards = lesson.batch ? lesson.blocks.filter((b) => b.kind === 'quiz' && (b.data as QuizData).answer === null) : []
-  const ready = batchCards.filter((b) => given[b.id] && ((b.data as QuizData).kind !== 'open' || given[b.id].self_correct !== undefined))
 
   return (
     <div className="workspace" data-pane={pane}>
       <nav className="map" aria-label={t('map.label')}>
-        <div className="label">{t('map.label')}</div>
-        {course.mode !== 'teacher' && units.length > 0 && (
-          <div className="small">
-            {reviewDue ? t('map.summary', { done: unitsDone, total: units.length, count: reviewDue }) : t('map.summaryDone', { done: unitsDone, total: units.length })}
-          </div>
-        )}
-        {course.level && (
-          <div className="level-row">
-            <span>
-              {t('map.level')} <span className="chip">{course.level}</span>
-            </span>
-          </div>
-        )}
-        {course.strands && course.concepts.length > 0 && (
-          <LevelPanel
-            level={course.level}
-            strands={course.strands}
-            vocabulary={course.vocabulary}
-            units={course.concepts}
-            disabled={lesson.running}
-            onStart={(kind) =>
-              api<Lesson>(`/api/courses/${course.id}/${kind}`, {}).then(
-                (created) => {
-                  addLesson(created)
-                  showLesson(created.id)
-                },
-                (err: Error) => setError(err.message),
-              )
-            }
-            story={course.lang !== null}
-          />
-        )}
-        <form
-          className="map-search"
-          role="search"
-          onSubmit={(e) => {
-            e.preventDefault()
-            const query = String(new FormData(e.currentTarget).get('q') ?? '')
-            if (query.trim()) location.hash = searchHref(course.id, query)
+        <MapHead
+          course={course}
+          running={lesson.running}
+          onStart={(kind) =>
+            api<Lesson>(`/api/courses/${course.id}/${kind}`, {}).then(
+              (created) => {
+                addLesson(created)
+                showLesson(created.id)
+              },
+              (err: Error) => setError(err.message),
+            )
+          }
+        />
+        <SideMenu
+          course={course}
+          running={lesson.running}
+          sources={sources}
+          onSources={setSources}
+          onError={setError}
+          onLesson={(created) => {
+            addLesson(created)
+            showLesson(created.id)
           }}
-        >
-          <input type="search" name="q" className="field" dir="auto" aria-label={t('search.label')} placeholder={t('search.placeholder')} />
-        </form>
-        <details ref={sideMenu} className="side-menu">
-          <summary className="btn">{t('map.menu')}</summary>
-          <div className="side-menu-panel">
-            <a className="btn as-link" href={`#/course/${course.id}/book`}>
-              {t('book.export')}
-            </a>
-            <a className="btn as-link" href={`/api/courses/${course.id}/obsidian.zip`} download>
-              {t('book.obsidian')}
-            </a>
-            <a className="btn as-link" href={`#/course/${course.id}/publish`}>
-              {t('publish.link')}
-            </a>
-            {course.mode === 'learner' && (
-              <a className="btn as-link" href={`#/graph?course=${course.id}`}>
-                {t('graph.courseLink')}
-              </a>
-            )}
-            {course.concepts.length > 0 && (
-              <button
-                type="button"
-                className="btn"
-                disabled={lesson.running}
-                onClick={() =>
-                  api<Lesson>(`/api/courses/${course.id}/placement/${course.mode === 'replay' ? 'cards' : 'retake'}`, {}).then(
-                    (created) => {
-                      addLesson(created)
-                      showLesson(created.id)
-                      sideMenu.current!.open = false
-                    },
-                    (err: Error) => setError(err.message),
-                  )
-                }
-              >
-                {course.mode === 'replay' ? t('replay.place') : course.level ? t('map.retake') : t('map.take')}
-              </button>
-            )}
-            {course.concepts.length > 0 && (
-              <button
-                type="button"
-                className="btn"
-                disabled={lesson.running}
-                onClick={() => {
-                  // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
-                  showLesson(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
-                  sideMenu.current!.open = false
-                  setAsking(true)
-                  setChanging(true)
-                  // after the click's render, once the chat is open
-                  requestAnimationFrame(() => document.getElementById('chat')?.focus())
-                }}
-              >
-                {t('map.change')}
-              </button>
-            )}
-            {course.mode !== 'teacher' && (
-              <>
-                <div className="pace" role="group" aria-label={t('pace.label')}>
-                  {(['momentum', 'speed'] as const).map((pace) => (
-                    <button
-                      key={pace}
-                      type="button"
-                      className={course.pace === pace ? 'cat picked' : 'cat'}
-                      aria-pressed={course.pace === pace}
-                      onClick={() =>
-                        api(`/api/courses/${course.id}/pace`, { pace }).then(
-                          () => setCourse((c) => c && { ...c, pace }),
-                          (err: Error) => setError(err.message),
-                        )
-                      }
-                    >
-                      {t(`pace.${pace}`)}
-                    </button>
-                  ))}
-                </div>
-                <div className="small">{t(`pace.${course.pace}Hint`)}</div>
-              </>
-            )}
-            {course.cleaned && <div className="small muted">{t('map.cleaned', { date: day(course.cleaned) })}</div>}
-            {course.concepts.length > 0 && <SourcesPanel courseId={course.id} sources={sources} onChange={setSources} onError={setError} />}
-          </div>
-        </details>
+          onChangeMap={() => {
+            // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
+            showLesson(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
+            setAsking(true)
+            setChanging(true)
+            // after the click's render, once the chat is open
+            requestAnimationFrame(() => document.getElementById('chat')?.focus())
+          }}
+          onPace={(pace) =>
+            api(`/api/courses/${course.id}/pace`, { pace }).then(
+              () => setCourse((c) => c && { ...c, pace }),
+              (err: Error) => setError(err.message),
+            )
+          }
+        />
         {course.lessons
           .filter((l) => l.concept_id === null)
           .map((l) => (
@@ -1641,101 +1894,19 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
               {lessonTitle(l, t)}
             </button>
           ))}
-        {moduleRuns(course.concepts).map((units) => {
-          const module = units[0].module
-          const lessonOf = (c: Concept) => course.lessons.find((l) => l.concept_id === c.id)
-          const projects = course.capstones.filter((k) => k.module === module)
-          const finished = units.every((c) => unitDone(c, lessonOf(c))) || (projects.length > 0 && projects.every((k) => k.done === k.milestones.length))
-          const started = units.some((c) => lessonOf(c) || unitDone(c, lessonOf(c)))
-          // a finished or untouched module folds away; the one holding the open lesson stays open
-          const open = openModules[module] ?? (units.some((c) => lessonOf(c)?.id === lesson.id) || (started && !finished))
-          return (
-            <details
-              key={units[0].id}
-              className="module"
-              open={open}
-              onToggle={(e) => {
-                const now = e.currentTarget.open
-                if (now !== open) setOpenModules((m) => ({ ...m, [module]: now }))
-              }}
-            >
-              <summary>
-                <strong dir="auto">{module}</strong>
-                {projects.map((k) => (
-                  <div key={k.id} className={k.done === k.milestones.length ? 'capstone done' : 'capstone'} title={k.brief}>
-                    <span className="small">{t('map.project', { title: k.title })}</span>
-                    <progress value={k.done} max={k.milestones.length} />
-                    <span className="small">{t('map.milestones', { done: k.done, total: k.milestones.length })}</span>
-                  </div>
-                ))}
-              </summary>
-              {units.map((c) => {
-                const conceptLesson = lessonOf(c)
-                return (
-                  <div key={c.id} className="concept">
-                  <button aria-current={conceptLesson?.id === lesson.id} onClick={() => openConcept(c)}>
-                    <span className="concept-title">
-                      <span className="concept-name" dir="auto">{c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}</span>
-                      {course.mode !== 'teacher' && (
-                        <span className="marks">
-                          {/* the slot stays when empty, so every unit's squares sit on the same line */}
-                          {unitDone(c, conceptLesson) ? (
-                            <span className="done-mark" role="img" aria-label={t('common.done')}>
-                              ✓
-                            </span>
-                          ) : (
-                            <span className="done-mark empty" />
-                          )}
-                          {c.kind !== 'practice' && (
-                            <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
-                              {[1, 2, 3].map((n) => (
-                                <i key={n} className={n <= squares(c) ? 'on' : ''} />
-                              ))}
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </span>
-                    <span className="stats">{c.unwritten && !conceptLesson ? t('replay.laterShort') : conceptStats(c, conceptLesson, t, course.mode === 'teacher')}</span>
-                    {c.needs.length > 0 && !unitDone(c, conceptLesson) && (
-                      <span className="stats needs" dir="auto">
-                        {t('map.needs')}{' '}
-                        {c.needs
-                          .map((id) => course.concepts.find((u) => u.id === id))
-                          .filter((u): u is Concept => u !== undefined)
-                          .map((u) => (course.mode === 'teacher' ? u.title : `${u.title} ${unmetNeeds(c).includes(u) ? '✗' : '✓'}`))
-                          .join(', ')}
-                      </span>
-                    )}
-                  </button>
-                  {held === c.id && c.unwritten && !conceptLesson ? (
-                    <div className="held small" role="status">
-                      <span>{t('replay.later')}</span>
-                      <div className="row">
-                        <button type="button" className="btn primary" onClick={() => openConcept(c, true)}>
-                          {t('replay.teachNow')}
-                        </button>
-                      </div>
-                    </div>
-                  ) : held === c.id && (
-                    <div className="held small" role="status">
-                      <span dir="auto">{t('map.needsFirst', { titles: unmetNeeds(c).map((u) => u.title).join(', ') })}</span>
-                      <div className="row">
-                        <button type="button" className="btn primary" onClick={() => openConcept(unmetNeeds(c)[0])}>
-                          {t('map.openFirst')}
-                        </button>
-                        <button type="button" className="btn" onClick={() => openConcept(c, true)}>
-                          {t('map.startAnyway')}
-                        </button>
-                      </div>
-                    </div>
-                    )}
-                  </div>
-                )
-              })}
-            </details>
-          )
-        })}
+        {moduleRuns(course.concepts).map((units) => (
+          <ModuleGroup
+            key={units[0].id}
+            units={units}
+            course={course}
+            current={lesson.id}
+            held={held}
+            unmetNeeds={unmetNeeds}
+            onOpen={openConcept}
+            toggled={openModules[units[0].module]}
+            onToggle={(now) => setOpenModules((m) => ({ ...m, [units[0].module]: now }))}
+          />
+        ))}
         {course.recap?.finished && (
           <a className="recap-entry" href={`#/course/${course.id}/recap`}>
             <span className="concept-name">{t('recap.mapEntry')}</span>
@@ -1748,63 +1919,18 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
 
       <main ref={lessonBox} className="lesson">
         {course.upgrade && (
-          <section className="block upgrade">
-            <div className="label">{t('replay.upgrade', { number: course.upgrade.number, date: day(course.upgrade.published.slice(0, 10)) })}</div>
-            {course.upgrade.notes && (
-              <div className="small" dir="auto">
-                {course.upgrade.notes}
-              </div>
-            )}
-            {(['kept', 'restarted', 'added', 'removed'] as const).map(
-              (part) =>
-                course.upgrade![part].length > 0 && (
-                  <div key={part} className="small" dir="auto">
-                    {t(`replay.${part}`, { count: course.upgrade![part].length, units: course.upgrade![part].join(', ') })}
-                  </div>
-                ),
-            )}
-            <div className="row">
-              <button type="button" className="btn primary" disabled={upgrading} onClick={() => upgrade(course.upgrade!.hash)}>
-                {upgrading ? t('replay.upgrading') : t('replay.upgradeNow')}
-              </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={upgrading}
-                onClick={() => api<CourseDetail>(`/api/courses/${course.id}/upgrade/skip`, { hash: course.upgrade!.hash }).then(setCourse, (e: Error) => setError(e.message))}
-              >
-                {t('replay.stay')}
-              </button>
-            </div>
-          </section>
+          <UpgradeCard
+            upgrade={course.upgrade}
+            upgrading={upgrading}
+            onUpgrade={() => upgrade(course.upgrade!.hash)}
+            onStay={() => api<CourseDetail>(`/api/courses/${course.id}/upgrade/skip`, { hash: course.upgrade!.hash }).then(setCourse, (e: Error) => setError(e.message))}
+          />
         )}
         {course.setup.some((step) => step.status !== 'done' && step.status !== 'refused') && (
-          <section className="block setup">
-            <div className="label">{t('replay.setup')}</div>
-            <div className="small">{t('replay.setupHelp')}</div>
-            {course.setup.map((step, i) => (
-              <div key={i} className="setup-step">
-                <pre dir="ltr">{step.command}</pre>
-                <div className="row">
-                  {step.status === 'running' ? (
-                    <span className="small">{t('replay.running')}</span>
-                  ) : step.status === 'asked' || step.status === 'failed' ? (
-                    <>
-                      {step.status === 'failed' && <span className="small">{t('replay.failed', { code: step.exit_code ?? '–' })}</span>}
-                      <button type="button" className="btn primary" onClick={() => api(`/api/courses/${course.id}/setup/${i}`, { allow: true }).catch((e: Error) => setError(e.message))}>
-                        {t('network.allow')}
-                      </button>
-                      <button type="button" className="btn" onClick={() => api(`/api/courses/${course.id}/setup/${i}`, { allow: false }).catch((e: Error) => setError(e.message))}>
-                        {t('network.refuse')}
-                      </button>
-                    </>
-                  ) : (
-                    <span className="small">{t(`replay.${step.status}`)}</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </section>
+          <SetupCard
+            steps={course.setup}
+            onDecide={(i, allow) => api(`/api/courses/${course.id}/setup/${i}`, { allow }).catch((e: Error) => setError(e.message))}
+          />
         )}
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
         {/* first, wherever the tutor posted it: the plan and the counter belong under the title */}
@@ -1841,109 +1967,18 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
         {lesson.blocks.map((b, i) => {
           if (b.kind === 'outline' || (lesson.replay && i >= replayShown(lesson.blocks))) return null
           const n = cardNumber(i)
-          const card = b.kind === 'question' ? (
-            <QuestionCard
+          const card = (
+            <LessonCard
               key={b.id}
               block={b}
-              disabled={lesson.running}
-              onAnswer={(answer, nonGoals) => post(`/api/blocks/${b.id}/answer`, { answer, non_goals: nonGoals ?? [] })}
-            />
-          ) : b.kind === 'quiz' ? (
-            <QuizCard
-              key={b.id}
-              id={b.id}
-              question={b.markdown}
-              data={b.data as QuizData}
-              disabled={lesson.running}
+              lesson={lesson}
               authored={course.mode === 'teacher'}
-              offline={lesson.batch ? { given: given[b.id], onGive: (answer) => give(b.id, answer) } : undefined}
-              onUnknown={lesson.phase === 'placement' ? () => post(`/api/blocks/${b.id}/quiz/unknown`, {}) : undefined}
-              onSelfGrade={lesson.replay ? (correct) => post(`/api/blocks/${b.id}/self-grade`, { correct }) : undefined}
-              onSubmit={(answer, confidence) => post(`/api/blocks/${b.id}/quiz`, { answer, confidence })}
-            />
-          ) : b.kind === 'reading' ? (
-            <ReadingCard
-              key={b.id}
-              id={b.id}
-              text={b.markdown}
-              data={b.data}
-              speech={speech}
-              onAdd={(word) => post(`/api/blocks/${b.id}/vocabulary`, { word })}
-              onKnown={(word) => post(`/api/blocks/${b.id}/known`, { word })}
-            />
-          ) : b.kind === 'vocab' ? (
-            <VocabCheckCard
-              key={b.id}
-              id={b.id}
-              data={b.data}
-              disabled={lesson.running}
-              onSubmit={(known) => post(`/api/blocks/${b.id}/vocab`, { known })}
-            />
-          ) : b.kind === 'exercise' ? (
-            <ExerciseCard
-              key={b.id}
-              block={b}
-              disabled={lesson.running}
-              commands={commands}
-              authored={course.mode === 'teacher'}
-              onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
+              given={given[b.id]}
+              onGive={(answer) => give(b.id, answer)}
+              features={{ speech, commands, crafted, sketched }}
+              post={post}
               onError={setError}
             />
-          ) : b.kind === 'challenge' ? (
-            <ChallengeCard
-              key={b.id}
-              block={b}
-              disabled={lesson.running}
-              speech={speech}
-              authored={course.mode === 'teacher'}
-              onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
-              onError={setError}
-            />
-          ) : b.kind === 'network' ? (
-            <NetworkCard
-              key={b.id}
-              id={b.id}
-              reason={b.markdown}
-              data={b.data}
-              disabled={lesson.running}
-              onDecide={(allow) => post(`/api/blocks/${b.id}/network`, { allow })}
-            />
-          ) : b.kind === 'plot' ? (
-            <PlotCard key={b.id} id={b.id} title={b.markdown} data={b.data} />
-          ) : b.kind === 'widget' ? (
-            <WidgetCard key={b.id} id={b.id} title={b.markdown} data={b.data} onTry={course.mode === 'teacher' ? undefined : (at) => post(`/api/blocks/${b.id}/widget`, { at })} />
-          ) : b.kind === 'figure' ? (
-            <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={sketched} disabled={lesson.running} onRestore={() => post(`/api/blocks/${b.id}/restore`, {})} onRedraw={crafted ? (notes) => post(`/api/blocks/${b.id}/redraw`, { notes }) : undefined} />
-          ) : b.kind === 'placement' ? (
-            <section key={b.id} id={`block-${b.id}`} className="block">
-              <div className="label">
-                {t('block.placementResult')} <span className="chip">{(b.data as { level: string }).level}</span>
-              </div>
-              <Markdown>{b.markdown}</Markdown>
-              <PlacementAreas areas={(b.data as { areas?: Area[] }).areas} />
-            </section>
-          ) : b.kind === 'podcast' ? (
-            <PodcastCard
-              key={b.id}
-              id={b.id}
-              title={b.markdown}
-              data={b.data}
-              answered={(id) => (lesson.blocks.find((q) => q.id === id)?.data as QuizData | undefined)?.answer != null}
-            />
-          ) : b.kind === 'speaking' ? (
-            <SpeakingCard
-              key={b.id}
-              block={b}
-              disabled={lesson.running}
-              speech={speech}
-              onAct={(action, body = {}) => post(`/api/blocks/${b.id}/${action}`, body)}
-              onError={setError}
-            />
-          ) : (
-            <section key={b.id} id={`block-${b.id}`} className="block">
-              <div className="label">{lookup(`block.${b.kind}`, b.kind)}</div>
-              <Markdown>{b.markdown}</Markdown>
-            </section>
           )
           const shown = n ? (
             <div key={b.id} className="numbered">
@@ -1990,33 +2025,11 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
           />
         )}
         {lesson.phase === 'placement' && course.placement && course.lessons.find((l) => l.phase === 'placement')?.id === lesson.id && !lesson.blocks.some((b) => b.kind === 'placement') && (
-          <section className="block">
-            <div className="label">
-              {t('block.placementResult')} <span className="chip">{course.level}</span>
-            </div>
-            <Markdown>{course.placement}</Markdown>
-            <PlacementAreas areas={course.areas} />
-          </section>
+          <PlacementResult level={course.level} text={course.placement} areas={course.areas} />
         )}
         {lesson.running && (empty || writing) && <Skeleton />}
-        {lesson.batch && !lesson.running ? (
-          <div className="lesson-next batch">
-            <span className="small">{t('offline.answered', { n: ready.length, total: batchCards.length })}</span>
-            {/* with nothing answered it leaves offline mode, the way out of a prepare that wrote no checks */}
-            <button className={ready.length ? 'btn primary' : 'btn'} disabled={!online || sending} onClick={() => sendBatch(ready)}>
-              {ready.length ? t('offline.send') : t('offline.leave')}
-            </button>
-          </div>
-        ) : (
-          canPrepare &&
-          !lesson.running && (
-            <div className="lesson-next batch">
-              <span className="small">{t('offline.help')}</span>
-              <button className="btn" disabled={!online} onClick={prepareOffline}>
-                {t('offline.prepare')}
-              </button>
-            </div>
-          )
+        {!lesson.running && (lesson.batch || canPrepare) && (
+          <OfflineRow lesson={lesson} given={given} online={online} sending={sending} onSend={sendBatch} onPrepare={prepareOffline} />
         )}
         {nextUnit && !lesson.running && (
           <div className="lesson-next">
@@ -2033,139 +2046,51 @@ function Workspace({ profile, courseId, speech, commands, crafted, sketched, con
         {error && <div className="error">{error}</div>}
         <div ref={lessonBottom} />
         {!open && (
-          <button
-            type="button"
-            id="ask"
-            className="btn primary icon ask"
-            aria-label={t('chat.ask')}
-            title={t('chat.ask')}
-            onClick={() => {
+          <AskButton
+            unread={unread}
+            working={lesson.running ? doing : null}
+            onAsk={() => {
               setAsking(true)
               requestAnimationFrame(() => document.getElementById('chat')?.focus())
             }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
-            </svg>
-            {unread > 0 && (
-              <span className="badge">
-                <span aria-hidden="true">{unread}</span>
-                <span className="visually-hidden"> {t('chat.unread', { count: unread })}</span>
-              </span>
-            )}
-            <span className="live" role="status">
-              {lesson.running && ` (${activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working')})`}
-            </span>
-          </button>
+          />
         )}
       </main>
 
-      <aside
-        className="chat"
-        aria-label={t('chat.label')}
-        hidden={!open}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') closeChat()
-        }}
-      >
-        <div className="chat-head">
-          <strong>{t('chat.tutor')}</strong>
-          <span className={lesson.running ? 'status live' : 'status'} role="status">
-            {lesson.running && (activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working'))}
-          </span>
-          <button type="button" className="link" onClick={closeChat}>
-            {t('chat.close')}
-          </button>
-        </div>
-        <div ref={messagesBox} className="messages">
-          {lesson.messages.map((m) => (
-            <Remark key={m.id} message={m} />
-          ))}
-          {open && streaming && (
-            <div className="bubble">
-              <Markdown>{streaming}</Markdown>
-              <span className="caret" />
-            </div>
-          )}
-        </div>
-        <div className="composer">
-          <label htmlFor="chat">{t('chat.message')}</label>
-          <textarea
-            id="chat"
-            className="field" dir="auto"
-            rows={3}
-            value={draft}
-            placeholder={changing ? t('chat.changeHint') : undefined}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKey}
-          />
-          <div className="row">
-            {speech && <Mic onClip={(clip) => transcribe(clip).then((t) => setDraft((d) => (d ? `${d} ${t}` : t)))} onError={setError} />}
-            {lesson.running && (
-              <button className="btn" onClick={() => post(`/api/lessons/${lesson.id}/stop`, {})}>
-                {t('common.stop')}
-              </button>
-            )}
-            <button className="btn primary" onClick={send} disabled={!online || lesson.running || !course.started || !draft.trim()}>
-              {t('common.send')}
-            </button>
-          </div>
-        </div>
-      </aside>
+      <ChatPanel
+        open={open}
+        running={lesson.running}
+        doing={doing}
+        messages={lesson.messages}
+        streaming={streaming}
+        draft={draft}
+        onDraft={setDraft}
+        placeholder={changing ? t('chat.changeHint') : undefined}
+        onKey={onKey}
+        speech={speech}
+        canSend={online && !lesson.running && Boolean(course.started) && Boolean(draft.trim())}
+        onSend={send}
+        onStop={() => post(`/api/lessons/${lesson.id}/stop`, {})}
+        onClose={closeChat}
+        onError={setError}
+        messagesRef={messagesBox}
+      />
 
-      <nav className="panes" aria-label={t('panes.label')}>
-        {(['map', 'lesson'] as const).map((p) => (
-          <button
-            key={p}
-            aria-pressed={pane === p && !open}
-            aria-label={p === 'map' ? t('map.label') : t('panes.lesson')}
-            title={p === 'map' ? t('map.label') : t('panes.lesson')}
-            onClick={() => {
-              setPane(p)
-              setAsking(false)
-            }}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              {p === 'map' ? (
-                <>
-                  <path d="M14.1 6.3 9.9 4.2a2 2 0 0 0-1.8 0L3.6 6.4A1 1 0 0 0 3 7.3v12.1a1 1 0 0 0 1.4.9l3.7-1.9a2 2 0 0 1 1.8 0l4.2 2.1a2 2 0 0 0 1.8 0l4.5-2.2a1 1 0 0 0 .6-.9V5.3a1 1 0 0 0-1.4-.9l-3.7 1.9a2 2 0 0 1-1.8 0z" />
-                  <path d="M15 5.8v15M9 3.2v15" />
-                </>
-              ) : (
-                <>
-                  <path d="M12 7v14" />
-                  <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
-                </>
-              )}
-            </svg>
-          </button>
-        ))}
-        <button
-          aria-pressed={open}
-          aria-label={t('chat.ask')}
-          title={t('chat.ask')}
-          onClick={() => {
-            setPane('lesson')
-            setAsking(true)
-            requestAnimationFrame(() => document.getElementById('chat')?.focus())
-          }}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
-          </svg>
-          {unread > 0 && !open && (
-            <span className="badge">
-              <span aria-hidden="true">{unread}</span>
-              <span className="visually-hidden"> {t('chat.unread', { count: unread })}</span>
-            </span>
-          )}
-          {/* the chat's head names what the tutor is doing; with the chat closed, a pulse here says it is at work */}
-          {lesson.running && !open && <span className="live" aria-hidden="true" />}
-          <span className="visually-hidden" role="status">
-            {lesson.running && !open && (activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working'))}
-          </span>
-        </button>
-      </nav>
+      <PaneSwitcher
+        pane={pane}
+        open={open}
+        unread={unread}
+        working={lesson.running && !open ? doing : null}
+        onPane={(p) => {
+          setPane(p)
+          setAsking(false)
+        }}
+        onChat={() => {
+          setPane('lesson')
+          setAsking(true)
+          requestAnimationFrame(() => document.getElementById('chat')?.focus())
+        }}
+      />
     </div>
   )
 }

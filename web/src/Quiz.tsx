@@ -107,6 +107,52 @@ export function Translation({ text, open }: { text?: string; open?: boolean }) {
   )
 }
 
+function ChoiceOptions(props: { name: string; options: string[]; answer: string; unknown: boolean | null; onPick: (option: string) => void; onUnknown: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="quiz-options">
+      {props.options.map((o) => (
+        <label key={o} className={o === props.answer ? 'quiz-option picked' : 'quiz-option'}>
+          <input type="radio" name={props.name} checked={o === props.answer} onChange={() => props.onPick(o)} />
+          <Markdown>{o}</Markdown>
+        </label>
+      ))}
+      {props.unknown !== null && (
+        <label className={props.unknown ? 'quiz-option unknown picked' : 'quiz-option unknown'}>
+          <input type="radio" name={props.name} checked={props.unknown} onChange={props.onUnknown} />
+          {t('quiz.dontKnow')}
+        </label>
+      )}
+    </div>
+  )
+}
+
+/** How sure the learner is, from guessing to certain; null when they said they don't know. */
+function Confidence(props: { id: string; value: number | null; onChange: (value: number) => void; ready: boolean }) {
+  const { t } = useTranslation()
+  return (
+    <div className="confidence">
+      <label htmlFor={`${props.id}-confidence`}>{t('quiz.howSure')}</label>
+      <span className="small">{t('quiz.guessing')}</span>
+      <input
+        id={`${props.id}-confidence`}
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        value={props.value ?? 0}
+        disabled={props.value === null}
+        onChange={(e) => props.onChange(Number(e.target.value))}
+      />
+      <span className="small">{t('quiz.certain')}</span>
+      <output>{percent((props.value ?? 0) / 100)}</output>
+      <button className="btn primary" disabled={!props.ready}>
+        {t('common.submit')}
+      </button>
+    </div>
+  )
+}
+
 function QuizForm(props: {
   id: string
   kind: QuizKind
@@ -142,28 +188,17 @@ function QuizForm(props: {
       {props.kind === 'sort' ? (
         <SortForm items={items} categories={props.categories ?? []} placed={placed} onPlace={(item, c) => setPlaced({ ...placed, [item]: c })} />
       ) : props.kind === 'choice' ? (
-        <div className="quiz-options">
-          {(props.options as string[]).map((o) => (
-            <label key={o} className={o === answer ? 'quiz-option picked' : 'quiz-option'}>
-              <input type="radio" name={props.id} checked={o === answer} onChange={() => pick(o)} />
-              <Markdown>{o}</Markdown>
-            </label>
-          ))}
-          {props.onUnknown && (
-            <label className={unknown ? 'quiz-option unknown picked' : 'quiz-option unknown'}>
-              <input
-                type="radio"
-                name={props.id}
-                checked={unknown}
-                onChange={() => {
-                  setAnswer('')
-                  setUnknown(true)
-                }}
-              />
-              {t('quiz.dontKnow')}
-            </label>
-          )}
-        </div>
+        <ChoiceOptions
+          name={props.id}
+          options={props.options as string[]}
+          answer={answer}
+          unknown={props.onUnknown ? unknown : null}
+          onPick={pick}
+          onUnknown={() => {
+            setAnswer('')
+            setUnknown(true)
+          }}
+        />
       ) : (
         <>
           <label htmlFor={`${props.id}-answer`} className="small">
@@ -178,25 +213,7 @@ function QuizForm(props: {
           />
         </>
       )}
-      <div className="confidence">
-        <label htmlFor={`${props.id}-confidence`}>{t('quiz.howSure')}</label>
-        <span className="small">{t('quiz.guessing')}</span>
-        <input
-          id={`${props.id}-confidence`}
-          type="range"
-          min={0}
-          max={100}
-          step={5}
-          value={unknown ? 0 : confidence}
-          disabled={unknown}
-          onChange={(e) => setConfidence(Number(e.target.value))}
-        />
-        <span className="small">{t('quiz.certain')}</span>
-        <output>{percent(unknown ? 0 : confidence / 100)}</output>
-        <button className="btn primary" disabled={props.disabled || !ready}>
-          {t('common.submit')}
-        </button>
-      </div>
+      <Confidence id={props.id} value={unknown ? null : confidence} onChange={setConfidence} ready={!props.disabled && ready} />
     </form>
   )
 }
@@ -225,6 +242,69 @@ export function QuizResult(props: { answer: string; confidence: number; result: 
   )
 }
 
+/** The model answer beside the learner's, for them to say whether they had it. */
+function SelfGrade(props: { answer: string; confidence: number; answerKey: string; explanation?: string; disabled?: boolean; onGrade: (correct: boolean) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="quiz-result">
+      <div className="attempt">
+        <span className="label">{t('quiz.answerSure', { percent: percent(props.confidence) })}</span>
+        <AnswerText text={props.answer} />
+      </div>
+      <div className="solution">
+        <div className="label">{t('review.model')}</div>
+        <Markdown>{props.answerKey}</Markdown>
+        <Markdown>{props.explanation ?? ''}</Markdown>
+      </div>
+      <div className="row">
+        <button className="btn" disabled={props.disabled} onClick={() => props.onGrade(false)}>
+          {t('review.missed')}
+        </button>
+        <button className="btn primary" disabled={props.disabled} onClick={() => props.onGrade(true)}>
+          {t('review.right')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** A prepared course's card as its teacher sees it: the options with their beliefs, the key and the explanation. */
+function AuthoredKey({ data: d }: { data: QuizData }) {
+  const { t } = useTranslation()
+  return (
+    <div className="solution">
+      {d.kind === 'sort' ? (
+        <ul className="sort-outcome">
+          {sortItems(d.options).map((o) => (
+            <li key={o.text}>
+              <Markdown>{o.text}</Markdown>
+              <span className="chip">{o.category ?? '?'}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        d.options.length > 0 && (
+          <ul className="book-options">
+            {(d.options as string[]).map((o) => (
+              <li key={o} className={o === d.answer_key ? 'picked' : undefined}>
+                <Markdown>{o}</Markdown>
+                {d.misconceptions?.[o] && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: d.misconceptions[o] })}</InlineMarkdown></p>}
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+      {d.kind !== 'sort' && (
+        <>
+          <div className="label">{t('quiz.key')}</div>
+          <Markdown>{d.answer_key ?? ''}</Markdown>
+        </>
+      )}
+      {d.explanation && <Markdown>{d.explanation}</Markdown>}
+    </div>
+  )
+}
+
 /** A card of a lesson prepared for offline: answered and graded on the device, sent with the others later. */
 function OfflineAnswer(props: { id: number; data: QuizData; given?: Given; onGive: (given: Given) => void }) {
   const { t } = useTranslation()
@@ -234,25 +314,13 @@ function OfflineAnswer(props: { id: number; data: QuizData; given?: Given; onGiv
   const result = gradeOffline(d, given)
   if (!result)
     return (
-      <div className="quiz-result">
-        <div className="attempt">
-          <span className="label">{t('quiz.answerSure', { percent: percent(given.confidence) })}</span>
-          <AnswerText text={given.answer} />
-        </div>
-        <div className="solution">
-          <div className="label">{t('review.model')}</div>
-          <Markdown>{d.answer_key ?? ''}</Markdown>
-          <Markdown>{d.explanation ?? ''}</Markdown>
-        </div>
-        <div className="row">
-          <button className="btn" onClick={() => props.onGive({ ...given, self_correct: false })}>
-            {t('review.missed')}
-          </button>
-          <button className="btn primary" onClick={() => props.onGive({ ...given, self_correct: true })}>
-            {t('review.right')}
-          </button>
-        </div>
-      </div>
+      <SelfGrade
+        answer={given.answer}
+        confidence={given.confidence}
+        answerKey={d.answer_key ?? ''}
+        explanation={d.explanation}
+        onGrade={(correct) => props.onGive({ ...given, self_correct: correct })}
+      />
     )
   return (
     <>
@@ -284,36 +352,7 @@ export function QuizCard(props: {
       <Markdown>{props.question}</Markdown>
       <Translation text={d.translation} />
       {props.authored ? (
-        <div className="solution">
-          {d.kind === 'sort' ? (
-            <ul className="sort-outcome">
-              {sortItems(d.options).map((o) => (
-                <li key={o.text}>
-                  <Markdown>{o.text}</Markdown>
-                  <span className="chip">{o.category ?? '?'}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            d.options.length > 0 && (
-              <ul className="book-options">
-                {(d.options as string[]).map((o) => (
-                  <li key={o} className={o === d.answer_key ? 'picked' : undefined}>
-                    <Markdown>{o}</Markdown>
-                    {d.misconceptions?.[o] && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: d.misconceptions[o] })}</InlineMarkdown></p>}
-                  </li>
-                ))}
-              </ul>
-            )
-          )}
-          {d.kind !== 'sort' && (
-            <>
-              <div className="label">{t('quiz.key')}</div>
-              <Markdown>{d.answer_key ?? ''}</Markdown>
-            </>
-          )}
-          {d.explanation && <Markdown>{d.explanation}</Markdown>}
-        </div>
+        <AuthoredKey data={d} />
       ) : d.answer === null && props.offline ? (
         <OfflineAnswer id={props.id} data={d} given={props.offline.given} onGive={props.offline.onGive} />
       ) : d.answer === null ? (
@@ -327,25 +366,7 @@ export function QuizCard(props: {
           onSubmit={props.onSubmit}
         />
       ) : d.correct === undefined && props.onSelfGrade && d.answer_key !== undefined ? (
-        <div className="quiz-result">
-          <div className="attempt">
-            <span className="label">{t('quiz.answerSure', { percent: percent(d.confidence!) })}</span>
-            <AnswerText text={d.answer!} />
-          </div>
-          <div className="solution">
-            <div className="label">{t('review.model')}</div>
-            <Markdown>{d.answer_key}</Markdown>
-            <Markdown>{d.explanation ?? ''}</Markdown>
-          </div>
-          <div className="row">
-            <button className="btn" disabled={props.disabled} onClick={() => props.onSelfGrade!(false)}>
-              {t('review.missed')}
-            </button>
-            <button className="btn primary" disabled={props.disabled} onClick={() => props.onSelfGrade!(true)}>
-              {t('review.right')}
-            </button>
-          </div>
-        </div>
+        <SelfGrade answer={d.answer!} confidence={d.confidence!} answerKey={d.answer_key} explanation={d.explanation} disabled={props.disabled} onGrade={props.onSelfGrade} />
       ) : d.correct === undefined ? (
         <div className="attempt">
           <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
@@ -355,6 +376,101 @@ export function QuizCard(props: {
         <QuizResult picked={d.kind === 'choice'} answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
       )}
     </section>
+  )
+}
+
+// the warm-up leaves no history entry: going back from the lesson returns to where the learner came from
+const goOn = (then: string) => (e: MouseEvent) => {
+  e.preventDefault()
+  location.replace(then)
+}
+
+function ReviewEnd(props: { total: number; left: number; then: string | null; onMore: () => void }) {
+  const { t } = useTranslation()
+  const { left, then } = props
+  return (
+    <main className="home">
+      <h1>{left > 0 ? t('review.timeUp') : props.total ? t('review.done') : t('review.nothingDue')}</h1>
+      {left > 0 && <p className="muted">{t('review.left', { count: left })}</p>}
+      <div className="row">
+        {then ? (
+          <a className="btn primary as-link" href={then} onClick={goOn(then)}>
+            {t('review.onToNext')}
+          </a>
+        ) : (
+          <a className="btn as-link" href="#/">{t('review.back')}</a>
+        )}
+        {left > 0 && (
+          <button type="button" className="btn" onClick={props.onMore}>
+            {t('review.more')}
+          </button>
+        )}
+      </div>
+    </main>
+  )
+}
+
+/** A choice card in review: graded the moment an option is picked. */
+function ReviewChoice(props: { options: string[]; picked: string | null; result: Graded | null; onPick: (option: string) => void; onNext: () => void }) {
+  const { t } = useTranslation()
+  const { result, picked } = props
+  return (
+    <>
+      <div className="quiz-options">
+        {props.options.map((o) => (
+          <button
+            key={o}
+            type="button"
+            className={result ? (o === result.answer_key ? 'quiz-option right' : o === picked ? 'quiz-option wrong' : 'quiz-option') : 'quiz-option'}
+            disabled={picked !== null}
+            onClick={() => props.onPick(o)}
+          >
+            <Markdown>{o}</Markdown>
+          </button>
+        ))}
+      </div>
+      {result && (
+        <>
+          {!result.correct && <Markdown>{result.explanation}</Markdown>}
+          {result.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: result.misconception })}</InlineMarkdown></p>}
+          <div className="row">
+            <button className="btn primary" onClick={props.onNext}>
+              {t('common.next')}
+            </button>
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
+/** An open card in review: the answer is shown on request and the learner says whether they knew it. */
+function ReviewOpen(props: { shown: { answer_key: string; explanation: string } | null; onShow: () => void; onKnew: (correct: boolean) => void }) {
+  const { t } = useTranslation()
+  if (!props.shown) {
+    return (
+      <div className="row">
+        <button className="btn primary" onClick={props.onShow}>
+          {t('review.showAnswer')}
+        </button>
+      </div>
+    )
+  }
+  return (
+    <>
+      <div className="solution">
+        <Markdown>{props.shown.answer_key}</Markdown>
+        <Markdown>{props.shown.explanation}</Markdown>
+      </div>
+      <div className="row">
+        <button className="btn" onClick={() => props.onKnew(false)}>
+          {t('review.didnt')}
+        </button>
+        <button className="btn primary" onClick={() => props.onKnew(true)}>
+          {t('review.knewIt')}
+        </button>
+      </div>
+    </>
   )
 }
 
@@ -382,38 +498,17 @@ export function Review({ profile, then }: { profile: number; then: string | null
 
   const card = over ? undefined : cards[index]
   if (!card) {
-    const left = cards.length - index
     return (
-      <main className="home">
-        <h1>{left > 0 ? t('review.timeUp') : cards.length ? t('review.done') : t('review.nothingDue')}</h1>
-        {left > 0 && <p className="muted">{t('review.left', { count: left })}</p>}
-        <div className="row">
-          {then ? (
-            <a className="btn primary as-link" href={then} onClick={goOn}>
-              {t('review.onToNext')}
-            </a>
-          ) : (
-            <a className="btn as-link" href="#/">{t('review.back')}</a>
-          )}
-          {left > 0 && (
-            <button type="button" className="btn" onClick={more}>
-              {t('review.more')}
-            </button>
-          )}
-        </div>
-      </main>
+      <ReviewEnd
+        total={cards.length}
+        left={cards.length - index}
+        then={then}
+        onMore={() => {
+          setStarted(Date.now())
+          setOver(false)
+        }}
+      />
     )
-  }
-
-  // the warm-up leaves no history entry: going back from the lesson returns to where the learner came from
-  function goOn(e: MouseEvent) {
-    e.preventDefault()
-    location.replace(then!)
-  }
-
-  function more() {
-    setStarted(Date.now())
-    setOver(false)
   }
 
   function pick(option: string) {
@@ -437,7 +532,6 @@ export function Review({ profile, then }: { profile: number; then: string | null
     if (Date.now() - started >= REVIEW_BOX_MS) setOver(true)
   }
 
-  const options = card.options as string[]
   return (
     <main ref={box} className="home">
       <section key={card.id} className="block quiz review-card">
@@ -446,7 +540,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
           <span className="muted">{t('review.position', { n: index + 1, total: cards.length })}</span>
           {card.confident_miss && <span className="chip warn">{t('review.sureAndMissed')}</span>}
           {then && (
-            <a className="btn as-link skip" href={then} onClick={goOn}>
+            <a className="btn as-link skip" href={then} onClick={goOn(then)}>
               {t('review.skipWarmup')}
             </a>
           )}
@@ -457,53 +551,9 @@ export function Review({ profile, then }: { profile: number; then: string | null
         <Markdown>{card.question}</Markdown>
         <Translation text={card.translation} />
         {card.kind === 'choice' ? (
-          <>
-            <div className="quiz-options">
-              {options.map((o) => (
-                <button
-                  key={o}
-                  type="button"
-                  className={result ? (o === result.answer_key ? 'quiz-option right' : o === picked ? 'quiz-option wrong' : 'quiz-option') : 'quiz-option'}
-                  disabled={picked !== null}
-                  onClick={() => pick(o)}
-                >
-                  <Markdown>{o}</Markdown>
-                </button>
-              ))}
-            </div>
-            {result && (
-              <>
-                {!result.correct && <Markdown>{result.explanation}</Markdown>}
-                {result.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: result.misconception })}</InlineMarkdown></p>}
-                <div className="row">
-                  <button className="btn primary" onClick={next}>
-                    {t('common.next')}
-                  </button>
-                </div>
-              </>
-            )}
-          </>
-        ) : shown ? (
-          <>
-            <div className="solution">
-              <Markdown>{shown.answer_key}</Markdown>
-              <Markdown>{shown.explanation}</Markdown>
-            </div>
-            <div className="row">
-              <button className="btn" onClick={() => knew(false)}>
-                {t('review.didnt')}
-              </button>
-              <button className="btn primary" onClick={() => knew(true)}>
-                {t('review.knewIt')}
-              </button>
-            </div>
-          </>
+          <ReviewChoice options={card.options as string[]} picked={picked} result={result} onPick={pick} onNext={next} />
         ) : (
-          <div className="row">
-            <button className="btn primary" onClick={show}>
-              {t('review.showAnswer')}
-            </button>
-          </div>
+          <ReviewOpen shown={shown} onShow={show} onKnew={knew} />
         )}
         {error && <div className="error">{error}</div>}
       </section>

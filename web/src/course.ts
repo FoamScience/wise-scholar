@@ -190,3 +190,17 @@ export function replayShown(blocks: Block[]): number {
   })
   return open === -1 ? blocks.length : open + 1
 }
+
+export function moduleRuns(concepts: Concept[]): Concept[][] {
+  const runs: Concept[][] = []
+  for (const c of concepts) {
+    if (runs.at(-1)?.[0].module === c.module) runs.at(-1)!.push(c)
+    else runs.push([c])
+  }
+  return runs
+}
+
+/** A unit is done once its lesson is finished, or placed out with no lesson begun. */
+export function unitDone(concept: Concept, lesson: Lesson | undefined): boolean {
+  return lesson ? lesson.blocks.some((b) => b.kind === 'done') : Boolean(concept.known)
+}

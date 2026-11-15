@@ -8,7 +8,7 @@ import { api, failure } from './api'
 import { parts, timeline } from './chapters'
 import { challengeLabel, lessonTitle, practiceTitle, sortItems } from './course'
 import { PlacementAreas } from './Areas'
-import type { Area, Block, ChallengeData, Concept, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
+import type { Area, Block, ChallengeData, Concept, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, SpeakingData } from './course'
 import { Correction } from './Diff'
 import type { Entry } from './Errors'
 import { Credits, Drawing, Limits } from './Figure'
@@ -318,6 +318,24 @@ function Plan({ course }: { course: CourseDetail }) {
   )
 }
 
+function BookTurn({ message, learner }: { message: Message; learner: string }) {
+  const { t } = useTranslation()
+  return (
+    <div className={`book-turn ${message.role}`}>
+      <span className="label">{message.role === 'learner' ? learner : t('chat.tutor')}</span>
+      {message.role === 'learner' ? (
+        <div className="bubble learner">
+          <span dir={textDirection(message.text)}>{message.text}</span>
+        </div>
+      ) : (
+        <div className="bubble">
+          <Markdown>{message.text}</Markdown>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files: Files; learner: string; sketched: boolean }) {
   const { t } = useTranslation()
   const { lesson, course } = props
@@ -333,18 +351,7 @@ function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files
         'block' in item ? (
           <BookBlock key={`b${item.block.id}`} block={item.block} files={props.files} sketched={props.sketched} />
         ) : (
-          <div key={`m${item.message.id}`} className={`book-turn ${item.message.role}`}>
-            <span className="label">{item.message.role === 'learner' ? props.learner : t('chat.tutor')}</span>
-            {item.message.role === 'learner' ? (
-              <div className="bubble learner">
-                <span dir={textDirection(item.message.text)}>{item.message.text}</span>
-              </div>
-            ) : (
-              <div className="bubble">
-                <Markdown>{item.message.text}</Markdown>
-              </div>
-            )}
-          </div>
+          <BookTurn key={`m${item.message.id}`} message={item.message} learner={props.learner} />
         ),
       )}
       {lesson.phase === 'interview' && course.ranking.length > 0 && <Plan course={course} />}
@@ -364,6 +371,40 @@ function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files
   )
 }
 
+function NotebookEntry({ entry: e }: { entry: Entry }) {
+  const { t } = useTranslation()
+  return (
+    <Card
+      label={
+        <>
+          {e.kind === 'writing' ? t('common.correctedText') : t('notebook.confidentMiss')}, {day(e.created)}
+          {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
+          {e.resolved ? <span className="chip">{t('notebook.resolve')}</span> : null}
+        </>
+      }
+      className="entry"
+    >
+      {e.kind === 'quiz' && <Markdown>{e.prompt}</Markdown>}
+      <div className="attempt">
+        <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
+        {e.kind === 'writing' ? <span dir={textDirection(e.said)}>{e.said}</span> : <AnswerText text={e.said} />}
+      </div>
+      <div className="solution">
+        <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
+        {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
+        {e.explanation && <Markdown>{e.explanation}</Markdown>}
+        {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
+      </div>
+      {e.note && (
+        <div className="hint">
+          <div className="label">{t('book.yourNote')}</div>
+          <span dir={textDirection(e.note)}>{e.note}</span>
+        </div>
+      )}
+    </Card>
+  )
+}
+
 function Notebook({ entries }: { entries: Entry[] }) {
   const { t } = useTranslation()
   return (
@@ -373,41 +414,120 @@ function Notebook({ entries }: { entries: Entry[] }) {
         <h2>{t('review.errorNotebook')}</h2>
       </header>
       {entries.map((e) => (
-        <Card
-          key={e.id}
-          label={
-            <>
-              {e.kind === 'writing' ? t('common.correctedText') : t('notebook.confidentMiss')}, {day(e.created)}
-              {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
-              {e.resolved ? <span className="chip">{t('notebook.resolve')}</span> : null}
-            </>
-          }
-          className="entry"
-        >
-          {e.kind === 'quiz' && <Markdown>{e.prompt}</Markdown>}
-          <div className="attempt">
-            <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
-            {e.kind === 'writing' ? <span dir={textDirection(e.said)}>{e.said}</span> : <AnswerText text={e.said} />}
-          </div>
-          <div className="solution">
-            <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
-            {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
-            {e.explanation && <Markdown>{e.explanation}</Markdown>}
-            {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
-          </div>
-          {e.note && (
-            <div className="hint">
-              <div className="label">{t('book.yourNote')}</div>
-              <span dir={textDirection(e.note)}>{e.note}</span>
-            </div>
-          )}
-        </Card>
+        <NotebookEntry key={e.id} entry={e} />
       ))}
     </article>
   )
 }
 
 /** Running head and page number sit in the page margins, which only take literal values: read them from the live theme. */
+
+const jump = (id: string) => (e: { preventDefault: () => void }) => {
+  e.preventDefault()
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+}
+
+function Cover({ course, learner, exported }: { course: CourseDetail; learner: string; exported: string }) {
+  const { t } = useTranslation()
+  return (
+    <header className="book-cover">
+      <Logo size={56} />
+      <span className="book-number">{t('book.kicker')}</span>
+      <h1 dir="auto">{course.topic}</h1>
+      <span className="book-rule" />
+      {course.mechanism && <div className="book-subtitle">{lookup(`playbooks.${course.mechanism}.title`, course.mechanism)}</div>}
+      <div className="grow" />
+      <div>
+        {learner}
+        {course.level && `, ${t('map.level')} ${course.level}`}
+      </div>
+      <div className="book-number">{t('book.exported', { date: day(exported) })}</div>
+    </header>
+  )
+}
+
+/** The table of contents: each part's chapters, then the appendices. */
+function Contents(props: { course: CourseDetail; parts: ReturnType<typeof parts>; numbers: Map<number, number>; notebook: boolean }) {
+  const { t } = useTranslation()
+  const { course } = props
+  return (
+    <nav className="book-contents">
+      <h2>{t('book.contents')}</h2>
+      {props.parts.map((part, i) => (
+        <div key={i}>
+          {part.title && (
+            <div className="book-number" dir="auto">
+              {part.title}
+            </div>
+          )}
+          <ol>
+            {part.lessons.map((l) => (
+              <li key={l.id} value={props.numbers.get(l.id)}>
+                <a href={`#book-lesson-${l.id}`} onClick={jump(`book-lesson-${l.id}`)} dir="auto">
+                  {lessonTitle(l, t)}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+      {(course.capstones.length > 0 || props.notebook) && (
+        <ul>
+          {course.capstones.length > 0 && (
+            <li>
+              <a href="#book-projects" onClick={jump('book-projects')}>
+                {t('book.projects')}
+              </a>
+            </li>
+          )}
+          {props.notebook && (
+            <li>
+              <a href="#book-notebook" onClick={jump('book-notebook')}>
+                {t('review.errorNotebook')}
+              </a>
+            </li>
+          )}
+        </ul>
+      )}
+    </nav>
+  )
+}
+
+/** The course map: each module's units with how far the learner got. */
+function BookMap({ course }: { course: CourseDetail }) {
+  const { t } = useTranslation()
+  return (
+    <section className="book-map">
+      <h2>{t('map.label')}</h2>
+      {[...new Set(course.concepts.map((c) => c.module))].map((module) => (
+        <div key={module}>
+          <h3 dir="auto">{module}</h3>
+          <ul>
+            {course.concepts
+              .filter((c) => c.module === module)
+              .map((c) => (
+                <li key={c.id}>
+                  <span dir="auto">{c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}</span>
+                  <span className="muted">{conceptStatus(c, course.lessons.some((l) => l.concept_id === c.id), t)}</span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+async function downloadPdf(courseId: number, topic: string) {
+  const res = await fetch(`/api/courses/${courseId}/book.pdf?theme=${document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'}`)
+  if (!res.ok) throw await failure(res)
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(await res.blob())
+  link.download = `${topic}.pdf`
+  link.click()
+  // Revoking at once can cancel the download before the browser has read the blob.
+  setTimeout(() => URL.revokeObjectURL(link.href), 60_000)
+}
 
 /** A whole course laid out as a book. The server prints this same page to a PDF, so the file has the site's theme and type;
  * without the PDF extra the browser's print dialog does it. */
@@ -447,29 +567,13 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
   async function download(topic: string) {
     setPreparing(true)
     setError('')
-    try {
-      const res = await fetch(`/api/courses/${courseId}/book.pdf?theme=${document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'}`)
-      if (!res.ok) throw await failure(res)
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(await res.blob())
-      link.download = `${topic}.pdf`
-      link.click()
-      // Revoking at once can cancel the download before the browser has read the blob.
-      setTimeout(() => URL.revokeObjectURL(link.href), 60_000)
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setPreparing(false)
-    }
+    await downloadPdf(courseId, topic)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setPreparing(false))
   }
 
   const all = parts(course, t)
   const numbers = new Map(all.flatMap((p) => p.lessons).map((l, i) => [l.id, i + 1]))
-  const jump = (id: string) => (e: { preventDefault: () => void }) => {
-    e.preventDefault()
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
-  }
-
   return (
     <main className="book">
       <style key={theme}>{pageStyle(course.topic)}</style>
@@ -488,80 +592,11 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
       </div>
       {error && <div className="error">{error}</div>}
 
-      <header className="book-cover">
-        <Logo size={56} />
-        <span className="book-number">{t('book.kicker')}</span>
-        <h1 dir="auto">{course.topic}</h1>
-        <span className="book-rule" />
-        {course.mechanism && <div className="book-subtitle">{lookup(`playbooks.${course.mechanism}.title`, course.mechanism)}</div>}
-        <div className="grow" />
-        <div>
-          {learner}
-          {course.level && `, ${t('map.level')} ${course.level}`}
-        </div>
-        <div className="book-number">{t('book.exported', { date: day(exported) })}</div>
-      </header>
+      <Cover course={course} learner={learner} exported={exported} />
 
-      <nav className="book-contents">
-        <h2>{t('book.contents')}</h2>
-        {all.map((part, i) => (
-          <div key={i}>
-            {part.title && (
-              <div className="book-number" dir="auto">
-                {part.title}
-              </div>
-            )}
-            <ol>
-              {part.lessons.map((l) => (
-                <li key={l.id} value={numbers.get(l.id)}>
-                  <a href={`#book-lesson-${l.id}`} onClick={jump(`book-lesson-${l.id}`)} dir="auto">
-                    {lessonTitle(l, t)}
-                  </a>
-                </li>
-              ))}
-            </ol>
-          </div>
-        ))}
-        {(course.capstones.length > 0 || entries.length > 0) && (
-          <ul>
-            {course.capstones.length > 0 && (
-              <li>
-                <a href="#book-projects" onClick={jump('book-projects')}>
-                  {t('book.projects')}
-                </a>
-              </li>
-            )}
-            {entries.length > 0 && (
-              <li>
-                <a href="#book-notebook" onClick={jump('book-notebook')}>
-                  {t('review.errorNotebook')}
-                </a>
-              </li>
-            )}
-          </ul>
-        )}
-      </nav>
+      <Contents course={course} parts={all} numbers={numbers} notebook={entries.length > 0} />
 
-      {course.concepts.length > 0 && (
-        <section className="book-map">
-          <h2>{t('map.label')}</h2>
-          {[...new Set(course.concepts.map((c) => c.module))].map((module) => (
-            <div key={module}>
-              <h3 dir="auto">{module}</h3>
-              <ul>
-                {course.concepts
-                  .filter((c) => c.module === module)
-                  .map((c) => (
-                    <li key={c.id}>
-                      <span dir="auto">{c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}</span>
-                      <span className="muted">{conceptStatus(c, course.lessons.some((l) => l.concept_id === c.id), t)}</span>
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          ))}
-        </section>
-      )}
+      {course.concepts.length > 0 && <BookMap course={course} />}
 
       {all.map((part, i) => (
         <section key={i} className="book-part">
