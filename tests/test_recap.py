@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from wise_scholar import app, db, recap, tutor
+from wise_scholar.routes import courses as courses_routes, sharing as sharing_routes  # noqa: E402
 
 NOW = "2026-11-09T12:00:00+00:00"
 
@@ -126,8 +127,8 @@ def writer(monkeypatch):
 
 
 async def _open(course: int, preview: bool = False) -> dict:
-    story = await app.get_recap(course, preview)
-    if task := app._recapping.get(course):
+    story = await sharing_routes.get_recap(course, preview)
+    if task := sharing_routes._recapping.get(course):
         await task
     return story
 
@@ -180,7 +181,7 @@ def test_an_unfinished_course_opens_as_a_preview_only_where_the_server_allows_it
     _finish(course, units["Head"], "2026-10-07 10:00:00")
     with pytest.raises(HTTPException):
         asyncio.run(_open(course, preview=True))
-    monkeypatch.setattr(app, "RECAP_PREVIEW", True)
+    monkeypatch.setattr(sharing_routes, "RECAP_PREVIEW", True)
     story = asyncio.run(_open(course, preview=True))
     assert story["preview"] and not story["writing"] and writer == []
 
@@ -191,10 +192,10 @@ def test_the_course_list_and_detail_say_when_a_course_was_finished():
     _finish(course, units["Head"], "2026-10-07 10:00:00")
     _finish(course, units["Blades"], "2026-10-14 10:00:00")
     assert app._course(course)["recap"] == {"finished": "2026-10-14 10:00:00", "seen": False}
-    app.see_recap(course)
+    sharing_routes.see_recap(course)
     assert app._course(course)["recap"]["seen"] is True
-    assert app.list_courses(who)[0]["finished"] == "2026-10-14 10:00:00"
-    app.save_recap_layout(course, app.RecapLayout(positions={3: (1.5, 2.0)}))
+    assert courses_routes.list_courses(who)[0]["finished"] == "2026-10-14 10:00:00"
+    sharing_routes.save_recap_layout(course, sharing_routes.RecapLayout(positions={3: (1.5, 2.0)}))
     assert db.recap(course)["positions"] == {"3": [1.5, 2.0]}
 
 
@@ -211,7 +212,7 @@ def test_a_recap_turn_that_breaks_tells_the_open_page(monkeypatch):
     _finish(course, units["Blades"], "2026-10-14 10:00:00")
     asyncio.run(_open(course))
     assert published == [(course, {"type": "recap.written"})]
-    assert course in app._recap_failed
+    assert course in sharing_routes._recap_failed
     assert not asyncio.run(_open(course))["writing"]
 
 
@@ -222,7 +223,7 @@ def test_asking_for_the_narrative_again_starts_a_new_one(writer):
     _finish(course, units["Head"], "2026-10-07 10:00:00")
     _finish(course, units["Blades"], "2026-10-14 10:00:00")
     async def written() -> None:
-        if task := app._recapping.get(course):
+        if task := sharing_routes._recapping.get(course):
             await task
 
     with TestClient(app.app, base_url="http://127.0.0.1:8321") as client:

@@ -299,6 +299,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
     from fastapi import HTTPException
 
     from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes
 
     turns, runs, hold = [], [], []
 
@@ -330,16 +331,16 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
         assert (await tutor.ask_network(lesson, "pip install requests", "The exercise needs requests.")).startswith("asked on card")
         first = db.blocks(lesson)[-1]
         assert status(first) == "asked" and runs == []
-        assert (await app.decide_network(first["id"], app.Decision(allow=False)))["data"]["status"] == "refused"
+        assert (await blocks_routes.decide_network(first["id"], app.Decision(allow=False)))["data"]["status"] == "refused"
         assert runs == [] and "refused internet" in turns[-1]
         with pytest.raises(HTTPException) as twice:
-            await app.decide_network(first["id"], app.Decision(allow=True))
+            await blocks_routes.decide_network(first["id"], app.Decision(allow=True))
         assert twice.value.status_code == 409 and runs == []
 
         # Allowed: the lesson is busy while the command runs, and the tutor hears about it afterwards.
         await tutor.ask_network(lesson, "pip install requests", "Once more.")
         second = db.blocks(lesson)[-1]
-        assert (await app.decide_network(second["id"], app.Decision(allow=True)))["data"]["status"] == "running"
+        assert (await blocks_routes.decide_network(second["id"], app.Decision(allow=True)))["data"]["status"] == "running"
         await asyncio.sleep(0)
         assert runs == [("pip install requests", True)] and lesson in app._turns
         with pytest.raises(HTTPException) as busy:
@@ -358,7 +359,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
         monkeypatch.setattr(sandbox, "run", broken)
         await tutor.ask_network(lesson, "pip install broken", "Fails.")
         failed = db.blocks(lesson)[-1]
-        await app.decide_network(failed["id"], app.Decision(allow=True))
+        await blocks_routes.decide_network(failed["id"], app.Decision(allow=True))
         await app._turns[lesson]
         assert status(failed) == "asked" and lesson not in app._turns and len(turns) == 2
         monkeypatch.setattr(sandbox, "run", fake_run)
@@ -367,7 +368,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
         hold.append(asyncio.Event())
         await tutor.ask_network(lesson, "git clone https://example.com/x", "A third time.")
         third = db.blocks(lesson)[-1]
-        await app.decide_network(third["id"], app.Decision(allow=True))
+        await blocks_routes.decide_network(third["id"], app.Decision(allow=True))
         await asyncio.sleep(0)
         task = app._turns[lesson]
         task.cancel()
@@ -378,7 +379,7 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
         hold.append(asyncio.Event())
         await tutor.ask_network(lesson, "curl https://example.com", "A fourth time.")
         fourth = db.blocks(lesson)[-1]
-        await app.decide_network(fourth["id"], app.Decision(allow=True))
+        await blocks_routes.decide_network(fourth["id"], app.Decision(allow=True))
         task = app._turns[lesson]
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
@@ -396,13 +397,13 @@ def test_internet_for_a_command_waits_for_the_learners_decision(place, monkeypat
 
 
 def test_a_deleted_course_leaves_no_cache_for_the_next_one_with_its_name(place):
-    from wise_scholar import app
+    from wise_scholar.routes import courses as courses_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Cachy')").lastrowid
     course = db.create_course("Cache leftovers", who)
     for leftover in ("sandbox-cache", "agents"):
         (place / "data" / leftover / course["slug"]).mkdir(parents=True)
-    app.delete_course(course["id"])
+    courses_routes.delete_course(course["id"])
     assert not (place / "data/sandbox-cache" / course["slug"]).exists() and not (place / "data/agents" / course["slug"]).exists()
 
 
@@ -413,7 +414,7 @@ def test_the_server_reads_a_bounded_part_of_a_file_however_large(tmp_path):
 
 
 def test_file_tools_stay_inside_the_course_workspace(tmp_path, monkeypatch):
-    from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes
 
     monkeypatch.setattr(db, "WORKSPACE", tmp_path)
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Sandy')").lastrowid
@@ -435,7 +436,7 @@ def test_file_tools_stay_inside_the_course_workspace(tmp_path, monkeypatch):
 
     # The exercise card and the check read the listed files outside the sandbox: a planted link reads as missing.
     block = {"data": {"files": ["link", "folder/new.txt", "unit1/main.py"]}}
-    assert [f["content"] for f in app._read_files(block, workspace)] == [None, None, "print(1)"]
+    assert [f["content"] for f in blocks_routes._read_files(block, workspace)] == [None, None, "print(1)"]
     posed = asyncio.run(tutor.pose_exercise(lesson, "x", [tutor.ExerciseFile(path="folder/a.py", content="x")], "true"))
     assert posed.startswith("error:") and not (tmp_path / "elsewhere" / "a.py").exists()
 
@@ -456,6 +457,7 @@ def test_run_is_refused_and_the_lesson_prompt_says_so_when_commands_are_off(tmp_
     from fastapi import HTTPException
 
     from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes, learner as learner_routes
 
     monkeypatch.setattr(db, "WORKSPACE", tmp_path)
     monkeypatch.setattr(sandbox, "COMMANDS", False)
@@ -466,9 +468,9 @@ def test_run_is_refused_and_the_lesson_prompt_says_so_when_commands_are_off(tmp_
     lesson = db.create_lesson(course["id"], "c", "lesson", concept)
     block = db.add_block(lesson, "exercise", "x", {**app.challenge.new(), "files": [], "run": "true", "last_run": None})
 
-    assert app.meta()["commands"] is False
+    assert learner_routes.meta()["commands"] is False
     with pytest.raises(HTTPException) as refused:
-        asyncio.run(app.run_exercise(block["id"]))
+        asyncio.run(blocks_routes.run_exercise(block["id"]))
     assert refused.value.status_code == 409
     assert "[tools] This server runs no code" in app._turn_prompt(db.lesson(lesson), "[event] x")
     monkeypatch.setattr(sandbox, "COMMANDS", True)
@@ -514,6 +516,7 @@ def test_unsandboxed_commands_keep_the_real_environment(place, monkeypatch):
 
 def test_every_command_is_logged_with_its_origin_and_consent(place, monkeypatch):
     from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes, learner as learner_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Logged')").lastrowid
     course = db.create_course("Shell", who)["id"]
@@ -522,11 +525,11 @@ def test_every_command_is_logged_with_its_origin_and_consent(place, monkeypatch)
     assert asyncio.run(tutor.run_command(lesson, "echo tutor")).startswith("exit code 0")
     assert asyncio.run(tutor.pose_exercise(lesson, "Run it", [tutor.ExerciseFile(path="e/x.sh", content="echo learner")], "sh e/x.sh")).startswith("shown")
     block = db.blocks(lesson)[-1]
-    asyncio.run(app.run_exercise(block["id"]))
+    asyncio.run(blocks_routes.run_exercise(block["id"]))
     ask = db.add_block(lesson, "network", "needs pip", {"command": "pip install x", "status": "asked"})
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
-    asyncio.run(app.decide_network(ask["id"], app.Decision(allow=False)))
+    asyncio.run(blocks_routes.decide_network(ask["id"], app.Decision(allow=False)))
     assert len(turns) == 1
 
     async def no_turn(*_):
@@ -534,7 +537,7 @@ def test_every_command_is_logged_with_its_origin_and_consent(place, monkeypatch)
 
     monkeypatch.setattr(app, "_run_turn", no_turn)
     allowed = db.add_block(lesson, "network", "needs curl", {"command": "echo online", "status": "running"})
-    asyncio.run(app._run_allowed(db.lesson(lesson), allowed["id"], "echo online"))
+    asyncio.run(blocks_routes._run_allowed(db.lesson(lesson), allowed["id"], "echo online"))
 
     async def broken(*_, **__):
         raise OSError("bwrap vanished")
@@ -553,7 +556,7 @@ def test_every_command_is_logged_with_its_origin_and_consent(place, monkeypatch)
         ("tutor", "echo tutor", "none", 0, "tutor", "Shell", "Echo"),
     ]
     assert all(c["started"] for c in logged) and logged[1]["seconds"] is not None and logged[2]["seconds"] is None
-    assert app.list_commands(who) == logged and db.commands(other) == []
+    assert learner_routes.list_commands(who) == logged and db.commands(other) == []
     db.delete_course(course)
     assert db.commands(who) == []
 
@@ -561,7 +564,8 @@ def test_every_command_is_logged_with_its_origin_and_consent(place, monkeypatch)
 def test_cleanup_removes_an_old_courses_folders_and_keeps_its_record(place, monkeypatch):
     from fastapi import HTTPException
 
-    from wise_scholar import app, cleanup
+    from wise_scholar import cleanup
+    from wise_scholar.routes import blocks as blocks_routes
 
     monkeypatch.setattr(sandbox, "SANDBOX", False)
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Dusty')").lastrowid
@@ -588,32 +592,33 @@ def test_cleanup_removes_an_old_courses_folders_and_keeps_its_record(place, monk
     assert db.workspace(db.course(fresh)["slug"]).exists() and db.course(fresh)["cleaned"] is None
     block = db.blocks(lessons[old])[-1]
     assert block["data"]["files_kept"] == {"e/x.sh": "echo kept"}
-    shown = app._read_files(block, db.WORKSPACE / course["slug"])
+    shown = blocks_routes._read_files(block, db.WORKSPACE / course["slug"])
     assert shown == [{"path": "e/x.sh", "location": sandbox.location(db.WORKSPACE / course["slug"], "e/x.sh"), "content": "echo kept", "kept": True, "editable": False, "online": False}]
     assert cleanup.stale() == []
     monkeypatch.setattr(sandbox, "commands", lambda: True)
     with pytest.raises(HTTPException) as refused:
-        asyncio.run(app.run_exercise(block["id"]))
+        asyncio.run(blocks_routes.run_exercise(block["id"]))
     assert refused.value.status_code == 409 and "cleaned up" in refused.value.detail
     # The tutor poses a new exercise: files are back, the course is live again and the new card runs.
     asyncio.run(tutor.pose_exercise(lessons[old], "Again", [tutor.ExerciseFile(path="e/y.sh", content="echo back")], "sh e/y.sh"))
     assert db.course(old)["cleaned"] is None
-    assert asyncio.run(app.run_exercise(db.blocks(lessons[old])[-1]["id"]))["output"].strip() == "back"
+    assert asyncio.run(blocks_routes.run_exercise(db.blocks(lessons[old])[-1]["id"]))["output"].strip() == "back"
     assert cleanup.stale() == []
 
 
 def test_an_exercise_check_carries_the_written_answer_to_the_tutor(place, monkeypatch):
     from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Writer')").lastrowid
     lesson = db.create_lesson(db.create_course("Shell", who)["id"], "Echo", "lesson")
     monkeypatch.setattr(sandbox, "SANDBOX", False)
     assert asyncio.run(tutor.pose_exercise(lesson, "Run it, then say why", [tutor.ExerciseFile(path="e/x.sh", content="echo hi")], "sh e/x.sh")).startswith("shown")
     block = db.blocks(lesson)[-1]
-    asyncio.run(app.run_exercise(block["id"]))
+    asyncio.run(blocks_routes.run_exercise(block["id"]))
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
-    asyncio.run(app.check_exercise(block["id"], app.ExerciseCheck(answer="  it prints hi  ")))
-    asyncio.run(app.check_exercise(block["id"], app.ExerciseCheck()))
+    asyncio.run(blocks_routes.check_exercise(block["id"], blocks_routes.ExerciseCheck(answer="  it prints hi  ")))
+    asyncio.run(blocks_routes.check_exercise(block["id"], blocks_routes.ExerciseCheck()))
     assert turns[0].endswith("--- written answer ---\nit prints hi") and "written answer" not in turns[1]
     assert db.block(block["id"])["data"]["attempts"] == ["checked; last run exit code 0\nit prints hi", "checked; last run exit code 0"]

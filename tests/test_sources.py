@@ -51,7 +51,8 @@ def test_files_become_searchable_sections_read_one_at_a_time(tmp_path: Path):
 def test_a_course_search_finds_its_cards_chats_and_code_and_follows_their_changes(monkeypatch, tmp_path: Path):
     import asyncio
 
-    from wise_scholar import app, tutor
+    from wise_scholar import tutor
+    from wise_scholar.routes import courses as courses_routes
 
     monkeypatch.setattr(db, "WORKSPACE", tmp_path)
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Finder')").lastrowid
@@ -73,7 +74,7 @@ def test_a_course_search_finds_its_cards_chats_and_code_and_follows_their_change
     found = asyncio.run(tutor.search_course(course["id"], "explorer corner"))
     assert found.startswith(f"chat {chat['id']} · Faces · learner: why does the [explorer] visit a [corner]")
     assert "nothing found" in asyncio.run(tutor.search_course(course["id"], "lattice"))
-    assert app.search_course(course["id"], "explorer")[0]["snippet"][1] == ("explorer", True)
+    assert courses_routes.search_course(course["id"], "explorer")[0]["snippet"][1] == ("explorer", True)
 
     db.conn.execute("UPDATE messages SET text = 'a lattice of points' WHERE id = ?", (chat["id"],))
     db.delete_block(card["id"])

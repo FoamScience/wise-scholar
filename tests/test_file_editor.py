@@ -7,7 +7,8 @@ from fastapi import HTTPException
 
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
-from wise_scholar import app, bundle, course_files, db, sandbox, tutor  # noqa: E402
+from wise_scholar import bundle, course_files, db, sandbox, tutor  # noqa: E402
+from wise_scholar.routes import blocks as blocks_routes  # noqa: E402
 
 
 @pytest.fixture
@@ -31,7 +32,7 @@ def exercise(tmp_path, monkeypatch):
 
 
 def save(block, content, base, path="c/main.py"):
-    return asyncio.run(app.save_exercise_file(block["id"], app.SavedFile(path=path, content=content, base=base)))
+    return asyncio.run(blocks_routes.save_exercise_file(block["id"], blocks_routes.SavedFile(path=path, content=content, base=base)))
 
 
 def refused(block, content, base, path="c/main.py"):
@@ -44,7 +45,7 @@ def test_the_editor_saves_to_the_file_the_learner_can_also_open(exercise):
     block, workspace = exercise
     assert save(block, "a = 2\n", "a = 1\n") == {"saved": True}
     assert (workspace / "c/main.py").read_text() == "a = 2\n"
-    file = app.exercise_files(block["id"])[0]
+    file = blocks_routes.exercise_files(block["id"])[0]
     assert file["content"] == "a = 2\n" and file["editable"] and file["location"].endswith("c/main.py")
 
 
@@ -67,7 +68,7 @@ def test_a_closed_exercise_or_a_running_online_command_keeps_the_file(exercise, 
     with monkeypatch.context() as online:
         online.setattr(sandbox, "online", lambda _: True)
         assert refused(block, "x", "a = 1\n") == 409
-        assert app.exercise_files(block["id"])[0]["online"]
+        assert blocks_routes.exercise_files(block["id"])[0]["online"]
     db.set_block_data(block["id"], {**block["data"], "solved": True})
     assert refused(block, "x", "a = 1\n") == 409
     assert (workspace / "c/main.py").read_text() == "a = 1\n"
@@ -77,11 +78,11 @@ def test_a_file_that_would_not_survive_being_saved_whole_is_not_editable(exercis
     block, workspace = exercise
     target = workspace / "c/main.py"
     target.write_bytes(b"\xff\xfe binary")
-    assert not app.exercise_files(block["id"])[0]["editable"]
+    assert not blocks_routes.exercise_files(block["id"])[0]["editable"]
     assert refused(block, "x", "anything") == 409
     assert target.read_bytes() == b"\xff\xfe binary"
     target.write_text("x" * (course_files.READ_LIMIT + 1))
-    assert not app.exercise_files(block["id"])[0]["editable"]
+    assert not blocks_routes.exercise_files(block["id"])[0]["editable"]
     assert refused(block, "x", "x" * course_files.READ_LIMIT) == 409
     assert target.stat().st_size == course_files.READ_LIMIT + 1
 

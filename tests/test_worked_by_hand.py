@@ -6,6 +6,7 @@ from fastapi import HTTPException, UploadFile
 from PIL import Image
 
 from wise_scholar import app, challenge, db, handwork, search, tutor
+from wise_scholar.routes import blocks as blocks_routes, courses as courses_routes, media as media_routes  # noqa: E402
 
 
 def _photo(width: int, height: int, orientation: int = 1, kind: str = "JPEG") -> bytes:
@@ -39,24 +40,24 @@ def test_photos_go_with_the_next_attempt_and_the_tutor_sees_them(monkeypatch, tm
     lesson = db.create_lesson(course, "Substitution", "lesson")
     block = db.add_block(lesson, "challenge", "Integrate x·cos(x²).", challenge.new())["id"]
 
-    first = asyncio.run(app.add_photo(block, _upload(_photo(1000, 1400))))["data"]["photos"][0]["name"]
-    second = asyncio.run(app.add_photo(block, _upload(_photo(1000, 1400))))["data"]["photos"][1]["name"]
+    first = asyncio.run(blocks_routes.add_photo(block, _upload(_photo(1000, 1400))))["data"]["photos"][0]["name"]
+    second = asyncio.run(blocks_routes.add_photo(block, _upload(_photo(1000, 1400))))["data"]["photos"][1]["name"]
     assert [p["attempt"] for p in db.block(block)["data"]["photos"]] == [None, None]
-    assert app.get_photo(block, first).media_type == "image/jpeg"
+    assert blocks_routes.get_photo(block, first).media_type == "image/jpeg"
     with pytest.raises(HTTPException) as refused:
-        app.get_photo(block, "../../wise-scholar.db")
+        blocks_routes.get_photo(block, "../../wise-scholar.db")
     assert refused.value.status_code == 404
-    left = asyncio.run(app.delete_photo(block, second))["data"]["photos"]
+    left = asyncio.run(blocks_routes.delete_photo(block, second))["data"]["photos"]
     assert [p["name"] for p in left] == [first] and not handwork.path(course, block, second)
 
-    asyncio.run(app.attempt(block, app.Answer(answer="")))
+    asyncio.run(blocks_routes.attempt(block, blocks_routes.Answer(answer="")))
     assert db.block(block)["data"]["attempts"] == [""] and db.block(block)["data"]["photos"][0]["attempt"] == 0
     assert f"call view_handwork({block})" in turns[-1]
     with pytest.raises(HTTPException) as empty:
-        asyncio.run(app.attempt(block, app.Answer(answer=" ")))
+        asyncio.run(blocks_routes.attempt(block, blocks_routes.Answer(answer=" ")))
     assert empty.value.status_code == 422
     with pytest.raises(HTTPException) as sent:
-        asyncio.run(app.delete_photo(block, first))
+        asyncio.run(blocks_routes.delete_photo(block, first))
     assert sent.value.status_code == 404
 
     seen = asyncio.run(tutor.view_handwork(block))
@@ -84,21 +85,21 @@ def test_photos_go_with_the_next_attempt_and_the_tutor_sees_them(monkeypatch, tm
     assert search.search(course, "integral", 3, ("card",))[0]["ref"] == str(block)
 
     turns.clear()
-    corrected = asyncio.run(app.correct_reading(block, 0, app.Reading(text="Let $u = x^2$; the integral is $\\sin(u)/2$.")))
+    corrected = asyncio.run(blocks_routes.correct_reading(block, 0, blocks_routes.Reading(text="Let $u = x^2$; the integral is $\\sin(u)/2$.")))
     assert corrected["data"]["transcripts"]["0"] == {"text": "Let $u = x^2$; the integral is $\\sin(u)/2$.", "by": "learner"}
     assert "corrected how you read their paper work for attempt 1" in turns[-1]
     assert asyncio.run(tutor.transcribe_handwork(block, "something else")).startswith("refused: the learner corrected")
     with pytest.raises(HTTPException) as unread:
-        asyncio.run(app.correct_reading(block, 3, app.Reading(text="x")))
+        asyncio.run(blocks_routes.correct_reading(block, 3, blocks_routes.Reading(text="x")))
     assert unread.value.status_code == 404
 
-    asyncio.run(app.attempt(block, app.Answer(answer="sin(x²)/2 + C")))
+    asyncio.run(blocks_routes.attempt(block, blocks_routes.Answer(answer="sin(x²)/2 + C")))
     assert "view_handwork" not in turns[-1]
 
     for _ in range(handwork.PENDING):
-        asyncio.run(app.add_photo(block, _upload(_photo(200, 200))))
+        asyncio.run(blocks_routes.add_photo(block, _upload(_photo(200, 200))))
     with pytest.raises(HTTPException) as full:
-        asyncio.run(app.add_photo(block, _upload(_photo(200, 200))))
+        asyncio.run(blocks_routes.add_photo(block, _upload(_photo(200, 200))))
     assert full.value.status_code == 409
 
 
@@ -109,17 +110,17 @@ def test_a_phone_sends_photos_to_one_card_until_its_link_expires(monkeypatch, tm
     lesson = db.create_lesson(course, "Nebensätze", "lesson")
     block = db.add_block(lesson, "challenge", "Schreib drei Sätze mit weil.", challenge.new())["id"]
 
-    token = asyncio.run(app.hand_off(block))["token"]
-    assert app.handed_card(token)["markdown"] == "Schreib drei Sätze mit weil." and app.handed_card(token)["photos"] == []
-    assert len(asyncio.run(app.add_handed_photo(token, _upload(_photo(900, 1200))))["photos"]) == 1
+    token = asyncio.run(blocks_routes.hand_off(block))["token"]
+    assert media_routes.handed_card(token)["markdown"] == "Schreib drei Sätze mit weil." and media_routes.handed_card(token)["photos"] == []
+    assert len(asyncio.run(media_routes.add_handed_photo(token, _upload(_photo(900, 1200))))["photos"]) == 1
     with pytest.raises(HTTPException) as bad:
-        asyncio.run(app.add_handed_photo(token, _upload(b"not an image")))
+        asyncio.run(media_routes.add_handed_photo(token, _upload(b"not an image")))
     assert bad.value.status_code == 422
 
     monkeypatch.setattr(handwork.time, "monotonic", lambda: float("inf"))
     with pytest.raises(HTTPException) as gone:
-        app.handed_card(token)
+        media_routes.handed_card(token)
     assert gone.value.status_code == 410
 
-    app.delete_course(course)
+    courses_routes.delete_course(course)
     assert not (tmp_path / str(course)).exists()

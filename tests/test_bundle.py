@@ -183,36 +183,38 @@ def test_the_endpoints_publish_download_and_import_a_version(places, monkeypatch
     from fastapi import HTTPException, UploadFile
 
     from wise_scholar import app
+    from wise_scholar.routes import courses as courses_routes, sharing as sharing_routes
 
     monkeypatch.setattr(app, "SOURCES", places["source_dir"])
     monkeypatch.setattr(app, "VERSIONS", places["store"])
     a = _authored(places)
-    v = app.publish_version(a["course"], app.Publish(notes="v1", forkable=False, sources=[a["kept"]]))
-    assert app.version_bundle(v["hash"]).filename == "blade-lofting-v1.zip"
+    v = sharing_routes.publish_version(a["course"], sharing_routes.Publish(notes="v1", forkable=False, sources=[a["kept"]]))
+    assert sharing_routes.version_bundle(v["hash"]).filename == "blade-lofting-v1.zip"
     with pytest.raises(HTTPException, match="no such version"):
-        app.version_bundle("../../etc/passwd")
+        sharing_routes.version_bundle("../../etc/passwd")
 
     reader = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Reader {uuid.uuid4().hex[:6]}",)).lastrowid
     data = (places["store"] / f"{v['hash']}.zip").read_bytes()
-    made = asyncio.run(app.import_course(reader, UploadFile(io.BytesIO(data), filename="x.zip")))
+    made = asyncio.run(sharing_routes.import_course(reader, UploadFile(io.BytesIO(data), filename="x.zip")))
     assert made["mode"] == "replay" and db.course(made["id"])["profile_id"] == reader
     assert app._course(made["id"])["setup"] == [{"command": "uv pip install plotly", "status": "asked"}]
-    assert asyncio.run(app.decide_setup(made["id"], 0, app.Decision(allow=False)))["setup"][0]["status"] == "refused"
+    assert asyncio.run(courses_routes.decide_setup(made["id"], 0, app.Decision(allow=False)))["setup"][0]["status"] == "refused"
     with pytest.raises(HTTPException, match="already decided"):
-        asyncio.run(app.decide_setup(made["id"], 0, app.Decision(allow=True)))
+        asyncio.run(courses_routes.decide_setup(made["id"], 0, app.Decision(allow=True)))
     empty = db.create_course("Nothing yet", reader)["id"]
     with pytest.raises(HTTPException, match="nothing to publish"):
-        app.publish_version(empty, app.Publish())
+        sharing_routes.publish_version(empty, sharing_routes.Publish())
     with pytest.raises(HTTPException, match="does not allow"):
-        app.publish_version(made["id"], app.Publish())
+        sharing_routes.publish_version(made["id"], sharing_routes.Publish())
     with pytest.raises(HTTPException, match="not a course bundle"):
-        asyncio.run(app.import_course(reader, UploadFile(io.BytesIO(b"nope"), filename="x.zip")))
+        asyncio.run(sharing_routes.import_course(reader, UploadFile(io.BytesIO(b"nope"), filename="x.zip")))
 
 
 def test_a_replayed_unit_runs_as_written_and_calls_the_tutor_only_on_misses(places, monkeypatch):
     import asyncio
 
     from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes, courses as courses_routes, learner as learner_routes
 
     started = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: started.append((lesson["id"], line)))
@@ -238,37 +240,37 @@ def test_a_replayed_unit_runs_as_written_and_calls_the_tutor_only_on_misses(plac
     assert view["replay"] is True and [b["kind"] for b in view["blocks"]] == ["prose", "challenge", "quiz", "quiz"]
     pretest, right, open_quiz = view["blocks"][1:]
 
-    asyncio.run(app.attempt(pretest["id"], app.Answer(answer="two wires make a surface")))
-    asyncio.run(app.answer_quiz(right["id"], app.QuizAnswer(answer="ThruSections", confidence=0.8)))
-    asyncio.run(app.answer_quiz(open_quiz["id"], app.QuizAnswer(answer="no idea really", confidence=0.3)))
+    asyncio.run(blocks_routes.attempt(pretest["id"], blocks_routes.Answer(answer="two wires make a surface")))
+    asyncio.run(blocks_routes.answer_quiz(right["id"], app.QuizAnswer(answer="ThruSections", confidence=0.8)))
+    asyncio.run(blocks_routes.answer_quiz(open_quiz["id"], app.QuizAnswer(answer="no idea really", confidence=0.3)))
     assert started == [] and db.block(open_quiz["id"])["data"]["answer_key"] == "They bound the surface."
     assert not any(b["kind"] == "done" for b in db.blocks(replayed))
 
-    asyncio.run(app.self_grade_quiz(open_quiz["id"], app.SelfGrade(correct=False)))
+    asyncio.run(blocks_routes.self_grade_quiz(open_quiz["id"], app.SelfGrade(correct=False)))
     [(where, line)] = started
-    assert where == replayed and app.REPLAY_MISS in line and "marked it wrong" in line
+    assert where == replayed and blocks_routes.REPLAY_MISS in line and "marked it wrong" in line
     assert db.blocks(replayed)[-1]["kind"] == "done" and db.blocks(replayed)[-1]["markdown"] == "You can loft two wires."
 
     prompt = app._turn_prompt(db.lesson(replayed), "[learner] why?")
     assert "[replay]" in prompt and "Lofting joins sections." in prompt
 
     unwritten = next(c for c in db.concepts(mine) if c["unwritten"])
-    live = asyncio.run(app.open_concept(unwritten["id"]))
+    live = asyncio.run(learner_routes.open_concept(unwritten["id"]))
     assert live["replay"] is False and "The lesson begins" in started[-1][1]
 
     with pytest.raises(app.HTTPException, match="cards left"):
-        app.card_placement(mine)  # the one written unit is finished already
+        courses_routes.card_placement(mine)  # the one written unit is finished already
     fresh = bundle.install(reader, version_hash, manifest, assets, places["source_dir"])["id"]
-    placement = app.card_placement(fresh)
+    placement = courses_routes.card_placement(fresh)
     [card] = placement["blocks"]
     assert card["data"]["kind"] == "choice" and card["data"].get("answer_key") is None
-    asyncio.run(app.answer_quiz(card["id"], app.QuizAnswer(answer="ThruSections", confidence=0.9)))
+    asyncio.run(blocks_routes.answer_quiz(card["id"], app.QuizAnswer(answer="ThruSections", confidence=0.9)))
     assert db.blocks(placement["id"])[-1]["kind"] == "done" and db.concepts(fresh)[0]["known"] == 1
     assert len(started) == 2
     with pytest.raises(app.HTTPException, match="cards left"):
-        app.card_placement(fresh)
+        courses_routes.card_placement(fresh)
     with pytest.raises(app.HTTPException, match="only an imported course"):
-        app.card_placement(course)
+        courses_routes.card_placement(course)
 
 
 def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_only(places, monkeypatch):
@@ -279,11 +281,12 @@ def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_on
     from mcp.server.mcpserver.exceptions import ToolError
 
     from wise_scholar import app, tutor
+    from wise_scholar.routes import sharing as sharing_routes
     from wise_scholar.backends import TURN_HEADER
 
     monkeypatch.setattr(app, "SOURCES", places["source_dir"])
     monkeypatch.setattr(app, "VERSIONS", places["store"])
-    monkeypatch.setattr(app, "CHECK_CHARS", 200)
+    monkeypatch.setattr(sharing_routes, "CHECK_CHARS", 200)
     a = _authored(places)
     prose, quiz_block = db.blocks(a["lesson"])[:2]
     card_key = db.card(a["card"])["key"]
@@ -304,22 +307,22 @@ def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_on
         return True
 
     monkeypatch.setattr(app, "_background_turn", turn)
-    asyncio.run(app._check(a["course"]))
+    asyncio.run(sharing_routes._check(a["course"]))
     assert len(prompts) > 1 and all("[author]" in p and "pump maker" in p for p in prompts)
     assert f"[block {prose['key']}, lesson \"Lofting\"]" in "".join(prompts) and "[file loft/new.py]" in "".join(prompts)
     assert replies[0].splitlines() == ["1: proposed", "2: proposed", "3: proposed", "4: error: old is not in that block; copy it exactly",
                                       "5: error: there is no summary 'nope' in this version", "6: already proposed"]
-    check = app.publish_check(a["course"])
+    check = sharing_routes.publish_check(a["course"])
     assert check["checked"] and not check["running"] and [e["lesson"] for e in check["edits"]] == ["Lofting", None, None]
     block_edit, card_edit, file_edit = check["edits"]
-    app.decide_edit(a["course"], block_edit["id"], app.EditStatus(status="accepted"))
-    app.decide_edit(a["course"], card_edit["id"], app.EditStatus(status="accepted"))
-    app.decide_edit(a["course"], file_edit["id"], app.EditStatus(status="rejected"))
+    sharing_routes.decide_edit(a["course"], block_edit["id"], sharing_routes.EditStatus(status="accepted"))
+    sharing_routes.decide_edit(a["course"], card_edit["id"], sharing_routes.EditStatus(status="accepted"))
+    sharing_routes.decide_edit(a["course"], file_edit["id"], sharing_routes.EditStatus(status="rejected"))
     with pytest.raises(HTTPException, match="no such edit"):
-        app.decide_edit(a["course"], 10**9, app.EditStatus(status="accepted"))
+        sharing_routes.decide_edit(a["course"], 10**9, sharing_routes.EditStatus(status="accepted"))
 
     plain, _, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
-    v = app.publish_version(a["course"], app.Publish())
+    v = sharing_routes.publish_version(a["course"], sharing_routes.Publish())
     assert v["stale"] == 0
     _, manifest, assets = bundle.unpack((places["store"] / f"{v['hash']}.zip").read_bytes())
     [lesson] = manifest.lessons
@@ -333,11 +336,11 @@ def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_on
 
     # A rerun keeps the author's decisions and reads the course with the accepted edits already made.
     prompts.clear()
-    asyncio.run(app._check(a["course"]))
-    assert "**profiles**" in "".join(prompts) and [e["status"] for e in app.publish_check(a["course"])["edits"]] == ["accepted", "accepted", "rejected"]
+    asyncio.run(sharing_routes._check(a["course"]))
+    assert "**profiles**" in "".join(prompts) and [e["status"] for e in sharing_routes.publish_check(a["course"])["edits"]] == ["accepted", "accepted", "rejected"]
 
     db.conn.execute("UPDATE blocks SET markdown = 'Rewritten.' WHERE id = ?", (prose["id"],))
-    assert app.publish_version(a["course"], app.Publish())["stale"] == 1
+    assert sharing_routes.publish_version(a["course"], sharing_routes.Publish())["stale"] == 1
 
     lesson_turn = db.lesson(a["lesson"])
     context = SimpleNamespace(request_context=SimpleNamespace(request=SimpleNamespace(headers={TURN_HEADER: "tok-lesson"})))
@@ -372,6 +375,7 @@ def test_a_check_starts_in_the_background_and_blocks_publishing_until_it_ends(pl
     from fastapi import HTTPException
 
     from wise_scholar import app
+    from wise_scholar.routes import sharing as sharing_routes
 
     monkeypatch.setattr(app, "SOURCES", places["source_dir"])
     monkeypatch.setattr(app, "VERSIONS", places["store"])
@@ -382,23 +386,23 @@ def test_a_check_starts_in_the_background_and_blocks_publishing_until_it_ends(pl
         await release.wait()
         raise RuntimeError("the agent went away")
 
-    monkeypatch.setattr(app, "_check", check)
+    monkeypatch.setattr(sharing_routes, "_check", check)
 
     async def scenario():
         nonlocal release
         release = asyncio.Event()
-        assert (await app.start_publish_check(a["course"]))["running"]
+        assert (await sharing_routes.start_publish_check(a["course"]))["running"]
         with pytest.raises(HTTPException, match="already being checked"):
-            await app.start_publish_check(a["course"])
+            await sharing_routes.start_publish_check(a["course"])
         with pytest.raises(HTTPException, match="wait for the check"):
-            app.publish_version(a["course"], app.Publish())
+            sharing_routes.publish_version(a["course"], sharing_routes.Publish())
         release.set()
-        await app._checks[a["course"]]
+        await sharing_routes._checks[a["course"]]
 
     asyncio.run(scenario())
-    state = app.publish_check(a["course"])
+    state = sharing_routes.publish_check(a["course"])
     assert not state["running"] and state["failed"]
-    app._checks_failed.discard(a["course"])
+    sharing_routes._checks_failed.discard(a["course"])
 
 
 def test_an_upgrade_keeps_unchanged_units_restarts_changed_ones_and_is_offered_on_import(places, monkeypatch):
@@ -407,15 +411,16 @@ def test_an_upgrade_keeps_unchanged_units_restarts_changed_ones_and_is_offered_o
     from fastapi import HTTPException, UploadFile
 
     from wise_scholar import app
+    from wise_scholar.routes import sharing as sharing_routes
 
     monkeypatch.setattr(app, "SOURCES", places["source_dir"])
     monkeypatch.setattr(app, "VERSIONS", places["store"])
     a = _authored(places)
     fitting, lofting = a["units"]
-    v1 = app.publish_version(a["course"], app.Publish())
+    v1 = sharing_routes.publish_version(a["course"], sharing_routes.Publish())
     data1 = (places["store"] / f"{v1['hash']}.zip").read_bytes()
     readers = [db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Reader {uuid.uuid4().hex[:6]}",)).lastrowid for _ in range(2)]
-    course = asyncio.run(app.import_course(readers[0], UploadFile(io.BytesIO(data1), filename="v1.zip")))["id"]
+    course = asyncio.run(sharing_routes.import_course(readers[0], UploadFile(io.BytesIO(data1), filename="v1.zip")))["id"]
     assert app._course(course)["upgrade"] is None
 
     # The reader works through the written unit, and the course holds a unit the next version no longer has.
@@ -430,22 +435,22 @@ def test_an_upgrade_keeps_unchanged_units_restarts_changed_ones_and_is_offered_o
     begun = db.row("SELECT id FROM lessons WHERE course_id = ? AND concept_id = ?", a["course"], fitting["id"])["id"]
     db.add_block(begun, "done", "", {})
     db.conn.execute("INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, 'Sections', 'Trimming', 0, 5, 'concept')", (a["course"],))
-    v2 = app.publish_version(a["course"], app.Publish(notes="fitting written"))
+    v2 = sharing_routes.publish_version(a["course"], sharing_routes.Publish(notes="fitting written"))
 
     offer = app._course(course)["upgrade"]
     assert offer["number"] == 2 and offer["notes"] == "fitting written"
     assert (offer["kept"], offer["restarted"], offer["added"], offer["removed"]) == (["Lofting"], ["Fitting"], ["Trimming"], ["Dropped"])
-    assert app.skip_upgrade(course, app.Upgrade(hash=v2["hash"]))["upgrade"] is None
+    assert sharing_routes.skip_upgrade(course, sharing_routes.Upgrade(hash=v2["hash"]))["upgrade"] is None
     with pytest.raises(HTTPException, match="not the one"):
-        app.upgrade_course(course, app.Upgrade(hash=v1["hash"]))
+        sharing_routes.upgrade_course(course, sharing_routes.Upgrade(hash=v1["hash"]))
 
     # Importing the newer bundle again brings the offer back on the course already played, instead of a second course.
     data2 = (places["store"] / f"{v2['hash']}.zip").read_bytes()
-    again = asyncio.run(app.import_course(readers[0], UploadFile(io.BytesIO(data2), filename="v2.zip")))
+    again = asyncio.run(sharing_routes.import_course(readers[0], UploadFile(io.BytesIO(data2), filename="v2.zip")))
     assert again["id"] == course and again["upgrade"] == 2 and app._course(course)["upgrade"]["number"] == 2
-    assert asyncio.run(app.import_course(readers[1], UploadFile(io.BytesIO(data2), filename="v2.zip")))["id"] != course
+    assert asyncio.run(sharing_routes.import_course(readers[1], UploadFile(io.BytesIO(data2), filename="v2.zip")))["id"] != course
 
-    done = app.upgrade_course(course, app.Upgrade(hash=v2["hash"]))
+    done = sharing_routes.upgrade_course(course, sharing_routes.Upgrade(hash=v2["hash"]))
     assert done["upgraded"]["kept"] == [lofting["key"]] and done["upgrade"] is None and db.course(course)["source_version"] == v2["hash"]
     after = {c["key"]: c for c in db.concepts(course)}
     assert [c["title"] for c in db.concepts(course)] == ["Fitting", "Lofting", "Trimming"]

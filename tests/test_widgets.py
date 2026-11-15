@@ -8,6 +8,7 @@ import pytest
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
 from wise_scholar import app, bundle, db, figures, obsidian, tutor, widgets  # noqa: E402
+from wise_scholar.routes import blocks as blocks_routes  # noqa: E402
 
 GEARS = {
     "controls": [
@@ -83,17 +84,17 @@ def test_the_tool_shows_the_widget_and_an_imported_one_is_evaluated_again():
         )
 
         with pytest.raises(app.HTTPException, match="not a setting"):
-            asyncio.run(app.try_widget(block["id"], app.WidgetSetting(at=[2, 0])))
-        assert asyncio.run(app.try_widget(block["id"], app.WidgetSetting(at=[1, 0]))) == {"tried": 1}
-        assert asyncio.run(app.try_widget(block["id"], app.WidgetSetting(at=[1, 0]))) == {"tried": 1}
-        assert asyncio.run(app.try_widget(block["id"], app.WidgetSetting(at=[1, 1]))) == {"tried": 2}
+            asyncio.run(blocks_routes.try_widget(block["id"], blocks_routes.WidgetSetting(at=[2, 0])))
+        assert asyncio.run(blocks_routes.try_widget(block["id"], blocks_routes.WidgetSetting(at=[1, 0]))) == {"tried": 1}
+        assert asyncio.run(blocks_routes.try_widget(block["id"], blocks_routes.WidgetSetting(at=[1, 0]))) == {"tried": 1}
+        assert asyncio.run(blocks_routes.try_widget(block["id"], blocks_routes.WidgetSetting(at=[1, 1]))) == {"tried": 2}
         assert app._widget_tries(lesson) == [
             f"[widget {block['id']}] The learner tried, in order: "
             "Driver teeth = 24 teeth, Idler gears = 0 -> Output turns per input turn -1.00 turns; "
             "Driver teeth = 24 teeth, Idler gears = 1 -> Output turns per input turn 1.00 turns"
         ]
         assert app._widget_tries(lesson) == []
-        asyncio.run(app.try_widget(block["id"], app.WidgetSetting(at=[0, 0])))
+        asyncio.run(blocks_routes.try_widget(block["id"], blocks_routes.WidgetSetting(at=[0, 0])))
         assert app._widget_tries(lesson)[0].endswith("tried, in order: Driver teeth = 12 teeth, Idler gears = 0 -> Output turns per input turn -0.50 turns")
         block = db.block(block["id"])
         assert "| tried: Driver teeth = 24 teeth" in app._record_line(block)
