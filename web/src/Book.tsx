@@ -21,9 +21,9 @@ import type { ReadingData, VocabData } from './Language'
 import Logo from './Logo'
 import { PlotCard } from './PlotCard'
 import type { PodcastData } from './Podcast'
-import { QuizResult, Translation } from './Quiz'
+import { GradedAnswer, Translation } from './Quiz'
 import { ScopeCard } from './Scope'
-import type { Graded, QuizData } from './Quiz'
+import type { QuizData } from './Quiz'
 import { textDirection } from './text'
 import { pageStyle } from './print'
 import { useTheme } from './theme'
@@ -54,37 +54,41 @@ function QuizBlock({ block }: { block: Block }) {
     <Card label={d.pretest ? t('quiz.pretest') : d.kind === 'sort' ? t('quiz.sort') : t('quiz.quickCheck')} className="quiz">
       <Markdown>{block.markdown}</Markdown>
       <Translation text={d.translation} open />
-      {d.kind === 'sort' && d.answer === null && (
-        <ul className="book-options">
-          {sortItems(d.options).map((o) => (
-            <li key={o.text}>
-              <Markdown>{o.text}</Markdown>
-            </li>
-          ))}
-          <li className="muted">{d.categories?.join(', ')}</li>
-        </ul>
-      )}
-      {d.kind === 'choice' && (
-        <ul className="book-options" dir={textDirection((d.options as string[]).join(' '))}>
-          {(d.options as string[]).map((o) => (
-            <li key={o} className={o === d.answer ? 'picked' : undefined}>
-              <Markdown>{o}</Markdown>
-            </li>
-          ))}
-        </ul>
-      )}
-      {d.answer === null ? (
-        <div className="muted">{t('book.unanswered')}</div>
-      ) : d.correct === undefined ? (
-        <div className="attempt">
-          <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
-          <AnswerText text={d.answer} picked={d.kind === 'choice'} />
-        </div>
-      ) : (
-        <QuizResult picked={d.kind === 'choice'} answer={d.answer} confidence={d.confidence!} result={d as Graded} feedback={d.feedback} unknown={d.unknown} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
-      )}
+      <QuizOptions data={d} />
+      <QuizOutcome data={d} />
     </Card>
   )
+}
+
+/** A sort card's items and categories while unanswered; a choice card's options with the one picked marked. */
+function QuizOptions({ data: d }: { data: QuizData }) {
+  if (d.kind === 'sort' && d.answer === null)
+    return (
+      <ul className="book-options">
+        {sortItems(d.options).map((o) => (
+          <li key={o.text}>
+            <Markdown>{o.text}</Markdown>
+          </li>
+        ))}
+        <li className="muted">{d.categories?.join(', ')}</li>
+      </ul>
+    )
+  if (d.kind !== 'choice') return null
+  return (
+    <ul className="book-options" dir={textDirection((d.options as string[]).join(' '))}>
+      {(d.options as string[]).map((o) => (
+        <li key={o} className={o === d.answer ? 'picked' : undefined}>
+          <Markdown>{o}</Markdown>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function QuizOutcome({ data: d }: { data: QuizData }) {
+  const { t } = useTranslation()
+  if (d.answer === null) return <div className="muted">{t('book.unanswered')}</div>
+  return <GradedAnswer data={d} />
 }
 
 function ReadingBlock({ block }: { block: Block }) {
@@ -153,140 +157,174 @@ function ExerciseBlock({ block, files }: { block: Block; files: ExerciseFile[] }
   )
 }
 
-function BookBlock({ block, files, sketched }: { block: Block; files: Files; sketched: boolean }) {
-  const { t } = useTranslation()
-  const solvedChip = (d: ChallengeData) => d.solved && <span className="chip">{d.writing ? t('common.done') : t('common.solved')}</span>
+type BlockProps = { block: Block; files: Files; sketched: boolean }
 
-  if (block.kind === 'quiz') return <QuizBlock block={block} />
-  if (block.kind === 'reading') return <ReadingBlock block={block} />
-  if (block.kind === 'exercise') return <ExerciseBlock block={block} files={files.get(block.id) ?? []} />
-  if (block.kind === 'plot') return <PlotCard id={block.id} title={block.markdown} data={block.data} />
-  if (block.kind === 'widget') return <WidgetCard id={block.id} title={block.markdown} data={block.data} />
-  if (block.kind === 'network') return <NetworkCard id={block.id} reason={block.markdown} data={block.data} disabled />
-  if (block.kind === 'question') {
-    const d = block.data as QuestionData
-    return (
-      <Card label={t('card.question')} className="question">
-        <h3 dir="auto"><InlineMarkdown>{block.markdown}</InlineMarkdown></h3>
-        {d.answer === null ? (
-          <div className="muted">{t('book.unanswered')}</div>
-        ) : (
-          <span className="chip">
-            <AnswerText text={d.answer} />
-          </span>
-        )}
-      </Card>
-    )
-  }
-  if (block.kind === 'challenge') {
-    const d = block.data as ChallengeData
-    return (
-      <Card
-        label={
-          <>
-            {challengeLabel(d, false, t)}
-            {solvedChip(d)}
-          </>
-        }
-        className="challenge"
-      >
-        <Markdown>{block.markdown}</Markdown>
-        <Comparison data={d} />
-        <Helper data={d} open />
-        <Ladder data={d} />
-      </Card>
-    )
-  }
-  if (block.kind === 'speaking') {
-    const d = block.data as SpeakingData
-    return (
-      <Card
-        label={
-          <>
-            {d.speaking === 'shadow' ? t('speaking.shadow') : t('speaking.read')}
-            {solvedChip(d)}
-          </>
-        }
-        className="challenge"
-      >
-        <p className="spoken-text" lang={d.lang} dir="auto">
-          {block.markdown}
-        </p>
-        {d.scores.map((a, i) => (
-          <div key={i} className="attempt">
-            <span className="label">{t('speaking.attemptScore', { n: i + 1, score: percent(a.score) })}</span>
-            {a.heard !== null && <span lang={d.lang} dir="auto">{a.heard}</span>}
-          </div>
+/** How each kind of card prints; a kind not here prints its text under its name. */
+const BOOK_BLOCKS: Record<string, (props: BlockProps) => ReactNode> = {
+  quiz: ({ block }) => <QuizBlock block={block} />,
+  reading: ({ block }) => <ReadingBlock block={block} />,
+  exercise: ({ block, files }) => <ExerciseBlock block={block} files={files.get(block.id) ?? []} />,
+  plot: ({ block }) => <PlotCard id={block.id} title={block.markdown} data={block.data} />,
+  widget: ({ block }) => <WidgetCard id={block.id} title={block.markdown} data={block.data} />,
+  network: ({ block }) => <NetworkCard id={block.id} reason={block.markdown} data={block.data} disabled />,
+  question: ({ block }) => <QuestionBlock block={block} />,
+  challenge: ({ block }) => <ChallengeBlock block={block} />,
+  speaking: ({ block }) => <SpeakingBlock block={block} />,
+  vocab: ({ block }) => <VocabBlock block={block} />,
+  podcast: ({ block }) => <PodcastBlock block={block} />,
+  figure: ({ block, sketched }) => <FigureBlock block={block} sketched={sketched} />,
+  placement: ({ block }) => (
+    <PlacementCard level={(block.data as { level: string }).level} text={block.markdown} areas={(block.data as { areas?: Area[] }).areas} />
+  ),
+}
+
+function BookBlock(props: BlockProps) {
+  const render = BOOK_BLOCKS[props.block.kind]
+  if (render) return render(props)
+  return (
+    <Card label={lookup(`block.${props.block.kind}`, props.block.kind)}>
+      <Markdown>{props.block.markdown}</Markdown>
+    </Card>
+  )
+}
+
+function SolvedChip({ data: d }: { data: ChallengeData }) {
+  const { t } = useTranslation()
+  return d.solved && <span className="chip">{d.writing ? t('common.done') : t('common.solved')}</span>
+}
+
+function QuestionBlock({ block }: { block: Block }) {
+  const { t } = useTranslation()
+  const d = block.data as QuestionData
+  return (
+    <Card label={t('card.question')} className="question">
+      <h3 dir="auto"><InlineMarkdown>{block.markdown}</InlineMarkdown></h3>
+      {d.answer === null ? (
+        <div className="muted">{t('book.unanswered')}</div>
+      ) : (
+        <span className="chip">
+          <AnswerText text={d.answer} />
+        </span>
+      )}
+    </Card>
+  )
+}
+
+function ChallengeBlock({ block }: { block: Block }) {
+  const { t } = useTranslation()
+  const d = block.data as ChallengeData
+  return (
+    <Card
+      label={
+        <>
+          {challengeLabel(d, false, t)}
+          <SolvedChip data={d} />
+        </>
+      }
+      className="challenge"
+    >
+      <Markdown>{block.markdown}</Markdown>
+      <Comparison data={d} />
+      <Helper data={d} open />
+      <Ladder data={d} />
+    </Card>
+  )
+}
+
+function SpeakingBlock({ block }: { block: Block }) {
+  const { t } = useTranslation()
+  const d = block.data as SpeakingData
+  return (
+    <Card
+      label={
+        <>
+          {d.speaking === 'shadow' ? t('speaking.shadow') : t('speaking.read')}
+          <SolvedChip data={d} />
+        </>
+      }
+      className="challenge"
+    >
+      <p className="spoken-text" lang={d.lang} dir="auto">
+        {block.markdown}
+      </p>
+      {d.scores.map((a, i) => (
+        <div key={i} className="attempt">
+          <span className="label">{t('speaking.attemptScore', { n: i + 1, score: percent(a.score) })}</span>
+          {a.heard !== null && <span lang={d.lang} dir="auto">{a.heard}</span>}
+        </div>
+      ))}
+      <HintList data={d} />
+    </Card>
+  )
+}
+
+function VocabBlock({ block }: { block: Block }) {
+  const { t } = useTranslation()
+  const d = block.data as VocabData
+  return (
+    <Card label={t('card.vocab')}>
+      {d.rounds.map((r) => (
+        <div key={r.tier}>{t('vocab.round', { n: r.tier * TIER_WORDS, known: r.known.length, total: r.words.length })}</div>
+      ))}
+      {d.tier && (
+        <div>
+          {t('vocab.yours')} <span className="chip">{t('vocab.tier', { tier: d.tier })}</span> {t('vocab.working', { n: d.tier * TIER_WORDS })}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function PodcastBlock({ block }: { block: Block }) {
+  const { t } = useTranslation()
+  const d = block.data as PodcastData
+  return (
+    <Card label={`${d.cues.length ? t('cast.quiz') : t('cast.recap')}: ${t('cast.transcript')}`}>
+      <h3 dir="auto">{block.markdown}</h3>
+      <div lang={d.lang} dir="auto">
+        {d.lines.map((l, i) => (
+          <p key={i}>
+            <strong>{l.speaker}:</strong> {l.text}
+          </p>
         ))}
-        <HintList data={d} />
-      </Card>
-    )
-  }
-  if (block.kind === 'vocab') {
-    const d = block.data as VocabData
-    return (
-      <Card label={t('card.vocab')}>
-        {d.rounds.map((r) => (
-          <div key={r.tier}>{t('vocab.round', { n: r.tier * TIER_WORDS, known: r.known.length, total: r.words.length })}</div>
-        ))}
-        {d.tier && (
-          <div>
-            {t('vocab.yours')} <span className="chip">{t('vocab.tier', { tier: d.tier })}</span> {t('vocab.working', { n: d.tier * TIER_WORDS })}
-          </div>
-        )}
-      </Card>
-    )
-  }
-  if (block.kind === 'podcast') {
-    const d = block.data as PodcastData
-    return (
-      <Card label={`${d.cues.length ? t('cast.quiz') : t('cast.recap')}: ${t('cast.transcript')}`}>
-        <h3 dir="auto">{block.markdown}</h3>
-        <div lang={d.lang} dir="auto">
-          {d.lines.map((l, i) => (
-            <p key={i}>
-              <strong>{l.speaker}:</strong> {l.text}
-            </p>
+      </div>
+    </Card>
+  )
+}
+
+function FigureBlock({ block, sketched }: { block: Block; sketched: boolean }) {
+  const { t } = useTranslation()
+  const d = block.data as FigureData
+  return (
+    <Card label={t('block.figure')} className="figure">
+      {d.frames && d.frames.length > 1 ? (
+        <div className="frames">
+          {d.frames.map((frame, i) => (
+            <Drawing key={i} className="figure-box" svg={frame} alt={`${d.alt}, ${t('block.stage', { n: i + 1 })}`} sketched={false} />
           ))}
         </div>
-      </Card>
-    )
-  }
-  if (block.kind === 'figure') {
-    const d = block.data as FigureData
-    return (
-      <Card label={t('block.figure')} className="figure">
-        {d.frames && d.frames.length > 1 ? (
-          <div className="frames">
-            {d.frames.map((frame, i) => (
-              <Drawing key={i} className="figure-box" svg={frame} alt={`${d.alt}, ${t('block.stage', { n: i + 1 })}`} sketched={false} />
-            ))}
-          </div>
-        ) : (
-          <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram && !d.crafted} />
-        )}
-        {block.markdown && <div className="caption"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>}
-        <Limits teaches={d.teaches} />
-        <Credits credits={d.credits} />
-      </Card>
-    )
-  }
-  if (block.kind === 'placement')
-    return (
-      <Card
-        label={
-          <>
-            {t('block.placementResult')} <span className="chip">{(block.data as { level: string }).level}</span>
-          </>
-        }
-      >
-        <Markdown>{block.markdown}</Markdown>
-        <PlacementAreas areas={(block.data as { areas?: Area[] }).areas} />
-      </Card>
-    )
+      ) : (
+        <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram && !d.crafted} />
+      )}
+      {block.markdown && <div className="caption"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>}
+      <Limits teaches={d.teaches} />
+      <Credits credits={d.credits} />
+    </Card>
+  )
+}
+
+function PlacementCard(props: { level: string | null; text: string; areas: Area[] | undefined }) {
+  const { t } = useTranslation()
   return (
-    <Card label={lookup(`block.${block.kind}`, block.kind)}>
-      <Markdown>{block.markdown}</Markdown>
+    <Card
+      label={
+        <>
+          {t('block.placementResult')} <span className="chip">{props.level}</span>
+        </>
+      }
+    >
+      <Markdown>{props.text}</Markdown>
+      <PlacementAreas areas={props.areas} />
     </Card>
   )
 }
@@ -356,16 +394,7 @@ function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files
       )}
       {lesson.phase === 'interview' && course.ranking.length > 0 && <Plan course={course} />}
       {lesson.id === lastPlacement?.id && course.placement && !lesson.blocks.some((b) => b.kind === 'placement') && (
-        <Card
-          label={
-            <>
-              {t('block.placementResult')} <span className="chip">{course.level}</span>
-            </>
-          }
-        >
-          <Markdown>{course.placement}</Markdown>
-          <PlacementAreas areas={course.areas} />
-        </Card>
+        <PlacementCard level={course.level} text={course.placement} areas={course.areas} />
       )}
     </article>
   )
@@ -387,11 +416,11 @@ function NotebookEntry({ entry: e }: { entry: Entry }) {
       {e.kind === 'quiz' && <Markdown>{e.prompt}</Markdown>}
       <div className="attempt">
         <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
-        {e.kind === 'writing' ? <span dir={textDirection(e.said)}>{e.said}</span> : <AnswerText text={e.said} />}
+        <Said entry={e} />
       </div>
       <div className="solution">
         <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
-        {e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>}
+        <Corrected entry={e} />
         {e.explanation && <Markdown>{e.explanation}</Markdown>}
         {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
       </div>
@@ -403,6 +432,16 @@ function NotebookEntry({ entry: e }: { entry: Entry }) {
       )}
     </Card>
   )
+}
+
+/** What the learner wrote or said: a writing entry as plain text, a quiz entry as its answer. */
+function Said({ entry: e }: { entry: Entry }) {
+  return e.kind === 'writing' ? <span dir={textDirection(e.said)}>{e.said}</span> : <AnswerText text={e.said} />
+}
+
+/** A writing entry's text corrected against what was written; a quiz entry's right answer. */
+function Corrected({ entry: e }: { entry: Entry }) {
+  return e.kind === 'writing' ? <Correction attempt={e.said} corrected={e.correct} /> : <Markdown>{e.correct}</Markdown>
 }
 
 function Notebook({ entries }: { entries: Entry[] }) {
