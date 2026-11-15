@@ -65,62 +65,84 @@ export function ReadingCard(props: {
       {paragraphs.map((sentences, i) => (
         <p key={i} lang={d.lang} dir="auto">
           {sentences.map((sentence, k) => (
-            <span key={k} className={sentence === player.current ? 'sentence playing' : 'sentence'}>
-              {splitBy(
-                sentence,
-                d.glossary.map((g) => g.word),
-              ).map((piece, j) =>
-                piece.hit ? (
-                  <button
-                    key={j}
-                    type="button"
-                    className={piece.text === word ? 'gloss open' : 'gloss'}
-                    onClick={() => {
-                      setWord(piece.text)
-                      setShown(false)
-                    }}
-                  >
-                    {piece.text}
-                  </button>
-                ) : (
-                  piece.text
-                ),
-              )}{' '}
-            </span>
+            <GlossedSentence
+              key={k}
+              sentence={sentence}
+              words={d.glossary.map((g) => g.word)}
+              open={word}
+              playing={sentence === player.current}
+              onOpen={(w) => {
+                setWord(w)
+                setShown(false)
+              }}
+            />
           ))}
         </p>
       ))}
       {player.error && <div className="error">{player.error}</div>}
       {gloss && (
-        <div className="hint gloss-panel">
-          <span className="grow">
-            <strong lang={d.lang} dir="auto">{gloss.word}</strong>
-            {shown ? `: ${gloss.meaning}` : ` ${t('reading.guess')}`}
-          </span>
-          {!shown && (
-            <button type="button" className="btn" onClick={() => setShown(true)}>
-              {t('reading.showMeaning')}
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn"
-            disabled={d.added.includes(gloss.word)}
-            onClick={() => props.onAdd(gloss.word)}
-          >
-            <Swap labels={[t('reading.addVocabulary'), t('reading.inVocabulary')]} at={d.added.includes(gloss.word) ? 1 : 0} />
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={(d.known ?? []).includes(gloss.word)}
-            onClick={() => props.onKnown(gloss.word)}
-          >
-            <Swap labels={[t('reading.iKnow'), t('reading.known')]} at={(d.known ?? []).includes(gloss.word) ? 1 : 0} />
-          </button>
-        </div>
+        <GlossPanel
+          gloss={gloss}
+          lang={d.lang}
+          shown={shown}
+          added={d.added.includes(gloss.word)}
+          known={(d.known ?? []).includes(gloss.word)}
+          onShow={() => setShown(true)}
+          onAdd={() => props.onAdd(gloss.word)}
+          onKnown={() => props.onKnown(gloss.word)}
+        />
       )}
     </section>
+  )
+}
+
+/** A sentence of the reading with its glossary words as buttons that open their meaning. */
+function GlossedSentence(props: { sentence: string; words: string[]; open: string | null; playing: boolean; onOpen: (word: string) => void }) {
+  return (
+    <span className={props.playing ? 'sentence playing' : 'sentence'}>
+      {splitBy(props.sentence, props.words).map((piece, j) =>
+        piece.hit ? (
+          <button key={j} type="button" className={piece.text === props.open ? 'gloss open' : 'gloss'} onClick={() => props.onOpen(piece.text)}>
+            {piece.text}
+          </button>
+        ) : (
+          piece.text
+        ),
+      )}{' '}
+    </span>
+  )
+}
+
+/** The open glossary word: guess first, then its meaning, and the buttons that file it. */
+function GlossPanel(props: {
+  gloss: { word: string; meaning: string }
+  lang: string
+  shown: boolean
+  added: boolean
+  known: boolean
+  onShow: () => void
+  onAdd: () => void
+  onKnown: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="hint gloss-panel">
+      <span className="grow">
+        <strong lang={props.lang} dir="auto">{props.gloss.word}</strong>
+        {props.shown ? `: ${props.gloss.meaning}` : ` ${t('reading.guess')}`}
+      </span>
+      {!props.shown && (
+        <button type="button" className="btn" onClick={props.onShow}>
+          {t('reading.showMeaning')}
+        </button>
+      )}
+      <button type="button" className="btn" disabled={props.added} onClick={props.onAdd}>
+        <Swap labels={[t('reading.addVocabulary'), t('reading.inVocabulary')]} at={props.added ? 1 : 0} />
+      </button>
+      <button type="button" className="btn" disabled={props.known} onClick={props.onKnown}>
+        <Swap labels={[t('reading.iKnow'), t('reading.known')]} at={props.known ? 1 : 0} />
+      </button>
+    </div>
   )
 }
 
