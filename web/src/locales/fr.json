@@ -1038,6 +1038,18 @@
       "copy": "Copier",
       "copied": "Copié",
       "help": "Ajoutez cette adresse à une application de podcasts comme AntennaPod pour y retrouver vos podcasts prêts. L'application doit pouvoir joindre ce serveur, comme votre navigateur."
+    },
+    "resources": {
+      "heading": "Données de langue pour ce cours",
+      "help": "Des données ouvertes que votre tuteur peut utiliser pour cette langue. Chacune est téléchargée une fois sur ce serveur, seulement si vous l'autorisez, et partagée par vos cours dans la même langue.",
+      "lexicon": "Dictionnaire",
+      "lexiconHelp": "Formes des mots, genres, pluriels et prononciation, tirés du Wiktionnaire anglais (kaikki.org, CC BY-SA).",
+      "sentences": "Phrases d'exemple",
+      "sentencesHelp": "Des phrases traduites dans votre langue, certaines enregistrées, tirées de Tatoeba (CC BY).",
+      "download": "Télécharger",
+      "progress": "Téléchargement… {{percent}} %",
+      "failed": "Échec : {{error}}. Vous pouvez réessayer.",
+      "size": "{{size}} à télécharger"
     }
   },
   "server": {

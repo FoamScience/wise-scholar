@@ -1,4 +1,4 @@
-import type { Area, Block, Capstone, Concept, CourseDetail, Lesson, Message, Ranked, SetupStep } from './course'
+import type { Area, Block, Capstone, Concept, CourseDetail, Lesson, Message, Ranked, Resource, SetupStep } from './course'
 import type { Source } from './Sources'
 
 export type TutorEvent =
@@ -18,6 +18,7 @@ export type TutorEvent =
   | { type: 'source.removed'; id: number }
   | { type: 'lesson.created'; lesson: Lesson }
   | { type: 'setup.updated'; setup: SetupStep[] }
+  | { type: 'resources.updated'; resources: Resource[] }
   | { type: 'turn.done'; lesson_id: number; ok: boolean; error: string | null; message: Message | null }
 
 /** The lesson an event changes the cards of, and how; null when it changes none. */
@@ -58,6 +59,8 @@ export function courseChange(ev: TutorEvent): ((c: CourseDetail) => CourseDetail
       return (c) => ({ ...c, concepts: ev.concepts, capstones: ev.capstones ?? c.capstones })
     case 'setup.updated':
       return (c) => ({ ...c, setup: ev.setup })
+    case 'resources.updated':
+      return (c) => ({ ...c, resources: ev.resources })
     default:
       return null
   }

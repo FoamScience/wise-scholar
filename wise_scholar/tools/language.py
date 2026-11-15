@@ -5,7 +5,7 @@ from typing import Literal
 import simplemma
 from pydantic import BaseModel
 
-from .. import challenge, db, speech, vocab
+from .. import challenge, db, resources, speech, vocab
 from ..tutor import _patch_block, _show, _shuffled, log, mcp
 
 
@@ -168,6 +168,22 @@ async def pose_writing(
     block = db.add_block(lesson_id, "challenge", prompt, data)
     _show(lesson, block)
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
+
+
+@mcp.tool()
+async def offer_resources(course_id: int, lang: str) -> str:
+    """Offer the learner open data for the natural language this course teaches: a Wiktionary lexicon and
+    sentence pairs with their own language. Call it once, for a course that teaches a natural language. The learner
+    allows or refuses each one, seeing its download size; you are not told and need not wait. lang: the taught
+    language's code, e.g. 'es' or 'pt-BR'."""
+    course = db.course(course_id)
+    if not course:
+        return f"error: no course with id {course_id}"
+    try:
+        outcome = await resources.offer(course_id, lang, db.profile(course["profile_id"])["locale"])
+    except (LookupError, ValueError):
+        return f"error: {lang!r} is not a language code"
+    return "; ".join(f"{kind}: {status}" for kind, status in outcome.items())
 
 
 @mcp.tool()

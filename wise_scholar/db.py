@@ -612,6 +612,21 @@ MIGRATIONS = [
         created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     """,
+    # own: the learner's language, which sentence pairs are paired with; key: the shared folder under data/resources
+    """
+    CREATE TABLE course_resources (
+        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        lang TEXT NOT NULL,
+        own TEXT NOT NULL,
+        key TEXT NOT NULL,
+        size INTEGER,
+        status TEXT NOT NULL CHECK (status IN ('asked', 'refused', 'downloading', 'ready', 'failed')),
+        done INTEGER NOT NULL DEFAULT 0,
+        error TEXT,
+        PRIMARY KEY (course_id, kind)
+    );
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)

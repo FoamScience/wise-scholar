@@ -1016,6 +1016,18 @@
       "copy": "Copy",
       "copied": "Copied",
       "help": "Add this address to a podcast app such as AntennaPod to get your ready casts there. The app needs to reach this server, as your browser does."
+    },
+    "resources": {
+      "heading": "Language data for this course",
+      "help": "Open data your tutor can use for this language. Each is downloaded once to this server, only if you allow it, and shared by your courses in the same language.",
+      "lexicon": "Dictionary",
+      "lexiconHelp": "Word forms, genders, plurals and pronunciation from Wiktionary (kaikki.org, CC BY-SA).",
+      "sentences": "Example sentences",
+      "sentencesHelp": "Sentences with translations into your language, some with recordings, from Tatoeba (CC BY).",
+      "download": "Download",
+      "progress": "Downloading… {{percent}} %",
+      "failed": "Failed: {{error}}. You can try again.",
+      "size": "{{size}} to download"
     }
   },
   "server": {}

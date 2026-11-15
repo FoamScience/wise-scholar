@@ -10,7 +10,7 @@ import type { QuizData } from './Quiz'
 import { LevelPanel } from './Language'
 import { lessonTitle, lessonView, moduleRuns, outlineOf, replayShown, unitDone, searchHref } from './course'
 import { OutlineCard } from './Outline'
-import type { Block, Concept, CourseDetail, Lesson, Ranked, SetupStep } from './course'
+import type { Block, Concept, CourseDetail, Lesson, Ranked, Resource, SetupStep } from './course'
 import { ScopeCard, ScopeForm } from './Scope'
 import type { Source } from './Sources'
 import { ModuleGroup, SideMenu } from './CourseMap'
@@ -325,6 +325,12 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
           onUpgrade={upgrade}
           onStay={(hash) => api<CourseDetail>(`/api/courses/${course.id}/upgrade/skip`, { hash }).then(setCourse, (e: Error) => setError(e.message))}
           onDecide={(i, allow) => api(`/api/courses/${course.id}/setup/${i}`, { allow }).catch((e: Error) => setError(e.message))}
+          onDecideResource={(kind, allow) =>
+            api<{ resources: Resource[] }>(`/api/courses/${course.id}/resources/${kind}`, { allow }).then(
+              ({ resources }) => setCourse((c) => c && { ...c, resources }),
+              (e: Error) => setError(e.message),
+            )
+          }
         />
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
         <LessonIntro course={course} lesson={lesson} finished={finished} setCourse={setCourse} post={post} onError={setError} />
@@ -607,6 +613,54 @@ function MapNav(props: {
   )
 }
 
+function megabytes(bytes: number, locale: string): string {
+  return new Intl.NumberFormat(locale, { style: 'unit', unit: 'megabyte', maximumFractionDigits: 0 }).format(Math.max(1, bytes / 1e6))
+}
+
+/** Open data for the course's language that the tutor offered, each allowed or refused by the learner. */
+function ResourcesCard(props: { resources: Resource[]; onDecide: (kind: Resource['kind'], allow: boolean) => Promise<unknown> }) {
+  const { t, i18n } = useTranslation()
+  const [busy, setBusy] = useState<Resource['kind'] | null>(null)
+
+  function decide(kind: Resource['kind'], allow: boolean) {
+    setBusy(kind)
+    props.onDecide(kind, allow).finally(() => setBusy(null))
+  }
+
+  return (
+    <section className="block setup">
+      <div className="label">{t('resources.heading')}</div>
+      <div className="small">{t('resources.help')}</div>
+      {props.resources.map((r) => (
+        <div key={r.kind} className="setup-step">
+          <div>
+            <strong>{t(`resources.${r.kind}`)}</strong>
+            {r.size !== null && <span className="small"> ({t('resources.size', { size: megabytes(r.size, i18n.language) })})</span>}
+          </div>
+          <div className="small">{t(`resources.${r.kind}Help`)}</div>
+          <div className="row">
+            {r.status === 'downloading' ? (
+              <span className="small">{r.size ? t('resources.progress', { percent: Math.min(100, Math.floor((100 * r.done) / r.size)) }) : t('replay.running')}</span>
+            ) : r.status === 'asked' || r.status === 'failed' ? (
+              <>
+                {r.status === 'failed' && <span className="small">{t('resources.failed', { error: r.error ?? '' })}</span>}
+                <button type="button" className="btn primary" disabled={busy === r.kind} onClick={() => decide(r.kind, true)}>
+                  {t('resources.download')}
+                </button>
+                <button type="button" className="btn" disabled={busy === r.kind} onClick={() => decide(r.kind, false)}>
+                  {t('network.refuse')}
+                </button>
+              </>
+            ) : (
+              <span className="small">{t(`replay.${r.status === 'ready' ? 'done' : 'refused'}`)}</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 /** A newer version to move to, and setup steps still to decide, above the lesson. */
 function CourseNotices(props: {
   course: CourseDetail
@@ -614,6 +668,7 @@ function CourseNotices(props: {
   onUpgrade: (hash: string) => void
   onStay: (hash: string) => void
   onDecide: (index: number, allow: boolean) => void
+  onDecideResource: (kind: Resource['kind'], allow: boolean) => Promise<unknown>
 }) {
   const { course } = props
   const upgrade = course.upgrade
@@ -621,6 +676,7 @@ function CourseNotices(props: {
     <>
       {upgrade && <UpgradeCard upgrade={upgrade} upgrading={props.upgrading} onUpgrade={() => props.onUpgrade(upgrade.hash)} onStay={() => props.onStay(upgrade.hash)} />}
       {course.setup.some((step) => step.status !== 'done' && step.status !== 'refused') && <SetupCard steps={course.setup} onDecide={props.onDecide} />}
+      {course.resources.some((r) => r.status !== 'ready' && r.status !== 'refused') && <ResourcesCard resources={course.resources} onDecide={props.onDecideResource} />}
     </>
   )
 }

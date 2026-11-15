@@ -99,10 +99,19 @@ export type CourseDetail = Course & {
   strands: { input: number; output: number; language: number; fluency: number } | null
   vocabulary: { total: number; due: number; tier?: number; tier_size?: number; tier_known?: number; tier_words?: number }
   setup: SetupStep[]
+  resources: Resource[]
   upgrade: UpgradeOffer | null
   recap: { finished: string | null; seen: boolean } | null
 }
 export type UpgradeOffer = { hash: string; number: number; notes: string; published: string; kept: string[]; restarted: string[]; added: string[]; removed: string[] }
+export type Resource = {
+  kind: 'lexicon' | 'sentences'
+  lang: string
+  size: number | null
+  status: 'asked' | 'refused' | 'downloading' | 'ready' | 'failed'
+  done: number
+  error: string | null
+}
 export type SetupStep = { command: string; status: 'asked' | 'running' | 'done' | 'failed' | 'refused'; exit_code?: number | null }
 
 /** The server names its own lessons in English; a concept's lesson carries the tutor's title. */

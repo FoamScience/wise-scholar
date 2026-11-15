@@ -216,7 +216,7 @@ SHARED_TOOLS = (
     "craft_help", "find_art", "note_learner", "replace_crafted_figure", "revise_course_map", "view_handwork",
 )
 PHASE_TOOLS = {
-    "interview": (*SHARED_TOOLS, "get_playbook", "list_playbooks", "rank_mechanisms", "set_course_map", "set_cover", "set_pace", "set_sitting"),
+    "interview": (*SHARED_TOOLS, "get_playbook", "list_playbooks", "offer_resources", "rank_mechanisms", "set_course_map", "set_cover", "set_pace", "set_sitting"),
     "placement": (*SHARED_TOOLS, "get_playbook", "grade_quiz", "pose_quiz", "pose_vocab_check", "set_course_map", "set_known", "set_placement"),
 }
 

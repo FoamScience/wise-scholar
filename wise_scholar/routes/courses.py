@@ -15,7 +15,7 @@ from typing import Literal
 from urllib.parse import unquote
 
 from .. import app as core
-from .. import db, egress, handwork, hub, sandbox, search, sources, vault
+from .. import db, egress, handwork, hub, resources, sandbox, search, sources, vault
 from ..tools import course_plan as plan_tools, practice as practice_tools
 from ..app import Decision, SITTING_GAP, SOURCES_PER_COURSE, _areas_line, _course, _due, _lesson, _lesson_view, _map_outline, _profile, _queue_claims, _turns, _untrusted, _warmed, app, log
 
@@ -207,6 +207,19 @@ async def decide_setup(course_id: int, index: int, body: Decision) -> dict:
     _jobs.add(job)
     job.add_done_callback(_jobs.discard)
     return {"setup": steps}
+
+
+@app.post("/api/courses/{course_id}/resources/{kind}")
+async def decide_resource(course_id: int, kind: str, body: Decision) -> dict:
+    """The learner's answer to language data the tutor offered: refused, or downloaded in the background."""
+    _course(course_id)
+    row = db.row("SELECT status FROM course_resources WHERE course_id = ? AND kind = ?", course_id, kind)
+    if not row:
+        raise HTTPException(404, "no such resource")
+    if row["status"] not in ("asked", "failed"):
+        raise HTTPException(409, "already decided")
+    resources.decide(course_id, kind, body.allow)
+    return {"resources": resources.view(course_id)}
 
 
 @app.post("/api/courses/{course_id}/archive")

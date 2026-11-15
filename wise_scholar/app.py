@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 
-from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, remind, sandbox, speech, tutor, vault, vocab, widgets
+from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, remind, resources, sandbox, speech, tutor, vault, vocab, widgets
 from .tools import course_plan as plan_tools, lesson_flow as flow_tools, quizzes as quiz_tools, side_turns as side_tools
 from .backends import BACKEND, MCP_SECRET, agy, claude, opencode
 from .playbooks import describe
@@ -53,6 +53,7 @@ async def lifespan(app: FastAPI):
         "WHERE kind = 'podcast' AND json_extract(data, '$.status') = 'rendering'"
     )
     db.conn.execute("UPDATE sources SET status = 'failed', error = 'the server restarted' WHERE status = 'processing'")
+    resources.interrupted()
     db.conn.execute(
         "UPDATE blocks SET data = json_set(data, '$.status', 'asked') WHERE kind = 'network' AND json_extract(data, '$.status') = 'running'"
     )
@@ -197,6 +198,7 @@ def _course(course_id: int) -> dict:
         "vocabulary": {**db.vocabulary(course_id, _now()), **_tier_view(course)},
         "lessons": [_lesson_view(lesson["id"]) for lesson in lessons],
         "setup": json.loads(course["setup"]) if course["setup"] else [],
+        "resources": resources.view(course_id),
         "upgrade": _upgrade_view(course),
         "recap": _recap_state(course_id),
     }
