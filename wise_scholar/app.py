@@ -423,10 +423,12 @@ def _practice_tasks(concept_id: int) -> list[str]:
     scope = db.practice_scope(concept_id)
     done = tutor.varied(scope[0]["course_id"]) if scope else set()
     for unit in scope:
-        for lesson_row in db.rows("SELECT id FROM lessons WHERE concept_id = ? ORDER BY id", unit["id"]):
-            for b in db.blocks(lesson_row["id"]):
-                if tutor.variable(b) and b["id"] not in done:
-                    lines.append(f"- {unit['title']}, task {b['id']}: {_untrusted(b['markdown'][:PRACTICE_TASK_CHARS])}")
+        blocks = [b for r in db.rows("SELECT id FROM lessons WHERE concept_id = ? ORDER BY id", unit["id"]) for b in db.blocks(r["id"])]
+        lines += [
+            f"- {unit['title']}, task {b['id']}: {_untrusted(b['markdown'][:PRACTICE_TASK_CHARS])}"
+            for b in blocks
+            if tutor.variable(b) and b["id"] not in done
+        ]
     return lines
 
 
@@ -508,7 +510,8 @@ def _areas_line(areas: list[dict]) -> str:
     return "; ".join(f"{a['title']}: has {a['holds'] or 'nothing yet'}, ends at {a['lacks'] or 'nothing within the course'}" for a in areas)
 
 
-def _turn_prompt(lesson: dict, line: str, resume: bool | None = None) -> str:
+def _state_line(lesson: dict) -> str:
+    """Where the lesson stands: its course, unit, pace and counters."""
     state = (
         f"[state] course_id={lesson['course_id']} topic={lesson['topic']!r} lesson_id={lesson['id']} "
         f"lesson={lesson['title']!r} phase={lesson['phase']} mechanism={lesson['mechanism'] or 'not chosen'} pace={lesson['pace']}"
@@ -531,6 +534,28 @@ def _turn_prompt(lesson: dict, line: str, resume: bool | None = None) -> str:
         state += f" cards={tutor.cards_shown(lesson['id'])} of {lesson['cards']} shown"
     if lesson["questions"]:
         state += f" placement=question {tutor.placement_posed(lesson['id'])} of {lesson['questions']} posed"
+    return state
+
+
+def _time_line(lesson: dict) -> str | None:
+    if budget := tutor.map_budget(lesson):
+        minutes, measured = tutor.unit_minutes(lesson)
+        return (
+            f"[known] (this course) Teaching time the learner plans for the whole course: {lesson['hours']} hours. A unit takes "
+            f"this learner about {minutes:.0f} minutes ({f'measured over their last {measured} units' if measured else 'twice the sitting, until units are measured'}), "
+            f"so the map holds at most {budget} units to study; the server adds a practice unit after every {db.PRACTICE_EVERY}. "
+            "Keep each lesson to one sitting."
+        )
+    if lesson["hours"]:
+        return (
+            f"[known] (this course) Teaching time the learner plans for the whole course: {lesson['hours']} hours. "
+            "Size the course map so its sittings add up to about that, and keep each lesson to one sitting."
+        )
+    return None
+
+
+def _known_lines(lesson: dict) -> list[str]:
+    """What the app knows of the learner and the course: facts, placement, materials, scope and time."""
     known = [
         f"[known] ({'this course' if f['course_id'] else 'learner'}) {_untrusted(' '.join(f['text'].split()))}" for f in db.facts(lesson["course_id"])
     ]
@@ -543,27 +568,13 @@ def _turn_prompt(lesson: dict, line: str, resume: bool | None = None) -> str:
         )
     if lesson["details"]:
         known.append(f"[known] (this course) Scope set by the learner, the boundary for questions, plan and course map: {_untrusted(lesson['details'])}")
-    if budget := tutor.map_budget(lesson):
-        minutes, measured = tutor.unit_minutes(lesson)
-        known.append(
-            f"[known] (this course) Teaching time the learner plans for the whole course: {lesson['hours']} hours. A unit takes "
-            f"this learner about {minutes:.0f} minutes ({f'measured over their last {measured} units' if measured else 'twice the sitting, until units are measured'}), "
-            f"so the map holds at most {budget} units to study; the server adds a practice unit after every {db.PRACTICE_EVERY}. "
-            "Keep each lesson to one sitting."
-        )
-    elif lesson["hours"]:
-        known.append(
-            f"[known] (this course) Teaching time the learner plans for the whole course: {lesson['hours']} hours. "
-            "Size the course map so its sittings add up to about that, and keep each lesson to one sitting."
-        )
-    # Resumed sessions keep the style of their earlier replies, so the math rule rides along with every turn.
-    fmt = "[format] All math in LaTeX: $...$ inline, $$...$$ displayed. No Unicode math symbols such as x², √, ∫; ordinary letters, accents, currency and units stay as they are."
-    language = (
-        f"[language] Write everything the learner reads in {LOCALE_NAMES[lesson['locale']]}: chat, lesson blocks, questions, "
-        "options, hints, feedback, titles, the course map. Code, commands and identifiers stay as they are. In a language "
-        "course this is the learner's own language, used for instructions and explanations; texts and tasks in the language "
-        "being learned stay in that language, and a quick check written in it carries its translation."
-    )
+    if time := _time_line(lesson):
+        known.append(time)
+    return known
+
+
+def _tool_lines() -> list[str]:
+    """The optional tools this server has, and the ones it lacks."""
     tools = [
         f"[tools] Art pack installed: {p['title']} ({p['icons']} icons; {', '.join(p['categories'])}). Search it with "
         "find_art and place icons in add_figure as <use href=\"art:ID\">; draw yourself what it lacks."
@@ -585,12 +596,31 @@ def _turn_prompt(lesson: dict, line: str, resume: bool | None = None) -> str:
             "workspace. Where a playbook calls for an exercise, use pose_challenge with code the learner runs on their own "
             "machine and pastes back."
         ]
+    return tools
+
+
+# Resumed sessions keep the style of their earlier replies, so the math rule rides along with every turn.
+MATH_FORMAT = "[format] All math in LaTeX: $...$ inline, $$...$$ displayed. No Unicode math symbols such as x², √, ∫; ordinary letters, accents, currency and units stay as they are."
+
+
+def _language_line(locale: str) -> str:
+    return (
+        f"[language] Write everything the learner reads in {LOCALE_NAMES[locale]}: chat, lesson blocks, questions, "
+        "options, hints, feedback, titles, the course map. Code, commands and identifiers stay as they are. In a language "
+        "course this is the learner's own language, used for instructions and explanations; texts and tasks in the language "
+        "being learned stay in that language, and a quick check written in it carries its translation."
+    )
+
+
+def _turn_prompt(lesson: dict, line: str, resume: bool | None = None) -> str:
     if not (_resumes(lesson) if resume is None else resume):
         if _replayed(lesson):
             line = f"{REPLAY}{_replay_record(lesson['id'])}\n{line}"
         elif lesson["session_started"]:
             line = f"{SO_FAR}{_lesson_record(lesson['id'], newest=True)}\n{line}"
-    return "\n".join([state, *known, fmt, language, *tools, *_widget_tries(lesson["id"]), line])
+    return "\n".join(
+        [_state_line(lesson), *_known_lines(lesson), MATH_FORMAT, _language_line(lesson["locale"]), *_tool_lines(), *_widget_tries(lesson["id"]), line]
+    )
 
 
 def _widget_tries(lesson_id: int) -> list[str]:
@@ -2788,35 +2818,44 @@ def _editable_block(block_id: int) -> tuple[dict, dict]:
     return lesson, block
 
 
+def _edit_challenge(kind: str, data: dict, body: BlockEdit) -> None:
+    if body.solution is not None:
+        data["solution"] = body.solution.strip() or None
+    if body.hints is not None:
+        data["hints"] = [h.strip() for h in body.hints if h.strip()]
+    if body.run is not None and kind == "exercise" and body.run.strip():
+        data["run"] = body.run.strip()
+
+
+def _edit_quiz(data: dict, body: BlockEdit) -> None:
+    """The quiz's card takes the edit, and the block keeps the copy of it the learner is shown."""
+    card = db.card(data["card_id"])
+    options = [o.strip() for o in body.options if o.strip()] if body.options is not None else card["options"]
+    key = body.answer_key.strip() if body.answer_key is not None else card["answer_key"]
+    if card["kind"] == "choice" and not (2 <= len(options) <= 5 and key in options):
+        raise HTTPException(422, "a choice quiz needs 2 to 5 options, one of them exactly the key")
+    explanation = body.explanation.strip() if body.explanation is not None else card["explanation"]
+    question = body.markdown.strip() if body.markdown is not None else card["question"]
+    db.conn.execute(
+        "UPDATE cards SET question = ?, options = ?, answer_key = ?, explanation = ? WHERE id = ?",
+        (question, json.dumps(options if card["kind"] == "choice" else card["options"]),
+         card["answer_key"] if card["kind"] == "sort" else key, explanation, card["id"]),
+    )
+    if card["kind"] == "sort":
+        data["explanation"] = explanation
+    else:
+        data.update({"options": options if card["kind"] == "choice" else [], "answer_key": key, "explanation": explanation})
+
+
 @app.post("/api/blocks/{block_id}/edit")
 def edit_block(block_id: int, body: BlockEdit) -> dict:
     """A teacher's own hand on a card: text, solution, hints, run command, quiz options and key."""
     lesson, block = _editable_block(block_id)
     data = dict(block["data"] or {})
     if block["kind"] in challenge.KINDS:
-        if body.solution is not None:
-            data["solution"] = body.solution.strip() or None
-        if body.hints is not None:
-            data["hints"] = [h.strip() for h in body.hints if h.strip()]
-        if body.run is not None and block["kind"] == "exercise" and body.run.strip():
-            data["run"] = body.run.strip()
+        _edit_challenge(block["kind"], data, body)
     elif block["kind"] == "quiz":
-        card = db.card(data["card_id"])
-        options = [o.strip() for o in body.options if o.strip()] if body.options is not None else card["options"]
-        key = body.answer_key.strip() if body.answer_key is not None else card["answer_key"]
-        if card["kind"] == "choice" and not (2 <= len(options) <= 5 and key in options):
-            raise HTTPException(422, "a choice quiz needs 2 to 5 options, one of them exactly the key")
-        explanation = body.explanation.strip() if body.explanation is not None else card["explanation"]
-        question = body.markdown.strip() if body.markdown is not None else card["question"]
-        db.conn.execute(
-            "UPDATE cards SET question = ?, options = ?, answer_key = ?, explanation = ? WHERE id = ?",
-            (question, json.dumps(options if card["kind"] == "choice" else card["options"]),
-             card["answer_key"] if card["kind"] == "sort" else key, explanation, card["id"]),
-        )
-        if card["kind"] == "sort":
-            data["explanation"] = explanation
-        else:
-            data.update({"options": options if card["kind"] == "choice" else [], "answer_key": key, "explanation": explanation})
+        _edit_quiz(data, body)
     if body.markdown is not None and body.markdown.strip():
         db.set_block_markdown(block_id, body.markdown.strip())
     block = db.set_block_data(block_id, data) if data else db.block(block_id)

@@ -683,6 +683,88 @@ def _fresh(data: dict) -> dict:
     return kept
 
 
+def _copy_concepts(course_id: int, new_id: int) -> dict[int, int]:
+    concept_map = {}
+    for c in concepts(course_id):
+        concept_map[c["id"]] = conn.execute(
+            "INSERT INTO concepts (course_id, module, title, known, position, kind, key) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (new_id, c["module"], c["title"], c["known"], c["position"], c["kind"], c["key"]),
+        ).lastrowid
+    conn.executemany(
+        "INSERT INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
+        [(concept_map[c], concept_map[n]) for c, ids in needs(course_id).items() for n in ids],
+    )
+    return concept_map
+
+
+def _copy_capstones(course_id: int, new_id: int, concept_map: dict[int, int]) -> None:
+    for k in capstones(course_id):
+        capstone_id = conn.execute(
+            "INSERT INTO capstones (course_id, module, title, brief, folder) VALUES (?, ?, ?, ?, ?)",
+            (new_id, k["module"], k["title"], k["brief"], k["folder"]),
+        ).lastrowid
+        conn.executemany(
+            "INSERT INTO milestones (capstone_id, concept_id, deliverable) VALUES (?, ?, ?)",
+            [(capstone_id, concept_map[m["concept_id"]], m["deliverable"]) for m in k["milestones"] if m["concept_id"] in concept_map],
+        )
+
+
+def _copy_cards(course_id: int, new_id: int, concept_map: dict[int, int]) -> dict[int, int]:
+    card_map = {}
+    # a copy starts its reviews afresh from the lesson cards; the short parts made for reviews stay behind
+    for k in rows("SELECT * FROM cards WHERE course_id = ? AND parent_id IS NULL ORDER BY id", course_id):
+        card_map[k["id"]] = conn.execute(
+            "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, key) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (new_id, concept_map.get(k["concept_id"]), k["question"], k["kind"], k["options"], k["answer_key"], k["explanation"],
+             k["scheduled"], k["vocab"], k["lemma"], k["lang"], k["translation"], k["key"]),
+        ).lastrowid
+    return card_map
+
+
+def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int]) -> None:
+    for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", old_lesson):
+        if b["kind"] in ("podcast", "network"):
+            continue  # audio and consent belong to the original
+        data = _fresh(json.loads(b["data"])) if b["data"] else None
+        if data and data.get("card_id") in card_map:
+            data = {**data, "card_id": card_map[data["card_id"]]}
+        copied = conn.execute(
+            "INSERT INTO blocks (lesson_id, kind, markdown, data, created, key) VALUES (?, ?, ?, ?, ?, ?)",
+            (lesson_id, b["kind"], b["markdown"], json.dumps(data) if data else None, b["created"], b["key"]),
+        ).lastrowid
+        conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (copied, copied))
+
+
+def _copy_lessons(course_id: int, new_id: int, concept_map: dict[int, int], card_map: dict[int, int]) -> None:
+    for lesson_row in rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", course_id):
+        if lesson_row["concept_id"] and lesson_row["concept_id"] not in concept_map:
+            continue
+        lesson_id = conn.execute(
+            "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key) VALUES (?, ?, ?, ?, ?, ?)",
+            (new_id, lesson_row["title"], lesson_row["phase"], concept_map.get(lesson_row["concept_id"]), str(uuid.uuid4()), lesson_row["key"]),
+        ).lastrowid
+        _copy_blocks(lesson_row["id"], lesson_id, card_map)
+        conn.executemany(
+            "INSERT INTO messages (lesson_id, role, text, created) VALUES (?, ?, ?, ?)",
+            [(lesson_id, m["role"], m["text"], m["created"]) for m in rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_row["id"])],
+        )
+
+
+def _copy_sources(course_id: int, new_id: int) -> dict[int, int]:
+    source_map = {}
+    for s in rows("SELECT * FROM sources WHERE course_id = ? AND status = 'ready' ORDER BY id", course_id):
+        source_map[s["id"]] = conn.execute(
+            "INSERT INTO sources (course_id, name, size, status, error, sections) VALUES (?, ?, ?, ?, ?, ?)",
+            (new_id, s["name"], s["size"], s["status"], s["error"], s["sections"]),
+        ).lastrowid
+        conn.executemany(
+            "INSERT INTO source_sections (source_id, title, text) VALUES (?, ?, ?)",
+            [(source_map[s["id"]], x["title"], x["text"]) for x in rows("SELECT title, text FROM source_sections WHERE source_id = ? ORDER BY id", s["id"])],
+        )
+    return source_map
+
+
 def copy_course(course_id: int, topic: str) -> dict:
     """A new course with the same plan: scope, map, projects, lessons with their cards, blocks and chat, materials
     and course facts. Nothing of the record that measures a learner comes along: answers, reviews, mistakes, the
@@ -703,70 +785,15 @@ def copy_course(course_id: int, topic: str) -> dict:
             "INSERT INTO placement_areas (course_id, position, title, holds, lacks) "
             "SELECT ?, position, title, holds, lacks FROM placement_areas WHERE course_id = ?", (new_id, course_id),
         )
-        concept_map = {}
-        for c in concepts(course_id):
-            concept_map[c["id"]] = conn.execute(
-                "INSERT INTO concepts (course_id, module, title, known, position, kind, key) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (new_id, c["module"], c["title"], c["known"], c["position"], c["kind"], c["key"]),
-            ).lastrowid
-        conn.executemany(
-            "INSERT INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
-            [(concept_map[c], concept_map[n]) for c, ids in needs(course_id).items() for n in ids],
-        )
-        for k in capstones(course_id):
-            capstone_id = conn.execute(
-                "INSERT INTO capstones (course_id, module, title, brief, folder) VALUES (?, ?, ?, ?, ?)",
-                (new_id, k["module"], k["title"], k["brief"], k["folder"]),
-            ).lastrowid
-            conn.executemany(
-                "INSERT INTO milestones (capstone_id, concept_id, deliverable) VALUES (?, ?, ?)",
-                [(capstone_id, concept_map[m["concept_id"]], m["deliverable"]) for m in k["milestones"] if m["concept_id"] in concept_map],
-            )
-        card_map = {}
-        # a copy starts its reviews afresh from the lesson cards; the short parts made for reviews stay behind
-        for k in rows("SELECT * FROM cards WHERE course_id = ? AND parent_id IS NULL ORDER BY id", course_id):
-            card_map[k["id"]] = conn.execute(
-                "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, key) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (new_id, concept_map.get(k["concept_id"]), k["question"], k["kind"], k["options"], k["answer_key"], k["explanation"],
-                 k["scheduled"], k["vocab"], k["lemma"], k["lang"], k["translation"], k["key"]),
-            ).lastrowid
-        for lesson_row in rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", course_id):
-            if lesson_row["concept_id"] and lesson_row["concept_id"] not in concept_map:
-                continue
-            lesson_id = conn.execute(
-                "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key) VALUES (?, ?, ?, ?, ?, ?)",
-                (new_id, lesson_row["title"], lesson_row["phase"], concept_map.get(lesson_row["concept_id"]), str(uuid.uuid4()), lesson_row["key"]),
-            ).lastrowid
-            for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson_row["id"]):
-                if b["kind"] in ("podcast", "network"):
-                    continue  # audio and consent belong to the original
-                data = _fresh(json.loads(b["data"])) if b["data"] else None
-                if data and data.get("card_id") in card_map:
-                    data = {**data, "card_id": card_map[data["card_id"]]}
-                copied = conn.execute(
-                    "INSERT INTO blocks (lesson_id, kind, markdown, data, created, key) VALUES (?, ?, ?, ?, ?, ?)",
-                    (lesson_id, b["kind"], b["markdown"], json.dumps(data) if data else None, b["created"], b["key"]),
-                ).lastrowid
-                conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (copied, copied))
-            conn.executemany(
-                "INSERT INTO messages (lesson_id, role, text, created) VALUES (?, ?, ?, ?)",
-                [(lesson_id, m["role"], m["text"], m["created"]) for m in rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_row["id"])],
-            )
+        concept_map = _copy_concepts(course_id, new_id)
+        _copy_capstones(course_id, new_id, concept_map)
+        card_map = _copy_cards(course_id, new_id, concept_map)
+        _copy_lessons(course_id, new_id, concept_map, card_map)
         conn.executemany(
             "INSERT INTO facts (course_id, text, profile_id) VALUES (?, ?, ?)",
             [(new_id, f["text"], f["profile_id"]) for f in rows("SELECT * FROM facts WHERE course_id = ?", course_id)],
         )
-        source_map = {}
-        for s in rows("SELECT * FROM sources WHERE course_id = ? AND status = 'ready' ORDER BY id", course_id):
-            source_map[s["id"]] = conn.execute(
-                "INSERT INTO sources (course_id, name, size, status, error, sections) VALUES (?, ?, ?, ?, ?, ?)",
-                (new_id, s["name"], s["size"], s["status"], s["error"], s["sections"]),
-            ).lastrowid
-            conn.executemany(
-                "INSERT INTO source_sections (source_id, title, text) VALUES (?, ?, ?)",
-                [(source_map[s["id"]], x["title"], x["text"]) for x in rows("SELECT title, text FROM source_sections WHERE source_id = ? ORDER BY id", s["id"])],
-            )
+        source_map = _copy_sources(course_id, new_id)
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -1752,6 +1779,14 @@ def _card_verdicts(card_id: int) -> list[tuple[str, str]]:
     ]
 
 
+def _evidence_verdicts(block: dict) -> list[tuple[str, str]]:
+    """(when, verdict) of one piece of evidence: every review of a quiz's card, or the block's own verdict."""
+    card_id = (block["data"] or {}).get("card_id")
+    if block["kind"] == "quiz" and card_id:
+        return _card_verdicts(card_id)
+    return [(block["created"], verdict)] if (verdict := _verdict(block)) else []
+
+
 def claim_states(profile_id: int, now: str) -> dict[int, str]:
     """Each claim's state from its latest evidence, in a lesson or in a review of its cards: held (fading once a linked
     review card is due), shaky, or unseen."""
@@ -1764,11 +1799,7 @@ def claim_states(profile_id: int, now: str) -> dict[int, str]:
     ):
         block = _block({k: v for k, v in e.items() if k != "claim_id"})
         card_id = (block["data"] or {}).get("card_id")
-        if block["kind"] == "quiz" and card_id:
-            verdicts = _card_verdicts(card_id)
-        else:
-            verdicts = [(block["created"], verdict)] if (verdict := _verdict(block)) else []
-        for when, verdict in verdicts:
+        for when, verdict in _evidence_verdicts(block):
             if e["claim_id"] not in latest or when >= latest[e["claim_id"]][0]:
                 latest[e["claim_id"]] = (when, verdict)
         if card_id and row(_CARD_LINE + "SELECT 1 FROM cards k JOIN line ON line.id = k.id WHERE k.retired = 0 AND k.due <= ?", card_id, now):
@@ -1925,6 +1956,14 @@ def merge_claims(claim_id: int, into: int) -> None:
 
 
 # --- Recap: a finished course told back to the learner ---------------------------------------------------------------
+def _module_done(module: str, units: list[dict], finished: dict, begun: set[int], projects: list[dict]) -> bool:
+    """Its units finished or placed out, or all its projects built."""
+    if all(u["id"] in finished or (u["known"] and u["id"] not in begun) for u in units if u["module"] == module):
+        return True
+    built = [k for k in projects if k["module"] == module]
+    return bool(built) and all(k["done"] == len(k["milestones"]) for k in built)
+
+
 def course_finished(course_id: int) -> str | None:
     """When a learner's course was finished, or None while it is not: every module is done, its units finished or
     placed out, or all its projects built. The time is when its last unit was finished."""
@@ -1938,11 +1977,8 @@ def course_finished(course_id: int) -> str | None:
     )}
     begun = {r["concept_id"] for r in rows("SELECT DISTINCT concept_id FROM lessons WHERE course_id = ? AND concept_id IS NOT NULL", course_id)}
     projects = capstones(course_id)
-    for module in dict.fromkeys(u["module"] for u in units):
-        done = all(u["id"] in finished or (u["known"] and u["id"] not in begun) for u in units if u["module"] == module)
-        built = [k for k in projects if k["module"] == module]
-        if not done and not (built and all(k["done"] == len(k["milestones"]) for k in built)):
-            return None
+    if not all(_module_done(module, units, finished, begun, projects) for module in dict.fromkeys(u["module"] for u in units)):
+        return None
     return max(finished.values(), default=None) or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
