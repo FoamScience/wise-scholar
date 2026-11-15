@@ -118,19 +118,31 @@ def _marks(raw, names: tuple[str, ...]) -> list[dict]:
     return [_mark(i, m, names) for i, m in enumerate(raw)]
 
 
+def _is_domain(domain: object) -> bool:
+    return isinstance(domain, list) and len(domain) == 2 and all(isinstance(v, (int, float)) for v in domain) and domain[0] < domain[1]
+
+
+def _curve_mark(i: int, kind: str, m: dict, names: tuple[str, ...]) -> dict:
+    domain = m.get("domain")
+    if not _is_domain(domain):
+        raise ValueError(f"mark {i}: a {kind} needs domain [start, end] with start < end")
+    if not isinstance(m.get("fn"), str):
+        raise ValueError(f"mark {i}: a {kind} needs fn, an expression of x and the sliders")
+    xs = [domain[0] + (domain[1] - domain[0]) * k / (SAMPLES - 1) for k in range(SAMPLES)]
+    return {"type": kind, "label": str(m.get("label") or m["fn"]), "xs": xs, "fn": plots.compile_fn(m["fn"], ("x", *names))}
+
+
+def _rule_mark(m: dict, names: tuple[str, ...]) -> dict:
+    axis = "x" if "x" in m else "y"
+    return {"type": "rule", "axis": axis, "label": str(m.get("label", "")), "fn": plots.compile_fn(str(m[axis]), names)}
+
+
 def _mark(i: int, m: object, names: tuple[str, ...]) -> dict:
     kind = m.get("type") if isinstance(m, dict) else None
     if kind in ("line", "area"):
-        domain = m.get("domain")
-        if not (isinstance(domain, list) and len(domain) == 2 and all(isinstance(v, (int, float)) for v in domain) and domain[0] < domain[1]):
-            raise ValueError(f"mark {i}: a {kind} needs domain [start, end] with start < end")
-        if not isinstance(m.get("fn"), str):
-            raise ValueError(f"mark {i}: a {kind} needs fn, an expression of x and the sliders")
-        xs = [domain[0] + (domain[1] - domain[0]) * k / (SAMPLES - 1) for k in range(SAMPLES)]
-        return {"type": kind, "label": str(m.get("label") or m["fn"]), "xs": xs, "fn": plots.compile_fn(m["fn"], ("x", *names))}
+        return _curve_mark(i, kind, m, names)
     if kind == "rule" and ("x" in m) != ("y" in m):
-        axis = "x" if "x" in m else "y"
-        return {"type": "rule", "axis": axis, "label": str(m.get("label", "")), "fn": plots.compile_fn(str(m[axis]), names)}
+        return _rule_mark(m, names)
     raise ValueError(f"mark {i}: type must be line, area, or rule with one of x or y")
 
 

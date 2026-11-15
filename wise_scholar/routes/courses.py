@@ -124,6 +124,28 @@ def _copy_name(course: dict) -> str:
     return f"{base} ({n})"
 
 
+def _placement_picks(course_id: int) -> list[dict]:
+    finished = {r["concept_id"] for r in db.rows(
+        "SELECT DISTINCT l.concept_id FROM lessons l JOIN blocks b ON b.lesson_id = l.id WHERE l.course_id = ? AND b.kind = 'done'", course_id,
+    )}
+    return [
+        card for unit in db.concepts(course_id)
+        if unit["kind"] == "concept" and not unit["unwritten"] and not unit["known"] and unit["id"] not in finished
+        if (card := db.row(
+            "SELECT * FROM cards WHERE concept_id = ? AND parent_id IS NULL AND retired = 0 ORDER BY kind = 'open', id LIMIT 1", unit["id"],
+        ))
+    ]
+
+
+def _add_placement_quiz(lesson_id: int, card: dict) -> None:
+    options = json.loads(card["options"])
+    shown = {"card_id": card["id"], "kind": card["kind"], "answer": None, "pretest": False, "unit": card["concept_id"],
+             "options": [{"text": o["text"]} for o in options] if card["kind"] == "sort" else options}
+    if card["kind"] == "sort":
+        shown["categories"] = json.loads(card["answer_key"])
+    db.add_block(lesson_id, "quiz", card["question"], shown)
+
+
 @app.post("/api/courses/{course_id}/placement/cards")
 def card_placement(course_id: int) -> dict:
     """An imported course places the learner from its own cards, one per written unit, with no tutor: a unit whose card
@@ -133,27 +155,13 @@ def card_placement(course_id: int) -> dict:
         raise HTTPException(404, "no such course")
     if course["mode"] != "replay":
         raise HTTPException(409, "only an imported course places you from its cards")
-    finished = {r["concept_id"] for r in db.rows(
-        "SELECT DISTINCT l.concept_id FROM lessons l JOIN blocks b ON b.lesson_id = l.id WHERE l.course_id = ? AND b.kind = 'done'", course_id,
-    )}
-    picks = [
-        card for unit in db.concepts(course_id)
-        if unit["kind"] == "concept" and not unit["unwritten"] and not unit["known"] and unit["id"] not in finished
-        if (card := db.row(
-            "SELECT * FROM cards WHERE concept_id = ? AND parent_id IS NULL AND retired = 0 ORDER BY kind = 'open', id LIMIT 1", unit["id"],
-        ))
-    ]
+    picks = _placement_picks(course_id)
     if not picks:
         raise HTTPException(409, "this course has no cards left to place you with")
     locale = db.profile(course["profile_id"])["locale"]
     lesson_id = db.create_lesson(course_id, PLACEMENT_TITLE.get(locale, PLACEMENT_TITLE["en"]), "placement")
     for card in picks:
-        options = json.loads(card["options"])
-        shown = {"card_id": card["id"], "kind": card["kind"], "answer": None, "pretest": False, "unit": card["concept_id"],
-                 "options": [{"text": o["text"]} for o in options] if card["kind"] == "sort" else options}
-        if card["kind"] == "sort":
-            shown["categories"] = json.loads(card["answer_key"])
-        db.add_block(lesson_id, "quiz", card["question"], shown)
+        _add_placement_quiz(lesson_id, card)
     view = _lesson_view(lesson_id)
     hub.publish(course_id, {"type": "lesson.created", "lesson": view})
     return view
@@ -509,6 +517,29 @@ def _material_name(url: httpx.URL, kind: str) -> str:
     return name
 
 
+def _require_public_web(target: httpx.URL) -> None:
+    if target.scheme not in ("http", "https") or not target.host:
+        raise HTTPException(422, "the address must start with http:// or https://")
+    if target.port not in (None, 80, 443):
+        raise HTTPException(422, "only public web addresses can be fetched")
+
+
+def _follow(target: httpx.URL, location: str) -> httpx.URL:
+    try:
+        return target.join(location)
+    except httpx.InvalidURL:
+        raise HTTPException(422, "the address must start with http:// or https://") from None
+
+
+async def _read_limited(res: httpx.Response) -> bytearray:
+    data = bytearray()
+    async for chunk in res.aiter_bytes():
+        data += chunk
+        if len(data) > SOURCE_LIMIT:
+            raise HTTPException(413, "files are limited to 50 MB")
+    return data
+
+
 async def fetch_material(url: str) -> tuple[str, bytes]:
     """Download a document for a course on the learner's behalf: public addresses only, ports 80 and 443, every
     redirect hop checked, the connection made to the checked address; returns (file name, bytes)."""
@@ -519,10 +550,7 @@ async def fetch_material(url: str) -> tuple[str, bytes]:
     networks = await asyncio.to_thread(egress.local_networks)
     async with httpx.AsyncClient(follow_redirects=False, timeout=FETCH_TIMEOUT, trust_env=False, headers={"User-Agent": "wise-scholar"}) as client:
         for _ in range(FETCH_HOPS):
-            if target.scheme not in ("http", "https") or not target.host:
-                raise HTTPException(422, "the address must start with http:// or https://")
-            if target.port not in (None, 80, 443):
-                raise HTTPException(422, "only public web addresses can be fetched")
+            _require_public_web(target)
             address = await _public_address(target.host, networks)
             request = client.build_request(
                 "GET", target.copy_with(host=address), headers={"Host": target.host}, extensions={"sni_hostname": target.host}
@@ -530,19 +558,12 @@ async def fetch_material(url: str) -> tuple[str, bytes]:
             res = await client.send(request, stream=True)
             try:
                 if res.is_redirect and res.headers.get("location"):
-                    try:
-                        target = target.join(res.headers["location"])
-                    except httpx.InvalidURL:
-                        raise HTTPException(422, "the address must start with http:// or https://") from None
+                    target = _follow(target, res.headers["location"])
                     continue
                 if res.status_code != 200:
                     raise HTTPException(422, "the address did not answer with a document")
                 kind = (res.headers.get("content-type") or "").split(";")[0].strip().lower()
-                data = bytearray()
-                async for chunk in res.aiter_bytes():
-                    data += chunk
-                    if len(data) > SOURCE_LIMIT:
-                        raise HTTPException(413, "files are limited to 50 MB")
+                data = await _read_limited(res)
                 break
             finally:
                 await res.aclose()

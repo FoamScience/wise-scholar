@@ -56,22 +56,18 @@ def animate(name: str, stages: list[str]) -> tuple[str, list[str]]:
     return result["svg"], result["frames"]
 
 
-def _sidecar(name: str, substances: list[str], job: dict) -> dict:
+def _refuse_unrenderable(name: str, substances: list[str]) -> None:
     if name not in domains():
         raise ValueError(f"no diagram domain named {name!r}; the domains are {', '.join(domains())}")
     if any(len(s) > MAX_SUBSTANCE for s in substances):
         raise ValueError(f"the Substance is over {MAX_SUBSTANCE} characters; fewer objects")
     if not available():
         raise ValueError("diagrams are not installed on this server")
-    trio = {
-        "domain": (HERE / f"{name}.domain").read_text(),
-        "style": (HERE / f"{name}.style").read_text(),
-        "attempts": ATTEMPTS,
-        **job,
-    }
-    timeout = TIMEOUT + TIMEOUT // 2 * (len(substances) - 1)
+
+
+def _launch(trio: dict, timeout: int) -> subprocess.CompletedProcess:
     try:
-        run = subprocess.run(
+        return subprocess.run(
             ["node", str(SIDECAR / "render.mjs")],
             input=json.dumps(trio),
             capture_output=True,
@@ -85,15 +81,31 @@ def _sidecar(name: str, substances: list[str], job: dict) -> dict:
     except OSError as e:
         log.error("diagram sidecar cannot start: %s", e)
         raise ValueError("the diagram renderer cannot start (is node installed?); the server log has the details") from None
+
+
+def _answer(run: subprocess.CompletedProcess, job: dict) -> dict:
     try:
         result = json.loads(run.stdout)
-        ok, error, rules = result["ok"], result.get("error", ""), result.get("rules", [])
-        if ok and not (isinstance(result.get("svg"), str) and ("stages" not in job or isinstance(result.get("frames"), list))):
+        if result["ok"] and not (isinstance(result.get("svg"), str) and ("stages" not in job or isinstance(result.get("frames"), list))):
             raise KeyError("svg")
     except (ValueError, KeyError, TypeError):
         log.error("diagram sidecar gave no usable answer (exit %s): %s %s", run.returncode, run.stdout[-500:], run.stderr[-2000:])
         raise ValueError("the diagram renderer failed; the server log has the details") from None
-    if not ok:
+    return result
+
+
+def _sidecar(name: str, substances: list[str], job: dict) -> dict:
+    _refuse_unrenderable(name, substances)
+    trio = {
+        "domain": (HERE / f"{name}.domain").read_text(),
+        "style": (HERE / f"{name}.style").read_text(),
+        "attempts": ATTEMPTS,
+        **job,
+    }
+    timeout = TIMEOUT + TIMEOUT // 2 * (len(substances) - 1)
+    result = _answer(_launch(trio, timeout), job)
+    if not result["ok"]:
+        error, rules = result.get("error", ""), result.get("rules", [])
         listed = "".join(f"\n- {r}" for r in rules)
         raise ValueError(error + (f"; the rules:{listed}\nState fewer objects rather than retrying as is." if rules else ""))
     return result

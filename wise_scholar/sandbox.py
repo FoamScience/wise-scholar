@@ -102,6 +102,15 @@ def _brought_in(path: Path, home: Path, exposes) -> list[Path]:
     return [path if path.name != "bin" or exposes(path.parent) else path.parent]
 
 
+def _home_path_entries(home: Path):
+    """PATH folders inside the home directory, other than the home itself and the app's own install."""
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        path = Path(entry)
+        if not entry or not path.is_dir() or not path.is_relative_to(home) or path == home or path.resolve().is_relative_to(db.ROOT):
+            continue
+        yield path
+
+
 def _toolchains(home: Path) -> list[Path]:
     """Per-user language toolchains: the home folders PATH points into, plus WISE_SCHOLAR_SANDBOX_PATHS."""
     # Never shown, whatever PATH or the setting says: the home directory itself, anything that holds the
@@ -109,10 +118,7 @@ def _toolchains(home: Path) -> list[Path]:
     kept = [home, db.DB_PATH.parent.resolve(), db.WORKSPACE.resolve()]
     exposes = lambda folder: any(secret.is_relative_to(folder) for secret in kept)  # noqa: E731
     found = []
-    for entry in os.environ.get("PATH", "").split(os.pathsep):
-        path = Path(entry)
-        if not entry or not path.is_dir() or not path.is_relative_to(home) or path == home or path.resolve().is_relative_to(db.ROOT):
-            continue
+    for path in _home_path_entries(home):
         found += _brought_in(path, home, exposes)
     found += [Path(p) for p in os.environ.get("WISE_SCHOLAR_SANDBOX_PATHS", "").split(os.pathsep) if p]
     return [p for p in dict.fromkeys(found) if p.exists() and not exposes(p.resolve())]
@@ -386,19 +392,11 @@ async def _watch(proc: asyncio.subprocess.Process, folders: list[Path], before: 
     return text, exit_code
 
 
-async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[str], limit: int, mounted: list[Path] = ()) -> dict:
-    cache = _cache(workspace)
-    folders = [*mounted, workspace, cache] if SANDBOX else [*mounted, workspace]
-    # The cache is only a cache: past its limit it is emptied, here too in case the last command could not do it.
-    if SANDBOX and await asyncio.to_thread(usage, cache) > QUOTA:
-        await asyncio.to_thread(shutil.rmtree, cache, True)
-    before = await asyncio.to_thread(_measure, folders)
-    # No single file larger than the whole limit, whatever the watch below sees or misses (ulimit counts 512-byte blocks).
-    command = f"ulimit -f {QUOTA // 512}\n{command}"
+async def _spawn(command: str, workspace: Path, wrapper: list[str], extra: list[str]) -> asyncio.subprocess.Process:
     files: list = []
     try:
         argv = _sandboxed(command, workspace, wrapper, extra, files) if SANDBOX else ["sh", "-c", command]
-        proc = await asyncio.create_subprocess_exec(
+        return await asyncio.create_subprocess_exec(
             *argv,
             cwd=workspace,
             # systemd-run needs the session bus of the server's own environment; bubblewrap then clears it for the command.
@@ -412,6 +410,18 @@ async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[st
     finally:
         for f in files:
             f.close()
+
+
+async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[str], limit: int, mounted: list[Path] = ()) -> dict:
+    cache = _cache(workspace)
+    folders = [*mounted, workspace, cache] if SANDBOX else [*mounted, workspace]
+    # The cache is only a cache: past its limit it is emptied, here too in case the last command could not do it.
+    if SANDBOX and await asyncio.to_thread(usage, cache) > QUOTA:
+        await asyncio.to_thread(shutil.rmtree, cache, True)
+    before = await asyncio.to_thread(_measure, folders)
+    # No single file larger than the whole limit, whatever the watch below sees or misses (ulimit counts 512-byte blocks).
+    command = f"ulimit -f {QUOTA // 512}\n{command}"
+    proc = await _spawn(command, workspace, wrapper, extra)
     text, exit_code = await _watch(proc, folders, before, limit)
     # A command that wrote fast and ended between two looks was not stopped: it is told, and the next one that
     # adds to the course will be.

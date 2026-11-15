@@ -152,6 +152,21 @@ def normalise(svg: str) -> str | None:
     """The icon as the figure allowlist accepts it: entities expanded, class and inline styles turned into
     presentation attributes, a viewBox from width and height when there is none; None when nothing drawable
     is left, or the drawing is too large."""
+    root = _parse_icon(svg)
+    if root is None or not _fit_view_box(root):
+        return None
+    _inline_styles(root)
+    try:
+        drawing = figures.clean(ET.tostring(root, encoding="unicode"), limit=MAX_ICON)
+    except ValueError:
+        return None
+    cleaned = safe.fromstring(drawing)
+    if not any(figures._split(e.tag)[1] in DRAWN for e in cleaned.iter()):
+        return None
+    return drawing
+
+
+def _parse_icon(svg: str) -> ET.Element | None:
     entities = dict(ENTITY.findall(svg))
     svg = DOCTYPE.sub("", svg)
     if entities:
@@ -160,15 +175,19 @@ def normalise(svg: str) -> str | None:
         root = safe.fromstring(svg.strip(), forbid_dtd=True, forbid_entities=True, forbid_external=True)
     except Exception:
         return None
-    if figures._split(root.tag)[1] != "svg":
-        return None
+    return root if figures._split(root.tag)[1] == "svg" else None
+
+
+def _fit_view_box(root: ET.Element) -> bool:
     if "viewBox" not in root.attrib:
         width, height = _length(root.get("width")), _length(root.get("height"))
         if not (width and height):
-            return None
+            return False
         root.set("viewBox", f"0 0 {width} {height}")
-    if _box(root.get("viewBox")) is None:
-        return None
+    return _box(root.get("viewBox")) is not None
+
+
+def _inline_styles(root: ET.Element) -> None:
     classes = _class_rules(root)
     for element in root.iter():
         declared = {}
@@ -179,14 +198,6 @@ def normalise(svg: str) -> str | None:
             element.set(prop, value)
         element.attrib.pop("class", None)
         element.attrib.pop("style", None)
-    try:
-        drawing = figures.clean(ET.tostring(root, encoding="unicode"), limit=MAX_ICON)
-    except ValueError:
-        return None
-    cleaned = safe.fromstring(drawing)
-    if not any(figures._split(e.tag)[1] in DRAWN for e in cleaned.iter()):
-        return None
-    return drawing
 
 
 def _class_rules(root: ET.Element) -> dict[str, dict[str, str]]:

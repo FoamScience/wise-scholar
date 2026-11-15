@@ -248,8 +248,7 @@ async def suggest_courses(course_id: int, suggestions: list[Suggestion]) -> str:
     return "recorded"
 
 
-def _suggestions_error(entries: list[dict], topics: list[str]) -> str | None:
-    """Six, both kinds, distinct new titles within the limits, each building on one of the learner's courses."""
+def _suggestion_mix_error(entries: list[dict]) -> str | None:
     if len(entries) != SUGGESTIONS:
         return f"error: give exactly {SUGGESTIONS} suggestions"
     kinds = Counter(e["kind"] for e in entries)
@@ -258,13 +257,30 @@ def _suggestions_error(entries: list[dict], topics: list[str]) -> str | None:
     titles = [e["title"].casefold() for e in entries]
     if len(set(titles)) != len(titles):
         return "error: every suggestion needs its own title"
+    return None
+
+
+def _outside_limits(entry: dict) -> bool:
+    return not entry["title"] or not entry["pitch"] or len(entry["title"]) > SUGGESTION_TITLE_CHARS or len(entry["pitch"]) > SUGGESTION_PITCH_CHARS
+
+
+def _suggestion_fit_error(entries: list[dict], topics: list[str]) -> str | None:
     if taken := [e["title"] for e in entries if e["title"].casefold() in {t.casefold() for t in topics}]:
         return f"error: {taken} are already courses of this learner"
-    if bad := [e["title"] for e in entries if not e["title"] or not e["pitch"] or len(e["title"]) > SUGGESTION_TITLE_CHARS or len(e["pitch"]) > SUGGESTION_PITCH_CHARS]:
+    if bad := [e["title"] for e in entries if _outside_limits(e)]:
         return f"error: {bad} need a title under {SUGGESTION_TITLE_CHARS} characters and a pitch under {SUGGESTION_PITCH_CHARS}"
+    return None
+
+
+def _suggestion_parent_error(entries: list[dict], topics: list[str]) -> str | None:
     if unknown := sorted({e["builds_on"] for e in entries} - set(topics)):
         return f"error: {unknown} are not courses of this learner; copy builds_on from a [course] line"
     return None
+
+
+def _suggestions_error(entries: list[dict], topics: list[str]) -> str | None:
+    """Six, both kinds, distinct new titles within the limits, each building on one of the learner's courses."""
+    return _suggestion_mix_error(entries) or _suggestion_fit_error(entries, topics) or _suggestion_parent_error(entries, topics)
 
 
 RECAP_INTRO_CHARS = 700

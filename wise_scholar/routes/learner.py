@@ -520,10 +520,7 @@ REVIEW_BOX_MINUTES = 3
 REVIEW_MINUTES = 0.5
 
 
-@app.get("/api/today")
-def today(profile: int) -> dict:
-    """What a sitting holds: a warm-up of due reviews, then the next unit of each active course, and a ready cast."""
-    due = len(_due(profile))
+def _today_units(profile: int) -> list[dict]:
     units = []
     for course in db.rows("SELECT id, topic, started FROM courses WHERE profile_id = ? AND archived = 0 ORDER BY id", profile):
         concepts = db.concept_view(course["id"])
@@ -533,6 +530,10 @@ def today(profile: int) -> dict:
         elif not concepts:
             title = "Finish the interview" if course["started"] else "Start the interview"
             units.append({"course_id": course["id"], "topic": course["topic"], "concept_id": None, "title": title, "started": bool(course["started"])})
+    return units
+
+
+def _today_extras(profile: int) -> list[dict]:
     extras = []
     for course in db.rows("SELECT id, topic, lang FROM courses WHERE profile_id = ? AND archived = 0 AND mechanism = 'leveled-course'", profile):
         counts = db.strand_counts(course["id"])
@@ -541,6 +542,15 @@ def today(profile: int) -> dict:
             extras.append({"course_id": course["id"], "topic": course["topic"], "kind": "episode"})
         elif lowest == "output":
             extras.append({"course_id": course["id"], "topic": course["topic"], "kind": "writing"})
+    return extras
+
+
+@app.get("/api/today")
+def today(profile: int) -> dict:
+    """What a sitting holds: a warm-up of due reviews, then the next unit of each active course, and a ready cast."""
+    due = len(_due(profile))
+    units = _today_units(profile)
+    extras = _today_extras(profile)
     cast = db.row(
         "SELECT b.id, b.lesson_id, b.markdown AS title, l.course_id FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
         "JOIN courses c ON c.id = l.course_id WHERE c.profile_id = ? AND c.archived = 0 AND b.kind = 'podcast' "

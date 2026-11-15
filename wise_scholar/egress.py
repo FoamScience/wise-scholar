@@ -62,6 +62,22 @@ async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> N
         writer.close()
 
 
+def _plain_request(method: str, url, version: str, headers: bytes) -> bytes:
+    path = (url.path or "/") + ("?" + url.query if url.query else "")
+    kept = [h for h in headers.split(b"\r\n") if h and not h.lower().startswith((b"proxy-", b"connection:"))]
+    # One request per connection: the next one could name another host, which was not checked.
+    return b"\r\n".join([f"{method} {path} {version}".encode("latin-1"), *kept, b"Connection: close", b"", b""])
+
+
+def _forwarding(method: str, target: str, version: str, headers: bytes) -> tuple[str, str | int, int, bytes]:
+    """Host, port and web port of a request line, and the request to send on (none for a tunnel)."""
+    if method == "CONNECT":
+        host, _, port = target.rpartition(":")
+        return host, port, CONNECT_PORT, b""
+    url = urlsplit(target)
+    return url.hostname or "", url.port or HTTP_PORT, HTTP_PORT, _plain_request(method, url, version, headers)
+
+
 class Proxy:
     """One proxy for one allowed command; close() also ends the tunnels that are still open."""
 
@@ -120,16 +136,7 @@ class Proxy:
             head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), HEAD_TIMEOUT)
             request, _, headers = head.partition(b"\r\n")
             method, target, version = request.decode("latin-1").split(" ")
-            if method == "CONNECT":
-                host, _, port = target.rpartition(":")
-                wanted, forward = CONNECT_PORT, b""
-            else:
-                url = urlsplit(target)
-                host, port, wanted = url.hostname or "", url.port or HTTP_PORT, HTTP_PORT
-                path = (url.path or "/") + ("?" + url.query if url.query else "")
-                kept = [h for h in headers.split(b"\r\n") if h and not h.lower().startswith((b"proxy-", b"connection:"))]
-                # One request per connection: the next one could name another host, which was not checked.
-                forward = b"\r\n".join([f"{method} {path} {version}".encode("latin-1"), *kept, b"Connection: close", b"", b""])
+            host, port, wanted, forward = _forwarding(method, target, version, headers)
             # Web ports only: a tunnel to any port would be plain outbound TCP (mail, SSH) from this machine.
             upstream = await self._dial(host.strip("[]"), wanted) if host and int(port) == wanted else None
         except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, TimeoutError, ValueError, OSError):

@@ -32,12 +32,16 @@ class Refused extends Error {
   }
 }
 
-async function main() {
-  const input = JSON.parse(await new Promise((resolve) => {
+function readInput() {
+  return new Promise((resolve) => {
     let data = "";
     process.stdin.on("data", (chunk) => (data += chunk));
-    process.stdin.on("end", () => resolve(data));
-  }));
+    process.stdin.on("end", () => resolve(JSON.parse(data)));
+  });
+}
+
+async function main() {
+  const input = await readInput();
   const attempts = input.attempts ?? 12;
   const styleLines = input.style.split("\n");
   const ruleText = (fn) => {
@@ -61,41 +65,56 @@ async function main() {
       }
       const state = optimized.value;
       // evalFns scores state.constrFns in order, one penalty per constraint.
-      const { constrEngs } = evalFns(state);
-      const broken = constrEngs.map((energy, i) => ({ energy, rule: ruleText(state.constrFns[i]) })).filter((c) => c.energy > SETTLED);
+      const broken = brokenConstraints(state, ruleText);
       const worst = Math.max(0, ...broken.map((c) => c.energy));
       const svg = await toSVG(state, async () => "", "diagram");
       candidates.push({ seed, worst, broken, svg, moved: previous ? displacement(previous, named(svg)) : 0 });
       const settledSoFar = candidates.filter((c) => c.broken.length === 0).length;
       if (settledSoFar >= (previous ? ENOUGH : 1)) break;
     }
-    if (!candidates.length) throw new Refused(`the layout never converged: ${lastError}`);
-    const settled = candidates.filter((c) => c.broken.length === 0);
-    if (!settled.length) {
-      candidates.sort((a, b) => a.worst - b.worst);
-      const rules = [...new Set(candidates[0].broken.map((c) => c.rule))];
-      throw new Refused(`could not lay the diagram out: ${rules.length} rule(s) stay broken after ${attempts} attempts`, rules);
+    return mostContinuous(candidates, attempts, lastError);
+  }
+
+  async function stage(substance, i, previousFrame) {
+    try {
+      return (await layout(substance, previousFrame)).svg;
+    } catch (e) {
+      if (e instanceof Refused) throw new Refused(`stage ${i + 1}: ${e.message}`, e.rules);
+      throw e;
     }
-    settled.sort((a, b) => a.moved - b.moved);
-    return settled[0];
   }
 
   if (input.stages) {
     const frames = [];
-    for (const [i, substance] of input.stages.entries()) {
-      try {
-        frames.push((await layout(substance, frames.at(-1))).svg);
-      } catch (e) {
-        if (e instanceof Refused) throw new Refused(`stage ${i + 1}: ${e.message}`, e.rules);
-        throw e;
-      }
-    }
-    const animation = animate(frames);
-    const box = animation.querySelector("penrose croppedViewBox")?.textContent;
-    return { ok: true, svg: finish(animation), frames: frames.map((f) => finish(f, box)) };
+    for (const [i, substance] of input.stages.entries()) frames.push(await stage(substance, i, frames.at(-1)));
+    return animated(frames);
   }
   const best = await layout(input.substance);
   return { ok: true, svg: finish(best.svg), seed: best.seed };
+}
+
+function brokenConstraints(state, ruleText) {
+  // evalFns scores state.constrFns in order, one penalty per constraint.
+  const { constrEngs } = evalFns(state);
+  return constrEngs.map((energy, i) => ({ energy, rule: ruleText(state.constrFns[i]) })).filter((c) => c.energy > SETTLED);
+}
+
+function mostContinuous(candidates, attempts, lastError) {
+  if (!candidates.length) throw new Refused(`the layout never converged: ${lastError}`);
+  const settled = candidates.filter((c) => c.broken.length === 0);
+  if (!settled.length) {
+    candidates.sort((a, b) => a.worst - b.worst);
+    const rules = [...new Set(candidates[0].broken.map((c) => c.rule))];
+    throw new Refused(`could not lay the diagram out: ${rules.length} rule(s) stay broken after ${attempts} attempts`, rules);
+  }
+  settled.sort((a, b) => a.moved - b.moved);
+  return settled[0];
+}
+
+function animated(frames) {
+  const animation = animate(frames);
+  const box = animation.querySelector("penrose croppedViewBox")?.textContent;
+  return { ok: true, svg: finish(animation), frames: frames.map((f) => finish(f, box)) };
 }
 
 /** The SVG as stored: cropped to its content (or to the box given, the same for every frame of an animation),
@@ -134,6 +153,55 @@ function displacement(a, b) {
   return total;
 }
 
+/** One <animate> for an attribute whose value changes across the frames, each value held before gliding to the next. */
+function glide(doc, el, attr, values, n, dur) {
+  if (values[0] === null || values.every((v) => v === values[0])) return;
+  const seq = [], times = [];
+  values.forEach((v, i) => {
+    seq.push(v, v);
+    times.push((i / n).toFixed(3), ((i + HOLD) / n).toFixed(3));
+  });
+  seq.push(values[0]);
+  times.push("1");
+  const a = doc.createElementNS(SVG_NS, "animate");
+  a.setAttribute("attributeName", attr);
+  a.setAttribute("values", seq.join(";"));
+  a.setAttribute("keyTimes", times.join(";"));
+  a.setAttribute("dur", `${dur}s`);
+  a.setAttribute("repeatCount", "indefinite");
+  a.setAttribute("calcMode", "spline");
+  a.setAttribute("keySplines", Array(seq.length - 1).fill("0.4 0 0.2 1").join(";"));
+  el.appendChild(a);
+}
+
+/** A text whose string changes: one tspan per frame, shown only during its stage. */
+function switchTexts(doc, el, texts, stageTimes, dur) {
+  for (const node of [...el.childNodes]) if (node.nodeType === 3) node.remove();
+  texts.forEach((text, i) => {
+    const span = doc.createElementNS(SVG_NS, "tspan");
+    span.textContent = text;
+    span.setAttribute("opacity", i === 0 ? "1" : "0");
+    const a = doc.createElementNS(SVG_NS, "animate");
+    a.setAttribute("attributeName", "opacity");
+    const shown = stageTimes.map((_, j) => (j === i ? "1" : "0"));
+    a.setAttribute("values", [...shown, shown[0]].join(";"));
+    a.setAttribute("keyTimes", [...stageTimes, "1"].join(";"));
+    a.setAttribute("calcMode", "discrete");
+    a.setAttribute("dur", `${dur}s`);
+    a.setAttribute("repeatCount", "indefinite");
+    span.appendChild(a);
+    el.appendChild(span);
+  });
+}
+
+function growBox(master, frames) {
+  const boxes = frames.map((f) => f.querySelector("penrose croppedViewBox")?.textContent.split(/\s+/).map(Number)).filter(Boolean);
+  if (boxes.length !== frames.length) return;
+  const x = Math.min(...boxes.map((b) => b[0])), y = Math.min(...boxes.map((b) => b[1]));
+  const right = Math.max(...boxes.map((b) => b[0] + b[2])), bottom = Math.max(...boxes.map((b) => b[1] + b[3]));
+  master.querySelector("penrose croppedViewBox").textContent = `${x} ${y} ${right - x} ${bottom - y}`;
+}
+
 /** The first frame with SMIL animations onto every attribute that changes across frames; texts whose string changes
  * are switched. The viewBox grows to hold every frame. */
 function animate(frames) {
@@ -147,52 +215,11 @@ function animate(frames) {
     if (/^rotate\(0[,\s]/.test(el.getAttribute("transform") ?? "")) el.removeAttribute("transform"); // an identity Penrose writes on every rect
     const others = maps.slice(1).map((m) => m.get(title));
     if (others.some((o) => !o)) continue;
-    for (const attr of ANIMATED) {
-      const values = [el, ...others].map((e) => e.getAttribute(attr));
-      if (values[0] === null || values.every((v) => v === values[0])) continue;
-      const seq = [], times = [];
-      values.forEach((v, i) => {
-        seq.push(v, v);
-        times.push((i / n).toFixed(3), ((i + HOLD) / n).toFixed(3));
-      });
-      seq.push(values[0]);
-      times.push("1");
-      const a = doc.createElementNS(SVG_NS, "animate");
-      a.setAttribute("attributeName", attr);
-      a.setAttribute("values", seq.join(";"));
-      a.setAttribute("keyTimes", times.join(";"));
-      a.setAttribute("dur", `${dur}s`);
-      a.setAttribute("repeatCount", "indefinite");
-      a.setAttribute("calcMode", "spline");
-      a.setAttribute("keySplines", Array(seq.length - 1).fill("0.4 0 0.2 1").join(";"));
-      el.appendChild(a);
-    }
+    for (const attr of ANIMATED) glide(doc, el, attr, [el, ...others].map((e) => e.getAttribute(attr)), n, dur);
     const texts = [el, ...others].map((e) => (e.tagName === "text" ? ownText(e) : null));
-    if (el.tagName === "text" && texts.some((t) => t !== texts[0])) {
-      for (const node of [...el.childNodes]) if (node.nodeType === 3) node.remove();
-      texts.forEach((text, i) => {
-        const span = doc.createElementNS(SVG_NS, "tspan");
-        span.textContent = text;
-        span.setAttribute("opacity", i === 0 ? "1" : "0");
-        const a = doc.createElementNS(SVG_NS, "animate");
-        a.setAttribute("attributeName", "opacity");
-        const shown = stageTimes.map((_, j) => (j === i ? "1" : "0"));
-        a.setAttribute("values", [...shown, shown[0]].join(";"));
-        a.setAttribute("keyTimes", [...stageTimes, "1"].join(";"));
-        a.setAttribute("calcMode", "discrete");
-        a.setAttribute("dur", `${dur}s`);
-        a.setAttribute("repeatCount", "indefinite");
-        span.appendChild(a);
-        el.appendChild(span);
-      });
-    }
+    if (el.tagName === "text" && texts.some((t) => t !== texts[0])) switchTexts(doc, el, texts, stageTimes, dur);
   }
-  const boxes = frames.map((f) => f.querySelector("penrose croppedViewBox")?.textContent.split(/\s+/).map(Number)).filter(Boolean);
-  if (boxes.length === frames.length) {
-    const x = Math.min(...boxes.map((b) => b[0])), y = Math.min(...boxes.map((b) => b[1]));
-    const right = Math.max(...boxes.map((b) => b[0] + b[2])), bottom = Math.max(...boxes.map((b) => b[1] + b[3]));
-    master.querySelector("penrose croppedViewBox").textContent = `${x} ${y} ${right - x} ${bottom - y}`;
-  }
+  growBox(master, frames);
   master.setAttribute("data-stages", String(n));
   master.setAttribute("data-seconds", String(dur));
   return master;
