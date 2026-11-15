@@ -110,19 +110,25 @@ def _tame_animation(element: ET.Element) -> bool:
     return not any("url(" in element.get(a, "").lower() for a in ("values", "from", "to", "by"))
 
 
+def _bad_href(element: ET.Element, ns: str, value: str) -> bool:
+    return ns not in ("", XLINK_NS) or not (value.startswith("#") or (value.startswith("art:") and _split(element.tag)[1] == "use"))
+
+
+def _bad_value(local: str, value: str) -> bool:
+    low = value.lower()
+    if "url(" in low and not LOCAL_REF.fullmatch(value.strip()):
+        return True
+    return local == "style" and ("url(" in low or "@import" in low or "expression" in low)
+
+
 def _scrub_attributes(element: ET.Element) -> None:
     for attr, value in list(element.attrib.items()):
         ns, local = _split(attr)
-        low = value.lower()
         if local == "href":
-            if ns not in ("", XLINK_NS) or not (value.startswith("#") or (value.startswith("art:") and _split(element.tag)[1] == "use")):
+            if _bad_href(element, ns, value):
                 del element.attrib[attr]
             elif ns == XLINK_NS:
                 del element.attrib[attr]
                 element.set("href", value)
-        elif ns:
-            del element.attrib[attr]
-        elif "url(" in low and not LOCAL_REF.fullmatch(value.strip()):
-            del element.attrib[attr]
-        elif local == "style" and ("url(" in low or "@import" in low or "expression" in low):
+        elif ns or _bad_value(local, value):
             del element.attrib[attr]

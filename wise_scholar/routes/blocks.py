@@ -543,20 +543,32 @@ def _edit_challenge(kind: str, data: dict, body: BlockEdit) -> None:
         data["run"] = body.run.strip()
 
 
-def _edit_quiz(data: dict, body: BlockEdit) -> None:
-    """The quiz's card takes the edit, and the block keeps the copy of it the learner is shown."""
-    card = db.card(data["card_id"])
-    options = [o.strip() for o in body.options if o.strip()] if body.options is not None else card["options"]
-    key = body.answer_key.strip() if body.answer_key is not None else card["answer_key"]
-    if card["kind"] == "choice" and not (2 <= len(options) <= 5 and key in options):
-        raise HTTPException(422, "a choice quiz needs 2 to 5 options, one of them exactly the key")
-    explanation = body.explanation.strip() if body.explanation is not None else card["explanation"]
-    question = body.markdown.strip() if body.markdown is not None else card["question"]
+def _stripped(value: str | None, current: str) -> str:
+    return current if value is None else value.strip()
+
+
+def _edited_options(edited: list[str] | None, current: list[str]) -> list[str]:
+    return current if edited is None else [o.strip() for o in edited if o.strip()]
+
+
+def _save_quiz_card(card: dict, question: str, options: list[str], key: str, explanation: str) -> None:
     db.conn.execute(
         "UPDATE cards SET question = ?, options = ?, answer_key = ?, explanation = ? WHERE id = ?",
         (question, json.dumps(options if card["kind"] == "choice" else card["options"]),
          card["answer_key"] if card["kind"] == "sort" else key, explanation, card["id"]),
     )
+
+
+def _edit_quiz(data: dict, body: BlockEdit) -> None:
+    """The quiz's card takes the edit, and the block keeps the copy of it the learner is shown."""
+    card = db.card(data["card_id"])
+    options = _edited_options(body.options, card["options"])
+    key = _stripped(body.answer_key, card["answer_key"])
+    if card["kind"] == "choice" and not (2 <= len(options) <= 5 and key in options):
+        raise HTTPException(422, "a choice quiz needs 2 to 5 options, one of them exactly the key")
+    explanation = _stripped(body.explanation, card["explanation"])
+    question = _stripped(body.markdown, card["question"])
+    _save_quiz_card(card, question, options, key, explanation)
     if card["kind"] == "sort":
         data["explanation"] = explanation
     else:

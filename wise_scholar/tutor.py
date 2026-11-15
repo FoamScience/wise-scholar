@@ -245,28 +245,41 @@ def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
     return target_lesson == turn["lesson_id"] if target_lesson is not None else target_course == turn["course_id"]
 
 
+def _turn_with_token(token: str, kind: str, targets: list) -> dict:
+    turn = _turn_of(token)
+    if turn is None:
+        raise ToolError("this turn is over; nothing more can be changed")
+    if turn["kind"] != kind:
+        raise ToolError("that tool is not available in this turn")
+    if not all(_owns(turn, target) for target in targets):
+        raise ToolError("that id belongs to another lesson or course; use the ids of the [state] line")
+    return turn
+
+
+def _turn_without_token(kind: str, targets: list) -> dict | None:
+    # Without a token (opencode shares one connection) a call lands on a lesson whose turn is running.
+    running = [t for t in turns.values() if t["kind"] == kind and all(_owns(t, target) for target in targets)]
+    if targets and not running:
+        raise ToolError("this lesson has no turn running; use the ids of the [state] line")
+    return running[0] if running else None
+
+
+def _count_call(turn: dict) -> None:
+    turn["calls"] += 1
+    if turn["calls"] > TOOL_CALLS_PER_TURN:
+        raise ToolError(f"over {TOOL_CALLS_PER_TURN} tool calls this turn; end the turn with a short reply")
+
+
 def _guard(call_tool):
     async def guarded(name: str, arguments: dict, context, convert_result: bool = False):
         targets = _targets(arguments)
         kind = _kind(name)
         if token := _token(context.request_context):
-            turn = _turn_of(token)
-            if turn is None:
-                raise ToolError("this turn is over; nothing more can be changed")
-            if turn["kind"] != kind:
-                raise ToolError("that tool is not available in this turn")
-            if not all(_owns(turn, target) for target in targets):
-                raise ToolError("that id belongs to another lesson or course; use the ids of the [state] line")
+            turn = _turn_with_token(token, kind, targets)
         else:
-            # Without a token (opencode shares one connection) a call lands on a lesson whose turn is running.
-            running = [t for t in turns.values() if t["kind"] == kind and all(_owns(t, target) for target in targets)]
-            if targets and not running:
-                raise ToolError("this lesson has no turn running; use the ids of the [state] line")
-            turn = running[0] if running else None
+            turn = _turn_without_token(kind, targets)
         if turn is not None:
-            turn["calls"] += 1
-            if turn["calls"] > TOOL_CALLS_PER_TURN:
-                raise ToolError(f"over {TOOL_CALLS_PER_TURN} tool calls this turn; end the turn with a short reply")
+            _count_call(turn)
         return await call_tool(name, arguments, context, convert_result)
 
     return guarded

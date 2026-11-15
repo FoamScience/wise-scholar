@@ -59,24 +59,30 @@ class EventParser:
             return [{"type": "session.started", "session_id": e["conversation_id"]}]
         if kind == "step_update":
             step = e["step_update"]
-            if step.get("step_type") == "agent_response":
-                events = [] if step["step_index"] == self.step else [{"type": "chat.break"}]
-                self.step = step["step_index"]
-                if text := step.get("text_delta"):
-                    events.append({"type": "chat.delta", "text": text})
-                return events
-            info = step.get("tool_info") or {}
-            params = info.get("parameters") or {}
-            if step.get("tool_name") == "call_mcp_tool" and params.get("ServerName") == "scholar" and step["step_index"] not in self.tools:
-                self.tools.add(step["step_index"])
-                return [{"type": "activity", "tool": params.get("ToolName", "").lower()}]
-            return []
+            return self._response(step) if step.get("step_type") == "agent_response" else self._tool(step)
         if kind == "result":
-            result = e["result"]
-            ok = result.get("status") == "SUCCESS"
-            error = None if ok else str(result.get("error") or result.get("status"))
-            return [{"type": "turn.done", "ok": ok, "error": error, "usage": usage(result, self.model)}]
+            return self._result(e["result"])
         return []
+
+    def _response(self, step: dict) -> list[dict]:
+        events = [] if step["step_index"] == self.step else [{"type": "chat.break"}]
+        self.step = step["step_index"]
+        if text := step.get("text_delta"):
+            events.append({"type": "chat.delta", "text": text})
+        return events
+
+    def _tool(self, step: dict) -> list[dict]:
+        info = step.get("tool_info") or {}
+        params = info.get("parameters") or {}
+        if step.get("tool_name") == "call_mcp_tool" and params.get("ServerName") == "scholar" and step["step_index"] not in self.tools:
+            self.tools.add(step["step_index"])
+            return [{"type": "activity", "tool": params.get("ToolName", "").lower()}]
+        return []
+
+    def _result(self, result: dict) -> list[dict]:
+        ok = result.get("status") == "SUCCESS"
+        error = None if ok else str(result.get("error") or result.get("status"))
+        return [{"type": "turn.done", "ok": ok, "error": error, "usage": usage(result, self.model)}]
 
 
 def usage(result: dict, model: str = "") -> dict | None:
