@@ -9,6 +9,7 @@ import { LOCALES } from './locale'
 import type { Locale } from './locale'
 import Markdown, { InlineMarkdown } from './Md'
 import { PlotBox } from './PlotCard'
+import { ContributeSection } from './Contribute'
 import { STATE_COLOR, loadCytoscape, token } from './claims'
 import type { State } from './claims'
 import { useTheme } from './theme'
@@ -238,6 +239,7 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
   const [picked, setPicked] = useState<number | null>(null)
   const [weakOnly, setWeakOnly] = useState(false)
   const [next, setNext] = useState<Suggestion[]>([])
+  const [contributed, setContributed] = useState(0)
   const load = () => api<Story>(`/api/courses/${courseId}/recap${preview ? '?preview=true' : ''}`).then(setStory, (e: Error) => setError(e.message))
 
   useEffect(() => {
@@ -246,7 +248,9 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
     api<{ suggestions: Suggestion[] }>(`/api/suggestions?profile=${profile}`).then((s) => setNext(s.suggestions), () => {})
     const source = new EventSource(`/api/courses/${courseId}/events`)
     source.onmessage = (raw) => {
-      if (JSON.parse(raw.data).type === 'recap.written') load()
+      const type = JSON.parse(raw.data).type
+      if (type === 'recap.written') load()
+      else if (type === 'contributions.written') setContributed((n) => n + 1)
     }
     return () => source.close()
   }, [courseId, preview]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -327,6 +331,7 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
           </div>
         )}
         <NextSection story={story} next={next} courseId={courseId} />
+        <ContributeSection courseId={courseId} preview={story.preview} written={contributed} />
       </section>
     </main>
   )

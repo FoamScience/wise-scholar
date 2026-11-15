@@ -101,6 +101,24 @@
         "scholar_*": "allow"
       }
     },
+    "tutor-contribute": {
+      "mode": "primary",
+      "description": "wise-scholar: open-source contributions for a finished course",
+      "prompt": "{file:./wise_scholar/prompts/contribute.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
+    },
+    "tutor-contribution": {
+      "mode": "primary",
+      "description": "wise-scholar tutor: guided open-source contribution",
+      "prompt": "{file:./wise_scholar/prompts/core.md}\n\n{file:./wise_scholar/prompts/contribution.md}",
+      "permission": {
+        "*": "deny",
+        "scholar_*": "allow"
+      }
+    },
     "tutor-recap": {
       "mode": "primary",
       "description": "wise-scholar: the story of a finished course",

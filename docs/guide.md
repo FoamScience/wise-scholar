@@ -75,14 +75,14 @@ WISE_SCHOLAR_AGENT=agy/gemini-3.8-flash-high make serve               # Antigrav
 
 The model must be able to call tools reliably.
 
-With `claude` and no model named, each kind of turn gets its own model: interviews, lessons, practice, stories and writing run on `opus`; the placement check and the background jobs (claims graph, clean-up, course suggestions, recap) on `sonnet`; splitting cards on `haiku`. A model named in `WISE_SCHOLAR_AGENT`, or the default of `opencode` or `agy`, serves every kind. `WISE_SCHOLAR_MODELS` overrides some kinds, as `kind=model` pairs separated by commas:
+With `claude` and no model named, each kind of turn gets its own model: interviews, lessons, practice, stories, writing and guided contributions run on `opus`; the placement check and the background jobs (claims graph, clean-up, course suggestions, recap, open-source contributions) on `sonnet`; splitting cards on `haiku`. A model named in `WISE_SCHOLAR_AGENT`, or the default of `opencode` or `agy`, serves every kind. `WISE_SCHOLAR_MODELS` overrides some kinds, as `kind=model` pairs separated by commas:
 
 ```bash
 WISE_SCHOLAR_MODELS='placement=opus,cards=sonnet' make serve
 WISE_SCHOLAR_AGENT=opencode WISE_SCHOLAR_MODELS='cards=openrouter/openrouter/free' make serve
 ```
 
-The kinds are `interview`, `placement`, `lesson`, `practice`, `story`, `writing`, `graph`, `cards`, `cleanup`, `explore` and `recap`.
+The kinds are `interview`, `placement`, `lesson`, `practice`, `story`, `writing`, `contribution`, `graph`, `cards`, `cleanup`, `explore`, `recap` and `contribute`.
 
 A lesson left for longer than the agent's prompt cache lasts goes on in a fresh session that starts from what happened in it so far, instead of writing its whole history to the cache again. That is an hour, Claude Code's cache on a subscription; on an API key, Bedrock or Vertex it caches for five minutes, so set `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` there.
 
@@ -103,6 +103,7 @@ The profile page links to **Server settings**, which shows every setting below w
 | `WISE_SCHOLAR_HOSTS` | host names the server answers to, comma-separated, ports ignored | `127.0.0.1,localhost,::1` |
 | `WISE_SCHOLAR_LISTEN` | extra addresses `make serve` listens on, comma-separated, beside `127.0.0.1` (which the agents call back on): a tailnet address lets a proxy reach the server without opening it to the LAN; add the proxied name to `WISE_SCHOLAR_HOSTS` too. An address that cannot be bound is skipped with a warning. | unset |
 | `WISE_SCHOLAR_MCP_SECRET` | the bearer token on `/mcp`; a fresh one per start when unset | unset |
+| `WISE_SCHOLAR_GITHUB_TOKEN` | a GitHub token for the open-source contribution search: it lets the search read code and ask GitHub more often. Read-only access to public repositories is enough | unset |
 | `WISE_SCHOLAR_MODELS` | the model of some kinds of turn, `kind=model` pairs separated by commas (see above) | unset |
 | `WISE_SCHOLAR_AGENT_ENV` | extra environment variables the agent processes get, names or prefixes ending in `*`, comma-separated | unset |
 | `WISE_SCHOLAR_TURNS` | tutor turns running at once | `2` |
@@ -129,6 +130,8 @@ A new language is one file: copy `web/src/locales/en.json`, translate it, and ad
 ## Where next
 
 The compass in the top bar opens six courses the tutor suggests from your courses and your claims: the level above what you hold, and neighbouring fields where it gives you a head start. They are written in the background, in your language, when you have no suggestions yet, when a course gets its map, after every three finished lessons and when fewer than three are left; each writing is one tutor turn, counted in the usage of your newest course. *Suggest others* asks for a new set and *Not for me* removes one; neither comes back. The field for a new course on the home screen types the same titles out as its placeholder. Prepared courses and teacher profiles get no suggestions.
+
+A finished course's recap also offers, optionally, up to five open-source contributions in its field: changes to real projects that put the course to work, an afternoon's or a few weeks' worth, each with what the project lacks, the units it uses and a first step. The tutor looks for them once, in one background turn, through GitHub's API: it reads repository summaries, issue lists and file outlines, never whole codebases, within 30 GitHub calls. It prefers issues the maintainers opened or labelled; for a change no issue asks for, the first step is opening one. Without `WISE_SCHOLAR_GITHUB_TOKEN` it cannot search code, and GitHub allows only a few searches a minute. *Work on it with the tutor* opens a lesson where the tutor guides the change in your own clone of the project and reviews what you paste; *Not for me* removes one.
 
 ## Export a course as a PDF (optional)
 

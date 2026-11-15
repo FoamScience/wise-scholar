@@ -4470,3 +4470,56 @@ dialog.handoff .qr {
     background: var(--module);
   }
 }
+
+.recap-contribute {
+  grid-column: 1 / -1;
+}
+
+.recap-contribute h2,
+.recap-contribute p {
+  margin: 0;
+}
+
+.recap-contribute ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contribution {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+}
+
+.contribution a[dir='ltr'] {
+  color: var(--teal-dark);
+}
+
+.contribution dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-3xs) var(--space-sm);
+  margin: 0;
+}
+
+.contribution dt {
+  color: var(--muted);
+}
+
+.contribution dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.contribution .row {
+  margin-top: auto;
+  flex-wrap: wrap;
+}

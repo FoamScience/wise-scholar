@@ -97,7 +97,24 @@
       "explore": "More courses to take",
       "book": "Download the course book (PDF)",
       "mapEntry": "Course recap",
-      "cardLine": "Finished {{date}} · Recap"
+      "cardLine": "Finished {{date}} · Recap",
+      "contribute": {
+        "heading": "Put it to work in open source",
+        "intro": "Optional: changes to real projects that use what this course taught. Small ones take an afternoon, projects a few weeks.",
+        "finding": "Your tutor is looking for open-source projects that fit this course…",
+        "failed": "Open-source projects could not be looked up.",
+        "none": "No open-source project fits this course well enough right now.",
+        "again": "Look again",
+        "small": "An afternoon",
+        "project": "A project",
+        "gap": "What's missing",
+        "uses": "Uses",
+        "firstStep": "First step",
+        "issue": "The issue",
+        "start": "Work on it with the tutor",
+        "continue": "Continue with the tutor",
+        "dismiss": "Not for me"
+      }
     },
     "graph": {
       "close": "Close",
@@ -879,6 +896,10 @@
         "WISE_SCHOLAR_MCP_SECRET": {
           "label": "Tool secret",
           "help": "The bearer token on /mcp; a fresh one each start when unset. Never shown."
+        },
+        "WISE_SCHOLAR_GITHUB_TOKEN": {
+          "label": "GitHub token",
+          "help": "Lets the search for open-source contributions search code and ask GitHub more often. Optional; read-only access to public repositories is enough. Never shown."
         }
       }
     },
