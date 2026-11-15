@@ -132,6 +132,31 @@ function brier(answers: Story['answers']): number {
   return answers.reduce((sum, a) => sum + (a.confidence - (a.correct ? 1 : 0)) ** 2, 0) / answers.length
 }
 
+function graphElements(claims: Claim[], edges: Story['edges'], positions: Story['positions']) {
+  return [
+    ...claims.map((c) => ({
+      data: { id: String(c.id), color: token(STATE_COLOR[c.state]) },
+      ...(positions ? { position: { x: positions[c.id][0], y: positions[c.id][1] } } : {}),
+    })),
+    ...edges.map((e) => ({ data: { id: `${e.from_id}-${e.to_id}-${e.kind}`, source: String(e.from_id), target: String(e.to_id), kind: e.kind } })),
+  ]
+}
+
+function graphStyle() {
+  const ink = token('--ink')
+  return [
+    { selector: 'node', style: { width: 9, height: 9, 'background-color': 'data(color)', 'border-width': 0 } },
+    { selector: 'node.fresh', style: { width: 14, height: 14, 'border-width': 2, 'border-color': ink } },
+    { selector: 'node:selected', style: { 'border-width': 2, 'border-color': ink } },
+    { selector: 'node.away', style: { 'background-color': token('--mastery-off'), opacity: 0.35 } },
+    { selector: 'edge.away', style: { opacity: 0.08 } },
+    { selector: 'node.dim', style: { opacity: 0.15 } },
+    { selector: 'edge.dim', style: { opacity: 0.05 } },
+    { selector: 'edge', style: { width: 0.8, 'line-color': token('--line-strong'), opacity: 0.55, 'curve-style': 'straight' } },
+    { selector: 'edge[kind = "contrasts"]', style: { 'line-style': 'dotted', 'line-color': token('--danger') } },
+  ]
+}
+
 /** The claims as dots, laid out once and kept still; the ones not yet reached are hidden. */
 function RecapGraph(props: {
   claims: Claim[]
@@ -156,31 +181,14 @@ function RecapGraph(props: {
     loadCytoscape().then((cytoscape) => {
       if (gone || !box.current) return
       const placed = positions !== null && claims.every((c) => positions[c.id])
-      const ink = token('--ink')
       cy.current = cytoscape({
         container: box.current,
         boxSelectionEnabled: false,
         autoungrabify: true,
         userZoomingEnabled: false,
         userPanningEnabled: false,
-        elements: [
-          ...claims.map((c) => ({
-            data: { id: String(c.id), color: token(STATE_COLOR[c.state]) },
-            ...(placed ? { position: { x: positions![c.id][0], y: positions![c.id][1] } } : {}),
-          })),
-          ...edges.map((e) => ({ data: { id: `${e.from_id}-${e.to_id}-${e.kind}`, source: String(e.from_id), target: String(e.to_id), kind: e.kind } })),
-        ],
-        style: [
-          { selector: 'node', style: { width: 9, height: 9, 'background-color': 'data(color)', 'border-width': 0 } },
-          { selector: 'node.fresh', style: { width: 14, height: 14, 'border-width': 2, 'border-color': ink } },
-          { selector: 'node:selected', style: { 'border-width': 2, 'border-color': ink } },
-          { selector: 'node.away', style: { 'background-color': token('--mastery-off'), opacity: 0.35 } },
-          { selector: 'edge.away', style: { opacity: 0.08 } },
-          { selector: 'node.dim', style: { opacity: 0.15 } },
-          { selector: 'edge.dim', style: { opacity: 0.05 } },
-          { selector: 'edge', style: { width: 0.8, 'line-color': token('--line-strong'), opacity: 0.55, 'curve-style': 'straight' } },
-          { selector: 'edge[kind = "contrasts"]', style: { 'line-style': 'dotted', 'line-color': token('--danger') } },
-        ],
+        elements: graphElements(claims, edges, placed ? positions : null),
+        style: graphStyle(),
         layout: placed
           ? { name: 'preset', fit: true, padding: 12 }
           : ({ name: 'fcose', quality: 'proof', animate: false, nodeRepulsion: () => 6000, idealEdgeLength: () => 40, padding: 12 } as cytoscape.LayoutOptions),
@@ -227,14 +235,9 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
   const { t, i18n } = useTranslation()
   const [story, setStory] = useState<Story | null>(null)
   const [error, setError] = useState('')
-  const [cursor, setCursor] = useState(-1)
-  const [playing, setPlaying] = useState(false)
   const [picked, setPicked] = useState<number | null>(null)
   const [weakOnly, setWeakOnly] = useState(false)
   const [next, setNext] = useState<Suggestion[]>([])
-  const end = useRef<HTMLElement>(null)
-  const timeline = useRef<HTMLDivElement>(null)
-
   const load = () => api<Story>(`/api/courses/${courseId}/recap${preview ? '?preview=true' : ''}`).then(setStory, (e: Error) => setError(e.message))
 
   useEffect(() => {
@@ -255,7 +258,88 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
     return () => removeEventListener('beforeprint', open)
   }, [])
 
-  // the step crossing the middle of the screen is where the story stands
+  const { cursor, playing, setPlaying, timeline, end } = useStoryScroll(story)
+
+  const derived = useMemo(() => {
+    if (!story) return null
+    const at = (c: Claim) => c.step ?? story.steps.findIndex((s) => s.finished >= c.created)
+    const claimAt = new Map(story.claims.map((c) => [c.id, at(c) === -1 ? story.steps.length - 1 : at(c)]))
+    return { claimAt, claims: new Map(story.claims.map((c) => [c.id, c])), mistakes: new Map(story.mistakes.map((m) => [m.id, m])) }
+  }, [story])
+
+  const shown = useMemo(
+    () => new Set(story?.claims.filter((c) => derived!.claimAt.get(c.id)! <= cursor).map((c) => c.id) ?? []),
+    [story, derived, cursor],
+  )
+  const fresh = useMemo(() => new Set(story?.claims.filter((c) => derived!.claimAt.get(c.id) === cursor).map((c) => c.id) ?? []), [story, derived, cursor])
+
+  if (error) return <main className="home"><div className="error">{error}</div></main>
+  if (!story || !derived) return <main className="recap" />
+
+  const unitLink = (conceptId: number | null) => (conceptId ? `#/course/${courseId}?concept=${conceptId}` : `#/course/${courseId}`)
+  const weak = story.claims.filter(isWeak)
+  const open = story.mistakes.filter((m) => !m.put_right)
+
+  function saveLayout(positions: Record<number, [number, number]>) {
+    if (!story!.preview) api(`/api/courses/${courseId}/recap/positions`, { positions }).catch(() => {})
+  }
+
+  function rewrite() {
+    api(`/api/courses/${courseId}/recap/write`, {}).then(() => setStory((s) => s && { ...s, writing: true, failed: false }), (e: Error) => setError(e.message))
+  }
+
+  return (
+    <main className="recap">
+      <RecapHero story={story} courseId={courseId} />
+
+      <Narration story={story} onRewrite={rewrite} language={LOCALES[i18n.language as Locale]}>
+        {story.narrative && <p className="recap-intro" dir="auto"><InlineMarkdown>{story.narrative.intro}</InlineMarkdown></p>}
+      </Narration>
+
+      <div className="recap-body">
+        <RecapPanel
+          story={story}
+          cursor={cursor}
+          shown={shown}
+          fresh={fresh}
+          weak={weak}
+          weakOnly={weakOnly}
+          onWeakOnly={setWeakOnly}
+          picked={picked !== null ? derived.claims.get(picked) : undefined}
+          onPick={setPicked}
+          onLaidOut={saveLayout}
+          playing={playing}
+          onPlay={() => setPlaying((p) => !p)}
+        />
+
+        <div ref={timeline} className="recap-timeline">
+          <Timeline story={story} cursor={cursor} claims={derived.claims} mistakes={derived.mistakes} unitLink={unitLink} />
+        </div>
+      </div>
+
+      <section ref={end} className="recap-end">
+        {story.answers.length >= CHART_FROM && <SureChart answers={story.answers} weeks={story.weeks} />}
+        <WeakSection story={story} weak={weak} open={open} unitLink={unitLink} />
+        {story.narrative?.letter && (
+          <div className="recap-letter">
+            <h2>{t('recap.letterTitle')}</h2>
+            <p dir="auto"><InlineMarkdown>{story.narrative.letter}</InlineMarkdown></p>
+          </div>
+        )}
+        <NextSection story={story} next={next} courseId={courseId} />
+      </section>
+    </main>
+  )
+}
+
+/** Where the story stands, the step crossing the middle of the screen, and its playback: play scrolls the story to
+its end in PLAY_MS, any scroll, tap or key of the learner's stops it, and Space toggles it. */
+function useStoryScroll(story: Story | null) {
+  const [cursor, setCursor] = useState(-1)
+  const [playing, setPlaying] = useState(false)
+  const timeline = useRef<HTMLDivElement>(null)
+  const end = useRef<HTMLElement>(null)
+
   useEffect(() => {
     if (!story || !timeline.current) return
     const seen = new IntersectionObserver(
@@ -313,57 +397,163 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
     return () => removeEventListener('keydown', space)
   }, [])
 
-  const derived = useMemo(() => {
-    if (!story) return null
-    const at = (c: Claim) => c.step ?? story.steps.findIndex((s) => s.finished >= c.created)
-    const claimAt = new Map(story.claims.map((c) => [c.id, at(c) === -1 ? story.steps.length - 1 : at(c)]))
-    return { claimAt, claims: new Map(story.claims.map((c) => [c.id, c])), mistakes: new Map(story.mistakes.map((m) => [m.id, m])) }
-  }, [story])
+  return { cursor, playing, setPlaying, timeline, end }
+}
 
-  const shown = useMemo(
-    () => new Set(story?.claims.filter((c) => derived!.claimAt.get(c.id)! <= cursor).map((c) => c.id) ?? []),
-    [story, derived, cursor],
+function RecapHero({ story, courseId }: { story: Story; courseId: number }) {
+  const { t } = useTranslation()
+  const { stats } = story
+  const range = (from: string | null, to: string | null) => [from, to].map((d) => (d ? day(d) : '…')).join(' – ')
+  return (
+    <header className="recap-hero">
+      {story.course.cover && <img className="recap-cover" src={`/api/courses/${courseId}/cover`} alt={story.course.cover_alt ?? ''} />}
+      <div className="recap-title">
+        <div className="label">{t(story.preview ? 'recap.eyebrowPreview' : 'recap.eyebrow', { dates: range(story.started, story.finished) })}</div>
+        <h1 dir="auto">{story.course.topic}</h1>
+        <div className="recap-tiles">
+          <Tile value={stats.minutes / 60} decimals={1} label={t(stats.estimated ? 'recap.hoursAbout' : 'recap.hours')} />
+          <Tile
+            value={stats.units_done}
+            total={stats.units}
+            label={t('recap.units')}
+            sub={stats.projects ? t('recap.projects', { done: stats.projects_done, total: stats.projects }) : undefined}
+          />
+          {stats.claims > 0 && <Tile value={stats.claims_held} total={stats.claims} label={t('recap.claimsHeld')} />}
+          {stats.mistakes > 0 && <Tile value={stats.mistakes_fixed} total={stats.mistakes} label={t('recap.mistakesFixed')} />}
+        </div>
+      </div>
+    </header>
   )
-  const fresh = useMemo(() => new Set(story?.claims.filter((c) => derived!.claimAt.get(c.id) === cursor).map((c) => c.id) ?? []), [story, derived, cursor])
+}
 
-  if (error) return <main className="home"><div className="error">{error}</div></main>
-  if (!story || !derived) return <main className="recap" />
-
-  const { stats, steps, narrative } = story
-  const reached = steps.slice(0, cursor + 1)
+function RecapPanel(props: {
+  story: Story
+  cursor: number
+  shown: Set<number>
+  fresh: Set<number>
+  weak: Claim[]
+  weakOnly: boolean
+  onWeakOnly: (weakOnly: boolean) => void
+  picked: Claim | undefined
+  onPick: (id: number | null) => void
+  onLaidOut: (positions: Record<number, [number, number]>) => void
+  playing: boolean
+  onPlay: () => void
+}) {
+  const { t } = useTranslation()
+  const { story, shown, weak, picked: pickedClaim } = props
+  const { stats } = story
+  const reached = story.steps.slice(0, props.cursor + 1)
   const reachedAt = reached.at(-1)?.finished
   const graphShown = story.claims.length >= GRAPH_FROM
-  const range = (from: string | null, to: string | null) => [from, to].map((d) => (d ? day(d) : '…')).join(' – ')
-  const weekLabel = (w: string) => t('recap.week', { date: day(w) })
-  const unitLink = (conceptId: number | null) => (conceptId ? `#/course/${courseId}?concept=${conceptId}` : `#/course/${courseId}`)
-  const weak = story.claims.filter(isWeak)
-  const open = story.mistakes.filter((m) => !m.put_right)
-  const toStrengthen = steps
-    .map((s, n) => ({
-      step: s,
-      n,
-      shaky: weak.filter((c) => c.step === n && c.state === 'shaky').length,
-      fading: weak.filter((c) => c.step === n && c.state === 'fading').length,
-      open: open.filter((m) => m.step === n).length,
-    }))
-    .filter((g) => g.shaky + g.fading + g.open > 0)
-  const weakElsewhere = weak.filter((c) => c.step === null)
-  const openElsewhere = open.filter((m) => m.step === null)
-  const pickedClaim = picked !== null ? derived.claims.get(picked) : undefined
-  const answers = story.answers
+  return (
+    <aside className="recap-panel" aria-label={t('recap.panel')}>
+      {graphShown && weak.length > 0 && (
+        <div className="recap-lens" role="group" aria-label={t('recap.panel')}>
+          <button type="button" aria-pressed={!props.weakOnly} onClick={() => props.onWeakOnly(false)}>{t('recap.graphAll')}</button>
+          <button type="button" aria-pressed={props.weakOnly} onClick={() => props.onWeakOnly(true)}>
+            {t('recap.graphWeak')} <span className="muted">{number(weak.length)}</span>
+          </button>
+        </div>
+      )}
+      {graphShown && (
+        <RecapGraph
+          claims={story.claims}
+          edges={story.edges}
+          positions={story.positions}
+          shown={shown}
+          fresh={props.fresh}
+          weakOnly={props.weakOnly}
+          onLaidOut={props.onLaidOut}
+          onPick={props.onPick}
+        />
+      )}
+      <div className="recap-now">
+        <span className="label">{reachedAt ? day(reachedAt) : t('recap.start')}</span>
+        <div className="recap-counts">
+          <span><strong>{number(story.before.length + reached.length)}</strong> {t('recap.countUnits')}</span>
+          {stats.claims > 0 && <span><strong>{number(shown.size)}</strong> {t('recap.countClaims')}</span>}
+          {stats.mistakes > 0 && (
+            <span><strong>{number(story.mistakes.filter((m) => m.fixed && reachedAt && m.fixed <= nextDay(reachedAt)).length)}</strong> {t('recap.countFixed')}</span>
+          )}
+          <span><strong>{number(reached.reduce((s, x) => s + x.minutes, 0) / 60)}</strong> {t('recap.countHours')}</span>
+        </div>
+        {pickedClaim && (
+          <div className="recap-picked small">
+            <p dir="auto">
+              <span className={`legend-dot state-${pickedClaim.state}`} title={t(`graph.state.${pickedClaim.state}`)} />
+              <InlineMarkdown>{pickedClaim.text}</InlineMarkdown>
+            </p>
+            {pickedClaim.step !== null && (
+              <button type="button" className="recap-show" onClick={() => showStep(pickedClaim.step!)}>{t('recap.showInStory')}</button>
+            )}
+          </div>
+        )}
+        <button type="button" className="btn recap-play" aria-pressed={props.playing} onClick={props.onPlay} title={t('recap.playHint')}>
+          {props.playing ? t('recap.pause') : t('recap.play')}
+        </button>
+      </div>
+      <ul className="recap-modules small">
+        {story.modules.map((m) => (
+          <li key={m} dir="auto">
+            <i style={{ background: moduleColor(story.modules, m) }} /> {m}
+          </li>
+        ))}
+      </ul>
+    </aside>
+  )
+}
+
+function Timeline(props: { story: Story; cursor: number; claims: Map<number, Claim>; mistakes: Map<number, Mistake>; unitLink: (conceptId: number | null) => string }) {
+  const { t } = useTranslation()
+  const { story, cursor, unitLink } = props
+  const { steps, narrative } = story
+  return (
+    <>
+      {story.before.length > 0 && (
+        <details className="recap-before" data-step={-1}>
+          <summary>
+            <strong>{t('recap.before')}</strong> <span className="muted">{t('recap.beforeCount', { count: story.before.length })}</span>
+          </summary>
+          <ul>
+            {story.before.map((u) => (
+              <li key={u.concept_id} dir="auto">{u.title}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {story.weeks.map((w) => (
+        <section key={w} className="recap-week">
+          <h2 className="label">{t('recap.week', { date: day(w) })}</h2>
+          {narrative?.weeks[w] && <p className="recap-caption" dir="auto"><InlineMarkdown>{narrative.weeks[w]}</InlineMarkdown></p>}
+          <ol>
+            {steps.map((s, n) => s.week === w && (
+              <li key={s.concept_id} data-step={n} className={n <= cursor ? 'recap-step reached' : 'recap-step'} style={{ '--module': moduleColor(story.modules, s.module) } as CSSProperties}>
+                <StepCard step={s} claims={props.claims} mistakes={props.mistakes} link={unitLink(s.concept_id)} />
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+      {narrative?.can_do && (
+        <section className="recap-finish">
+          <h2>{t('recap.canDoTitle')}</h2>
+          <ul>
+            {narrative.can_do.map((p) => (
+              <li key={p} dir="auto"><InlineMarkdown>{p}</InlineMarkdown></li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  )
+}
+
+/** How sure the learner was against how often they were right, week by week. */
+function SureChart({ answers, weeks: starts }: { answers: Story['answers']; weeks: string[] }) {
+  const { t } = useTranslation()
   const quarter = Math.max(5, Math.floor(answers.length / 4))
-  const nextUp = next.filter((s) => s.builds_on === story.course.topic).slice(0, 3)
-  const language = LOCALES[i18n.language as Locale]
-
-  function saveLayout(positions: Record<number, [number, number]>) {
-    if (!story!.preview) api(`/api/courses/${courseId}/recap/positions`, { positions }).catch(() => {})
-  }
-
-  function rewrite() {
-    api(`/api/courses/${courseId}/recap/write`, {}).then(() => setStory((s) => s && { ...s, writing: true, failed: false }), (e: Error) => setError(e.message))
-  }
-
-  const weeks = story.weeks.map((w) => {
+  const weeks = starts.map((w) => {
     const sums = answers.filter((a) => a.created >= w && a.created < nextWeek(w))
     return sums.length ? { week: new Date(w), sure: (100 * sums.reduce((s, a) => s + a.confidence, 0)) / sums.length, right: (100 * sums.filter((a) => a.correct).length) / sums.length } : null
   }).filter((w) => w !== null)
@@ -376,217 +566,109 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
       { type: 'dot' as const, data: weeks.flatMap((w) => [{ week: w.week, value: w.sure, series: t('recap.sure') }, { week: w.week, value: w.right, series: t('recap.right') }]), x: 'week', y: 'value', fill: 'series' },
     ],
   }
-
   return (
-    <main className="recap">
-      <header className="recap-hero">
-        {story.course.cover && <img className="recap-cover" src={`/api/courses/${courseId}/cover`} alt={story.course.cover_alt ?? ''} />}
-        <div className="recap-title">
-          <div className="label">{t(story.preview ? 'recap.eyebrowPreview' : 'recap.eyebrow', { dates: range(story.started, story.finished) })}</div>
-          <h1 dir="auto">{story.course.topic}</h1>
-          <div className="recap-tiles">
-            <Tile value={stats.minutes / 60} decimals={1} label={t(stats.estimated ? 'recap.hoursAbout' : 'recap.hours')} />
-            <Tile
-              value={stats.units_done}
-              total={stats.units}
-              label={t('recap.units')}
-              sub={stats.projects ? t('recap.projects', { done: stats.projects_done, total: stats.projects }) : undefined}
-            />
-            {stats.claims > 0 && <Tile value={stats.claims_held} total={stats.claims} label={t('recap.claimsHeld')} />}
-            {stats.mistakes > 0 && <Tile value={stats.mistakes_fixed} total={stats.mistakes} label={t('recap.mistakesFixed')} />}
-          </div>
-        </div>
-      </header>
+    <div className="recap-sure">
+      <h2>{t('recap.sureTitle')}</h2>
+      <PlotBox spec={chart} alt={t('recap.chartAlt')} />
+      <p className="small muted">
+        {t('recap.brier', { start: brier(answers.slice(0, quarter)).toFixed(2), end: brier(answers.slice(-quarter)).toFixed(2) })}
+      </p>
+    </div>
+  )
+}
 
-      <Narration story={story} onRewrite={rewrite} language={language}>
-        {narrative && <p className="recap-intro" dir="auto"><InlineMarkdown>{narrative.intro}</InlineMarkdown></p>}
-      </Narration>
-
-      <div className="recap-body">
-        <aside className="recap-panel" aria-label={t('recap.panel')}>
-          {graphShown && weak.length > 0 && (
-            <div className="recap-lens" role="group" aria-label={t('recap.panel')}>
-              <button type="button" aria-pressed={!weakOnly} onClick={() => setWeakOnly(false)}>{t('recap.graphAll')}</button>
-              <button type="button" aria-pressed={weakOnly} onClick={() => setWeakOnly(true)}>
-                {t('recap.graphWeak')} <span className="muted">{number(weak.length)}</span>
+function WeakSection({ story, weak, open, unitLink }: { story: Story; weak: Claim[]; open: Mistake[]; unitLink: (conceptId: number | null) => string }) {
+  const { t } = useTranslation()
+  const { narrative } = story
+  const toStrengthen = story.steps
+    .map((s, n) => ({
+      step: s,
+      n,
+      shaky: weak.filter((c) => c.step === n && c.state === 'shaky').length,
+      fading: weak.filter((c) => c.step === n && c.state === 'fading').length,
+      open: open.filter((m) => m.step === n).length,
+    }))
+    .filter((g) => g.shaky + g.fading + g.open > 0)
+  const weakElsewhere = weak.filter((c) => c.step === null)
+  const openElsewhere = open.filter((m) => m.step === null)
+  return (
+    <div className="recap-weak">
+      <h2>{t('recap.weakTitle')}</h2>
+      {weak.length === 0 && open.length === 0 && <p className="muted">{t('recap.nothingWeak')}</p>}
+      {narrative?.strengthen && (weak.length > 0 || open.length > 0) && (
+        <ul className="recap-focus">
+          {narrative.strengthen.map((p) => (
+            <li key={p} dir="auto"><InlineMarkdown>{p}</InlineMarkdown></li>
+          ))}
+        </ul>
+      )}
+      {toStrengthen.length > 0 && (
+        <ul className="recap-weak-units">
+          {toStrengthen.map((g) => (
+            <li key={g.n} style={{ '--module': moduleColor(story.modules, g.step.module) } as CSSProperties}>
+              <button type="button" className="recap-weak-unit" onClick={() => showStep(g.n)} title={t('recap.showInStory')}>
+                <strong dir="auto">{g.step.kind === 'practice' ? practiceTitle(g.step.title, t) : g.step.title}</strong>
+                <WeakCounts shaky={g.shaky} fading={g.fading} open={g.open} />
               </button>
-            </div>
-          )}
-          {graphShown && (
-            <RecapGraph
-              claims={story.claims}
-              edges={story.edges}
-              positions={story.positions}
-              shown={shown}
-              fresh={fresh}
-              weakOnly={weakOnly}
-              onLaidOut={saveLayout}
-              onPick={setPicked}
+              <a className="small" href={unitLink(g.step.concept_id)}>{t('recap.openUnit')}</a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {weakElsewhere.length + openElsewhere.length > 0 && (
+        <details className="recap-elsewhere">
+          <summary>
+            <strong>{t('recap.elsewhere')}</strong>{' '}
+            <WeakCounts
+              shaky={weakElsewhere.filter((c) => c.state === 'shaky').length}
+              fading={weakElsewhere.filter((c) => c.state === 'fading').length}
+              open={openElsewhere.length}
             />
-          )}
-          <div className="recap-now">
-            <span className="label">{reachedAt ? day(reachedAt) : t('recap.start')}</span>
-            <div className="recap-counts">
-              <span><strong>{number(story.before.length + reached.length)}</strong> {t('recap.countUnits')}</span>
-              {stats.claims > 0 && <span><strong>{number(shown.size)}</strong> {t('recap.countClaims')}</span>}
-              {stats.mistakes > 0 && (
-                <span><strong>{number(story.mistakes.filter((m) => m.fixed && reachedAt && m.fixed <= nextDay(reachedAt)).length)}</strong> {t('recap.countFixed')}</span>
-              )}
-              <span><strong>{number(reached.reduce((s, x) => s + x.minutes, 0) / 60)}</strong> {t('recap.countHours')}</span>
-            </div>
-            {pickedClaim && (
-              <div className="recap-picked small">
-                <p dir="auto">
-                  <span className={`legend-dot state-${pickedClaim.state}`} title={t(`graph.state.${pickedClaim.state}`)} />
-                  <InlineMarkdown>{pickedClaim.text}</InlineMarkdown>
-                </p>
-                {pickedClaim.step !== null && (
-                  <button type="button" className="recap-show" onClick={() => showStep(pickedClaim.step!)}>{t('recap.showInStory')}</button>
-                )}
-              </div>
-            )}
-            <button type="button" className="btn recap-play" aria-pressed={playing} onClick={() => setPlaying((p) => !p)} title={t('recap.playHint')}>
-              {playing ? t('recap.pause') : t('recap.play')}
-            </button>
-          </div>
-          <ul className="recap-modules small">
-            {story.modules.map((m) => (
-              <li key={m} dir="auto">
-                <i style={{ background: moduleColor(story.modules, m) }} /> {m}
+          </summary>
+          <ul>
+            {weakElsewhere.map((c) => (
+              <li key={`c${c.id}`} dir="auto">
+                <span className={`legend-dot state-${c.state}`} title={t(`graph.state.${c.state}`)} />
+                <InlineMarkdown>{c.text}</InlineMarkdown>
+              </li>
+            ))}
+            {openElsewhere.map((m) => (
+              <li key={`m${m.id}`} dir="auto">
+                <Prompt text={m.prompt}>
+                  <a className="small" href={unitLink(m.concept_id)}>{t('recap.openUnit')}</a>
+                </Prompt>
               </li>
             ))}
           </ul>
-        </aside>
+        </details>
+      )}
+    </div>
+  )
+}
 
-        <div ref={timeline} className="recap-timeline">
-          {story.before.length > 0 && (
-            <details className="recap-before" data-step={-1}>
-              <summary>
-                <strong>{t('recap.before')}</strong> <span className="muted">{t('recap.beforeCount', { count: story.before.length })}</span>
-              </summary>
-              <ul>
-                {story.before.map((u) => (
-                  <li key={u.concept_id} dir="auto">{u.title}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-          {story.weeks.map((w) => (
-            <section key={w} className="recap-week">
-              <h2 className="label">{weekLabel(w)}</h2>
-              {narrative?.weeks[w] && <p className="recap-caption" dir="auto"><InlineMarkdown>{narrative.weeks[w]}</InlineMarkdown></p>}
-              <ol>
-                {steps.map((s, n) => s.week === w && (
-                  <li key={s.concept_id} data-step={n} className={n <= cursor ? 'recap-step reached' : 'recap-step'} style={{ '--module': moduleColor(story.modules, s.module) } as CSSProperties}>
-                    <StepCard step={s} claims={derived.claims} mistakes={derived.mistakes} link={unitLink(s.concept_id)} />
-                  </li>
-                ))}
-              </ol>
-            </section>
+function NextSection({ story, next, courseId }: { story: Story; next: Suggestion[]; courseId: number }) {
+  const { t } = useTranslation()
+  const { narrative } = story
+  const nextUp = next.filter((s) => s.builds_on === story.course.topic).slice(0, 3)
+  return (
+    <div className="recap-next">
+      <h2>{t('recap.nextTitle')}</h2>
+      {narrative?.next_step && <p className="recap-next-lead" dir="auto"><InlineMarkdown>{narrative.next_step}</InlineMarkdown></p>}
+      {nextUp.length > 0 && (
+        <ul>
+          {nextUp.map((s) => (
+            <li key={s.id}>
+              <strong dir="auto">{s.title}</strong>
+              <span className="small muted" dir="auto">{s.pitch}</span>
+            </li>
           ))}
-          {narrative?.can_do && (
-            <section className="recap-finish">
-              <h2>{t('recap.canDoTitle')}</h2>
-              <ul>
-                {narrative.can_do.map((p) => (
-                  <li key={p} dir="auto"><InlineMarkdown>{p}</InlineMarkdown></li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
+        </ul>
+      )}
+      <div className="row">
+        <a className="btn as-link" href="#/explore">{t('recap.explore')}</a>
+        <a className="btn as-link" href={`/api/courses/${courseId}/book.pdf`}>{t('recap.book')}</a>
       </div>
-
-      <section ref={end} className="recap-end">
-        {answers.length >= CHART_FROM && (
-          <div className="recap-sure">
-            <h2>{t('recap.sureTitle')}</h2>
-            <PlotBox spec={chart} alt={t('recap.chartAlt')} />
-            <p className="small muted">
-              {t('recap.brier', { start: brier(answers.slice(0, quarter)).toFixed(2), end: brier(answers.slice(-quarter)).toFixed(2) })}
-            </p>
-          </div>
-        )}
-
-        <div className="recap-weak">
-          <h2>{t('recap.weakTitle')}</h2>
-          {weak.length === 0 && open.length === 0 && <p className="muted">{t('recap.nothingWeak')}</p>}
-          {narrative?.strengthen && (weak.length > 0 || open.length > 0) && (
-            <ul className="recap-focus">
-              {narrative.strengthen.map((p) => (
-                <li key={p} dir="auto"><InlineMarkdown>{p}</InlineMarkdown></li>
-              ))}
-            </ul>
-          )}
-          {toStrengthen.length > 0 && (
-            <ul className="recap-weak-units">
-              {toStrengthen.map((g) => (
-                <li key={g.n} style={{ '--module': moduleColor(story.modules, g.step.module) } as CSSProperties}>
-                  <button type="button" className="recap-weak-unit" onClick={() => showStep(g.n)} title={t('recap.showInStory')}>
-                    <strong dir="auto">{g.step.kind === 'practice' ? practiceTitle(g.step.title, t) : g.step.title}</strong>
-                    <WeakCounts shaky={g.shaky} fading={g.fading} open={g.open} />
-                  </button>
-                  <a className="small" href={unitLink(g.step.concept_id)}>{t('recap.openUnit')}</a>
-                </li>
-              ))}
-            </ul>
-          )}
-          {weakElsewhere.length + openElsewhere.length > 0 && (
-            <details className="recap-elsewhere">
-              <summary>
-                <strong>{t('recap.elsewhere')}</strong>{' '}
-                <WeakCounts
-                  shaky={weakElsewhere.filter((c) => c.state === 'shaky').length}
-                  fading={weakElsewhere.filter((c) => c.state === 'fading').length}
-                  open={openElsewhere.length}
-                />
-              </summary>
-              <ul>
-                {weakElsewhere.map((c) => (
-                  <li key={`c${c.id}`} dir="auto">
-                    <span className={`legend-dot state-${c.state}`} title={t(`graph.state.${c.state}`)} />
-                    <InlineMarkdown>{c.text}</InlineMarkdown>
-                  </li>
-                ))}
-                {openElsewhere.map((m) => (
-                  <li key={`m${m.id}`} dir="auto">
-                    <Prompt text={m.prompt}>
-                      <a className="small" href={unitLink(m.concept_id)}>{t('recap.openUnit')}</a>
-                    </Prompt>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-
-        {narrative?.letter && (
-          <div className="recap-letter">
-            <h2>{t('recap.letterTitle')}</h2>
-            <p dir="auto"><InlineMarkdown>{narrative.letter}</InlineMarkdown></p>
-          </div>
-        )}
-
-        <div className="recap-next">
-          <h2>{t('recap.nextTitle')}</h2>
-          {narrative?.next_step && <p className="recap-next-lead" dir="auto"><InlineMarkdown>{narrative.next_step}</InlineMarkdown></p>}
-          {nextUp.length > 0 && (
-            <ul>
-              {nextUp.map((s) => (
-                <li key={s.id}>
-                  <strong dir="auto">{s.title}</strong>
-                  <span className="small muted" dir="auto">{s.pitch}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="row">
-            <a className="btn as-link" href="#/explore">{t('recap.explore')}</a>
-            <a className="btn as-link" href={`/api/courses/${courseId}/book.pdf`}>{t('recap.book')}</a>
-          </div>
-        </div>
-      </section>
-    </main>
+    </div>
   )
 }
 
@@ -649,43 +731,11 @@ function StepCard({ step, claims, mistakes, link }: { step: Step; claims: Map<nu
             {own.length > 3 && <span className="small muted">{t('recap.moreClaims', { count: own.length - 3 })}</span>}
           </span>
         )}
-        {(missed.length > 0 || step.milestone || weak > 0) && (
-          <span className="recap-marks small">
-            {weak > 0 && <span className="mark-weak">{t('recap.toStrengthen', { count: weak })}</span>}
-            {missed.length > 0 && <span className="mark-missed">{t('recap.mistakes', { count: missed.length })}</span>}
-            {fixed > 0 && <span className="mark-fixed">{t('recap.putRight', { count: fixed })}</span>}
-            {step.milestone && (
-              <span className="mark-project" title={step.milestone.deliverable}>
-                {t('recap.project')}
-              </span>
-            )}
-          </span>
-        )}
+        {(missed.length > 0 || step.milestone || weak > 0) && <StepMarks step={step} weak={weak} missed={missed.length} fixed={fixed} />}
       </summary>
       <div className="recap-step-body">
-        {own.length > 0 && (
-          <ul className="recap-claims">
-            {[...own.filter(isWeak), ...own.filter((c) => !isWeak(c))].map((c) => (
-              <li key={c.id} dir="auto">
-                <span className={`legend-dot state-${c.state}`} title={t(`graph.state.${c.state}`)} />
-                <InlineMarkdown>{c.text}</InlineMarkdown>
-              </li>
-            ))}
-          </ul>
-        )}
-        {missed.length > 0 && (
-          <ul className="recap-mistakes">
-            {missed.map((m) => (
-              <li key={m.id} dir="auto">
-                <Prompt text={m.prompt}>
-                  <span className={m.put_right ? 'small mark-fixed' : 'small mark-missed'}>
-                    {m.fixed ? t('recap.fixedOn', { date: day(m.fixed) }) : m.put_right ? t('recap.fixed') : t('recap.stillOpen')}
-                  </span>
-                </Prompt>
-              </li>
-            ))}
-          </ul>
-        )}
+        {own.length > 0 && <ClaimList claims={own} />}
+        {missed.length > 0 && <MistakeList mistakes={missed} />}
         {step.milestone && (
           <p className="small" dir="auto">
             <span className="mark-project">{t('recap.project')}</span> {step.milestone.project}: <code>{step.milestone.deliverable}</code>
@@ -698,6 +748,54 @@ function StepCard({ step, claims, mistakes, link }: { step: Step; claims: Map<nu
         <a className="small" href={link}>{t('recap.openUnit')}</a>
       </div>
     </details>
+  )
+}
+
+function StepMarks({ step, weak, missed, fixed }: { step: Step; weak: number; missed: number; fixed: number }) {
+  const { t } = useTranslation()
+  return (
+    <span className="recap-marks small">
+      {weak > 0 && <span className="mark-weak">{t('recap.toStrengthen', { count: weak })}</span>}
+      {missed > 0 && <span className="mark-missed">{t('recap.mistakes', { count: missed })}</span>}
+      {fixed > 0 && <span className="mark-fixed">{t('recap.putRight', { count: fixed })}</span>}
+      {step.milestone && (
+        <span className="mark-project" title={step.milestone.deliverable}>
+          {t('recap.project')}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** A step's claims, the weak ones first. */
+function ClaimList({ claims }: { claims: Claim[] }) {
+  const { t } = useTranslation()
+  return (
+    <ul className="recap-claims">
+      {[...claims.filter(isWeak), ...claims.filter((c) => !isWeak(c))].map((c) => (
+        <li key={c.id} dir="auto">
+          <span className={`legend-dot state-${c.state}`} title={t(`graph.state.${c.state}`)} />
+          <InlineMarkdown>{c.text}</InlineMarkdown>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function MistakeList({ mistakes }: { mistakes: Mistake[] }) {
+  const { t } = useTranslation()
+  return (
+    <ul className="recap-mistakes">
+      {mistakes.map((m) => (
+        <li key={m.id} dir="auto">
+          <Prompt text={m.prompt}>
+            <span className={m.put_right ? 'small mark-fixed' : 'small mark-missed'}>
+              {m.fixed ? t('recap.fixedOn', { date: day(m.fixed) }) : m.put_right ? t('recap.fixed') : t('recap.stillOpen')}
+            </span>
+          </Prompt>
+        </li>
+      ))}
+    </ul>
   )
 }
 
