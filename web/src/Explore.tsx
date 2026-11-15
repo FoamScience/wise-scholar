@@ -63,6 +63,30 @@ function SuggestionCard({ suggestion, onDismiss, onError }: { suggestion: Sugges
   )
 }
 
+/** No cards yet: placeholders while the tutor writes them, or a way home when none came. */
+function NoSuggestions({ state }: { state: Suggestions }) {
+  const { t } = useTranslation()
+  if (state.running)
+    return (
+      <div className="suggestions" role="status" aria-label={t('explore.writing')}>
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="suggestion skeleton">
+            <span style={{ width: '30%' }} />
+            <span style={{ width: '82%' }} />
+            <span style={{ width: '96%' }} />
+            <span style={{ width: '64%' }} />
+          </div>
+        ))}
+      </div>
+    )
+  if (state.failed) return null
+  return (
+    <p>
+      {t('explore.empty')} <a href="#/">{t('explore.emptyLink')}</a>
+    </p>
+  )
+}
+
 /** Six courses the tutor suggests next: up a level in what the learner holds, or into a field next to it. */
 export function ExplorePage({ profile }: { profile: number }) {
   const { t } = useTranslation()
@@ -91,23 +115,7 @@ export function ExplorePage({ profile }: { profile: number }) {
           ))}
         </div>
       )}
-      {state?.running && cards.length === 0 && (
-        <div className="suggestions" role="status" aria-label={t('explore.writing')}>
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="suggestion skeleton">
-              <span style={{ width: '30%' }} />
-              <span style={{ width: '82%' }} />
-              <span style={{ width: '96%' }} />
-              <span style={{ width: '64%' }} />
-            </div>
-          ))}
-        </div>
-      )}
-      {state && !state.running && !state.failed && cards.length === 0 && (
-        <p>
-          {t('explore.empty')} <a href="#/">{t('explore.emptyLink')}</a>
-        </p>
-      )}
+      {state && cards.length === 0 && <NoSuggestions state={state} />}
       {state && (cards.length > 0 || state.failed) && (
         <div className="row">
           <button type="button" className="btn" disabled={state.running} aria-busy={state.running} onClick={others}>

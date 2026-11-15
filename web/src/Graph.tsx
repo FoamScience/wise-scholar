@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import type { CollectionReturnValue, Core, Position, StylesheetJson } from 'cytoscape'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
@@ -145,25 +146,8 @@ function graphStyle(font: string): StylesheetJson {
   ]
 }
 
-/** The learner's claims from every course as a network: coloured by where they stand, linked by how they follow. */
-export function GraphPage({ profile, course }: { profile: number; course: number | null }) {
-  const { t } = useTranslation()
-  const theme = useTheme()
-  const [graph, setGraph] = useState<Graph | null>(null)
-  const [filter, setFilter] = useState<number | null>(course)
-  const [selected, setSelected] = useState<number | null>(null)
-  const [error, setError] = useState('')
-  const [built, setBuilt] = useState(0)
-  const box = useRef<HTMLDivElement>(null)
-  const cy = useRef<Core | null>(null)
-  const home = useRef(new Map<string, Position>())
-
-  const reload = () => api<Graph>(`/api/claims?profile=${profile}`)
-
-  useEffect(() => {
-    reload().then(setGraph, (e: Error) => setError(e.message))
-  }, [profile]) // eslint-disable-line react-hooks/exhaustive-deps
-
+/** The claims and links shown under the course filter, and the courses the claims come from. */
+function useShownClaims(graph: Graph | null, filter: number | null) {
   const courses = useMemo(() => {
     const seen = new Map<number, string>()
     for (const c of graph?.claims ?? []) for (const s of c.sources) seen.set(s.course_id, s.topic)
@@ -175,6 +159,22 @@ export function GraphPage({ profile, course }: { profile: number; course: number
     const ids = new Set(claims.map((c) => c.id))
     return { claims, edges: (graph?.edges ?? []).filter((e) => ids.has(e.from_id) && ids.has(e.to_id)) }
   }, [graph, filter])
+  return { courses, shown }
+}
+
+/** The network drawn in the box, laid out again when what is shown or the theme changes; a tap selects a claim. */
+function useClaimNetwork(
+  box: RefObject<HTMLDivElement | null>,
+  shown: { claims: Claim[]; edges: Edge[] },
+  courses: [number, string][],
+  filter: number | null,
+  selected: number | null,
+  setSelected: (id: number | null) => void,
+) {
+  const theme = useTheme()
+  const [built, setBuilt] = useState(0)
+  const cy = useRef<Core | null>(null)
+  const home = useRef(new Map<string, Position>())
 
   useEffect(() => {
     if (!box.current || shown.claims.length === 0) return
@@ -209,11 +209,30 @@ export function GraphPage({ profile, course }: { profile: number; course: number
       cy.current?.destroy()
       cy.current = null
     }
-  }, [shown, courses, filter, theme])
+  }, [box, shown, courses, filter, theme, setSelected])
 
   useEffect(() => {
     if (cy.current) focus(cy.current, selected, home.current)
   }, [selected, built])
+}
+
+/** The learner's claims from every course as a network: coloured by where they stand, linked by how they follow. */
+export function GraphPage({ profile, course }: { profile: number; course: number | null }) {
+  const { t } = useTranslation()
+  const [graph, setGraph] = useState<Graph | null>(null)
+  const [filter, setFilter] = useState<number | null>(course)
+  const [selected, setSelected] = useState<number | null>(null)
+  const [error, setError] = useState('')
+  const box = useRef<HTMLDivElement>(null)
+
+  const reload = () => api<Graph>(`/api/claims?profile=${profile}`)
+
+  useEffect(() => {
+    reload().then(setGraph, (e: Error) => setError(e.message))
+  }, [profile]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { courses, shown } = useShownClaims(graph, filter)
+  useClaimNetwork(box, shown, courses, filter, selected, setSelected)
 
   function apply(next: Promise<Graph>) {
     next.then(

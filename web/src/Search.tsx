@@ -55,33 +55,39 @@ export function SearchPage({ courseId, query, kind: asked }: { courseId: number;
       {error && <div className="error">{error}</div>}
       {hits === null && query.trim() && !error && <div className="muted">{t('search.searching')}</div>}
       {hits?.length === 0 && query.trim() && <div className="muted">{t('search.none')}</div>}
-      {hits?.map((h) => (
-        <section key={`${h.kind}-${h.ref}`} className="block hit">
-          <div className="label">
-            <span className="chip">{t(`search.kind.${h.kind}`)}</span> <span dir="auto">{h.kind === 'code' ? h.ref : h.title}</span>
-            {h.by !== 'words' && <span className={`chip by-${h.by}`}>{t(`search.by.${h.by}`)}</span>}
-          </div>
-          <p dir="auto" className="snippet">
-            {h.snippet.map(([piece, matched], i) => (matched ? <mark key={i}>{piece}</mark> : piece))}
-          </p>
-          {h.lesson_id !== null ? (
-            <a className="btn as-link" href={`#/course/${courseId}?lesson=${h.lesson_id}&${h.kind}=${h.ref}`}>{t(h.kind === 'chat' ? 'search.openMessage' : 'search.openCard')}</a>
-          ) : (
-            <details>
-              <summary>{t('search.showPassage')}</summary>
-              {h.kind === 'code' ? (
-                <pre>
-                  <code>{h.text}</code>
-                </pre>
-              ) : (
-                <div dir="auto">
-                  <Markdown>{h.text}</Markdown>
-                </div>
-              )}
-            </details>
-          )}
-        </section>
-      ))}
+      {hits?.map((h) => <HitCard key={`${h.kind}-${h.ref}`} hit={h} courseId={courseId} />)}
     </main>
+  )
+}
+
+function HitCard(props: { hit: Hit; courseId: number }) {
+  const { t } = useTranslation()
+  const h = props.hit
+  return (
+    <section className="block hit">
+      <div className="label">
+        <span className="chip">{t(`search.kind.${h.kind}`)}</span> <span dir="auto">{h.kind === 'code' ? h.ref : h.title}</span>
+        {h.by !== 'words' && <span className={`chip by-${h.by}`}>{t(`search.by.${h.by}`)}</span>}
+      </div>
+      <p dir="auto" className="snippet">
+        {h.snippet.map(([piece, matched], i) => (matched ? <mark key={i}>{piece}</mark> : piece))}
+      </p>
+      {h.lesson_id !== null ? (
+        <a className="btn as-link" href={`#/course/${props.courseId}?lesson=${h.lesson_id}&${h.kind}=${h.ref}`}>{t(h.kind === 'chat' ? 'search.openMessage' : 'search.openCard')}</a>
+      ) : (
+        <details>
+          <summary>{t('search.showPassage')}</summary>
+          {h.kind === 'code' ? (
+            <pre>
+              <code>{h.text}</code>
+            </pre>
+          ) : (
+            <div dir="auto">
+              <Markdown>{h.text}</Markdown>
+            </div>
+          )}
+        </details>
+      )}
+    </section>
   )
 }

@@ -154,62 +154,81 @@ function UnitRow(props: UnitProps & { concept: Concept; lesson: Lesson | undefin
       <button aria-current={conceptLesson?.id === props.current} onClick={() => props.onOpen(c)}>
         <span className="concept-title">
           <span className="concept-name" dir="auto">{c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}</span>
-          {course.mode !== 'teacher' && (
-            <span className="marks">
-              {/* the slot stays when empty, so every unit's squares sit on the same line */}
-              {unitDone(c, conceptLesson) ? (
-                <span className="done-mark" role="img" aria-label={t('common.done')}>
-                  ✓
-                </span>
-              ) : (
-                <span className="done-mark empty" />
-              )}
-              {c.kind !== 'practice' && (
-                <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
-                  {[1, 2, 3].map((n) => (
-                    <i key={n} className={n <= squares(c) ? 'on' : ''} />
-                  ))}
-                </span>
-              )}
-            </span>
-          )}
+          {course.mode !== 'teacher' && <UnitMarks concept={c} lesson={conceptLesson} />}
         </span>
         <span className="stats">{c.unwritten && !conceptLesson ? t('replay.laterShort') : conceptStats(c, conceptLesson, t, course.mode === 'teacher')}</span>
-        {c.needs.length > 0 && !unitDone(c, conceptLesson) && (
-          <span className="stats needs" dir="auto">
-            {t('map.needs')}{' '}
-            {c.needs
-              .map((id) => course.concepts.find((u) => u.id === id))
-              .filter((u): u is Concept => u !== undefined)
-              .map((u) => (course.mode === 'teacher' ? u.title : `${u.title} ${props.unmetNeeds(c).includes(u) ? '✗' : '✓'}`))
-              .join(', ')}
-          </span>
-        )}
+        {c.needs.length > 0 && !unitDone(c, conceptLesson) && <UnitNeeds {...props} />}
       </button>
-      {props.held === c.id && c.unwritten && !conceptLesson ? (
-        <div className="held small" role="status">
-          <span>{t('replay.later')}</span>
-          <div className="row">
-            <button type="button" className="btn primary" onClick={() => props.onOpen(c, true)}>
-              {t('replay.teachNow')}
-            </button>
-          </div>
-        </div>
+      {props.held === c.id && <HeldNote {...props} />}
+    </div>
+  )
+}
+
+function UnitMarks({ concept: c, lesson }: { concept: Concept; lesson: Lesson | undefined }) {
+  const { t } = useTranslation()
+  return (
+    <span className="marks">
+      {/* the slot stays when empty, so every unit's squares sit on the same line */}
+      {unitDone(c, lesson) ? (
+        <span className="done-mark" role="img" aria-label={t('common.done')}>
+          ✓
+        </span>
       ) : (
-        props.held === c.id && (
-          <div className="held small" role="status">
-            <span dir="auto">{t('map.needsFirst', { titles: props.unmetNeeds(c).map((u) => u.title).join(', ') })}</span>
-            <div className="row">
-              <button type="button" className="btn primary" onClick={() => props.onOpen(props.unmetNeeds(c)[0])}>
-                {t('map.openFirst')}
-              </button>
-              <button type="button" className="btn" onClick={() => props.onOpen(c, true)}>
-                {t('map.startAnyway')}
-              </button>
-            </div>
-          </div>
-        )
+        <span className="done-mark empty" />
       )}
+      {c.kind !== 'practice' && (
+        <span className="mastery" aria-label={t('map.mastery', { n: squares(c) })} title={t('map.masteryHint')}>
+          {[1, 2, 3].map((n) => (
+            <i key={n} className={n <= squares(c) ? 'on' : ''} />
+          ))}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** The units this one builds on; on a learner's map, each marked open or done. */
+function UnitNeeds(props: UnitProps & { concept: Concept }) {
+  const { t } = useTranslation()
+  const { course, concept: c } = props
+  return (
+    <span className="stats needs" dir="auto">
+      {t('map.needs')}{' '}
+      {c.needs
+        .map((id) => course.concepts.find((u) => u.id === id))
+        .filter((u): u is Concept => u !== undefined)
+        .map((u) => (course.mode === 'teacher' ? u.title : `${u.title} ${props.unmetNeeds(c).includes(u) ? '✗' : '✓'}`))
+        .join(', ')}
+    </span>
+  )
+}
+
+/** Why a unit asked for did not start: it is not written yet, or units it needs are still open. */
+function HeldNote(props: UnitProps & { concept: Concept; lesson: Lesson | undefined }) {
+  const { t } = useTranslation()
+  const { concept: c } = props
+  if (c.unwritten && !props.lesson)
+    return (
+      <div className="held small" role="status">
+        <span>{t('replay.later')}</span>
+        <div className="row">
+          <button type="button" className="btn primary" onClick={() => props.onOpen(c, true)}>
+            {t('replay.teachNow')}
+          </button>
+        </div>
+      </div>
+    )
+  return (
+    <div className="held small" role="status">
+      <span dir="auto">{t('map.needsFirst', { titles: props.unmetNeeds(c).map((u) => u.title).join(', ') })}</span>
+      <div className="row">
+        <button type="button" className="btn primary" onClick={() => props.onOpen(props.unmetNeeds(c)[0])}>
+          {t('map.openFirst')}
+        </button>
+        <button type="button" className="btn" onClick={() => props.onOpen(c, true)}>
+          {t('map.startAnyway')}
+        </button>
+      </div>
     </div>
   )
 }

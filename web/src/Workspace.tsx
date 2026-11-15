@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { useArrivals } from './arrive'
@@ -258,7 +258,7 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
   const { held, pane, setPane, asking, setAsking, showLesson, unmetNeeds, openConcept, opened, openLesson } = useUnitNav(course, setLessonId, addLesson, setError)
   const { upgrading, upgrade } = useUpgrade(courseId, setCourse, setLessonId, setError)
   const { draft, setDraft, changing, setChanging, send, onKey } = useChatDraft(lesson, patchLesson, setError)
-  const open = lesson ? (asking ?? (lesson.phase === 'interview' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))) : false
+  const open = chatOpen(lesson, asking, found)
   const unread = useUnread(lessonId, lesson, open)
   const { given, give, sending, prepareOffline, sendBatch } = useOfflineAnswers(lessonId, patchLesson, setError)
   const { lessonBottom, messagesBox } = useFollow({ lesson, ranked: course?.ranking.length, writing, open, streaming, found })
@@ -340,11 +340,15 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
         />
         {showPlan && <CoursePlan course={course} lesson={lesson} post={post} onPlacement={() => openLesson(`/api/courses/${course.id}/placement`)} />}
         <PlacementNote course={course} lesson={lesson} />
-        {lesson.running && (empty || writing) && <Skeleton />}
-        {!lesson.running && (lesson.batch || canPrepare) && (
-          <OfflineRow lesson={lesson} given={given} online={online} sending={sending} onSend={sendBatch} onPrepare={prepareOffline} />
-        )}
-        {nextUnit && !lesson.running && <NextUnit unit={nextUnit} stop={answeredToday} onOpen={() => openConcept(nextUnit)} />}
+        <LessonFoot
+          lesson={lesson}
+          working={empty || writing}
+          offline={canPrepare}
+          nextUnit={nextUnit}
+          stop={answeredToday}
+          onOpenUnit={openConcept}
+          row={<OfflineRow lesson={lesson} given={given} online={online} sending={sending} onSend={sendBatch} onPrepare={prepareOffline} />}
+        />
         {error && <div className="error">{error}</div>}
         <div ref={lessonBottom} />
         {!open && (
@@ -394,6 +398,33 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
         }}
       />
     </div>
+  )
+}
+
+/** The chat sidebar follows the lesson until the learner opens or closes it: open in the interview, which is a
+ * conversation, and for a search hit in the chat. */
+function chatOpen(lesson: Lesson | null, asking: boolean | null, found: { lesson: number; at: string } | null): boolean {
+  if (!lesson) return false
+  return asking ?? (lesson.phase === 'interview' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))
+}
+
+/** Below the cards: the placeholder while the tutor writes, the offline row, and the way on to the next unit. */
+function LessonFoot(props: {
+  lesson: Lesson
+  working: boolean
+  offline: boolean
+  nextUnit: Concept | undefined
+  stop: boolean
+  onOpenUnit: (unit: Concept) => void
+  row: ReactNode
+}) {
+  const { lesson, nextUnit } = props
+  return (
+    <>
+      {lesson.running && props.working && <Skeleton />}
+      {!lesson.running && (lesson.batch || props.offline) && props.row}
+      {nextUnit && !lesson.running && <NextUnit unit={nextUnit} stop={props.stop} onOpen={() => props.onOpenUnit(nextUnit)} />}
+    </>
   )
 }
 
