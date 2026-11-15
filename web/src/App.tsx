@@ -20,6 +20,7 @@ import { Recap } from './Recap'
 import { Handout } from './Handout'
 import { FirstProfile, ProfilePage } from './Profile'
 import { useProfiles } from './profiles'
+import type { Profile } from './profiles'
 import { LOCALES, browserLocale, rememberLocale } from './locale'
 import type { Locale } from './locale'
 import { Home } from './Home'
@@ -36,16 +37,18 @@ function useHash(): string {
   return hash
 }
 
-export default function App() {
-  const hash = useHash()
-  const { t } = useTranslation()
-  const online = useOnline()
-  const [agent, setAgent] = useState('')
-  const [speech, setSpeech] = useState(false)
-  const [pdf, setPdf] = useState(false)
-  const [commands, setCommands] = useState(true)
-  const [crafted, setCrafted] = useState(false)
-  const { profiles, current, select, reload } = useProfiles()
+type Meta = { agent: string; speech: boolean; pdf: boolean; commands: boolean; crafted: boolean }
+
+function useMeta(): Meta {
+  const [meta, setMeta] = useState<Meta>({ agent: '', speech: false, pdf: false, commands: true, crafted: false })
+  useEffect(() => {
+    api<Meta>('/api/meta').then(setMeta, () => {})
+  }, [])
+  return meta
+}
+
+/** The language shown: the profile's own, or the browser's until there is one. */
+function useLocale(current: Profile | null, reload: () => Promise<unknown>) {
   const [chosen, setChosen] = useState<Locale>(browserLocale)
   const [localeError, setLocaleError] = useState('')
   const locale = current?.locale ?? chosen
@@ -64,29 +67,69 @@ export default function App() {
       (err: Error) => setLocaleError(err.message),
     )
   }
-  useEffect(() => {
-    api<{ agent: string; speech: boolean; pdf: boolean; commands: boolean; crafted: boolean }>('/api/meta').then(
-      (m) => {
-        setAgent(m.agent)
-        setSpeech(m.speech)
-        setPdf(m.pdf)
-        setCommands(m.commands)
-        setCrafted(m.crafted)
-      },
-      () => {},
-    )
-  }, [])
+
+  return { locale, localeError, switchLocale }
+}
+
+/** Pages of one course or lesson: the workspace, its search, recap, book, publishing and handouts. */
+function coursePage(hash: string, current: Profile, meta: Meta) {
   const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing)|\?lesson=(\d+)&(card|chat)=(\d+))?$/)
-  const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
-  const book = hash.match(/^#\/course\/(\d+)\/book$/)
-  const recapped = hash.match(/^#\/course\/(\d+)\/recap(\?preview)?$/)
-  const publishing = hash.match(/^#\/course\/(\d+)\/publish$/)
+  if (match)
+    return (
+      <Workspace
+        key={match[1]}
+        profile={current.id}
+        courseId={Number(match[1])}
+        speech={meta.speech}
+        commands={meta.commands}
+        crafted={meta.crafted}
+        sketched={current.sketch}
+        concept={match[2] ? Number(match[2]) : null}
+        start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
+        found={match[4] ? { lesson: Number(match[4]), at: `${match[5] === 'chat' ? 'msg' : 'block'}-${match[6]}` } : null}
+      />
+    )
   const found = hash.match(/^#\/course\/(\d+)\/search\?(.*)$/)
-  const hand = hash.match(/^#\/hand\/([\w-]+)$/)
-  const graph = hash.match(/^#\/graph(?:\?course=(\d+))?$/)
+  if (found) {
+    const params = new URLSearchParams(found[2])
+    return <SearchPage key={hash} courseId={Number(found[1])} query={params.get('q') ?? ''} kind={params.get('kind') ?? ''} />
+  }
+  const recapped = hash.match(/^#\/course\/(\d+)\/recap(\?preview)?$/)
+  if (recapped) return <Recap key={hash} courseId={Number(recapped[1])} profile={current.id} preview={Boolean(recapped[2])} />
+  const book = hash.match(/^#\/course\/(\d+)\/book$/)
+  if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={meta.pdf} sketched={current.sketch} />
   const handout = hash.match(/^#\/lesson\/(\d+)\/handout\/(student|teacher)$/)
+  if (handout) return <Handout key={handout[0]} lessonId={Number(handout[1])} version={handout[2] as 'student' | 'teacher'} pdf={meta.pdf} />
+  const publishing = hash.match(/^#\/course\/(\d+)\/publish$/)
+  if (publishing) return <PublishPage key={publishing[1]} courseId={Number(publishing[1])} />
+  return null
+}
+
+/** Pages across the profile's courses: review, errors, the graph, sittings, exploring, commands, usage, settings. */
+function profilePage(hash: string, current: Profile) {
+  const review = hash.match(/^#\/review(?:\?then=(.*))?$/)
+  if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
+  const graph = hash.match(/^#\/graph(?:\?course=(\d+))?$/)
+  if (graph) return <GraphPage key={hash} profile={current.id} course={graph[1] ? Number(graph[1]) : null} />
+  if (hash === '#/explore' && current.mode !== 'teacher') return <ExplorePage key={current.id} profile={current.id} />
+  if (hash === '#/errors') return <ErrorsPage profile={current.id} />
+  if (hash === '#/sitting') return <SittingPage profile={current.id} />
+  if (hash === '#/commands') return <CommandsPage profile={current.id} />
+  if (hash === '#/usage') return <UsagePage profile={current.id} />
+  if (hash === '#/settings') return <SettingsPage />
+  return null
+}
+
+export default function App() {
+  const hash = useHash()
+  const { t } = useTranslation()
+  const online = useOnline()
+  const meta = useMeta()
+  const { profiles, current, select, reload } = useProfiles()
+  const { locale, localeError, switchLocale } = useLocale(current, reload)
 
   function page() {
+    const hand = hash.match(/^#\/hand\/([\w-]+)$/)
     if (hand) return <HandPage key={hand[1]} token={hand[1]} />
     if (!profiles) return null
     if (!current)
@@ -99,40 +142,9 @@ export default function App() {
           }}
         />
       )
-    if (match)
-      return (
-        <Workspace
-          key={match[1]}
-          profile={current.id}
-          courseId={Number(match[1])}
-          speech={speech}
-          commands={commands}
-          crafted={crafted}
-          sketched={current.sketch}
-          concept={match[2] ? Number(match[2]) : null}
-          start={(match[3] as 'episode' | 'writing' | undefined) ?? null}
-          found={match[4] ? { lesson: Number(match[4]), at: `${match[5] === 'chat' ? 'msg' : 'block'}-${match[6]}` } : null}
-        />
-      )
-    if (found) {
-      const params = new URLSearchParams(found[2])
-      return <SearchPage key={hash} courseId={Number(found[1])} query={params.get('q') ?? ''} kind={params.get('kind') ?? ''} />
-    }
-    if (recapped) return <Recap key={hash} courseId={Number(recapped[1])} profile={current.id} preview={Boolean(recapped[2])} />
-    if (book) return <Book key={book[1]} courseId={Number(book[1])} learner={current.name} pdf={pdf} sketched={current.sketch} />
-    if (handout) return <Handout key={handout[0]} lessonId={Number(handout[1])} version={handout[2] as 'student' | 'teacher'} pdf={pdf} />
-    if (review) return <Review profile={current.id} then={review[1] ? decodeURIComponent(review[1]) : null} />
-    if (hash === '#/errors') return <ErrorsPage profile={current.id} />
-    if (graph) return <GraphPage key={hash} profile={current.id} course={graph[1] ? Number(graph[1]) : null} />
-    if (hash === '#/sitting') return <SittingPage profile={current.id} />
-    if (hash === '#/explore' && current.mode !== 'teacher') return <ExplorePage key={current.id} profile={current.id} />
-    if (hash === '#/commands') return <CommandsPage profile={current.id} />
-    if (hash === '#/usage') return <UsagePage profile={current.id} />
-    if (hash === '#/settings') return <SettingsPage />
-    if (publishing) return <PublishPage key={publishing[1]} courseId={Number(publishing[1])} />
     if (hash === '#/profile')
       return <ProfilePage profiles={profiles} current={current} locale={locale} onSelect={select} onChanged={reload} />
-    return <Home key={current.id} profile={current.id} teacher={current.mode === 'teacher'} />
+    return coursePage(hash, current, meta) ?? profilePage(hash, current) ?? <Home key={current.id} profile={current.id} teacher={current.mode === 'teacher'} />
   }
 
   return (
@@ -164,7 +176,7 @@ export default function App() {
           </nav>
         )}
         <span className="grow" />
-        <span className="status">{t('header.agent', { agent })}</span>
+        <span className="status">{t('header.agent', { agent: meta.agent })}</span>
         {localeError && <span className="error">{localeError}</span>}
         <ThemeToggle />
         <span className="locale-pick">

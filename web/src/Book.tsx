@@ -570,13 +570,10 @@ async function downloadPdf(courseId: number, topic: string) {
 
 /** A whole course laid out as a book. The server prints this same page to a PDF, so the file has the site's theme and type;
  * without the PDF extra the browser's print dialog does it. */
-export function Book({ courseId, learner, pdf, sketched }: { courseId: number; learner: string; pdf: boolean; sketched: boolean }) {
-  const { t } = useTranslation()
-  const theme = useTheme()
+/** Everything the book prints, fetched in one go, with the page titled after the course while it is open. */
+function useBookData(courseId: number) {
   const [loaded, setLoaded] = useState<{ course: CourseDetail; entries: Entry[]; files: Files } | null>(null)
   const [error, setError] = useState('')
-  const [preparing, setPreparing] = useState(false)
-  const [exported] = useState(() => new Date().toISOString())
 
   useEffect(() => {
     // The book shows only once everything is in: the server prints the page as soon as the cover appears.
@@ -600,8 +597,62 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
     }
   }, [course])
 
-  if (!loaded || !course) return <main className="home">{error && <div className="error">{error}</div>}</main>
-  const { entries, files } = loaded
+  return { loaded, error, setError }
+}
+
+function BookBar(props: { course: CourseDetail; pdf: boolean; preparing: boolean; onDownload: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="book-bar">
+      <a className="btn as-link" href={`#/course/${props.course.id}`}>{t('book.back')}</a>
+      <span className="grow small">{!props.pdf && t('book.saveHint')}</span>
+      {props.pdf ? (
+        <button type="button" className="btn primary" disabled={props.preparing} onClick={props.onDownload}>
+          <Swap labels={[t('book.download'), t('book.preparing')]} at={props.preparing ? 1 : 0} />
+        </button>
+      ) : (
+        <button type="button" className="btn primary" onClick={() => window.print()}>
+          {t('book.save')}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function Projects({ capstones }: { capstones: CourseDetail['capstones'] }) {
+  const { t } = useTranslation()
+  return (
+    <article id="book-projects" className="book-chapter">
+      <header className="book-chapter-head">
+        <span className="book-number">{t('book.appendix')}</span>
+        <h2>{t('book.projects')}</h2>
+      </header>
+      {capstones.map((k) => (
+        <Card key={k.id} label={<span dir="auto">{k.module}</span>}>
+          <h3 dir="auto">{k.title}</h3>
+          <Markdown>{k.brief}</Markdown>
+          <ul className="book-milestones">
+            {k.milestones.map((m) => (
+              <li key={m.id} className={m.done ? 'done' : undefined}>
+                <strong dir="auto">{m.concept}</strong> <span dir="auto">{m.deliverable}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ))}
+    </article>
+  )
+}
+
+export function Book({ courseId, learner, pdf, sketched }: { courseId: number; learner: string; pdf: boolean; sketched: boolean }) {
+  const { t } = useTranslation()
+  const theme = useTheme()
+  const { loaded, error, setError } = useBookData(courseId)
+  const [preparing, setPreparing] = useState(false)
+  const [exported] = useState(() => new Date().toISOString())
+
+  if (!loaded) return <main className="home">{error && <div className="error">{error}</div>}</main>
+  const { course, entries, files } = loaded
 
   async function download(topic: string) {
     setPreparing(true)
@@ -616,19 +667,7 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
   return (
     <main className="book">
       <style key={theme}>{pageStyle(course.topic)}</style>
-      <div className="book-bar">
-        <a className="btn as-link" href={`#/course/${course.id}`}>{t('book.back')}</a>
-        <span className="grow small">{!pdf && t('book.saveHint')}</span>
-        {pdf ? (
-          <button type="button" className="btn primary" disabled={preparing} onClick={() => download(course.topic)}>
-            <Swap labels={[t('book.download'), t('book.preparing')]} at={preparing ? 1 : 0} />
-          </button>
-        ) : (
-          <button type="button" className="btn primary" onClick={() => window.print()}>
-            {t('book.save')}
-          </button>
-        )}
-      </div>
+      <BookBar course={course} pdf={pdf} preparing={preparing} onDownload={() => download(course.topic)} />
       {error && <div className="error">{error}</div>}
 
       <Cover course={course} learner={learner} exported={exported} />
@@ -651,27 +690,7 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
         </section>
       ))}
 
-      {course.capstones.length > 0 && (
-        <article id="book-projects" className="book-chapter">
-          <header className="book-chapter-head">
-            <span className="book-number">{t('book.appendix')}</span>
-            <h2>{t('book.projects')}</h2>
-          </header>
-          {course.capstones.map((k) => (
-            <Card key={k.id} label={<span dir="auto">{k.module}</span>}>
-              <h3 dir="auto">{k.title}</h3>
-              <Markdown>{k.brief}</Markdown>
-              <ul className="book-milestones">
-                {k.milestones.map((m) => (
-                  <li key={m.id} className={m.done ? 'done' : undefined}>
-                    <strong dir="auto">{m.concept}</strong> <span dir="auto">{m.deliverable}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ))}
-        </article>
-      )}
+      {course.capstones.length > 0 && <Projects capstones={course.capstones} />}
 
       {entries.length > 0 && <Notebook entries={entries} />}
     </main>

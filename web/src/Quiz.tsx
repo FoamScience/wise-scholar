@@ -162,13 +162,8 @@ function QuizForm(props: {
   onUnknown?: () => void
   onSubmit: (answer: string, confidence: number) => void
 }) {
-  const [answer, setAnswer] = useState('')
-  const [unknown, setUnknown] = useState(false)
+  const { answer, setAnswer, unknown, setUnknown, placed, setPlaced, items, sorted, ready } = useQuizAnswer(props.kind, props.options)
   const [confidence, setConfidence] = useState(50)
-  const [placed, setPlaced] = useState<Record<string, string>>({})
-  const items = props.kind === 'sort' ? sortItems(props.options) : []
-  const sorted = props.kind === 'sort' && items.length > 0 && items.every((i) => placed[i.text])
-  const ready = unknown || sorted || (props.kind !== 'sort' && answer.trim() !== '')
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -204,6 +199,17 @@ function QuizForm(props: {
       <Confidence id={props.id} value={unknown ? null : confidence} onChange={setConfidence} ready={!props.disabled && ready} />
     </form>
   )
+}
+
+/** The answer taking shape: typed or picked, "I don't know", or every item sorted into a category. */
+function useQuizAnswer(kind: QuizKind, options: string[] | SortItem[]) {
+  const [answer, setAnswer] = useState('')
+  const [unknown, setUnknown] = useState(false)
+  const [placed, setPlaced] = useState<Record<string, string>>({})
+  const items = kind === 'sort' ? sortItems(options) : []
+  const sorted = kind === 'sort' && items.length > 0 && items.every((i) => placed[i.text])
+  const ready = unknown || sorted || (kind !== 'sort' && answer.trim() !== '')
+  return { answer, setAnswer, unknown, setUnknown, placed, setPlaced, items, sorted, ready }
 }
 
 function OpenAnswer(props: { id: string; answer: string; onAnswer: (answer: string) => void }) {
@@ -356,7 +362,7 @@ function OfflineAnswer(props: { id: number; data: QuizData; given?: Given; onGiv
   )
 }
 
-export function QuizCard(props: {
+type QuizCardProps = {
   id: number
   question: string
   data: QuizData
@@ -366,7 +372,9 @@ export function QuizCard(props: {
   onUnknown?: () => void
   onSelfGrade?: (correct: boolean) => void
   onSubmit: (answer: string, confidence: number) => void
-}) {
+}
+
+export function QuizCard(props: QuizCardProps) {
   const d = props.data
   const { t } = useTranslation()
   return (
@@ -377,27 +385,31 @@ export function QuizCard(props: {
       </div>
       <Markdown>{props.question}</Markdown>
       <Translation text={d.translation} />
-      {props.authored ? (
-        <AuthoredKey data={d} />
-      ) : d.answer === null && props.offline ? (
-        <OfflineAnswer id={props.id} data={d} given={props.offline.given} onGive={props.offline.onGive} />
-      ) : d.answer === null ? (
-        <QuizForm
-          id={`quiz-${props.id}`}
-          kind={d.kind}
-          options={d.options}
-          categories={d.categories}
-          disabled={props.disabled}
-          onUnknown={props.onUnknown}
-          onSubmit={props.onSubmit}
-        />
-      ) : d.correct === undefined && props.onSelfGrade && d.answer_key !== undefined ? (
-        <SelfGrade answer={d.answer!} confidence={d.confidence!} answerKey={d.answer_key} explanation={d.explanation} disabled={props.disabled} onGrade={props.onSelfGrade} />
-      ) : (
-        <GradedAnswer data={d} />
-      )}
+      <QuizBody {...props} />
     </section>
   )
+}
+
+/** The key for its author, the form while unanswered, the self-grade for an answer without a verdict, else the grade. */
+function QuizBody(props: QuizCardProps) {
+  const d = props.data
+  if (props.authored) return <AuthoredKey data={d} />
+  if (d.answer === null && props.offline) return <OfflineAnswer id={props.id} data={d} given={props.offline.given} onGive={props.offline.onGive} />
+  if (d.answer === null)
+    return (
+      <QuizForm
+        id={`quiz-${props.id}`}
+        kind={d.kind}
+        options={d.options}
+        categories={d.categories}
+        disabled={props.disabled}
+        onUnknown={props.onUnknown}
+        onSubmit={props.onSubmit}
+      />
+    )
+  if (d.correct === undefined && props.onSelfGrade && d.answer_key !== undefined)
+    return <SelfGrade answer={d.answer} confidence={d.confidence!} answerKey={d.answer_key} explanation={d.explanation} disabled={props.disabled} onGrade={props.onSelfGrade} />
+  return <GradedAnswer data={d} />
 }
 
 // the warm-up leaves no history entry: going back from the lesson returns to where the learner came from
