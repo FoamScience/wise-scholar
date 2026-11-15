@@ -7,6 +7,7 @@ import signal
 import socket
 import sys
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from pathlib import Path
 
 import httpx
@@ -127,6 +128,44 @@ class EventParser:
         return []
 
 
+async def _create(client: httpx.AsyncClient, name: str, directory: Path) -> str:
+    created = await client.post("/api/session", json={"title": name, "location": {"directory": str(directory)}})
+    created.raise_for_status()
+    return created.json()["data"]["id"]
+
+
+async def _prepare(client: httpx.AsyncClient, session: str, phase: str) -> httpx.Response:
+    """The session's agent and model for this turn; a phase change between turns picks another agent."""
+    chosen = await client.post(f"/api/session/{session}/agent", json={"agent": f"tutor-{phase}"})
+    if chosen.status_code < 400 and (chosen_model := model_for(phase)):
+        provider, _, model = chosen_model.partition("/")
+        chosen = await client.post(f"/api/session/{session}/model", json={"model": {"id": model, "providerID": provider}})
+    return chosen
+
+
+async def _converse(client: httpx.AsyncClient, session_id: str, prompt: str, parser: EventParser) -> AsyncIterator[dict]:
+    """Send the prompt and pass on the session's events until its turn is done; a turn left unfinished is interrupted."""
+    finished = False
+    try:
+        async with client.stream("GET", "/api/event") as events:
+            sent = await client.post(f"/api/session/{session_id}/prompt", json={"text": prompt})
+            if sent.status_code >= 400:
+                finished = True
+                yield {"type": "turn.done", "ok": False, "error": f"opencode refused the turn: {sent.text[:300]}"}
+                return
+            async for line in events.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                for event in parser.feed(json.loads(line[5:])):
+                    finished = event["type"] == "turn.done"
+                    yield event
+                    if finished:
+                        return
+    finally:
+        if not finished:
+            await asyncio.shield(client.post(f"/api/session/{session_id}/interrupt", json={}))
+
+
 async def run_turn(
     prompt: str, *, session_id: str, resume: bool, name: str, cwd: Path, phase: str, token: str
 ) -> AsyncIterator[dict]:
@@ -137,49 +176,19 @@ async def run_turn(
     directory = db.DB_PATH.parent / "agents" / cwd.name
     directory.mkdir(parents=True, exist_ok=True)
     async with httpx.AsyncClient(base_url=BASE, timeout=None, auth=AUTH) as client:
-        async def create() -> str:
-            created = await client.post("/api/session", json={"title": name, "location": {"directory": str(directory)}})
-            created.raise_for_status()
-            return created.json()["data"]["id"]
-
-        async def prepare(session: str) -> httpx.Response:
-            """The session's agent and model for this turn; a phase change between turns picks another agent."""
-            chosen = await client.post(f"/api/session/{session}/agent", json={"agent": f"tutor-{phase}"})
-            if chosen.status_code < 400 and (chosen_model := model_for(phase)):
-                provider, _, model = chosen_model.partition("/")
-                chosen = await client.post(f"/api/session/{session}/model", json={"model": {"id": model, "providerID": provider}})
-            return chosen
-
         if not resume:
-            session_id = await create()
+            session_id = await _create(client, name, directory)
             yield {"type": "session.started", "session_id": session_id}
-        prepared = await prepare(session_id)
+        prepared = await _prepare(client, session_id, phase)
         if resume and prepared.status_code == 404:
             # A session opencode no longer has (one from opencode 1, or from before the move out of the workspace):
             # the lesson goes on in a fresh one, and the state header of every turn carries it over.
-            session_id = await create()
+            session_id = await _create(client, name, directory)
             yield {"type": "session.started", "session_id": session_id}
-            prepared = await prepare(session_id)
+            prepared = await _prepare(client, session_id, phase)
         if prepared.status_code >= 400:
             yield {"type": "turn.done", "ok": False, "error": f"opencode refused the turn: {prepared.text[:300]}"}
             return
-        parser = EventParser(session_id, model_for(phase))
-        finished = False
-        try:
-            async with client.stream("GET", "/api/event") as events:
-                sent = await client.post(f"/api/session/{session_id}/prompt", json={"text": prompt})
-                if sent.status_code >= 400:
-                    finished = True
-                    yield {"type": "turn.done", "ok": False, "error": f"opencode refused the turn: {sent.text[:300]}"}
-                    return
-                async for line in events.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    for event in parser.feed(json.loads(line[5:])):
-                        finished = event["type"] == "turn.done"
-                        yield event
-                        if finished:
-                            return
-        finally:
-            if not finished:
-                await asyncio.shield(client.post(f"/api/session/{session_id}/interrupt", json={}))
+        async with aclosing(_converse(client, session_id, prompt, EventParser(session_id, model_for(phase)))) as events:
+            async for event in events:
+                yield event

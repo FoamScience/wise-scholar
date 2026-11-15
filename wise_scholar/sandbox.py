@@ -89,6 +89,19 @@ def capped() -> bool:
     return bool(_scope())
 
 
+def _brought_in(path: Path, home: Path, exposes) -> list[Path]:
+    """The folders one PATH entry inside the home folder shows in the sandbox."""
+    top = path.relative_to(home).parts[0]
+    if top in PRIVATE:
+        return []
+    if top == ".local":
+        return [home / top / part for part in LOCAL_PARTS]
+    if top.startswith("."):
+        return [home / top, *(home / companion for companion in COMPANIONS.get(top, ()))]
+    # A bin folder runs with its siblings (lib, include); alone when those would bring the app's data along.
+    return [path if path.name != "bin" or exposes(path.parent) else path.parent]
+
+
 def _toolchains(home: Path) -> list[Path]:
     """Per-user language toolchains: the home folders PATH points into, plus WISE_SCHOLAR_SANDBOX_PATHS."""
     # Never shown, whatever PATH or the setting says: the home directory itself, anything that holds the
@@ -100,16 +113,7 @@ def _toolchains(home: Path) -> list[Path]:
         path = Path(entry)
         if not entry or not path.is_dir() or not path.is_relative_to(home) or path == home or path.resolve().is_relative_to(db.ROOT):
             continue
-        top = path.relative_to(home).parts[0]
-        if top in PRIVATE:
-            continue
-        if top == ".local":
-            found += [home / top / part for part in LOCAL_PARTS]
-        elif top.startswith("."):
-            found += [home / top, *(home / companion for companion in COMPANIONS.get(top, ()))]
-        else:
-            # A bin folder runs with its siblings (lib, include); alone when those would bring the app's data along.
-            found.append(path if path.name != "bin" or exposes(path.parent) else path.parent)
+        found += _brought_in(path, home, exposes)
     found += [Path(p) for p in os.environ.get("WISE_SCHOLAR_SANDBOX_PATHS", "").split(os.pathsep) if p]
     return [p for p in dict.fromkeys(found) if p.exists() and not exposes(p.resolve())]
 
@@ -154,6 +158,25 @@ def _open_folder(path: str) -> int | None:
         return None
 
 
+def _folder_bytes(fd: int, path: str, seen: set[tuple[int, int]], pending: list[str]) -> int:
+    """The bytes of one folder's entries; its subfolders go on pending to be counted in turn."""
+    total = 0
+    with os.scandir(fd) as entries:
+        for entry in entries:
+            try:
+                info = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if stat.S_ISDIR(info.st_mode):
+                pending.append(os.path.join(path, entry.name))
+            elif info.st_nlink > 1:
+                if (info.st_dev, info.st_ino) in seen:
+                    continue
+                seen.add((info.st_dev, info.st_ino))
+            total += info.st_blocks * 512
+    return total
+
+
 def usage(folder: Path) -> int:
     """The bytes a folder holds on disk. Links are not followed, a sparse file counts what it really takes, and
     a file with several names counts once."""
@@ -163,19 +186,7 @@ def usage(folder: Path) -> int:
         if (fd := _open_folder(path)) is None:
             continue
         try:
-            with os.scandir(fd) as entries:
-                for entry in entries:
-                    try:
-                        info = entry.stat(follow_symlinks=False)
-                    except OSError:
-                        continue
-                    if stat.S_ISDIR(info.st_mode):
-                        pending.append(os.path.join(path, entry.name))
-                    elif info.st_nlink > 1:
-                        if (info.st_dev, info.st_ino) in seen:
-                            continue
-                        seen.add((info.st_dev, info.st_ino))
-                    total += info.st_blocks * 512
+            total += _folder_bytes(fd, path, seen, pending)
         finally:
             os.close(fd)
     return total
@@ -312,52 +323,33 @@ async def run(command: str, workspace: Path, network: bool = False, mounts: tupl
         _awaiting_internet.discard(workspace)
 
 
-async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[str], limit: int, mounted: list[Path] = ()) -> dict:
-    megabytes = QUOTA // (1024 * 1024)
-    cache = _cache(workspace)
-    folders = [*mounted, workspace, cache] if SANDBOX else [*mounted, workspace]
-    # The cache is only a cache: past its limit it is emptied, here too in case the last command could not do it.
-    if SANDBOX and await asyncio.to_thread(usage, cache) > QUOTA:
-        await asyncio.to_thread(shutil.rmtree, cache, True)
-    before = await asyncio.to_thread(_measure, folders)
-    # No single file larger than the whole limit, whatever the watch below sees or misses (ulimit counts 512-byte blocks).
-    command = f"ulimit -f {QUOTA // 512}\n{command}"
-    argv, fds = ["sh", "-c", command], ()
+def _sandboxed(command: str, workspace: Path, wrapper: list[str], extra: list[str], files: list) -> list[str]:
+    """bubblewrap's command line for a command. The files it reads the command, its options and the account files
+    from go on files; the caller passes them to the child and closes them once it started."""
     script, options, passwd, group = (tempfile.TemporaryFile() for _ in range(4))
-    if SANDBOX:
-        # Neither the command nor bubblewrap's options are arguments of systemd-run, which expands ${VAR} and $$
-        # in what it is given from the server's own environment: the command is a file inside the sandbox, the
-        # options are read from a file, and only fixed words stay on the command line.
-        script.write(command.encode())
-        script.seek(0)
-        # The account files name only root and the learner, so id, ls -l and whoami never show the server's user.
-        passwd.write(f"root:x:0:0:root:/root:/bin/sh\nlearner:x:{os.getuid()}:{os.getgid()}:learner:{HOME_INSIDE}:/bin/sh\n".encode())
-        group.write(f"root:x:0:\nlearner:x:{os.getgid()}:\n".encode())
-        passwd.seek(0)
-        group.seek(0)
-        extra = [
-            *extra, "--ro-bind-data", str(script.fileno()), "/run/command",
-            "--ro-bind-data", str(passwd.fileno()), "/etc/passwd", "--ro-bind-data", str(group.fileno()), "/etc/group",
-        ]  # fmt: skip
-        options.write(b"\0".join(arg.encode() for arg in _args(workspace, extra)) + b"\0")
-        options.seek(0)
-        argv = [*_scope(), "bwrap", "--args", str(options.fileno()), *wrapper, "sh", "/run/command"]
-        fds = (script.fileno(), options.fileno(), passwd.fileno(), group.fileno())
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=workspace,
-            # systemd-run needs the session bus of the server's own environment; bubblewrap then clears it for the command.
-            env=None if SANDBOX else _env(),
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            start_new_session=True,
-            pass_fds=fds,
-        )
-    finally:
-        script.close()
-        options.close()
+    files += [script, options, passwd, group]
+    # Neither the command nor bubblewrap's options are arguments of systemd-run, which expands ${VAR} and $$
+    # in what it is given from the server's own environment: the command is a file inside the sandbox, the
+    # options are read from a file, and only fixed words stay on the command line.
+    script.write(command.encode())
+    script.seek(0)
+    # The account files name only root and the learner, so id, ls -l and whoami never show the server's user.
+    passwd.write(f"root:x:0:0:root:/root:/bin/sh\nlearner:x:{os.getuid()}:{os.getgid()}:learner:{HOME_INSIDE}:/bin/sh\n".encode())
+    group.write(f"root:x:0:\nlearner:x:{os.getgid()}:\n".encode())
+    passwd.seek(0)
+    group.seek(0)
+    extra = [
+        *extra, "--ro-bind-data", str(script.fileno()), "/run/command",
+        "--ro-bind-data", str(passwd.fileno()), "/etc/passwd", "--ro-bind-data", str(group.fileno()), "/etc/group",
+    ]  # fmt: skip
+    options.write(b"\0".join(arg.encode() for arg in _args(workspace, extra)) + b"\0")
+    options.seek(0)
+    return [*_scope(), "bwrap", "--args", str(options.fileno()), *wrapper, "sh", "/run/command"]
+
+
+async def _watch(proc: asyncio.subprocess.Process, folders: list[Path], before: list[int], limit: int) -> tuple[str, int | None]:
+    """Wait for the command to end, stopping it at the time limit or once a folder grows past its limit; returns
+    its output and exit code, None when it was stopped."""
     tail = b""
 
     async def finish() -> None:
@@ -376,7 +368,7 @@ async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[st
             exit_code = proc.returncode
         elif watch in done:
             watch.result()
-            text = f"{text[-OUTPUT_LIMIT // 2 :]}\nstopped: this course holds more than {megabytes} MB on disk; delete files to go on"
+            text = f"{text[-OUTPUT_LIMIT // 2 :]}\nstopped: this course holds more than {QUOTA // (1024 * 1024)} MB on disk; delete files to go on"
         else:
             text = f"stopped: still running after {limit} s"
     finally:
@@ -391,11 +383,41 @@ async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[st
                 pass
             await proc.wait()
         await asyncio.gather(work, watch, return_exceptions=True)
+    return text, exit_code
+
+
+async def _run(command: str, workspace: Path, wrapper: list[str], extra: list[str], limit: int, mounted: list[Path] = ()) -> dict:
+    cache = _cache(workspace)
+    folders = [*mounted, workspace, cache] if SANDBOX else [*mounted, workspace]
+    # The cache is only a cache: past its limit it is emptied, here too in case the last command could not do it.
+    if SANDBOX and await asyncio.to_thread(usage, cache) > QUOTA:
+        await asyncio.to_thread(shutil.rmtree, cache, True)
+    before = await asyncio.to_thread(_measure, folders)
+    # No single file larger than the whole limit, whatever the watch below sees or misses (ulimit counts 512-byte blocks).
+    command = f"ulimit -f {QUOTA // 512}\n{command}"
+    files: list = []
+    try:
+        argv = _sandboxed(command, workspace, wrapper, extra, files) if SANDBOX else ["sh", "-c", command]
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=workspace,
+            # systemd-run needs the session bus of the server's own environment; bubblewrap then clears it for the command.
+            env=None if SANDBOX else _env(),
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True,
+            pass_fds=tuple(f.fileno() for f in files),
+        )
+    finally:
+        for f in files:
+            f.close()
+    text, exit_code = await _watch(proc, folders, before, limit)
     # A command that wrote fast and ended between two looks was not stopped: it is told, and the next one that
     # adds to the course will be.
     after = await asyncio.to_thread(_measure, folders)
     if exit_code is not None and _past_limit(after, before):
-        text = f"{text[-OUTPUT_LIMIT // 2 :]}\nnote: this course now holds more than {megabytes} MB on disk; delete files before running more"
+        text = f"{text[-OUTPUT_LIMIT // 2 :]}\nnote: this course now holds more than {QUOTA // (1024 * 1024)} MB on disk; delete files before running more"
     if SANDBOX and after[-1] > QUOTA:
         await asyncio.to_thread(shutil.rmtree, cache, True)
     return {"exit_code": exit_code, "output": text[-OUTPUT_LIMIT:]}
