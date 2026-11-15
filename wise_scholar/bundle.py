@@ -253,6 +253,59 @@ def versions(course_id: int) -> list[dict]:
     ]
 
 
+def _lessons(course_id: int, written: set[int], unit_keys: dict[int, str], card_keys: dict[int, str], workspace: Path) -> tuple[list[dict], dict[str, str]]:
+    """The written lessons with their blocks, and the starter files their exercises begin from."""
+    lessons, files = [], {}
+    for lesson in db.rows("SELECT * FROM lessons WHERE course_id = ? AND phase IN ('lesson', 'practice') ORDER BY id", course_id):
+        if lesson["concept_id"] not in written and not (lesson["concept_id"] is None and lesson["id"] in finished_lessons(course_id)):
+            continue
+        blocks, summary = [], ""
+        for b in db.rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson["id"]):
+            if b["kind"] == "done":
+                summary = b["markdown"]
+            if b["kind"] not in BLOCK_KINDS:
+                continue
+            data = _block_data(b, card_keys)
+            if b["kind"] == "exercise":
+                starters, _ = _starters(b, workspace)
+                files.update(starters)
+                data.pop("starter", None)
+            blocks.append({"key": b["key"], "kind": b["kind"], "markdown": b["markdown"], "data": data})
+        lessons.append({"key": lesson["key"], "unit": unit_keys.get(lesson["concept_id"]), "title": lesson["title"], "phase": lesson["phase"], "summary": summary, "blocks": blocks})
+    return lessons, files
+
+
+def _card_row(k: dict, unit_keys: dict[int, str]) -> dict:
+    return {
+        "key": k["key"], "unit": unit_keys.get(k["concept_id"]), "question": k["question"], "kind": k["kind"],
+        "options": json.loads(k["options"]), "answer_key": k["answer_key"], "explanation": k["explanation"],
+        "scheduled": bool(k["scheduled"]), "vocab": bool(k["vocab"]), "lemma": k["lemma"], "lang": k["lang"], "translation": k["translation"] or "",
+    } | _beliefs(k)
+
+
+def _chosen_sources(course_id: int, sources: list[int], source_dir: Path, asset) -> list[dict]:
+    """The ready sources the author chose to ship, each file stored as an asset."""
+    chosen = []
+    for s in db.sources(course_id):
+        if s["id"] not in sources or s["status"] != "ready":
+            continue
+        path = next((source_dir / str(course_id)).glob(f"{s['id']}-*"), None)
+        if not path:
+            continue
+        sections = db.rows("SELECT title, text FROM source_sections WHERE source_id = ? ORDER BY id", s["id"])
+        chosen.append({"name": s["name"], "asset": asset(path.read_bytes()), "sections": sections})
+    return chosen
+
+
+def _hash_units(manifest: dict) -> None:
+    for u in manifest["units"]:
+        u["hash"] = sha(canonical({
+            "unit": {k: u[k] for k in ("module", "title", "kind")},
+            "lessons": [{k: v for k, v in x.items() if k != "key"} for x in manifest["lessons"] if x["unit"] == u["key"]],
+            "cards": [{k: v for k, v in c.items() if k != "key"} for c in manifest["cards"] if c["unit"] == u["key"]],
+        }))
+
+
 def build(
     course_id: int, *, notes: str, licence: str, forkable: bool, sources: list[int], source_dir: Path, edits: list[dict] = (),
 ) -> tuple[dict, dict[str, bytes], list[int]]:
@@ -273,44 +326,12 @@ def build(
     cards = [k for k in db.rows("SELECT * FROM cards WHERE course_id = ? AND parent_id IS NULL ORDER BY id", course_id)
              if k["concept_id"] is None or k["concept_id"] in written]
     card_keys = {k["id"]: k["key"] for k in cards}
-    workspace = db.WORKSPACE / course["slug"]
-    lessons, files = [], {}
-    for lesson in db.rows("SELECT * FROM lessons WHERE course_id = ? AND phase IN ('lesson', 'practice') ORDER BY id", course_id):
-        if lesson["concept_id"] not in written and not (lesson["concept_id"] is None and lesson["id"] in finished_lessons(course_id)):
-            continue
-        blocks, summary = [], ""
-        for b in db.rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson["id"]):
-            if b["kind"] == "done":
-                summary = b["markdown"]
-            if b["kind"] not in BLOCK_KINDS:
-                continue
-            data = _block_data(b, card_keys)
-            if b["kind"] == "exercise":
-                starters, _ = _starters(b, workspace)
-                files.update(starters)
-                data.pop("starter", None)
-            blocks.append({"key": b["key"], "kind": b["kind"], "markdown": b["markdown"], "data": data})
-        lessons.append({"key": lesson["key"], "unit": unit_keys.get(lesson["concept_id"]), "title": lesson["title"], "phase": lesson["phase"], "summary": summary, "blocks": blocks})
-    card_rows = [
-        {"key": k["key"], "unit": unit_keys.get(k["concept_id"]), "question": k["question"], "kind": k["kind"],
-         "options": json.loads(k["options"]), "answer_key": k["answer_key"], "explanation": k["explanation"],
-         "scheduled": bool(k["scheduled"]), "vocab": bool(k["vocab"]), "lemma": k["lemma"], "lang": k["lang"], "translation": k["translation"] or ""} | _beliefs(k)
-        for k in cards
-    ]
+    lessons, files = _lessons(course_id, written, unit_keys, card_keys, db.WORKSPACE / course["slug"])
     unit_rows = [
         {"key": u["key"], "module": u["module"], "title": u["title"], "kind": u["kind"], "written": u["id"] in written,
          "needs": [unit_keys[n] for n in needs.get(u["id"], []) if n in unit_keys]}
         for u in units
     ]
-    chosen = []
-    for s in db.sources(course_id):
-        if s["id"] not in sources or s["status"] != "ready":
-            continue
-        path = next((source_dir / str(course_id)).glob(f"{s['id']}-*"), None)
-        if not path:
-            continue
-        sections = db.rows("SELECT title, text FROM source_sections WHERE source_id = ? ORDER BY id", s["id"])
-        chosen.append({"name": s["name"], "asset": asset(path.read_bytes()), "sections": sections})
     origin = db.row("SELECT * FROM versions WHERE hash = ?", course["source_version"]) if course.get("source_version") else None
     credits = [*json.loads(origin["credits"]), {"topic": origin["topic"], "version": origin["hash"], "number": origin["number"]}] if origin else []
     number = (db.row("SELECT MAX(number) AS n FROM versions WHERE course_id = ?", course_id)["n"] or 0) + 1
@@ -328,18 +349,13 @@ def build(
             for c in db.capstones(course_id)
         ],
         "lessons": lessons,
-        "cards": card_rows,
+        "cards": [_card_row(k, unit_keys) for k in cards],
         "files": [{"path": p, "asset": asset(c.encode())} for p, c in sorted(files.items())],
-        "sources": chosen,
+        "sources": _chosen_sources(course_id, sources, source_dir, asset),
         "setup": setup_commands(course_id),
     }
     stale = [e["id"] for e in edits if not apply_edit(manifest, assets, e)]
-    for u in manifest["units"]:
-        u["hash"] = sha(canonical({
-            "unit": {k: u[k] for k in ("module", "title", "kind")},
-            "lessons": [{k: v for k, v in x.items() if k != "key"} for x in manifest["lessons"] if x["unit"] == u["key"]],
-            "cards": [{k: v for k, v in c.items() if k != "key"} for c in manifest["cards"] if c["unit"] == u["key"]],
-        }))
+    _hash_units(manifest)
     Manifest.model_validate(manifest)
     return manifest, assets, stale
 
@@ -471,6 +487,31 @@ def pack(manifest: dict, assets: dict[str, bytes]) -> tuple[str, bytes]:
     return sha(body), out.getvalue()
 
 
+def _assets(z: zipfile.ZipFile, names: list[str]) -> dict[str, bytes]:
+    """Every asset of the bundle, each checked against the hash that names it."""
+    assets = {}
+    for name in names:
+        if name == "manifest.json":
+            continue
+        content = z.read(name)
+        if sha(content) != name.removeprefix("assets/"):
+            raise ValueError("an asset does not match its name")
+        assets[name.removeprefix("assets/")] = content
+    return assets
+
+
+def _check_units(manifest: Manifest) -> None:
+    """Every unit the manifest names is one it holds, and no unwritten unit comes with lessons or cards."""
+    keys = {u.key for u in manifest.units}
+    if any(n not in keys for u in manifest.units for n in u.needs) or any(
+        x.unit and x.unit not in keys for x in [*manifest.lessons, *manifest.cards]
+    ) or any(m.unit not in keys for c in manifest.capstones for m in c.milestones):
+        raise ValueError("the manifest names units it does not hold")
+    unwritten = {u.key for u in manifest.units if not u.written}
+    if any(x.unit in unwritten for x in [*manifest.lessons, *manifest.cards]):
+        raise ValueError("the manifest holds lessons for units it says are not written")
+
+
 def unpack(data: bytes) -> tuple[str, Manifest, dict[str, bytes]]:
     """Read and check a bundle from anyone: its size, its names, every asset against its hash and every one the
     manifest names. Raises ValueError with what is wrong."""
@@ -493,25 +534,11 @@ def unpack(data: bytes) -> tuple[str, Manifest, dict[str, bytes]]:
         manifest = Manifest.model_validate_json(body)
     except ValidationError as e:
         raise ValueError(f"the manifest does not hold a course: {e.errors()[0]['loc']} {e.errors()[0]['msg']}") from None
-    assets = {}
-    for name in names:
-        if name == "manifest.json":
-            continue
-        content = z.read(name)
-        if sha(content) != name.removeprefix("assets/"):
-            raise ValueError("an asset does not match its name")
-        assets[name.removeprefix("assets/")] = content
+    assets = _assets(z, names)
     named = {f.asset for f in manifest.files} | {s.asset for s in manifest.sources}
     if missing := named - assets.keys():
         raise ValueError(f"{len(missing)} assets the manifest names are missing")
-    keys = {u.key for u in manifest.units}
-    if any(n not in keys for u in manifest.units for n in u.needs) or any(
-        x.unit and x.unit not in keys for x in [*manifest.lessons, *manifest.cards]
-    ) or any(m.unit not in keys for c in manifest.capstones for m in c.milestones):
-        raise ValueError("the manifest names units it does not hold")
-    unwritten = {u.key for u in manifest.units if not u.written}
-    if any(x.unit in unwritten for x in [*manifest.lessons, *manifest.cards]):
-        raise ValueError("the manifest holds lessons for units it says are not written")
+    _check_units(manifest)
     return sha(body), manifest, assets
 
 
@@ -710,13 +737,8 @@ def changes(course_id: int, old: Manifest | None, new: Manifest) -> dict:
     return plan
 
 
-def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, bytes], old: Manifest | None, source_dir: Path) -> dict:
-    """Move a replayed course to a newer version: kept units keep their lessons, cards, answers and marks; changed units
-    start again from the new version; new ones are added and removed ones go. All or nothing for the rows."""
-    course = db.course(course_id)
-    plan = changes(course_id, old, new)
-    concepts = {c["key"]: c for c in db.concepts(course_id)}
-    redo = {*plan["restarted"], *plan["added"]}
+def _dropped(course_id: int, concepts: dict[str, dict], plan: dict, old: Manifest | None) -> tuple[list[int], list[int]]:
+    """The lessons and cards that go: those of restarted and removed units, and the loose ones when those changed."""
     dropped = [concepts[k]["id"] for k in [*plan["restarted"], *plan["removed"]]]
     marks = ",".join("?" * len(dropped))
     lesson_ids = [r["id"] for r in db.rows(f"SELECT id FROM lessons WHERE concept_id IN ({marks})", *dropped)] if dropped else []
@@ -725,29 +747,60 @@ def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, 
         keys = [x.key for x in old.lessons if x.unit is None], [x.key for x in old.cards if x.unit is None]
         lesson_ids += [r["id"] for r in db.rows("SELECT id, key FROM lessons WHERE course_id = ? AND concept_id IS NULL", course_id) if r["key"] in keys[0]]
         card_ids += [r["id"] for r in db.rows("SELECT id, key FROM cards WHERE course_id = ? AND concept_id IS NULL", course_id) if r["key"] in keys[1]]
+    return lesson_ids, card_ids
+
+
+def _put_units(course_id: int, new: Manifest, concepts: dict[str, dict], redo: set[str]) -> dict[str, int]:
+    """Update the units the course keeps, add the new ones, and return every unit's id by key."""
+    unit_ids = {}
+    for position, u in enumerate(new.units):
+        if u.key in concepts:
+            unit_ids[u.key] = concepts[u.key]["id"]
+            db.conn.execute(
+                "UPDATE concepts SET module = ?, title = ?, kind = ?, position = ?, unwritten = ?, known = CASE WHEN ? THEN 0 ELSE known END WHERE id = ?",
+                (u.module, u.title, u.kind, position, int(not u.written), u.key in redo, unit_ids[u.key]),
+            )
+        else:
+            unit_ids[u.key] = db.conn.execute(
+                "INSERT INTO concepts (course_id, module, title, known, position, kind, key, unwritten) VALUES (?, ?, ?, 0, ?, ?, ?, ?)",
+                (course_id, u.module, u.title, position, u.kind, u.key, int(not u.written)),
+            ).lastrowid
+    return unit_ids
+
+
+def _update_course(course: dict, version_hash: str, new: Manifest, old: Manifest | None) -> None:
+    """The course row from the new version. A topic the learner renamed stays theirs; setup steps are added, never dropped."""
+    c, before = new.course, old.course if old else None
+    steps = json.loads(course["setup"]) if course["setup"] else []
+    steps += [{"command": command, "status": "asked"} for command in new.setup if command not in {s["command"] for s in steps}]
+    cover = figures.clean(c.cover) if c.cover else None
+    db.conn.execute(
+        "UPDATE courses SET topic = ?, details = ?, hours = ?, mechanism = ?, ranking = ?, prerequisites = ?, cover = ?, cover_alt = ?, "
+        "setup = ?, source_version = ?, skipped_version = NULL WHERE id = ?",
+        (c.topic if before is None or course["topic"] == before.topic else course["topic"], c.details, c.hours, c.mechanism,
+         json.dumps(c.ranking) if c.ranking else None, int(c.prerequisites), cover, c.cover_alt if cover else None,
+         json.dumps(steps), version_hash, course["id"]),
+    )
+
+
+def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, bytes], old: Manifest | None, source_dir: Path) -> dict:
+    """Move a replayed course to a newer version: kept units keep their lessons, cards, answers and marks; changed units
+    start again from the new version; new ones are added and removed ones go. All or nothing for the rows."""
+    course = db.course(course_id)
+    plan = changes(course_id, old, new)
+    concepts = {c["key"]: c for c in db.concepts(course_id)}
+    redo = {*plan["restarted"], *plan["added"]}
+    lesson_ids, card_ids = _dropped(course_id, concepts, plan, old)
     done = {r["key"] for r in db.rows(
         "SELECT c.key FROM milestones m JOIN concepts c ON c.id = m.concept_id WHERE c.course_id = ? AND m.done = 1", course_id,
     ) if r["key"] in plan["kept"]}
-    c, before = new.course, old.course if old else None
     db.conn.execute("BEGIN")
     try:
         record_version(version_hash, new)
         db.drop_content(lesson_ids, card_ids)
         db.conn.execute("DELETE FROM capstones WHERE course_id = ?", (course_id,))
         db.conn.executemany("DELETE FROM concepts WHERE id = ?", [(concepts[k]["id"],) for k in plan["removed"]])
-        unit_ids = {}
-        for position, u in enumerate(new.units):
-            if u.key in concepts:
-                unit_ids[u.key] = concepts[u.key]["id"]
-                db.conn.execute(
-                    "UPDATE concepts SET module = ?, title = ?, kind = ?, position = ?, unwritten = ?, known = CASE WHEN ? THEN 0 ELSE known END WHERE id = ?",
-                    (u.module, u.title, u.kind, position, int(not u.written), u.key in redo, unit_ids[u.key]),
-                )
-            else:
-                unit_ids[u.key] = db.conn.execute(
-                    "INSERT INTO concepts (course_id, module, title, known, position, kind, key, unwritten) VALUES (?, ?, ?, 0, ?, ?, ?, ?)",
-                    (course_id, u.module, u.title, position, u.kind, u.key, int(not u.written)),
-                ).lastrowid
+        unit_ids = _put_units(course_id, new, concepts, redo)
         db.conn.execute("DELETE FROM concept_needs WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = ?)", (course_id,))
         db.conn.executemany(
             "INSERT OR IGNORE INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
@@ -755,16 +808,7 @@ def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, 
         )
         _add_capstones(course_id, new, unit_ids, done)
         _add_content(course_id, new, redo | (set() if plan["loose"] else {None}), unit_ids)
-        steps = json.loads(course["setup"]) if course["setup"] else []
-        steps += [{"command": command, "status": "asked"} for command in new.setup if command not in {s["command"] for s in steps}]
-        cover = figures.clean(c.cover) if c.cover else None
-        db.conn.execute(
-            "UPDATE courses SET topic = ?, details = ?, hours = ?, mechanism = ?, ranking = ?, prerequisites = ?, cover = ?, cover_alt = ?, "
-            "setup = ?, source_version = ?, skipped_version = NULL WHERE id = ?",
-            (c.topic if before is None or course["topic"] == before.topic else course["topic"], c.details, c.hours, c.mechanism,
-             json.dumps(c.ranking) if c.ranking else None, int(c.prerequisites), cover, c.cover_alt if cover else None,
-             json.dumps(steps), version_hash, course_id),
-        )
+        _update_course(course, version_hash, new, old)
         source_files = _add_sources(course_id, new, assets, source_dir, {s["name"] for s in db.sources(course_id)})
         db.conn.execute("COMMIT")
     except Exception:
