@@ -60,42 +60,55 @@ def keyed(lesson: dict) -> bool:
 def pretest_blocker(lesson: dict) -> str | None:
     """A concept lesson explains nothing until the learner has tried its opening card (a pretest challenge or quiz,
     or an exercise); placed-out concepts and prepared courses are exempt."""
-    if lesson["phase"] != "lesson" or not lesson["concept_id"] or keyed(lesson):
+    if not _needs_opening(lesson) or any(_tried_opening(block) for block in db.blocks(lesson["id"])):
         return None
-    concept = db.row("SELECT known FROM concepts WHERE id = ?", lesson["concept_id"])
-    if not concept or concept["known"]:
-        return None
-    for block in db.blocks(lesson["id"]):
-        data = block["data"] or {}
-        opening = data.get("pretest") or block["kind"] == "exercise"
-        if opening and (data.get("attempts") or data.get("answer") is not None or data.get("last_run")):
-            return None
     return (
         "the lesson has no attempted opening yet. Open it with pose_challenge or pose_quiz with pretest set, or with "
         "pose_exercise, end the turn, and explain only after the learner has tried it"
     )
 
 
+def _needs_opening(lesson: dict) -> bool:
+    """A concept lesson of a unit not placed out, in a course the learner answers here."""
+    if lesson["phase"] != "lesson" or not lesson["concept_id"] or keyed(lesson):
+        return False
+    concept = db.row("SELECT known FROM concepts WHERE id = ?", lesson["concept_id"])
+    return bool(concept) and not concept["known"]
+
+
+def _tried_opening(block: dict) -> bool:
+    """A pretest or exercise the learner has answered, attempted or run."""
+    data = block["data"] or {}
+    opening = data.get("pretest") or block["kind"] == "exercise"
+    return bool(opening and (data.get("attempts") or data.get("answer") is not None or data.get("last_run")))
+
+
 def capstone_brief(lesson: dict) -> str:
     """What the lesson-begins event says about the unit's milestone, if its module has a capstone."""
     m = db.milestone_for(lesson["concept_id"]) if lesson["concept_id"] else None
     if not m:
-        concepts = [c for c in db.concepts(lesson["course_id"]) if c["kind"] == "concept"]
-        mine = next((c for c in concepts if c["id"] == lesson["concept_id"]), None)
-        if mine and [c for c in concepts if c["module"] == mine["module"]][0]["id"] == mine["id"] and lesson["mechanism"] in ("hands-on", "leveled-course"):
-            units = [c["title"] for c in concepts if c["module"] == mine["module"]]
-            return (
-                f"\nThis is the first unit of module {mine['module']!r}, which has no capstone yet. Propose one with set_capstone "
-                f"in your first turn: one project the whole module builds (code for a programming course, a text or recorded piece for a language), "
-                f"one deliverable per unit in this order: {units}. Then say what it is to the learner in two sentences."
-            )
-        return ""
+        return _capstone_proposal(lesson)
     stage = "the integration milestone: it joins the earlier parts into the finished project" if m["position"] == m["total"] else f"milestone {m['position']} of {m['total']}"
     return (
         f"\nCapstone {m['capstone']!r} for module {m['module']!r}: {m['brief']}\nThis unit's milestone, {stage}: {m['deliverable']}"
         f"{' (already done)' if m['done'] else ''}. Project folder: {m['folder']}/ in the workspace, shared by the module's lessons; "
         "pose the milestone with pose_exercise, pose_challenge or pose_writing with milestone set, after the unit's own practice."
         + ("\nAfter the integration milestone, pose one far-transfer challenge with transfer set: the same ideas on different data or in a different domain, no hints." if m["position"] == m["total"] else "")
+    )
+
+
+def _capstone_proposal(lesson: dict) -> str:
+    """On the first unit of a module without a capstone, in a course that builds things, the ask to propose one."""
+    concepts = [c for c in db.concepts(lesson["course_id"]) if c["kind"] == "concept"]
+    mine = next((c for c in concepts if c["id"] == lesson["concept_id"]), None)
+    module = [c for c in concepts if mine and c["module"] == mine["module"]]
+    if not mine or module[0]["id"] != mine["id"] or lesson["mechanism"] not in ("hands-on", "leveled-course"):
+        return ""
+    units = [c["title"] for c in module]
+    return (
+        f"\nThis is the first unit of module {mine['module']!r}, which has no capstone yet. Propose one with set_capstone "
+        f"in your first turn: one project the whole module builds (code for a programming course, a text or recorded piece for a language), "
+        f"one deliverable per unit in this order: {units}. Then say what it is to the learner in two sentences."
     )
 
 
@@ -169,12 +182,15 @@ def _targets(arguments: dict) -> list[tuple[int | None, int | None]]:
         found.append((lesson_id, lesson["course_id"] if lesson else None))
     if (course_id := arguments.get("course_id")) is not None:
         found.append((None, course_id))
-    for name in ("challenge_id", "quiz_id", "block_id"):
-        if (block_id := arguments.get(name)) is not None:
-            block = db.block(block_id)
-            lesson = db.lesson(block["lesson_id"]) if block else None
-            found.append((block["lesson_id"], lesson["course_id"]) if block and lesson else (-1, None))
+    found += [_block_target(arguments[name]) for name in ("challenge_id", "quiz_id", "block_id") if arguments.get(name) is not None]
     return found
+
+
+def _block_target(block_id: int) -> tuple[int | None, int | None]:
+    """A block's lesson and course; (-1, None) for a block that does not exist, which no turn owns."""
+    block = db.block(block_id)
+    lesson = db.lesson(block["lesson_id"]) if block else None
+    return (block["lesson_id"], lesson["course_id"]) if block and lesson else (-1, None)
 
 
 def _token(request_context) -> str | None:
@@ -207,12 +223,21 @@ async def _list_tools(ctx, params) -> ListToolsResult:
     """A turn sees only the tools it may call, so their schemas do not ride along in every request; a caller without a
     turn token (opencode shares one connection) sees them all."""
     tools = await mcp.list_tools()
-    turn = next((t for t in turns.values() if t["token"] == token), None) if (token := _token(ctx)) else None
+    turn = _turn_of(token) if (token := _token(ctx)) else None
     if turn is not None:
-        lesson = db.lesson(turn["lesson_id"]) if turn["kind"] == "lesson" else None
-        allowed = PHASE_TOOLS.get(lesson["phase"]) if lesson else None
+        allowed = _phase_tools(turn)
         tools = [t for t in tools if _kind(t.name) == turn["kind"] and (allowed is None or t.name in allowed)]
     return ListToolsResult(tools=tools)
+
+
+def _turn_of(token: str) -> dict | None:
+    return next((t for t in turns.values() if t["token"] == token), None)
+
+
+def _phase_tools(turn: dict) -> tuple[str, ...] | None:
+    """The tools a lesson turn's phase is limited to; None for no limit."""
+    lesson = db.lesson(turn["lesson_id"]) if turn["kind"] == "lesson" else None
+    return PHASE_TOOLS.get(lesson["phase"]) if lesson else None
 
 
 def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
@@ -225,7 +250,7 @@ def _guard(call_tool):
         targets = _targets(arguments)
         kind = _kind(name)
         if token := _token(context.request_context):
-            turn = next((t for t in turns.values() if t["token"] == token), None)
+            turn = _turn_of(token)
             if turn is None:
                 raise ToolError("this turn is over; nothing more can be changed")
             if turn["kind"] != kind:
