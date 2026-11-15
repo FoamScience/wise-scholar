@@ -103,7 +103,24 @@
       "explore": "D'autres cours à suivre",
       "book": "Télécharger le livre du cours (PDF)",
       "mapEntry": "Bilan du cours",
-      "cardLine": "Terminé le {{date}} · Bilan"
+      "cardLine": "Terminé le {{date}} · Bilan",
+      "contribute": {
+        "heading": "Mettre le cours en pratique dans l'open source",
+        "intro": "Facultatif : des modifications de vrais projets qui utilisent ce que ce cours a appris. Les petites prennent un après-midi, les projets quelques semaines.",
+        "finding": "Votre tuteur cherche des projets open source adaptés à ce cours…",
+        "failed": "Les projets open source n'ont pas pu être consultés.",
+        "none": "Aucun projet open source ne correspond assez bien à ce cours pour l'instant.",
+        "again": "Chercher à nouveau",
+        "small": "Un après-midi",
+        "project": "Un projet",
+        "gap": "Ce qui manque",
+        "uses": "Utilise",
+        "firstStep": "Première étape",
+        "issue": "Le ticket",
+        "start": "S'y mettre avec le tuteur",
+        "continue": "Continuer avec le tuteur",
+        "dismiss": "Pas pour moi"
+      }
     },
     "graph": {
       "close": "Fermer",
@@ -901,6 +918,10 @@
         "WISE_SCHOLAR_MCP_SECRET": {
           "label": "Secret des outils",
           "help": "Le jeton bearer sur /mcp ; un nouveau à chaque démarrage s'il n'est pas défini. Jamais affiché."
+        },
+        "WISE_SCHOLAR_GITHUB_TOKEN": {
+          "label": "Jeton GitHub",
+          "help": "Permet à la recherche de contributions open source de chercher dans le code et d'interroger GitHub plus souvent. Facultatif ; un accès en lecture aux dépôts publics suffit. Jamais affiché."
         }
       }
     },
@@ -1093,6 +1114,7 @@
     "this setting is set in the shell, which overrides .env": "ce réglage est défini dans le shell, qui l'emporte sur .env",
     "that value cannot be written to .env": "cette valeur ne peut pas être écrite dans .env",
     "that number is too small or not a whole number": "ce nombre est trop petit ou n'est pas entier",
-    "the agent must start with claude, opencode or agy": "l'agent doit commencer par claude, opencode ou agy"
+    "the agent must start with claude, opencode or agy": "l'agent doit commencer par claude, opencode ou agy",
+    "no such contribution": "cette contribution n'existe pas"
   }
 }

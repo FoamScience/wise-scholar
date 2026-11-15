@@ -121,7 +121,24 @@
       "explore": "مقررات أخرى",
       "book": "نزّل كتاب المقرر (PDF)",
       "mapEntry": "حصيلة المقرر",
-      "cardLine": "اكتمل في {{date}} · الحصيلة"
+      "cardLine": "اكتمل في {{date}} · الحصيلة",
+      "contribute": {
+        "heading": "طبّق ما تعلمته في المصادر المفتوحة",
+        "intro": "اختياري: تعديلات على مشاريع حقيقية تستخدم ما علّمه هذا المقرر. الصغيرة تستغرق عصرًا، والمشاريع بضعة أسابيع.",
+        "finding": "يبحث معلمك عن مشاريع مفتوحة المصدر تناسب هذا المقرر…",
+        "failed": "تعذّر البحث في المشاريع مفتوحة المصدر.",
+        "none": "لا يوجد الآن مشروع مفتوح المصدر يناسب هذا المقرر بما يكفي.",
+        "again": "ابحث مجددًا",
+        "small": "عصر واحد",
+        "project": "مشروع",
+        "gap": "ما ينقص",
+        "uses": "يستخدم",
+        "firstStep": "الخطوة الأولى",
+        "issue": "التذكرة",
+        "start": "اعمل عليه مع المعلم",
+        "continue": "تابع مع المعلم",
+        "dismiss": "لا يناسبني"
+      }
     },
     "graph": {
       "close": "إغلاق",
@@ -967,6 +984,10 @@
         "WISE_SCHOLAR_MCP_SECRET": {
           "label": "سرّ الأدوات",
           "help": "رمز bearer على ‎/mcp؛ رمز جديد عند كل تشغيل إن لم يُضبط. لا يُعرض أبدًا."
+        },
+        "WISE_SCHOLAR_GITHUB_TOKEN": {
+          "label": "رمز GitHub",
+          "help": "يتيح للبحث عن مساهمات المصادر المفتوحة البحث في الشيفرة وسؤال GitHub أكثر. اختياري؛ تكفي صلاحية قراءة المستودعات العامة. لا يُعرض أبدًا."
         }
       }
     },
@@ -1159,6 +1180,7 @@
     "this setting is set in the shell, which overrides .env": "هذا الإعداد مضبوط في الصدفة، وهي تتقدّم على ‎.env",
     "that value cannot be written to .env": "لا يمكن كتابة هذه القيمة في ‎.env",
     "that number is too small or not a whole number": "هذا العدد صغير جدًا أو ليس عددًا صحيحًا",
-    "the agent must start with claude, opencode or agy": "يجب أن يبدأ الوكيل بـ claude أو opencode أو agy"
+    "the agent must start with claude, opencode or agy": "يجب أن يبدأ الوكيل بـ claude أو opencode أو agy",
+    "no such contribution": "لا توجد هذه المساهمة"
   }
 }

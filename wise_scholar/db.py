@@ -582,6 +582,23 @@ MIGRATIONS = [
         AND NOT EXISTS (SELECT 1 FROM answers a WHERE a.card_id = cards.id)
         AND (SELECT p.due FROM cards p WHERE p.id = cards.parent_id) IS NOT NULL;
     """,
+    """
+    CREATE TABLE contributions (
+        id INTEGER PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES courses(id),
+        repo TEXT NOT NULL,
+        title TEXT NOT NULL,
+        size TEXT NOT NULL CHECK (size IN ('small', 'project')),
+        gap TEXT NOT NULL,
+        uses TEXT NOT NULL,
+        first_step TEXT NOT NULL,
+        issue TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        lesson_id INTEGER REFERENCES lessons(id)
+    );
+    CREATE INDEX contributions_course ON contributions(course_id, status);
+    ALTER TABLE courses ADD COLUMN contributions_for TEXT;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -912,6 +929,7 @@ def delete_course(course_id: int) -> None:
             "DELETE FROM commands WHERE course_id = ?",
             "DELETE FROM usage WHERE course_id = ?",
             "DELETE FROM publish_edits WHERE course_id = ?",
+            "DELETE FROM contributions WHERE course_id = ?",
             "UPDATE versions SET course_id = NULL WHERE course_id = ?",
             "DELETE FROM answers WHERE card_id IN (SELECT id FROM cards WHERE course_id = ?)",
             "DELETE FROM cards WHERE course_id = ?",
@@ -1944,6 +1962,37 @@ def graph(profile_id: int, now: str) -> dict:
         "WHERE a.profile_id = ? AND a.wrong = 0 AND b.wrong = 0", profile_id,
     )
     return {"claims": claims, "edges": edges}
+
+
+CONTRIBUTION_COLUMNS = "id, course_id, repo, title, size, gap, uses, first_step, issue, status, lesson_id"
+
+
+def contributions(course_id: int) -> list[dict]:
+    """The course's contribution suggestions still on offer or taken up, the taken ones first."""
+    return rows(
+        f"SELECT {CONTRIBUTION_COLUMNS} FROM contributions WHERE course_id = ? AND status != 'dismissed' ORDER BY status = 'open', id",
+        course_id,
+    )
+
+
+def contribution(contribution_id: int) -> dict | None:
+    return row(f"SELECT {CONTRIBUTION_COLUMNS} FROM contributions WHERE id = ?", contribution_id)
+
+
+def set_contributions(course_id: int, entries: list[dict], written_for: str) -> None:
+    """The new suggestions replace the ones on offer; one the learner took up stays. written_for: the course's finish."""
+    conn.execute("BEGIN")
+    try:
+        conn.execute("DELETE FROM contributions WHERE course_id = ? AND status = 'open'", (course_id,))
+        conn.executemany(
+            "INSERT INTO contributions (course_id, repo, title, size, gap, uses, first_step, issue) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(course_id, e["repo"], e["title"], e["size"], e["gap"], e["uses"], e["first_step"], e["issue"] or None) for e in entries],
+        )
+        conn.execute("UPDATE courses SET contributions_for = ? WHERE id = ?", (written_for, course_id))
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
 
 
 def suggestions(profile_id: int, status: str = "open") -> list[dict]:

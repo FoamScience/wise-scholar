@@ -7,11 +7,11 @@ from pathlib import Path
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
 from wise_scholar import app, challenge  # noqa: E402
-from wise_scholar.routes import blocks, courses, learner, lessons, media, sharing  # noqa: E402
+from wise_scholar.routes import blocks, contributions, courses, learner, lessons, media, sharing  # noqa: E402
 from wise_scholar.playbooks import PLAYBOOKS  # noqa: E402
 
 ROOT = Path(__file__).parent.parent
-ROUTES = (blocks, courses, learner, lessons, media, sharing)
+ROUTES = (blocks, contributions, courses, learner, lessons, media, sharing)
 LOCALES = {code: json.loads((ROOT / "web/src/locales" / f"{code}.json").read_text()) for code in ("en", "fr", "ar")}
 
 

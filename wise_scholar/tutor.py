@@ -146,6 +146,7 @@ GRAPH_TOOLS = ("search_claims", "record_claims")
 CLEANUP_TOOLS = ("propose_edits",)
 EXPLORE_TOOLS = ("suggest_courses",)
 RECAP_TOOLS = ("write_recap",)
+CONTRIBUTE_TOOLS = ("find_repos", "find_issues", "look_at_repo", "outline_repo_file", "read_repo_lines", "search_repo_code", "suggest_contributions")
 _searched: set[int] = set()  # lessons whose running graph turn has searched the claims
 
 
@@ -156,8 +157,8 @@ _searched: set[int] = set()  # lessons whose running graph turn has searched the
 # number of calls.
 # A graph turn reads a finished lesson for its claims, a cards turn makes long or missed review cards short and a
 # cleanup turn proposes edits to a version before it is published, an explore turn writes the learner's suggested next
-# courses, a recap turn writes the story of a finished course; each may call only its own tools, and a lesson turn may
-# call none of them.
+# courses, a recap turn writes the story of a finished course, a contribute turn searches GitHub for open-source work
+# that puts a finished course to use; each may call only its own tools, and a lesson turn may call none of them.
 turns: dict[int | tuple[str, int], dict] = {}  # lesson_id, or (kind, lesson_id) -> {"token", "calls", "lesson_id", "course_id", "kind"}
 _ID_ARGUMENTS = ("lesson_id", "course_id", "challenge_id", "quiz_id", "block_id")
 
@@ -204,7 +205,8 @@ def _token(request_context) -> str | None:
 def _kind(tool: str) -> str:
     return (
         "graph" if tool in GRAPH_TOOLS else "cards" if tool in CARD_TOOLS else "cleanup" if tool in CLEANUP_TOOLS
-        else "explore" if tool in EXPLORE_TOOLS else "recap" if tool in RECAP_TOOLS else "lesson"
+        else "explore" if tool in EXPLORE_TOOLS else "recap" if tool in RECAP_TOOLS else "contribute" if tool in CONTRIBUTE_TOOLS
+        else "lesson"
     )
 
 
@@ -290,5 +292,5 @@ mcp._tool_manager.call_tool = _guard(mcp._tool_manager.call_tool)
 mcp._lowlevel_server.add_request_handler("tools/list", PaginatedRequestParams, _list_tools)
 
 # The tools register on mcp by area.
-for _area in ('lesson_flow', 'course_plan', 'visuals', 'practice', 'language', 'quizzes', 'lookup', 'side_turns'):
+for _area in ('lesson_flow', 'course_plan', 'visuals', 'practice', 'language', 'quizzes', 'lookup', 'side_turns', 'contributions'):
     importlib.import_module(f".tools.{_area}", __package__)

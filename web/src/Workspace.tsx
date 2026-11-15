@@ -401,11 +401,11 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
   )
 }
 
-/** The chat sidebar follows the lesson until the learner opens or closes it: open in the interview, which is a
- * conversation, and for a search hit in the chat. */
+/** The chat sidebar follows the lesson until the learner opens or closes it: open in the interview and in a guided
+ * contribution, which are conversations, and for a search hit in the chat. */
 function chatOpen(lesson: Lesson | null, asking: boolean | null, found: { lesson: number; at: string } | null): boolean {
   if (!lesson) return false
-  return asking ?? (lesson.phase === 'interview' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))
+  return asking ?? (lesson.phase === 'interview' || lesson.phase === 'contribution' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))
 }
 
 /** Below the cards: the placeholder while the tutor writes, the offline row, and the way on to the next unit. */

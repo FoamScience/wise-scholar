@@ -925,7 +925,7 @@ SITTING_GAP = timedelta(hours=2)
 _warmed: dict[int, datetime] = {}
 
 # The routes register on app by area; the web app's mount goes last, so it never shadows them.
-for _area in ('courses', 'sharing', 'lessons', 'blocks', 'learner', 'media'):
+for _area in ('courses', 'sharing', 'lessons', 'blocks', 'learner', 'media', 'contributions'):
     importlib.import_module(f".routes.{_area}", __package__)
 
 
