@@ -68,6 +68,25 @@ async def next_targets(lesson_id: int, lang: str, n: int = 6) -> str:
     return vocab_brief(lesson, lang, n)
 
 
+def _reading_problems(check: dict) -> list[str]:
+    problems = []
+    if check["coverage"] < vocab.COVERAGE:
+        problems.append(
+            f"only {check['coverage']:.0%} of the words are inside the learner's vocabulary (need {vocab.COVERAGE:.0%}); "
+            f"outside it: {', '.join(check['unknown'][:15])}"
+        )
+    if check["missing_targets"]:
+        problems.append(f"targets used fewer than {vocab.REPEATS} times: {', '.join(check['missing_targets'])}")
+    return problems
+
+
+def _record_exposures(lesson: dict, v: dict, check: dict) -> None:
+    db.course_lang(lesson["course_id"], v["lang"])
+    # Function words need no tracking; count the rest of the ranked words the learner met.
+    counts = Counter(l.lower() for l in check["lemmas"] if (vocab.rank(l, v["lang"]) or 0) >= vocab.FUNCTION_WORDS)
+    db.add_exposures(lesson["profile_id"], v["lang"], counts, vocab.EXPOSURES_TO_KNOW)
+
+
 @mcp.tool()
 async def add_reading(
     lesson_id: int, title: str, text: str, lang: str, glossary: list[Gloss], targets: list[str] = [], names: list[str] = []
@@ -92,19 +111,8 @@ async def add_reading(
     # Glossed words are the learner's few words above level; they count as in scope, like names.
     check = vocab.check_reading(text, v["lang"], v["tier"], v["known"], targets, [*names, *(g.word for g in glossary)])
     if not check["ok"]:
-        problems = []
-        if check["coverage"] < vocab.COVERAGE:
-            problems.append(
-                f"only {check['coverage']:.0%} of the words are inside the learner's vocabulary (need {vocab.COVERAGE:.0%}); "
-                f"outside it: {', '.join(check['unknown'][:15])}"
-            )
-        if check["missing_targets"]:
-            problems.append(f"targets used fewer than {vocab.REPEATS} times: {', '.join(check['missing_targets'])}")
-        return "rewrite: " + "; ".join(problems) + ". Keep the glossary for the words you must keep."
-    db.course_lang(lesson["course_id"], v["lang"])
-    # Function words need no tracking; count the rest of the ranked words the learner met.
-    counts = Counter(l.lower() for l in check["lemmas"] if (vocab.rank(l, v["lang"]) or 0) >= vocab.FUNCTION_WORDS)
-    db.add_exposures(lesson["profile_id"], v["lang"], counts, vocab.EXPOSURES_TO_KNOW)
+        return "rewrite: " + "; ".join(_reading_problems(check)) + ". Keep the glossary for the words you must keep."
+    _record_exposures(lesson, v, check)
     for target in targets:
         db.set_vocab(lesson["profile_id"], v["lang"], simplemma.lemmatize(target, lang=v["lang"]), "learning", "target")
     advance_tier(lesson["profile_id"], v["lang"], v["tier"])
@@ -177,6 +185,19 @@ async def start_series(course_id: int, title: str, characters: list[str], synops
     return "started; now write episode 1 with add_episode"
 
 
+def _episode_problem(lesson_id: int, text: str, glossary: list[Gloss]) -> str | None:
+    if any(b["kind"] == "reading" and (b["data"] or {}).get("story") for b in db.blocks(lesson_id)):
+        return "error: this lesson already has its episode"
+    words = len(text.split())
+    if not 400 <= words <= 800:
+        return f"error: {words} words; an episode has 400 to 800"
+    if len(glossary) > vocab.STORY_GLOSSARY:
+        return f"error: at most {vocab.STORY_GLOSSARY} glossary words in an episode; keep the language easy instead"
+    if stray := [g.word for g in glossary if g.word not in text]:
+        return f"error: glossary words {stray} do not appear in the text exactly as written"
+    return None
+
+
 @mcp.tool()
 async def add_episode(
     lesson_id: int, title: str, text: str, lang: str, recap: str, glossary: list[Gloss] = [], names: list[str] = []
@@ -193,15 +214,8 @@ async def add_episode(
     show = db.series(lesson["course_id"])
     if not show:
         return "error: no series yet; call start_series first"
-    if any(b["kind"] == "reading" and (b["data"] or {}).get("story") for b in db.blocks(lesson_id)):
-        return "error: this lesson already has its episode"
-    words = len(text.split())
-    if not 400 <= words <= 800:
-        return f"error: {words} words; an episode has 400 to 800"
-    if len(glossary) > vocab.STORY_GLOSSARY:
-        return f"error: at most {vocab.STORY_GLOSSARY} glossary words in an episode; keep the language easy instead"
-    if stray := [g.word for g in glossary if g.word not in text]:
-        return f"error: glossary words {stray} do not appear in the text exactly as written"
+    if problem := _episode_problem(lesson_id, text, glossary):
+        return problem
     v = _vocab(lesson, lang)
     known_names = [*names, *show["characters"].split("\n"), *(g.word for g in glossary)]
     known_names = [n.split(":")[0].strip() for n in known_names]
@@ -211,9 +225,7 @@ async def add_episode(
             f"rewrite: only {check['coverage']:.1%} of the words are inside the learner's vocabulary (an episode needs "
             f"{vocab.STORY_COVERAGE:.0%}); outside it: {', '.join(check['unknown'][:20])}. Replace them with easier words."
         )
-    db.course_lang(lesson["course_id"], v["lang"])
-    counts = Counter(l.lower() for l in check["lemmas"] if (vocab.rank(l, v["lang"]) or 0) >= vocab.FUNCTION_WORDS)
-    db.add_exposures(lesson["profile_id"], v["lang"], counts, vocab.EXPOSURES_TO_KNOW)
+    _record_exposures(lesson, v, check)
     advance_tier(lesson["profile_id"], v["lang"], v["tier"])
     episode = db.add_episode(lesson["course_id"], recap)
     data = {"title": title, "lang": lang, "glossary": [g.model_dump() for g in glossary], "added": [], "targets": [],
@@ -248,6 +260,61 @@ async def pose_speaking(lesson_id: int, kind: Literal["read", "shadow", "answer"
     return f"shown as {block['kind']} {block['id']}; end the turn and wait for the learner"
 
 
+def _cast_problem(lines: list[Line], speakers: list[str], questions: list[CastQuestion]) -> str | None:
+    if len(speakers) != 2:
+        return f"error: a cast has exactly two speakers, got {speakers}"
+    if long := [i for i, l in enumerate(lines) if len(l.text) > LINE_CHARS]:
+        return f"error: lines {long} are over {LINE_CHARS} characters; split them"
+    words = sum(len(l.text.split()) for l in lines)
+    if not CAST_WORDS[0] <= words <= CAST_WORDS[1]:
+        return f"error: {words} words; a 5 to 8 minute cast needs {CAST_WORDS[0]} to {CAST_WORDS[1]}"
+    return _cast_questions_problem(len(lines), questions)
+
+
+def _cast_questions_problem(count: int, questions: list[CastQuestion]) -> str | None:
+    for q in questions:
+        if not 0 <= q.after_line < count:
+            return f"error: after_line {q.after_line} is outside the dialogue"
+        if q.kind == "choice" and not (2 <= len(q.options) <= 5 and q.answer_key in q.options):
+            return "error: a choice question needs 2 to 5 options, one of them exactly equal to answer_key"
+    return None
+
+
+def _cast_coverage_problem(lesson: dict, lang: str, text: str, names: list[str]) -> str | None:
+    v = _vocab(lesson, lang)
+    check = vocab.check_reading(text, v["lang"], v["tier"], v["known"], [], names)
+    if check["coverage"] < vocab.COVERAGE:
+        return (
+            f"rewrite: only {check['coverage']:.0%} of the words are inside the learner's vocabulary (need {vocab.COVERAGE:.0%}); "
+            f"outside it: {', '.join(check['unknown'][:15])}"
+        )
+    return None
+
+
+def _add_cues(lesson: dict, questions: list[CastQuestion], data: dict) -> None:
+    for q in sorted(questions, key=lambda q: q.after_line):
+        options = _shuffled(q.options) if q.kind == "choice" else []
+        card_id = db.add_card(
+            lesson["course_id"], lesson["concept_id"], q.question, q.kind, options, q.answer_key, q.explanation,
+            scheduled=lesson["phase"] != "placement",
+        )
+        quiz_block = db.add_block(lesson["id"], "quiz", q.question, {"card_id": card_id, "kind": q.kind, "options": options, "answer": None})
+        data["cues"].append({"line": q.after_line, "block_id": quiz_block["id"]})
+
+
+def _cast_data(lang: str, speakers: list[str], lines: list[Line], glossary: list[Gloss]) -> dict:
+    return {
+        "lang": lang, "speakers": speakers, "lines": [l.model_dump() for l in lines], "glossary": [g.model_dump() for g in glossary],
+        "status": "rendering", "done": 0, "audio": None, "starts": [], "duration": None, "cues": [],
+    }
+
+
+def _start_render(block_id: int) -> None:
+    task = asyncio.create_task(_render_cast(block_id))
+    _renders.add(task)
+    task.add_done_callback(_renders.discard)
+
+
 async def make_podcast(
     lesson_id: int, title: str, lang: str, lines: list[Line], questions: list[CastQuestion] = [],
     glossary: list[Gloss] = [], names: list[str] = [],
@@ -266,51 +333,23 @@ async def make_podcast(
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     speakers = list(dict.fromkeys(l.speaker for l in lines))
-    if len(speakers) != 2:
-        return f"error: a cast has exactly two speakers, got {speakers}"
-    if long := [i for i, l in enumerate(lines) if len(l.text) > LINE_CHARS]:
-        return f"error: lines {long} are over {LINE_CHARS} characters; split them"
-    words = sum(len(l.text.split()) for l in lines)
-    if not CAST_WORDS[0] <= words <= CAST_WORDS[1]:
-        return f"error: {words} words; a 5 to 8 minute cast needs {CAST_WORDS[0]} to {CAST_WORDS[1]}"
-    for q in questions:
-        if not 0 <= q.after_line < len(lines):
-            return f"error: after_line {q.after_line} is outside the dialogue"
-        if q.kind == "choice" and not (2 <= len(q.options) <= 5 and q.answer_key in q.options):
-            return "error: a choice question needs 2 to 5 options, one of them exactly equal to answer_key"
+    if problem := _cast_problem(lines, speakers, questions):
+        return problem
     text = "\n".join(l.text for l in lines)
     if stray := [g.word for g in glossary if g.word not in text]:
         return f"error: glossary words {stray} do not appear in the dialogue exactly as written"
     if not speech.available():
         return "error: speech is off on this install, so there are no casts"
-    if lesson["lang"]:
-        v = _vocab(lesson, lang)
-        check = vocab.check_reading(text, v["lang"], v["tier"], v["known"], [], [*names, *speakers, *(g.word for g in glossary)])
-        if check["coverage"] < vocab.COVERAGE:
-            return (
-                f"rewrite: only {check['coverage']:.0%} of the words are inside the learner's vocabulary (need {vocab.COVERAGE:.0%}); "
-                f"outside it: {', '.join(check['unknown'][:15])}"
-            )
-    data = {
-        "lang": lang, "speakers": speakers, "lines": [l.model_dump() for l in lines], "glossary": [g.model_dump() for g in glossary],
-        "status": "rendering", "done": 0, "audio": None, "starts": [], "duration": None, "cues": [],
-    }
+    if lesson["lang"] and (problem := _cast_coverage_problem(lesson, lang, text, [*names, *speakers, *(g.word for g in glossary)])):
+        return problem
+    data = _cast_data(lang, speakers, lines, glossary)
     block = db.add_block(lesson_id, "podcast", title, data)
-    for q in sorted(questions, key=lambda q: q.after_line):
-        options = _shuffled(q.options) if q.kind == "choice" else []
-        card_id = db.add_card(
-            lesson["course_id"], lesson["concept_id"], q.question, q.kind, options, q.answer_key, q.explanation,
-            scheduled=lesson["phase"] != "placement",
-        )
-        quiz_block = db.add_block(lesson_id, "quiz", q.question, {"card_id": card_id, "kind": q.kind, "options": options, "answer": None})
-        data["cues"].append({"line": q.after_line, "block_id": quiz_block["id"]})
+    _add_cues(lesson, questions, data)
     block = db.set_block_data(block["id"], data)
     _show(lesson, block)
     for cue in data["cues"]:
         _show(lesson, db.block(cue["block_id"]))
-    task = asyncio.create_task(_render_cast(block["id"]))
-    _renders.add(task)
-    task.add_done_callback(_renders.discard)
+    _start_render(block["id"])
     return f"shown as podcast {block['id']}, rendering {len(lines)} lines in the background; end the turn"
 
 

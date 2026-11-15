@@ -381,6 +381,41 @@ def _notebook_brief(profile_id: int, course_id: int) -> str:
     )
 
 
+def _leveled_brief(lesson: dict, course_id: int) -> str:
+    counts = db.strand_counts(course_id)
+    strands = "\nActivities per strand in the last 7 days: " + ", ".join(f"{k} {v}" for k, v in counts.items())
+    strands += "\nSpeaking tasks: " + ("available" if speech.available() else "off on this install, use writing instead")
+    if lesson["lang"]:
+        strands += "\n" + language_tools.vocab_brief(lesson, lesson["lang"])
+    return strands
+
+
+def _strands_brief(lesson: dict, course_id: int) -> str:
+    strands = _leveled_brief(lesson, course_id) if lesson["mechanism"] == "leveled-course" else ""
+    if speech.PODCASTS and speech.available():
+        strands += "\nCasts (experimental): make_podcast is available when a recap or quiz-cast would serve this lesson"
+    strands += tutor.capstone_brief(lesson)
+    if ready := [f for f in db.sources(course_id) if f["status"] == "ready"]:
+        strands += "\nThe learner's own sources (search_sources, then read_source one section at a time): " + ", ".join(
+            f"{f['name']} ({f['sections']} sections)" for f in ready
+        )
+    strands += _notebook_brief(lesson["profile_id"], course_id)
+    return strands
+
+
+def _earlier_brief(course_id: int, lesson_id: int) -> str:
+    earlier = history.digest([
+        _lesson_view(row["id"])
+        for row in db.rows(
+            "SELECT id FROM lessons WHERE course_id = ? AND concept_id IS NOT NULL AND id != ? ORDER BY id",
+            course_id, lesson_id,
+        )
+    ])
+    if earlier:
+        earlier = f"\nEarlier lessons, with what the learner did in each:\n{earlier}"
+    return earlier
+
+
 @app.post("/api/concepts/{concept_id}/lesson")
 async def open_concept(concept_id: int) -> dict:
     concept = db.row("SELECT * FROM concepts WHERE id = ?", concept_id)
@@ -401,30 +436,8 @@ async def open_concept(concept_id: int) -> dict:
     if practice:
         core._start_turn(lesson, f"[event] The practice begins. Course map:\n{outline}\n{_practice_brief(tasks)}{_practice_claims(concept_id, lesson['profile_id'])}")
         return view
-    strands = ""
-    if lesson["mechanism"] == "leveled-course":
-        counts = db.strand_counts(concept["course_id"])
-        strands = "\nActivities per strand in the last 7 days: " + ", ".join(f"{k} {v}" for k, v in counts.items())
-        strands += "\nSpeaking tasks: " + ("available" if speech.available() else "off on this install, use writing instead")
-        if lesson["lang"]:
-            strands += "\n" + language_tools.vocab_brief(lesson, lesson["lang"])
-    if speech.PODCASTS and speech.available():
-        strands += "\nCasts (experimental): make_podcast is available when a recap or quiz-cast would serve this lesson"
-    strands += tutor.capstone_brief(lesson)
-    if ready := [f for f in db.sources(concept["course_id"]) if f["status"] == "ready"]:
-        strands += "\nThe learner's own sources (search_sources, then read_source one section at a time): " + ", ".join(
-            f"{f['name']} ({f['sections']} sections)" for f in ready
-        )
-    strands += _notebook_brief(lesson["profile_id"], concept["course_id"])
-    earlier = history.digest([
-        _lesson_view(row["id"])
-        for row in db.rows(
-            "SELECT id FROM lessons WHERE course_id = ? AND concept_id IS NOT NULL AND id != ? ORDER BY id",
-            concept["course_id"], lesson_id,
-        )
-    ])
-    if earlier:
-        earlier = f"\nEarlier lessons, with what the learner did in each:\n{earlier}"
+    strands = _strands_brief(lesson, concept["course_id"])
+    earlier = _earlier_brief(concept["course_id"], lesson_id)
     core._start_turn(lesson, f"[event] The lesson begins. Course map:\n{outline}{strands}{earlier}{_claims_brief(lesson)}")
     return view
 

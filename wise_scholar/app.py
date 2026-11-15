@@ -587,10 +587,18 @@ def _record_line(block: dict) -> str:
     if block["kind"] in ("challenge", "exercise"):
         return f"{head} {text}{_task_record(d)}"
     if block["kind"] == "widget" and d.get("tried"):
-        text += " | tried: " + _cut("; ".join(widgets.describe(d["widget"], at) for at in d["tried"]), RECORD_BLOCK_CHARS)
+        text += _tried_record(d)
     if teaches := d.get("teaches"):
-        return f"{head} {text} | " + " | ".join(f"{k}: {_cut(v, RECORD_TEACHES_CHARS)}" for k, v in teaches.items() if v)
+        return f"{head} {text} | " + _teaches_record(teaches)
     return f"{head} {text}"
+
+
+def _tried_record(d: dict) -> str:
+    return " | tried: " + _cut("; ".join(widgets.describe(d["widget"], at) for at in d["tried"]), RECORD_BLOCK_CHARS)
+
+
+def _teaches_record(teaches: dict) -> str:
+    return " | ".join(f"{k}: {_cut(v, RECORD_TEACHES_CHARS)}" for k, v in teaches.items() if v)
 
 
 def _quiz_record(d: dict) -> str:
@@ -880,6 +888,18 @@ def _unanswered_quiz(block_id: int) -> tuple[dict, dict]:
     return block, db.card(block["data"]["card_id"])
 
 
+def _answer_verdict(card: dict, correct: bool, result: dict, lesson: dict) -> str:
+    if card["kind"] == "sort":
+        verdict = "correct" if correct else "wrong; misplaced: " + ", ".join(repr(i) for i in result["misplaced"])
+    else:
+        verdict = "correct" if correct else f"wrong, the right answer is {card['answer_key']!r}"
+        if result.get("misconception"):
+            verdict += f"; this option comes from the belief {result['misconception']!r}"
+    if result["confident_miss"] and lesson["phase"] != "placement":
+        verdict += "; a confident miss: re-teach it now"
+    return verdict
+
+
 def _record_answer(block: dict, card: dict, answer: str, confidence: float, extra: dict | None = None) -> tuple[dict, str | None, str]:
     """Store an answer and grade it when the server can. Returns the lesson, the verdict (None when the tutor grades
     it) and what the learner said, for the tutor's line."""
@@ -892,15 +912,7 @@ def _record_answer(block: dict, card: dict, answer: str, confidence: float, extr
         return lesson, None, said
     result = quiz.grade(answer_id, correct)
     lesson, block = _update_block(block, {**given, **result})
-    if card["kind"] == "sort":
-        verdict = "correct" if correct else "wrong; misplaced: " + ", ".join(repr(i) for i in result["misplaced"])
-    else:
-        verdict = "correct" if correct else f"wrong, the right answer is {card['answer_key']!r}"
-        if result.get("misconception"):
-            verdict += f"; this option comes from the belief {result['misconception']!r}"
-    if result["confident_miss"] and lesson["phase"] != "placement":
-        verdict += "; a confident miss: re-teach it now"
-    return lesson, verdict, said
+    return lesson, _answer_verdict(card, correct, result, lesson), said
 
 
 def _due(profile: int) -> list[dict]:
