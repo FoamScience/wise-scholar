@@ -4,7 +4,8 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from wise_scholar import app, db, recap, tutor
+from wise_scholar import app, db, recap
+from wise_scholar.tools import side_turns as side_tools  # noqa: E402
 from wise_scholar.routes import courses as courses_routes, sharing as sharing_routes  # noqa: E402
 
 NOW = "2026-11-09T12:00:00+00:00"
@@ -117,9 +118,9 @@ def writer(monkeypatch):
     async def turn(lesson, prompt, kind, what):
         assert kind == "recap"
         seen.append(prompt)
-        job = tutor.recap_jobs[lesson["course_id"]]
-        weeks = [tutor.WeekCaption(week=w, caption=f"Week {w}.") for w in job["weeks"]]
-        seen.append(await tutor.write_recap(lesson["course_id"], "Where you began.", weeks, ["Size a pump.", "Read a curve."], ["Slip."], "Losses."))
+        job = side_tools.recap_jobs[lesson["course_id"]]
+        weeks = [side_tools.WeekCaption(week=w, caption=f"Week {w}.") for w in job["weeks"]]
+        seen.append(await side_tools.write_recap(lesson["course_id"], "Where you began.", weeks, ["Size a pump.", "Read a curve."], ["Slip."], "Losses."))
         return True
 
     monkeypatch.setattr(app, "_background_turn", turn)
@@ -158,12 +159,12 @@ def test_opening_a_finished_course_writes_its_narrative_once(writer):
 
 def test_the_recap_tool_wants_every_week_and_only_those():
     course, _ = _course(_learner(), PUMPS)
-    tutor.recap_jobs[course] = {"weeks": ["2026-10-05"], "locale": "en", "finished": "x", "done": False}
+    side_tools.recap_jobs[course] = {"weeks": ["2026-10-05"], "locale": "en", "finished": "x", "done": False}
     try:
         def write(weeks, intro="Start.", can_do=("One.", "Two."), strengthen=("Three.",), next_step="Four."):
-            return asyncio.run(tutor.write_recap(course, intro, weeks, list(can_do), list(strengthen), next_step))
+            return asyncio.run(side_tools.write_recap(course, intro, weeks, list(can_do), list(strengthen), next_step))
         assert write([]) == "error: weeks ['2026-10-05'] need a caption"
-        two = [tutor.WeekCaption(week="2026-10-05", caption="One."), tutor.WeekCaption(week="2026-10-12", caption="Two.")]
+        two = [side_tools.WeekCaption(week="2026-10-05", caption="One."), side_tools.WeekCaption(week="2026-10-12", caption="Two.")]
         assert write(two).startswith("error: ['2026-10-12'] are not weeks")
         assert write([two[0]], intro="x" * 800).startswith("error: the intro")
         assert write([two[0]], can_do=["One.", " "]) == "error: give 2 to 5 can_do points"
@@ -171,8 +172,8 @@ def test_the_recap_tool_wants_every_week_and_only_those():
         assert write([two[0]], strengthen=["x" * 300]).startswith("error: ['xxxx")
         assert write([two[0]], next_step="").startswith("error: next_step")
     finally:
-        tutor.recap_jobs.pop(course)
-    assert asyncio.run(tutor.write_recap(course, "Start.", [], ["One.", "Two."], ["Three."], "Four.")) == f"error: no recap is being written on course {course}"
+        side_tools.recap_jobs.pop(course)
+    assert asyncio.run(side_tools.write_recap(course, "Start.", [], ["One.", "Two."], ["Three."], "Four.")) == f"error: no recap is being written on course {course}"
 
 
 def test_an_unfinished_course_opens_as_a_preview_only_where_the_server_allows_it(writer, monkeypatch):

@@ -8,6 +8,7 @@ import pytest
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
 from wise_scholar import app as application, backends, db, sources, tutor  # noqa: E402
+from wise_scholar.tools import course_plan as plan_tools, lesson_flow as flow_tools, side_turns as side_tools  # noqa: E402
 from wise_scholar.routes import courses as courses_routes  # noqa: E402
 
 
@@ -75,7 +76,7 @@ def test_tool_calls_bind_to_the_turn_they_belong_to():
         my_lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", mine)["id"])
         other_lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ?", other)["id"])
         call = tutor.mcp._tool_manager.call_tool
-        asyncio.run(tutor.add_block(other_lesson["id"], "prose", "theirs"))
+        asyncio.run(flow_tools.add_block(other_lesson["id"], "prose", "theirs"))
         theirs = db.blocks(other_lesson["id"])[-1]["id"]
 
         with pytest.raises(ToolError, match="no turn running"):
@@ -106,7 +107,7 @@ def test_tool_calls_bind_to_the_turn_they_belong_to():
         finally:
             tutor.turn_ended(my_lesson["id"])
         assert [b["markdown"] for b in db.blocks(my_lesson["id"])] == ["ok", "ok"]
-        assert asyncio.run(tutor.note_learner(mine, "x " * 200, "course")).startswith("error: a fact is one sentence")
+        assert asyncio.run(plan_tools.note_learner(mine, "x " * 200, "course")).startswith("error: a fact is one sentence")
     finally:
         db.delete_course(mine)
         db.delete_course(other)
@@ -271,7 +272,7 @@ def test_a_cards_turn_replaces_only_its_own_cards_and_a_lesson_turn_none():
         split = lambda card: {"course_id": course, "card_id": card, "parts": [{"question": "Q?", "kind": "open", "answer_key": "a"}]}  # noqa: E731
         tutor.turn_started(lesson, "tok-cards", kind="cards")
         tutor.turn_started(lesson, "tok-lesson")
-        tutor.card_jobs[mine] = "short"
+        side_tools.card_jobs[mine] = "short"
         try:
             with pytest.raises(ToolError, match="not available in this turn"):
                 asyncio.run(call("split_card", split(mine), _context("tok-lesson")))
@@ -280,7 +281,7 @@ def test_a_cards_turn_replaces_only_its_own_cards_and_a_lesson_turn_none():
             assert "not one of the cards" in str(asyncio.run(call("split_card", split(other), _context("tok-cards"))))
             assert "replaced by cards" in str(asyncio.run(call("split_card", split(mine), _context("tok-cards"))))
         finally:
-            tutor.card_jobs.clear()
+            side_tools.card_jobs.clear()
             tutor.turn_ended(("cards", lesson["id"]))
             tutor.turn_ended(lesson["id"])
     finally:

@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from .. import app as core
-from .. import book, bundle, db, hub, obsidian, recap, tutor
+from .. import book, bundle, db, hub, obsidian, recap
+from ..tools import side_turns as side_tools
 from ..app import LOCALE_NAMES, _course, _cut, _now, _profile, _turns, _untrusted, app, log
 
 
@@ -81,14 +82,14 @@ async def _check(course_id: int) -> None:
                                        edits=bundle.accepted_edits(course_id))
     pieces = bundle.texts(manifest, assets)
     db.conn.execute("DELETE FROM publish_edits WHERE course_id = ? AND status = 'proposed'", (course_id,))
-    tutor.cleanup_jobs[course_id] = pieces
+    side_tools.cleanup_jobs[course_id] = pieces
     try:
         for prompt in _check_prompts(course, lesson, pieces, manifest):
             if not await core._background_turn(lesson, prompt, "cleanup", "publish check"):
                 _checks_failed.add(course_id)
                 return
     finally:
-        tutor.cleanup_jobs.pop(course_id, None)
+        side_tools.cleanup_jobs.pop(course_id, None)
     db.conn.execute("UPDATE courses SET checked = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(timespec="seconds"), course_id))
 
 
@@ -230,7 +231,7 @@ async def _write_recap(course_id: int) -> None:
     lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ? ORDER BY id LIMIT 1", course_id)["id"])
     story = await asyncio.to_thread(recap.story, course_id, _now())
     job = {"weeks": story["weeks"], "locale": lesson["locale"], "finished": story["finished"], "done": False}
-    tutor.recap_jobs[course_id] = job
+    side_tools.recap_jobs[course_id] = job
     try:
         prompt = "\n".join([
             f"[state] course_id={course_id}",
@@ -239,7 +240,7 @@ async def _write_recap(course_id: int) -> None:
         ])
         ok = await core._background_turn(lesson, prompt, "recap", "course recap")
     finally:
-        tutor.recap_jobs.pop(course_id, None)
+        side_tools.recap_jobs.pop(course_id, None)
     if not ok or not job["done"]:
         _recap_failed.add(course_id)
 

@@ -6,6 +6,7 @@ from typing import Literal
 
 from .. import app as core
 from .. import book, challenge, db, handout, tutor
+from ..tools import lesson_flow as flow_tools
 from .courses import warmup
 from ..app import QuizAnswer, _lesson, _record_answer, _turns, _unanswered_quiz, _untrusted, app, log
 
@@ -54,7 +55,7 @@ async def test_out(lesson_id: int, body: TestOut) -> None:
     if tutor.pretest_blocker(lesson):
         raise HTTPException(409, "try the unit's opening first")
     core._require_idle(lesson_id)
-    outline = tutor._outline(lesson_id)
+    outline = flow_tools._outline(lesson_id)
     step = ""
     if body.scope == "step":
         if not outline or outline["data"]["at"] >= len(outline["data"]["steps"]):

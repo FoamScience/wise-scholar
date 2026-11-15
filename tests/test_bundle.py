@@ -281,6 +281,7 @@ def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_on
     from mcp.server.mcpserver.exceptions import ToolError
 
     from wise_scholar import app, tutor
+    from wise_scholar.tools import side_turns as side_tools
     from wise_scholar.routes import sharing as sharing_routes
     from wise_scholar.backends import TURN_HEADER
 
@@ -296,13 +297,13 @@ def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_on
         assert kind == "cleanup" and lesson["course_id"] == a["course"]
         prompts.append(prompt)
         if len(prompts) == 1:
-            replies.append(await tutor.propose_edits(a["course"], [
-                tutor.Edit(target="block", ref=prose["key"], old="**sections**", new="**profiles**", reason="r"),
-                tutor.Edit(target="card", ref=card_key, old="ThruSections", new="Loft", reason="r"),
-                tutor.Edit(target="file", ref="loft/new.py", old="TODO", new="FIXME", reason="r"),
-                tutor.Edit(target="block", ref=prose["key"], old="not in it", new="x", reason="r"),
-                tutor.Edit(target="summary", ref="nope", old="a", new="b", reason="r"),
-                tutor.Edit(target="block", ref=prose["key"], old="**sections**", new="**rings**", reason="r"),
+            replies.append(await side_tools.propose_edits(a["course"], [
+                side_tools.Edit(target="block", ref=prose["key"], old="**sections**", new="**profiles**", reason="r"),
+                side_tools.Edit(target="card", ref=card_key, old="ThruSections", new="Loft", reason="r"),
+                side_tools.Edit(target="file", ref="loft/new.py", old="TODO", new="FIXME", reason="r"),
+                side_tools.Edit(target="block", ref=prose["key"], old="not in it", new="x", reason="r"),
+                side_tools.Edit(target="summary", ref="nope", old="a", new="b", reason="r"),
+                side_tools.Edit(target="block", ref=prose["key"], old="**sections**", new="**rings**", reason="r"),
             ]))
         return True
 
@@ -350,7 +351,7 @@ def test_the_publish_check_proposes_edits_the_author_accepts_into_the_version_on
             asyncio.run(tutor.mcp._tool_manager.call_tool("propose_edits", {"course_id": a["course"], "edits": []}, context))
     finally:
         tutor.turn_ended(lesson_turn["id"])
-    assert asyncio.run(tutor.propose_edits(a["course"], [])) == f"error: course {a['course']} is not being checked"
+    assert asyncio.run(side_tools.propose_edits(a["course"], [])) == f"error: course {a['course']} is not being checked"
 
 
 def test_an_edit_to_a_quiz_block_reaches_its_card_and_a_broken_sort_key_is_refused(places):

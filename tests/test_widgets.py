@@ -7,7 +7,8 @@ import pytest
 
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
-from wise_scholar import app, bundle, db, figures, obsidian, tutor, widgets  # noqa: E402
+from wise_scholar import app, bundle, db, figures, obsidian, widgets  # noqa: E402
+from wise_scholar.tools import visuals as visual_tools  # noqa: E402
 from wise_scholar.routes import blocks as blocks_routes  # noqa: E402
 
 GEARS = {
@@ -70,9 +71,9 @@ def test_the_tool_shows_the_widget_and_an_imported_one_is_evaluated_again():
     try:
         lesson = db.create_lesson(course, "Idlers", "lesson", None)
         teaches = figures.Teaches(claim="An idler keeps the ratio.", notice="Move the idler slider; the size stays at 0.5.", limits="Ideal gears.")
-        assert asyncio.run(tutor.add_widget(lesson, "Idlers", GEARS, "", teaches)) == "error: alt text is required"
-        assert asyncio.run(tutor.add_widget(lesson, "Idlers", {"controls": []}, "a", teaches)) == "error: controls must be a list of 1 to 3 sliders"
-        reply = asyncio.run(tutor.add_widget(lesson, "Idlers", GEARS, "output turns against input turns", teaches))
+        assert asyncio.run(visual_tools.add_widget(lesson, "Idlers", GEARS, "", teaches)) == "error: alt text is required"
+        assert asyncio.run(visual_tools.add_widget(lesson, "Idlers", {"controls": []}, "a", teaches)) == "error: controls must be a list of 1 to 3 sliders"
+        reply = asyncio.run(visual_tools.add_widget(lesson, "Idlers", GEARS, "output turns against input turns", teaches))
         [block] = [b for b in db.blocks(lesson) if b["kind"] == "widget"]
         assert reply == f"shown as widget {block['id']}" and block["data"]["spec"] == GEARS and block["data"]["widget"] == widgets.resolve(GEARS)
         assert app._record_line(block).startswith(f"[block {block['id']}, widget] Idlers | claim: An idler keeps the ratio.")
@@ -99,7 +100,7 @@ def test_the_tool_shows_the_widget_and_an_imported_one_is_evaluated_again():
         block = db.block(block["id"])
         assert "| tried: Driver teeth = 24 teeth" in app._record_line(block)
         assert "tried" not in bundle._block_data({**block, "data": json.dumps(block["data"])}, {})
-        assert asyncio.run(tutor.add_widget(lesson, "Teeth", DRAWN, "a gear growing", teaches)).startswith("shown as widget ")
+        assert asyncio.run(visual_tools.add_widget(lesson, "Teeth", DRAWN, "a gear growing", teaches)).startswith("shown as widget ")
         drawn = db.blocks(lesson)[-1]
         vault = obsidian.Vault(course)
         note = vault._block_text(db.lesson(lesson), drawn)
