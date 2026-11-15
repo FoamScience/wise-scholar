@@ -290,7 +290,6 @@ function CourseCard(props: {
   const menu = useRef<HTMLDetailsElement>(null)
 
   function close() {
-    setConfirming(false)
     setNaming(null)
     if (menu.current) menu.current.open = false
   }
@@ -315,10 +314,7 @@ function CourseCard(props: {
           <a href={`#/course/${course.id}/recap`}>{t('recap.cardLine', { date: day(course.finished) })}</a>
         </div>
       )}
-      <details ref={menu} className="menu" name="course-menu" onToggle={() => {
-          setConfirming(false)
-          setNaming(null)
-        }}>
+      <details ref={menu} className="menu" name="course-menu" onToggle={() => setNaming(null)}>
         <summary aria-label={t('home.options', { topic: course.topic })}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <circle cx="12" cy="5" r="2" />
@@ -340,16 +336,6 @@ function CourseCard(props: {
                 </button>
               </div>
             </form>
-          ) : confirming ? (
-            <>
-              <div>{t('home.deleteConfirm', { topic: course.topic })}</div>
-              <button type="button" className="btn danger" onClick={() => props.onDelete(course)}>
-                {t('home.deleteCourse')}
-              </button>
-              <button type="button" className="btn" onClick={close}>
-                {t('common.cancel')}
-              </button>
-            </>
           ) : (
             <>
               <button type="button" className="btn" onClick={() => setNaming(course.topic)}>
@@ -377,13 +363,51 @@ function CourseCard(props: {
                   {t('home.duplicate')}
                 </button>
               )}
-              <button type="button" className="btn" onClick={() => setConfirming(true)}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  close()
+                  setConfirming(true)
+                }}
+              >
                 {t('home.delete')}
               </button>
             </>
           )}
         </div>
       </details>
+      {confirming && <ConfirmDelete topic={course.topic} onDelete={() => props.onDelete(course)} onClose={() => setConfirming(false)} />}
     </div>
+  )
+}
+
+function ConfirmDelete(props: { topic: string; onDelete: () => void; onClose: () => void }) {
+  const { t } = useTranslation()
+  const dialog = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    dialog.current?.showModal()
+  }, [])
+
+  return (
+    <dialog ref={dialog} className="confirm" onClose={props.onClose}>
+      <p dir="auto">{t('home.deleteConfirm', { topic: props.topic })}</p>
+      <form method="dialog" className="row">
+        <button className="btn" autoFocus>
+          {t('common.cancel')}
+        </button>
+        <button
+          type="button"
+          className="btn danger"
+          onClick={() => {
+            props.onDelete()
+            dialog.current?.close()
+          }}
+        >
+          {t('home.deleteCourse')}
+        </button>
+      </form>
+    </dialog>
   )
 }
