@@ -431,26 +431,35 @@ def apply_edit(manifest: dict, assets: dict[str, bytes], edit: dict) -> bool:
         lesson = next(x for x in manifest["lessons"] if x["key"] == ref)
         lesson["summary"] = lesson["summary"].replace(old, new)
     elif target in ("block", "card"):
-        # A quiz block shows its card, so the two change together.
-        blocks = [b for x in manifest["lessons"] for b in x["blocks"]]
-        card_key = ref if target == "card" else (next(b for b in blocks if b["key"] == ref)["data"] or {}).get("card")
-        cards = [c for c in manifest["cards"] if c["key"] == card_key]
-        changed = [_swap(_card_text(c), old, new) for c in cards]
-        if any(c["kind"] == "sort" and not _json(x["answer_key"]) for c, x in zip(cards, changed)):
-            return False
-        for c, x in zip(cards, changed):
-            c.update(x)
-        for b in blocks:
-            if b["key"] == ref or (card_key and (b["data"] or {}).get("card") == card_key):
-                b["markdown"], b["data"] = _swap([b["markdown"], b["data"]], old, new)
+        return _edit_card(manifest, target, ref, old, new)
     else:
-        f = next(x for x in manifest["files"] if x["path"] == ref)
-        content = assets[f["asset"]].decode(errors="replace").replace(old, new).encode()
-        before, f["asset"] = f["asset"], sha(content)
-        assets[f["asset"]] = content
-        if all(x["asset"] != before for x in [*manifest["files"], *manifest["sources"]]):
-            del assets[before]
+        _edit_file(manifest, assets, ref, old, new)
     return True
+
+
+def _edit_card(manifest: dict, target: str, ref: str, old: str, new: str) -> bool:
+    """A quiz block shows its card, so the two change together; False when a sort card's key would stop parsing."""
+    blocks = [b for x in manifest["lessons"] for b in x["blocks"]]
+    card_key = ref if target == "card" else (next(b for b in blocks if b["key"] == ref)["data"] or {}).get("card")
+    cards = [c for c in manifest["cards"] if c["key"] == card_key]
+    changed = [_swap(_card_text(c), old, new) for c in cards]
+    if any(c["kind"] == "sort" and not _json(x["answer_key"]) for c, x in zip(cards, changed)):
+        return False
+    for c, x in zip(cards, changed):
+        c.update(x)
+    for b in blocks:
+        if b["key"] == ref or (card_key and (b["data"] or {}).get("card") == card_key):
+            b["markdown"], b["data"] = _swap([b["markdown"], b["data"]], old, new)
+    return True
+
+
+def _edit_file(manifest: dict, assets: dict[str, bytes], ref: str, old: str, new: str) -> None:
+    f = next(x for x in manifest["files"] if x["path"] == ref)
+    content = assets[f["asset"]].decode(errors="replace").replace(old, new).encode()
+    before, f["asset"] = f["asset"], sha(content)
+    assets[f["asset"]] = content
+    if all(x["asset"] != before for x in [*manifest["files"], *manifest["sources"]]):
+        del assets[before]
 
 
 def accepted_edits(course_id: int) -> list[dict]:
@@ -512,9 +521,8 @@ def _check_units(manifest: Manifest) -> None:
         raise ValueError("the manifest holds lessons for units it says are not written")
 
 
-def unpack(data: bytes) -> tuple[str, Manifest, dict[str, bytes]]:
-    """Read and check a bundle from anyone: its size, its names, every asset against its hash and every one the
-    manifest names. Raises ValueError with what is wrong."""
+def _open_zip(data: bytes) -> tuple[zipfile.ZipFile, list[str]]:
+    """The bundle's zip and its file names, once its size, its count and its names are a bundle's."""
     if len(data) > BUNDLE_LIMIT:
         raise ValueError("the bundle is larger than 256 MB")
     try:
@@ -527,13 +535,24 @@ def unpack(data: bytes) -> tuple[str, Manifest, dict[str, bytes]]:
     names = [i.filename for i in infos]
     if "manifest.json" not in names or any(n != "manifest.json" and not _ASSET.fullmatch(n) for n in names):
         raise ValueError("not a course bundle (unexpected files inside)")
+    return z, names
+
+
+def _read_manifest(z: zipfile.ZipFile) -> tuple[bytes, Manifest]:
     if z.getinfo("manifest.json").file_size > MANIFEST_LIMIT:
         raise ValueError("the manifest is too large")
     body = z.read("manifest.json")
     try:
-        manifest = Manifest.model_validate_json(body)
+        return body, Manifest.model_validate_json(body)
     except ValidationError as e:
         raise ValueError(f"the manifest does not hold a course: {e.errors()[0]['loc']} {e.errors()[0]['msg']}") from None
+
+
+def unpack(data: bytes) -> tuple[str, Manifest, dict[str, bytes]]:
+    """Read and check a bundle from anyone: its size, its names, every asset against its hash and every one the
+    manifest names. Raises ValueError with what is wrong."""
+    z, names = _open_zip(data)
+    body, manifest = _read_manifest(z)
     assets = _assets(z, names)
     named = {f.asset for f in manifest.files} | {s.asset for s in manifest.sources}
     if missing := named - assets.keys():
@@ -791,9 +810,7 @@ def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, 
     concepts = {c["key"]: c for c in db.concepts(course_id)}
     redo = {*plan["restarted"], *plan["added"]}
     lesson_ids, card_ids = _dropped(course_id, concepts, plan, old)
-    done = {r["key"] for r in db.rows(
-        "SELECT c.key FROM milestones m JOIN concepts c ON c.id = m.concept_id WHERE c.course_id = ? AND m.done = 1", course_id,
-    ) if r["key"] in plan["kept"]}
+    done = _done_milestones(course_id, plan["kept"])
     db.conn.execute("BEGIN")
     try:
         record_version(version_hash, new)
@@ -801,11 +818,7 @@ def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, 
         db.conn.execute("DELETE FROM capstones WHERE course_id = ?", (course_id,))
         db.conn.executemany("DELETE FROM concepts WHERE id = ?", [(concepts[k]["id"],) for k in plan["removed"]])
         unit_ids = _put_units(course_id, new, concepts, redo)
-        db.conn.execute("DELETE FROM concept_needs WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = ?)", (course_id,))
-        db.conn.executemany(
-            "INSERT OR IGNORE INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
-            [(unit_ids[u.key], unit_ids[n]) for u in new.units for n in u.needs],
-        )
+        _replace_needs(course_id, new, unit_ids)
         _add_capstones(course_id, new, unit_ids, done)
         _add_content(course_id, new, redo | (set() if plan["loose"] else {None}), unit_ids)
         _update_course(course, version_hash, new, old)
@@ -814,13 +827,32 @@ def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, 
     except Exception:
         db.conn.execute("ROLLBACK")
         raise
-    # A restarted unit's exercises start from their new starter files; the rest are written only where nothing is.
-    workspace = db.workspace(course["slug"])
+    refused = _write_starters(course["slug"], new, assets, redo)
+    _write_sources(source_files)
+    return {**{k: plan[k] for k in ("kept", "restarted", "added", "removed")}, "refused_files": refused}
+
+
+def _done_milestones(course_id: int, kept: list[str]) -> set[str]:
+    return {r["key"] for r in db.rows(
+        "SELECT c.key FROM milestones m JOIN concepts c ON c.id = m.concept_id WHERE c.course_id = ? AND m.done = 1", course_id,
+    ) if r["key"] in kept}
+
+
+def _replace_needs(course_id: int, new: Manifest, unit_ids: dict[str, int]) -> None:
+    db.conn.execute("DELETE FROM concept_needs WHERE concept_id IN (SELECT id FROM concepts WHERE course_id = ?)", (course_id,))
+    db.conn.executemany(
+        "INSERT OR IGNORE INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
+        [(unit_ids[u.key], unit_ids[n]) for u in new.units for n in u.needs],
+    )
+
+
+def _write_starters(slug: str, new: Manifest, assets: dict[str, bytes], redo: set[str]) -> list[str]:
+    """A restarted unit's exercises start from their new starter files; the rest are written only where nothing is.
+    The paths the workspace refused."""
+    workspace = db.workspace(slug)
     fresh = {path for x in new.lessons if x.unit in redo for b in x.blocks if b.kind == "exercise" for path in (b.data or {}).get("files", [])}
-    refused = [
+    return [
         f.path for f in new.files
         if (f.path in fresh or course_files.read_text(workspace, f.path) is None)
         and not course_files.write_text(workspace, f.path, assets[f.asset].decode(errors="replace"))
     ]
-    _write_sources(source_files)
-    return {**{k: plan[k] for k in ("kept", "restarted", "added", "removed")}, "refused_files": refused}

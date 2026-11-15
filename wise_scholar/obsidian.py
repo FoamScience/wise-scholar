@@ -7,7 +7,6 @@ import json
 import re
 import zipfile
 from datetime import datetime, timezone
-from pathlib import Path
 
 from . import course_files, crafted, db, quiz, widgets
 
@@ -122,6 +121,10 @@ def _alt(text: str) -> str:
     return " ".join(text.replace("]", ")").replace("[", "(").split())
 
 
+def _first_line(text: str, fallback: str) -> str:
+    return text.splitlines()[0] if text.strip() else fallback
+
+
 def _code(text: str, lang: str = "") -> str:
     fence = "`" * max(3, max((len(m) for m in re.findall(r"`{3,}", text)), default=0) + 1)
     return f"{fence}{lang}\n{text.rstrip()}\n{fence}\n"
@@ -144,66 +147,78 @@ class Vault:
         self.files: dict[str, bytes] = {}
         self.names: dict[tuple, str] = {}
         self.concepts = db.concept_view(course_id)
-        self.lessons = db.rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", course_id)
-        for lesson in self.lessons:
-            lesson["blocks"] = db.blocks(lesson["id"])
-            lesson["messages"] = db.rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson["id"])
+        self.lessons = self._load_lessons(course_id)
         self.capstones = db.capstones(course_id)
         self.errors = db.errors(self.course["profile_id"], course_id)
         self.workspace = db.WORKSPACE / self.course["slug"]
         self.cards = {e["card_id"]: db.card(e["card_id"]) for e in self.errors if e.get("card_id")}
-        # Claims taught in this course; the graph's links to claims of other courses are named, not linked.
+        self._load_claims(course_id, inline)
+        self.by_card = {
+            block["data"]["card_id"]: block
+            for lesson in self.lessons
+            for block in lesson["blocks"]
+            if block["kind"] in CARD_KINDS and block["data"].get("card_id")
+        }
+        self._assign_names()
+
+    @staticmethod
+    def _load_lessons(course_id: int) -> list[dict]:
+        lessons = db.rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", course_id)
+        for lesson in lessons:
+            lesson["blocks"] = db.blocks(lesson["id"])
+            lesson["messages"] = db.rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson["id"])
+        return lessons
+
+    def _load_claims(self, course_id: int, inline: bool):
+        """Claims taught in this course; the graph's links to claims of other courses are named, not linked."""
         graph = {"claims": [], "edges": []} if inline or self.course["mode"] == "teacher" else db.graph(self.course["profile_id"], datetime.now(timezone.utc).isoformat())
         self.claims = [c for c in graph["claims"] if any(src["course_id"] == course_id for src in c["sources"])]
         self.claim_text = {c["id"]: (c["text"], c["sources"][0]["topic"] if c["sources"] else "") for c in graph["claims"]}
         self.claim_edges = graph["edges"]
-        self.by_card = {}
-        for lesson in self.lessons:
-            for block in lesson["blocks"]:
-                if block["kind"] in CARD_KINDS and block["data"].get("card_id"):
-                    self.by_card[block["data"]["card_id"]] = block
-        self._assign_names()
 
     # --- names and links -------------------------------------------------------------------------------------------
 
     def _assign_names(self):
         taken: set[str] = set()
-
-        def claim(key: tuple, folder: str, title: str, number: int | None = None):
-            base = f"{self.root}/{folder}/" if folder else f"{self.root}/"
-            name = f"{number} {_name(title)}" if number is not None else _name(title)
-            path, n = f"{base}{name}", 1
-            # Case-insensitive: the vault may unpack on a filesystem that folds case.
-            while path.lower() in taken:
-                n += 1
-                path = f"{base}{name} ({n})"
-            taken.add(path.lower())
-            self.names[key] = path
-
-        claim(("course",), "", self.course["topic"])
+        self._claim_name(taken, ("course",), "", self.course["topic"])
         for module in dict.fromkeys(c["module"] for c in self.concepts):
-            claim(("module", module), "Modules", module)
+            self._claim_name(taken, ("module", module), "Modules", module)
         for c in self.concepts:
-            claim(("unit", c["id"]), "Units", c["title"])
+            self._claim_name(taken, ("unit", c["id"]), "Units", c["title"])
+        self._lesson_names(taken)
+        for e in self.errors:
+            self._claim_name(taken, ("mistake", e["id"]), "Mistakes", _first_line(e["prompt"], e["kind"]), e["id"])
+        for k in self.capstones:
+            self._claim_name(taken, ("project", k["id"]), "Projects", k["title"])
+        for c in self.claims:
+            self._claim_name(taken, ("claim", c["id"]), "Claims", c["text"])
+        if self.course["lang"]:
+            for word in self._words():
+                self._claim_name(taken, ("word", word["lemma"]), "Vocabulary", word["lemma"])
+
+    def _lesson_names(self, taken: set[str]):
+        """Interview and placement sit at the course's root; the lessons are numbered, and their cards go with them."""
         n = 0
         for lesson in self.lessons:
             if lesson["phase"] in ("interview", "placement"):
-                claim(("lesson", lesson["id"]), "", lesson["title"])
+                self._claim_name(taken, ("lesson", lesson["id"]), "", lesson["title"])
             else:
                 n += 1
-                claim(("lesson", lesson["id"]), "Lessons", lesson["title"], n)
+                self._claim_name(taken, ("lesson", lesson["id"]), "Lessons", lesson["title"], n)
             for block in lesson["blocks"]:
                 if block["kind"] in CARD_KINDS:
-                    claim(("card", block["id"]), "Cards", block["markdown"].splitlines()[0] if block["markdown"].strip() else block["kind"], block["id"])
-        for e in self.errors:
-            claim(("mistake", e["id"]), "Mistakes", e["prompt"].splitlines()[0] if e["prompt"].strip() else e["kind"], e["id"])
-        for k in self.capstones:
-            claim(("project", k["id"]), "Projects", k["title"])
-        for c in self.claims:
-            claim(("claim", c["id"]), "Claims", c["text"])
-        if self.course["lang"]:
-            for word in self._words():
-                claim(("word", word["lemma"]), "Vocabulary", word["lemma"])
+                    self._claim_name(taken, ("card", block["id"]), "Cards", _first_line(block["markdown"], block["kind"]), block["id"])
+
+    def _claim_name(self, taken: set[str], key: tuple, folder: str, title: str, number: int | None = None):
+        base = f"{self.root}/{folder}/" if folder else f"{self.root}/"
+        name = f"{number} {_name(title)}" if number is not None else _name(title)
+        path, n = f"{base}{name}", 1
+        # Case-insensitive: the vault may unpack on a filesystem that folds case.
+        while path.lower() in taken:
+            n += 1
+            path = f"{base}{name} ({n})"
+        taken.add(path.lower())
+        self.names[key] = path
 
     def link(self, key: tuple, label: str | None = None) -> str:
         path = self.names[key]
@@ -265,52 +280,69 @@ class Vault:
         return "\n".join(lines) + "\n"
 
     def _block_text(self, lesson: dict, block: dict) -> str:
-        t, d, kind = self.t, block["data"], block["kind"]
+        kind = block["kind"]
         if kind in CARD_KINDS:
             if self.inline:
                 return f"### {self._card_label(block)}\n\n{self._card_body(lesson, block)}\n"
             return self.embed(("card", block["id"]))
-        if kind == "figure":
-            credits = self._limits(d) + _credits(d.get("credits", []))
-            # An animation is printed as its stages, one after the other.
-            drawings = d["frames"] if len(d.get("frames", [])) > 1 else [d["svg"]]
-            if d.get("crafted"):
-                drawings = [crafted.standalone(svg) for svg in drawings]
-            if self.inline:
-                caption = " ".join(block["markdown"].split())
-                alt = _alt(d.get("alt", ""))
-                images = "".join(f"![{alt}](data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()})\n" for svg in drawings)
-                return images + (f"*{caption}*\n" if caption else "") + credits
-            embeds = ""
-            for n, svg in enumerate(drawings):
-                path = f"{self.root}/attachments/figure-{block['id']}{f'-{n + 1}' if len(drawings) > 1 else ''}.svg"
-                self.files[path] = svg.encode()
-                embeds += f"![[{path}]]\n"
-            return embeds + (f"*{block['markdown']}*\n" if block["markdown"] else "") + credits
-        if kind == "plot":
-            png = f"{self.root}/attachments/plot-{block['id']}.png"
-            if png in self.files:
-                return f"![[{png}]]\n*{block['markdown']}*\n" + self._limits(d)
-            return f"**{block['markdown']}**\n\n" + _code(json.dumps(d["spec"], ensure_ascii=False, indent=2), "json") + self._limits(d)
-        if kind == "widget":
-            return self._widget_drawing(block, d) + self._widget_text(block["markdown"], d) + self._limits(d)
-        if kind == "reading":
-            gloss = "\n".join(f"- **{g['word']}**: {g['meaning']}" for g in d.get("glossary", []) if "word" in g and "meaning" in g)
-            return f"### {d['title']}\n\n{block['markdown']}\n" + (f"\n**{t['glossary']}**\n{gloss}\n" if gloss else "")
-        if kind == "question":
-            answer = d.get("answer")
-            return f"**{block['markdown']}**\n\n{t['your_answer']}: {answer if answer is not None else t['unanswered']}\n"
-        if kind == "placement":
-            areas = "".join(f"\n- **{a['title']}**: {t['holds']}: {a['holds'] or '-'}; {t['lacks']}: {a['lacks'] or '-'}" for a in d.get("areas", []))
-            return f"**{t['result']}** · {t['level']}: {d.get('level', '')}\n\n{block['markdown']}\n" + (f"{areas}\n" if areas else "")
-        if kind == "done":
-            return _callout("success", t["unit_covered"], block["markdown"], folded=False, plain=self.inline)
-        if kind == "podcast":
-            lines = "\n".join(f"**{l['speaker']}:** {l['text']}" for l in d.get("lines", []))
-            return _callout("quote", f"{t['cast']} · {block['markdown']}", lines, plain=self.inline)
         if kind in ("network", "vocab"):
             return ""
-        return block["markdown"] + "\n"
+        render = {
+            "figure": self._figure_text, "plot": self._plot_text, "widget": self._widget_block, "reading": self._reading_text,
+            "question": self._question_text, "placement": self._placement_text, "done": self._done_text, "podcast": self._podcast_text,
+        }.get(kind)
+        return render(block) if render else block["markdown"] + "\n"
+
+    def _figure_text(self, block: dict) -> str:
+        d = block["data"]
+        credits = self._limits(d) + _credits(d.get("credits", []))
+        # An animation is printed as its stages, one after the other.
+        drawings = d["frames"] if len(d.get("frames", [])) > 1 else [d["svg"]]
+        if d.get("crafted"):
+            drawings = [crafted.standalone(svg) for svg in drawings]
+        if self.inline:
+            caption = " ".join(block["markdown"].split())
+            alt = _alt(d.get("alt", ""))
+            images = "".join(f"![{alt}](data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()})\n" for svg in drawings)
+            return images + (f"*{caption}*\n" if caption else "") + credits
+        embeds = ""
+        for n, svg in enumerate(drawings):
+            path = f"{self.root}/attachments/figure-{block['id']}{f'-{n + 1}' if len(drawings) > 1 else ''}.svg"
+            self.files[path] = svg.encode()
+            embeds += f"![[{path}]]\n"
+        return embeds + (f"*{block['markdown']}*\n" if block["markdown"] else "") + credits
+
+    def _plot_text(self, block: dict) -> str:
+        d = block["data"]
+        png = f"{self.root}/attachments/plot-{block['id']}.png"
+        if png in self.files:
+            return f"![[{png}]]\n*{block['markdown']}*\n" + self._limits(d)
+        return f"**{block['markdown']}**\n\n" + _code(json.dumps(d["spec"], ensure_ascii=False, indent=2), "json") + self._limits(d)
+
+    def _widget_block(self, block: dict) -> str:
+        d = block["data"]
+        return self._widget_drawing(block, d) + self._widget_text(block["markdown"], d) + self._limits(d)
+
+    def _reading_text(self, block: dict) -> str:
+        d, t = block["data"], self.t
+        gloss = "\n".join(f"- **{g['word']}**: {g['meaning']}" for g in d.get("glossary", []) if "word" in g and "meaning" in g)
+        return f"### {d['title']}\n\n{block['markdown']}\n" + (f"\n**{t['glossary']}**\n{gloss}\n" if gloss else "")
+
+    def _question_text(self, block: dict) -> str:
+        answer, t = block["data"].get("answer"), self.t
+        return f"**{block['markdown']}**\n\n{t['your_answer']}: {answer if answer is not None else t['unanswered']}\n"
+
+    def _placement_text(self, block: dict) -> str:
+        d, t = block["data"], self.t
+        areas = "".join(f"\n- **{a['title']}**: {t['holds']}: {a['holds'] or '-'}; {t['lacks']}: {a['lacks'] or '-'}" for a in d.get("areas", []))
+        return f"**{t['result']}** · {t['level']}: {d.get('level', '')}\n\n{block['markdown']}\n" + (f"{areas}\n" if areas else "")
+
+    def _done_text(self, block: dict) -> str:
+        return _callout("success", self.t["unit_covered"], block["markdown"], folded=False, plain=self.inline)
+
+    def _podcast_text(self, block: dict) -> str:
+        lines = "\n".join(f"**{l['speaker']}:** {l['text']}" for l in block["data"].get("lines", []))
+        return _callout("quote", f"{self.t['cast']} · {block['markdown']}", lines, plain=self.inline)
 
     def _card_label(self, block: dict) -> str:
         t, d, kind = self.t, block["data"], block["kind"]
@@ -346,13 +378,15 @@ class Vault:
         shown = t["unknown"] if d.get("unknown") else d["answer"]
         sure = "" if d.get("unknown") else f" · {t['sure'].format(round(d.get('confidence', 0) * 100))}"
         out = [f"**{t['your_answer']}**{sure}: {shown}"]
-        if d.get("correct") is not None:
-            out.append(f"**{t['result']}**: {t['right'] if d['correct'] else t['wrong']}")
-            out.append(f"**{t['answer']}**: {d.get('answer_key', '')}")
-            if d.get("feedback"):
-                out.append(f"**{t['feedback']}**: {d['feedback']}")
-            elif d.get("explanation"):
-                out.append(f"**{t['explanation']}**: {d['explanation']}")
+        return out + self._quiz_result(d) if d.get("correct") is not None else out
+
+    def _quiz_result(self, d: dict) -> list[str]:
+        t = self.t
+        out = [f"**{t['result']}**: {t['right'] if d['correct'] else t['wrong']}", f"**{t['answer']}**: {d.get('answer_key', '')}"]
+        if d.get("feedback"):
+            out.append(f"**{t['feedback']}**: {d['feedback']}")
+        elif d.get("explanation"):
+            out.append(f"**{t['explanation']}**: {d['explanation']}")
         return out
 
     def _quiz_body(self, d: dict) -> list[str]:
@@ -376,19 +410,27 @@ class Vault:
         return out
 
     def _task_body(self, block: dict, d: dict) -> list[str]:
-        t, kind, out = self.t, block["kind"], []
+        t, out = self.t, []
         if d.get("comparison"):
             for n, side in enumerate(("left", "right"), start=1):
                 out += [f"**{t['solution_n'].format(n)}**", "", d["comparison"][side], ""]
             out += [d["comparison"]["question"], ""]
         if d.get("helper"):
             out += [_callout("info", t["helper"], d["helper"], plain=self.inline), ""]
-        if kind == "exercise":
-            out += [f"**{t['run']}**: `{d.get('run', '')}`", f"**{t['files']}**:", *self._exercise_files(block, d)]
-            if self.solutions and d.get("last_run"):
-                out += ["", f"**{t['output']}** (exit {d['last_run'].get('exit_code')})", _code(d["last_run"].get("output", ""))]
-        if not self.solutions:
-            return out
+        if block["kind"] == "exercise":
+            out += self._exercise_body(block, d)
+        return out + self._worked(d) if self.solutions else out
+
+    def _exercise_body(self, block: dict, d: dict) -> list[str]:
+        t = self.t
+        out = [f"**{t['run']}**: `{d.get('run', '')}`", f"**{t['files']}**:", *self._exercise_files(block, d)]
+        if self.solutions and d.get("last_run"):
+            out += ["", f"**{t['output']}** (exit {d['last_run'].get('exit_code')})", _code(d["last_run"].get("output", ""))]
+        return out
+
+    def _worked(self, d: dict) -> list[str]:
+        """The learner's attempts, the hints given and the solution."""
+        t, out = self.t, []
         if d.get("attempts"):
             out += ["", f"**{t['attempts']}**"] + [f"{i + 1}. {a}" for i, a in enumerate(d["attempts"])]
         if d.get("hints"):
