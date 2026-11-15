@@ -12,6 +12,7 @@ import { lessonTitle, moduleRuns, outlineOf, replayShown, unitDone, searchHref }
 import { OutlineCard } from './Outline'
 import type { Block, Concept, CourseDetail, Lesson, Message, Ranked, SetupStep } from './course'
 import { ScopeCard, ScopeForm } from './Scope'
+import type { Source } from './Sources'
 import { ModuleGroup, SideMenu } from './CourseMap'
 import { AskButton, ChatPanel, PaneSwitcher } from './Chat'
 import { EditBar } from './EditBar'
@@ -308,13 +309,17 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
     if (!anyway && concept.unwritten) return setHeld(concept.id)
     if (!anyway && course?.mode !== 'teacher' && unmetNeeds(concept).length > 0) return setHeld(concept.id)
     setHeld(null)
-    api<Lesson>(`/api/concepts/${concept.id}/lesson`, {}).then(
-      (created) => {
-        addLesson(created)
-        showLesson(created.id)
-      },
-      (err: Error) => setError(err.message),
-    )
+    openLesson(`/api/concepts/${concept.id}/lesson`)
+  }
+
+  function opened(created: Lesson) {
+    addLesson(created)
+    showLesson(created.id)
+  }
+
+  /** Create a lesson (a unit's, an episode, a placement) and show it. */
+  function openLesson(path: string) {
+    api<Lesson>(path, {}).then(opened, (err: Error) => setError(err.message))
   }
 
   // a course just finished opens its recap once, when the tutor is done answering
@@ -372,96 +377,49 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
   // the summary card still to come keeps the total above the cards already shown
   const estimate = outline?.cards ?? lesson.cards
   const cardTotal = estimate && (lessonDone ? cards : Math.max(estimate, cards + 1))
-  const cardNumber = (i: number) => (cardTotal ? { n: lesson.blocks.slice(0, i + 1).filter((b) => b.kind !== 'outline').length, total: cardTotal } : null)
   const empty = lesson.blocks.length === 0 && !showPlan
   const canPrepare = lesson.phase === 'lesson' && lesson.concept_id !== null && course.mode !== 'teacher' && !lesson.batch && !lesson.replay && !finished
 
   return (
     <div className="workspace" data-pane={pane}>
-      <nav className="map" aria-label={t('map.label')}>
-        <MapHead
-          course={course}
-          running={lesson.running}
-          onStart={(kind) =>
-            api<Lesson>(`/api/courses/${course.id}/${kind}`, {}).then(
-              (created) => {
-                addLesson(created)
-                showLesson(created.id)
-              },
-              (err: Error) => setError(err.message),
-            )
-          }
-        />
-        <SideMenu
-          course={course}
-          running={lesson.running}
-          sources={sources}
-          onSources={setSources}
-          onError={setError}
-          onLesson={(created) => {
-            addLesson(created)
-            showLesson(created.id)
-          }}
-          onChangeMap={() => {
-            // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
-            showLesson(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
-            setAsking(true)
-            setChanging(true)
-            // after the click's render, once the chat is open
-            requestAnimationFrame(() => document.getElementById('chat')?.focus())
-          }}
-          onPace={(pace) =>
-            api(`/api/courses/${course.id}/pace`, { pace }).then(
-              () => setCourse((c) => c && { ...c, pace }),
-              (err: Error) => setError(err.message),
-            )
-          }
-        />
-        {course.lessons
-          .filter((l) => l.concept_id === null)
-          .map((l) => (
-            <button key={l.id} aria-current={l.id === lesson.id} onClick={() => showLesson(l.id)}>
-              {lessonTitle(l, t)}
-            </button>
-          ))}
-        {moduleRuns(course.concepts).map((units) => (
-          <ModuleGroup
-            key={units[0].id}
-            units={units}
-            course={course}
-            current={lesson.id}
-            held={held}
-            unmetNeeds={unmetNeeds}
-            onOpen={openConcept}
-            toggled={openModules[units[0].module]}
-            onToggle={(now) => setOpenModules((m) => ({ ...m, [units[0].module]: now }))}
-          />
-        ))}
-        {course.recap?.finished && (
-          <a className="recap-entry" href={`#/course/${course.id}/recap`}>
-            <span className="concept-name">{t('recap.mapEntry')}</span>
-            <span className="done-mark" role="img" aria-label={t('common.done')}>
-              ✓
-            </span>
-          </a>
-        )}
-      </nav>
+      <MapNav
+        course={course}
+        lesson={lesson}
+        sources={sources}
+        onSources={setSources}
+        onError={setError}
+        held={held}
+        unmetNeeds={unmetNeeds}
+        onOpenConcept={openConcept}
+        openModules={openModules}
+        onToggleModule={(module, now) => setOpenModules((m) => ({ ...m, [module]: now }))}
+        onShow={showLesson}
+        onCreate={openLesson}
+        onLesson={opened}
+        onChangeMap={() => {
+          // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
+          showLesson(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
+          setAsking(true)
+          setChanging(true)
+          // after the click's render, once the chat is open
+          requestAnimationFrame(() => document.getElementById('chat')?.focus())
+        }}
+        onPace={(pace) =>
+          api(`/api/courses/${course.id}/pace`, { pace }).then(
+            () => setCourse((c) => c && { ...c, pace }),
+            (err: Error) => setError(err.message),
+          )
+        }
+      />
 
       <main ref={lessonBox} className="lesson">
-        {course.upgrade && (
-          <UpgradeCard
-            upgrade={course.upgrade}
-            upgrading={upgrading}
-            onUpgrade={() => upgrade(course.upgrade!.hash)}
-            onStay={() => api<CourseDetail>(`/api/courses/${course.id}/upgrade/skip`, { hash: course.upgrade!.hash }).then(setCourse, (e: Error) => setError(e.message))}
-          />
-        )}
-        {course.setup.some((step) => step.status !== 'done' && step.status !== 'refused') && (
-          <SetupCard
-            steps={course.setup}
-            onDecide={(i, allow) => api(`/api/courses/${course.id}/setup/${i}`, { allow }).catch((e: Error) => setError(e.message))}
-          />
-        )}
+        <CourseNotices
+          course={course}
+          upgrading={upgrading}
+          onUpgrade={upgrade}
+          onStay={(hash) => api<CourseDetail>(`/api/courses/${course.id}/upgrade/skip`, { hash }).then(setCourse, (e: Error) => setError(e.message))}
+          onDecide={(i, allow) => api(`/api/courses/${course.id}/setup/${i}`, { allow }).catch((e: Error) => setError(e.message))}
+        />
         <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
         {/* first, wherever the tutor posted it: the plan and the counter belong under the title */}
         {outline && (
@@ -494,46 +452,16 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
               }
             />
           ))}
-        {lesson.blocks.map((b, i) => {
-          if (b.kind === 'outline' || (lesson.replay && i >= replayShown(lesson.blocks))) return null
-          const n = cardNumber(i)
-          const card = (
-            <LessonCard
-              key={b.id}
-              block={b}
-              lesson={lesson}
-              authored={course.mode === 'teacher'}
-              given={given[b.id]}
-              onGive={(answer) => give(b.id, answer)}
-              features={{ speech, commands, crafted, sketched }}
-              post={post}
-              onError={setError}
-            />
-          )
-          const shown = n ? (
-            <div key={b.id} className="numbered">
-              <span className="card-n" aria-label={t('outline.card', n)}>
-                {n.n} / {n.total}
-              </span>
-              {card}
-            </div>
-          ) : (
-            card
-          )
-          if (course.mode !== 'teacher' || b.kind === 'question') return shown
-          return (
-            <Fragment key={b.id}>
-              {shown}
-              <EditBar
-                block={b}
-                first={i === 0}
-                last={i === lesson.blocks.length - 1}
-                disabled={lesson.running}
-                onError={setError}
-              />
-            </Fragment>
-          )
-        })}
+        <LessonCards
+          course={course}
+          lesson={lesson}
+          total={cardTotal}
+          given={given}
+          onGive={give}
+          features={{ speech, commands, crafted, sketched }}
+          post={post}
+          onError={setError}
+        />
         {showPlan && (
           <Plan
             ranking={course.ranking}
@@ -543,15 +471,7 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
             disabled={lesson.running}
             onChoose={(mechanism) => post(`/api/courses/${course.id}/mechanism`, { mechanism })}
             onAccept={() => post(`/api/courses/${course.id}/plan/accept`, {})}
-            onPlacement={() =>
-              api<Lesson>(`/api/courses/${course.id}/placement`, {}).then(
-                (created) => {
-                  addLesson(created)
-                  showLesson(created.id)
-                },
-                (err: Error) => setError(err.message),
-              )
-            }
+            onPlacement={() => openLesson(`/api/courses/${course.id}/placement`)}
           />
         )}
         {lesson.phase === 'placement' && course.placement && course.lessons.find((l) => l.phase === 'placement')?.id === lesson.id && !lesson.blocks.some((b) => b.kind === 'placement') && (
@@ -561,18 +481,7 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
         {!lesson.running && (lesson.batch || canPrepare) && (
           <OfflineRow lesson={lesson} given={given} online={online} sending={sending} onSend={sendBatch} onPrepare={prepareOffline} />
         )}
-        {nextUnit && !lesson.running && (
-          <div className="lesson-next">
-            <button className="btn primary" onClick={() => openConcept(nextUnit)}>
-              {t('lesson.nextUnit', { title: nextUnit.title })}
-            </button>
-            {answeredToday && (
-              <a className="btn as-link" href="#/sitting">
-                {t('sitting.stop')}
-              </a>
-            )}
-          </div>
-        )}
+        {nextUnit && !lesson.running && <NextUnit unit={nextUnit} stop={answeredToday} onOpen={() => openConcept(nextUnit)} />}
         {error && <div className="error">{error}</div>}
         <div ref={lessonBottom} />
         {!open && (
@@ -621,6 +530,154 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
           requestAnimationFrame(() => document.getElementById('chat')?.focus())
         }}
       />
+    </div>
+  )
+}
+
+function MapNav(props: {
+  course: CourseDetail
+  lesson: Lesson
+  sources: Source[]
+  onSources: (sources: Source[]) => void
+  onError: (message: string) => void
+  held: number | null
+  unmetNeeds: (concept: Concept) => Concept[]
+  onOpenConcept: (concept: Concept, anyway?: boolean) => void
+  openModules: Record<string, boolean>
+  onToggleModule: (module: string, now: boolean) => void
+  onShow: (lessonId: number) => void
+  onCreate: (path: string) => void
+  onLesson: (created: Lesson) => void
+  onChangeMap: () => void
+  onPace: (pace: CourseDetail['pace']) => void
+}) {
+  const { t } = useTranslation()
+  const { course, lesson } = props
+  return (
+    <nav className="map" aria-label={t('map.label')}>
+      <MapHead course={course} running={lesson.running} onStart={(kind) => props.onCreate(`/api/courses/${course.id}/${kind}`)} />
+      <SideMenu
+        course={course}
+        running={lesson.running}
+        sources={props.sources}
+        onSources={props.onSources}
+        onError={props.onError}
+        onLesson={props.onLesson}
+        onChangeMap={props.onChangeMap}
+        onPace={props.onPace}
+      />
+      {course.lessons
+        .filter((l) => l.concept_id === null)
+        .map((l) => (
+          <button key={l.id} aria-current={l.id === lesson.id} onClick={() => props.onShow(l.id)}>
+            {lessonTitle(l, t)}
+          </button>
+        ))}
+      {moduleRuns(course.concepts).map((units) => (
+        <ModuleGroup
+          key={units[0].id}
+          units={units}
+          course={course}
+          current={lesson.id}
+          held={props.held}
+          unmetNeeds={props.unmetNeeds}
+          onOpen={props.onOpenConcept}
+          toggled={props.openModules[units[0].module]}
+          onToggle={(now) => props.onToggleModule(units[0].module, now)}
+        />
+      ))}
+      {course.recap?.finished && (
+        <a className="recap-entry" href={`#/course/${course.id}/recap`}>
+          <span className="concept-name">{t('recap.mapEntry')}</span>
+          <span className="done-mark" role="img" aria-label={t('common.done')}>
+            ✓
+          </span>
+        </a>
+      )}
+    </nav>
+  )
+}
+
+/** A newer version to move to, and setup steps still to decide, above the lesson. */
+function CourseNotices(props: {
+  course: CourseDetail
+  upgrading: boolean
+  onUpgrade: (hash: string) => void
+  onStay: (hash: string) => void
+  onDecide: (index: number, allow: boolean) => void
+}) {
+  const { course } = props
+  const upgrade = course.upgrade
+  return (
+    <>
+      {upgrade && <UpgradeCard upgrade={upgrade} upgrading={props.upgrading} onUpgrade={() => props.onUpgrade(upgrade.hash)} onStay={() => props.onStay(upgrade.hash)} />}
+      {course.setup.some((step) => step.status !== 'done' && step.status !== 'refused') && <SetupCard steps={course.setup} onDecide={props.onDecide} />}
+    </>
+  )
+}
+
+/** The lesson's cards in order, numbered when the lesson has a card count, each with its edit bar in a teacher's course. */
+function LessonCards(props: {
+  course: CourseDetail
+  lesson: Lesson
+  total: number | null | undefined
+  given: Record<number, Given>
+  onGive: (blockId: number, answer: Given) => void
+  features: { speech: boolean; commands: boolean; crafted: boolean; sketched: boolean }
+  post: (path: string, body: unknown) => void
+  onError: (message: string) => void
+}) {
+  const { t } = useTranslation()
+  const { course, lesson, total } = props
+  const cardNumber = (i: number) => (total ? { n: lesson.blocks.slice(0, i + 1).filter((b) => b.kind !== 'outline').length, total } : null)
+  return lesson.blocks.map((b, i) => {
+    if (b.kind === 'outline' || (lesson.replay && i >= replayShown(lesson.blocks))) return null
+    const n = cardNumber(i)
+    const card = (
+      <LessonCard
+        key={b.id}
+        block={b}
+        lesson={lesson}
+        authored={course.mode === 'teacher'}
+        given={props.given[b.id]}
+        onGive={(answer) => props.onGive(b.id, answer)}
+        features={props.features}
+        post={props.post}
+        onError={props.onError}
+      />
+    )
+    const shown = n ? (
+      <div key={b.id} className="numbered">
+        <span className="card-n" aria-label={t('outline.card', n)}>
+          {n.n} / {n.total}
+        </span>
+        {card}
+      </div>
+    ) : (
+      card
+    )
+    if (course.mode !== 'teacher' || b.kind === 'question') return shown
+    return (
+      <Fragment key={b.id}>
+        {shown}
+        <EditBar block={b} first={i === 0} last={i === lesson.blocks.length - 1} disabled={lesson.running} onError={props.onError} />
+      </Fragment>
+    )
+  })
+}
+
+function NextUnit(props: { unit: Concept; stop: boolean; onOpen: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="lesson-next">
+      <button className="btn primary" onClick={props.onOpen}>
+        {t('lesson.nextUnit', { title: props.unit.title })}
+      </button>
+      {props.stop && (
+        <a className="btn as-link" href="#/sitting">
+          {t('sitting.stop')}
+        </a>
+      )}
     </div>
   )
 }
