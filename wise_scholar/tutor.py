@@ -1649,6 +1649,26 @@ def _note_writing_error(challenge_id: int, data: dict, solution: str) -> None:
                  data["hints"][-1] if data["hints"] else "", card_id=card_id)
 
 
+def _quiz_error(
+    lesson: dict, question: str, kind: str, answer_key: str, options: list[str], misconceptions: dict[str, str],
+    number: int | None, lemma: str, pretest: bool,
+) -> str | None:
+    if misconceptions and (kind != "choice" or not set(misconceptions) <= set(options) - {answer_key}):
+        return "error: misconceptions maps wrong options of a choice quiz, each exactly as written, to the belief behind it"
+    most = PLACEMENT_OPTIONS if lesson["phase"] == "placement" else 5
+    if kind == "choice" and not (2 <= len(options) <= most and answer_key in options):
+        return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
+    if number and number > lesson["questions"]:
+        return f"error: the placement check has {lesson['questions']} questions and all are posed; call set_placement"
+    if lemma and not lesson["lang"]:
+        return "error: lemma needs a language course; pose_vocab_check or add_reading sets the language"
+    if problem := _questions_error(question):
+        return problem
+    if pretest and not prepared(lesson) and (problem := _pretest_length_error("\n".join([question, *options]))):
+        return problem
+    return None
+
+
 @mcp.tool()
 async def pose_quiz(
     lesson_id: int,
@@ -1692,19 +1712,8 @@ async def pose_quiz(
     options = options or []
     translation = translation.strip()
     misconceptions = {o: b.strip() for o, b in (misconceptions or {}).items() if b.strip()}
-    if misconceptions and (kind != "choice" or not set(misconceptions) <= set(options) - {answer_key}):
-        return "error: misconceptions maps wrong options of a choice quiz, each exactly as written, to the belief behind it"
-    most = PLACEMENT_OPTIONS if lesson["phase"] == "placement" else 5
-    if kind == "choice" and not (2 <= len(options) <= most and answer_key in options):
-        return f"error: a choice quiz needs 2 to {most} options here, one of them exactly equal to answer_key"
     number = placement_posed(lesson_id) + 1 if lesson["questions"] else None
-    if number and number > lesson["questions"]:
-        return f"error: the placement check has {lesson['questions']} questions and all are posed; call set_placement"
-    if lemma and not lesson["lang"]:
-        return "error: lemma needs a language course; pose_vocab_check or add_reading sets the language"
-    if problem := _questions_error(question):
-        return problem
-    if pretest and not prepared(lesson) and (problem := _pretest_length_error("\n".join([question, *options]))):
+    if problem := _quiz_error(lesson, question, kind, answer_key, options, misconceptions, number, lemma, pretest):
         return problem
     options = _shuffled(options) if kind == "choice" else []
     card_id = db.add_card(
@@ -2007,6 +2016,29 @@ async def search_claims(lesson_id: int, queries: list[str]) -> str:
     return "\n".join(out)
 
 
+def _claim_error(c: NewClaim, text: str, lesson: dict) -> str | None:
+    """Why a claim cannot be recorded: neither or both of id and text, a claim that is not the learner's or that they
+    marked wrong, one said already, or evidence that is not a check of this lesson."""
+    if (c.id is None) == (not text):
+        return f"error: claim {c.key!r} needs either id or text, not both"
+    if c.id is not None:
+        known = db.claim(c.id)
+        if not known or known["profile_id"] != lesson["profile_id"]:
+            return f"error: there is no claim {c.id}"
+        if known["wrong"]:
+            return f"error: claim {c.id} was marked wrong by the learner; leave it out"
+    else:
+        if len(text) > CLAIM_CHARS:
+            return f"error: claim {c.key!r} is too long; one statement, under {CLAIM_CHARS} characters"
+        if same := db.same_claim(lesson["profile_id"], text):
+            return f"error: claim {c.key!r} was marked wrong by the learner; leave it out" if same["wrong"] else f"error: claim {same['id']} says {c.key!r} already; give its id"
+    for block_id in c.evidence:
+        block = db.block(block_id)
+        if not block or block["lesson_id"] != lesson["id"] or block["kind"] not in db.EVIDENCE_KINDS or (block["data"] or {}).get("pretest"):
+            return f"error: block {block_id} is not a quick check, challenge or exercise of this lesson after the pretest"
+    return None
+
+
 @mcp.tool()
 async def record_claims(lesson_id: int, claims: list[NewClaim], links: list[ClaimLink] = []) -> str:
     """Record the claims this lesson taught, all in one call, after search_claims.
@@ -2028,23 +2060,8 @@ async def record_claims(lesson_id: int, claims: list[NewClaim], links: list[Clai
     entries = []
     for c in claims:
         text = " ".join(c.text.split())
-        if (c.id is None) == (not text):
-            return f"error: claim {c.key!r} needs either id or text, not both"
-        if c.id is not None:
-            known = db.claim(c.id)
-            if not known or known["profile_id"] != lesson["profile_id"]:
-                return f"error: there is no claim {c.id}"
-            if known["wrong"]:
-                return f"error: claim {c.id} was marked wrong by the learner; leave it out"
-        else:
-            if len(text) > CLAIM_CHARS:
-                return f"error: claim {c.key!r} is too long; one statement, under {CLAIM_CHARS} characters"
-            if same := db.same_claim(lesson["profile_id"], text):
-                return f"error: claim {c.key!r} was marked wrong by the learner; leave it out" if same["wrong"] else f"error: claim {same['id']} says {c.key!r} already; give its id"
-        for block_id in c.evidence:
-            block = db.block(block_id)
-            if not block or block["lesson_id"] != lesson_id or block["kind"] not in db.EVIDENCE_KINDS or (block["data"] or {}).get("pretest"):
-                return f"error: block {block_id} is not a quick check, challenge or exercise of this lesson after the pretest"
+        if problem := _claim_error(c, text, lesson):
+            return problem
         entries.append({"key": c.key, "id": c.id, "text": text, "evidence": c.evidence})
     for link in links:
         if {link.source, link.target} - set(keys) or link.source == link.target:
