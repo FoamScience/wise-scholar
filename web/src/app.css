@@ -1,9 +1,17 @@
-@layer theme, base, legacy, components, utilities;
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full · scope: app · modes: light+dark
+ * paper: #f7f9f8 (hex, read by Mermaid and cytoscape) · accent: #0b5f5a · display: Instrument Sans · body: Instrument Sans, IBM Plex Sans Arabic
+ * nav: kept shell, a top bar with the wordmark, text links and the profile · signature: the sitting agenda on the home screen · states: loading skeleton, empty, error
+ * axes: light/grotesk-sans/chromatic-teal · posture: restrained · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S4 R5 V3 · weakest: V, a kept brand and shell leave few axes to move; the sitting agenda leads the home screen instead of the topic box */
+/* Hallmark · waive 49b · the error notebook link in the sitting agenda is a real count and phrase, two lines at most on a 320px phone */
+/* Hallmark · dismissed 41 · the dark surfaces are the dark theme's raised panels; their text inherits --ink, which swaps in the same token block */
+/* Hallmark · reworded "Error notebook · 8 open" to "Error notebook: 8 open" · 63 names middle-dot meta strings; 34 strings reworded the same way in en, fr and ar */
+@layer theme, base, components, utilities;
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import './base.css' layer(base);
-@import './index.css' layer(legacy);
+@import '../../wise_scholar/kit/iso.css' layer(components);
 @import './styles/shell.css' layer(components);
 @import './styles/home.css' layer(components);
 @import './styles/workspace.css' layer(components);
