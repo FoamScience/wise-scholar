@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { cn } from 'cn'
+import { Badge } from '@/components/ui/badge'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { Slider } from '@/components/ui/slider'
+import { Textarea } from '@/components/ui/textarea'
 import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { api } from './api'
 import { useArrivals } from './arrive'
@@ -11,6 +16,25 @@ import { gradeOffline, placements } from './offline'
 import type { Given } from './offline'
 
 export type QuizKind = 'choice' | 'open' | 'sort'
+
+const LABEL = 'text-sm leading-snug font-medium text-ink-2'
+const SMALL = 'text-sm text-muted-foreground'
+const ROW = 'flex flex-wrap items-center justify-end gap-2'
+const CHIP = 'h-auto rounded-sm bg-accent px-2 py-0.5 text-base text-accent-foreground'
+const WARN = 'h-auto rounded-sm bg-warm-tint px-2 py-0.5 text-base text-warm'
+const ATTEMPT = 'attempt flex flex-col gap-0.5 rounded-md bg-secondary px-4 py-3 whitespace-pre-wrap print:break-inside-avoid'
+const SOLUTION = 'solution rounded-md bg-accent px-4 py-3 print:break-inside-avoid [&>:last-child]:mb-0'
+const HINT = 'hint rounded-md bg-warm-tint px-4 py-3 text-warm-ink print:break-inside-avoid [&>:last-child]:mb-0'
+const ERROR = 'rounded-md bg-warm-tint px-4 py-3 text-warm-ink'
+const OPTION = 'flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 [&_p]:m-0'
+const PICKED = 'border-primary bg-accent'
+const BLOCK = 'block border-t pt-6 first:border-t-0 first:pt-0'
+const RESULT = 'quiz-result flex flex-col gap-3 [&_p]:mt-1 [&_p]:mb-0'
+const SORT_OUTCOME = 'm-0 flex list-none flex-col gap-2 p-0 [&_li]:flex [&_li]:flex-wrap [&_li]:items-center [&_li]:gap-2 [&_li_p]:m-0'
+const QUIZ = 'flex flex-col gap-3 [&>.prose>p]:m-0 [&>.prose>p]:font-medium'
+const QUIZ_HEAD = cn(LABEL, 'flex flex-wrap items-center gap-3')
+const PANEL = 'block flex flex-col gap-3 border-t pt-6 first:border-t-0 first:pt-0'
+const PAGE = 'mx-auto flex w-full max-w-(--measure) flex-col gap-10 px-6 pt-10 pb-16'
 
 export type QuizData = {
   card_id: number
@@ -49,22 +73,23 @@ type DueCard = {
 function SortForm(props: { items: SortItem[]; categories: string[]; placed: Record<string, string>; onPlace: (item: string, category: string) => void }) {
   const { t } = useTranslation()
   return (
-    <div className="sort">
-      <div className="small">{t('quiz.placeEach')}</div>
+    <div className="flex flex-col gap-2">
+      <div className={SMALL}>{t('quiz.placeEach')}</div>
       {props.items.map((item) => (
-        <div key={item.text} className="sort-row">
+        <div key={item.text} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border px-3 py-2 [&_p]:m-0">
           <Markdown>{item.text}</Markdown>
-          <div className="cats" role="group" aria-label={item.text}>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={item.text}>
             {props.categories.map((c) => (
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 key={c}
                 aria-pressed={props.placed[item.text] === c}
-                className={props.placed[item.text] === c ? 'cat picked' : 'cat'}
+                className={cn('h-auto min-h-9 rounded-md bg-transparent px-3 py-1 text-base font-normal', props.placed[item.text] === c && PICKED)}
                 onClick={() => props.onPlace(item.text, c)}
               >
                 {c}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -79,12 +104,12 @@ export function SortOutcome({ items, answer, misplaced }: { items: SortItem[]; a
   const placed = placements(answer)
   const wrong = new Set(misplaced ?? [])
   return (
-    <ul className="sort-outcome">
+    <ul className={SORT_OUTCOME}>
       {items.map((item) => (
-        <li key={item.text} className={wrong.has(item.text) ? 'misplaced' : undefined}>
+        <li key={item.text}>
           <Markdown>{item.text}</Markdown>
-          <span className={wrong.has(item.text) ? 'chip warn' : 'chip'}>{placed[item.text] ?? '?'}</span>
-          {wrong.has(item.text) && <span className="small">{t('quiz.misplaced')}</span>}
+          <Badge variant="secondary" className={wrong.has(item.text) ? WARN : CHIP}>{placed[item.text] ?? '?'}</Badge>
+          {wrong.has(item.text) && <span className={SMALL}>{t('quiz.misplaced')}</span>}
         </li>
       ))}
     </ul>
@@ -100,8 +125,8 @@ export function Translation({ text, open }: { text?: string; open?: boolean }) {
   const { t } = useTranslation()
   if (!text) return null
   return (
-    <details className="translation" open={open}>
-      <summary>{t('quiz.translation')}</summary>
+    <details className="[&>:last-child]:mt-2 [&>:last-child]:mb-0 [&>:last-child]:text-muted-foreground" open={open}>
+      <summary className="cursor-pointer text-sm text-muted-foreground">{t('quiz.translation')}</summary>
       <Markdown>{text}</Markdown>
     </details>
   )
@@ -110,16 +135,16 @@ export function Translation({ text, open }: { text?: string; open?: boolean }) {
 function ChoiceOptions(props: { name: string; options: string[]; answer: string; unknown: boolean | null; onPick: (option: string) => void; onUnknown: () => void }) {
   const { t } = useTranslation()
   return (
-    <div className="quiz-options">
+    <div className="flex flex-col gap-2">
       {props.options.map((o) => (
-        <label key={o} className={o === props.answer ? 'quiz-option picked' : 'quiz-option'}>
-          <input type="radio" name={props.name} checked={o === props.answer} onChange={() => props.onPick(o)} />
+        <label key={o} className={cn(OPTION, o === props.answer && PICKED)}>
+          <input type="radio" className="accent-primary" name={props.name} checked={o === props.answer} onChange={() => props.onPick(o)} />
           <Markdown>{o}</Markdown>
         </label>
       ))}
       {props.unknown !== null && (
-        <label className={props.unknown ? 'quiz-option unknown picked' : 'quiz-option unknown'}>
-          <input type="radio" name={props.name} checked={props.unknown} onChange={props.onUnknown} />
+        <label className={cn(OPTION, 'border-dashed text-muted-foreground', props.unknown && PICKED)}>
+          <input type="radio" className="accent-primary" name={props.name} checked={props.unknown} onChange={props.onUnknown} />
           {t('quiz.dontKnow')}
         </label>
       )}
@@ -131,24 +156,25 @@ function ChoiceOptions(props: { name: string; options: string[]; answer: string;
 function Confidence(props: { id: string; value: number | null; onChange: (value: number) => void; ready: boolean }) {
   const { t } = useTranslation()
   return (
-    <div className="confidence">
-      <label htmlFor={`${props.id}-confidence`}>{t('quiz.howSure')}</label>
-      <span className="small">{t('quiz.guessing')}</span>
-      <input
+    <div className="flex items-center gap-3 max-[760px]:flex-wrap">
+      <label id={`${props.id}-confidence-label`} className="font-medium max-[760px]:basis-full">{t('quiz.howSure')}</label>
+      <span className={SMALL}>{t('quiz.guessing')}</span>
+      <Slider
         id={`${props.id}-confidence`}
-        type="range"
+        aria-labelledby={`${props.id}-confidence-label`}
+        className="min-h-11 w-auto grow"
         min={0}
         max={100}
         step={5}
-        value={props.value ?? 0}
+        value={[props.value ?? 0]}
         disabled={props.value === null}
-        onChange={(e) => props.onChange(Number(e.target.value))}
+        onValueChange={(v) => props.onChange(Array.isArray(v) ? v[0] : v)}
       />
-      <span className="small">{t('quiz.certain')}</span>
-      <output>{percent((props.value ?? 0) / 100)}</output>
-      <button className="btn primary" disabled={!props.ready}>
+      <span className={SMALL}>{t('quiz.certain')}</span>
+      <output className="w-11 tabular-nums">{percent((props.value ?? 0) / 100)}</output>
+      <Button type="submit" disabled={!props.ready}>
         {t('common.submit')}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -178,7 +204,7 @@ function QuizForm(props: {
   }
 
   return (
-    <form className="quiz-form" onSubmit={submit}>
+    <form className="flex flex-col gap-3" onSubmit={submit}>
       {props.kind === 'sort' ? (
         <SortForm items={items} categories={props.categories ?? []} placed={placed} onPlace={(item, c) => setPlaced({ ...placed, [item]: c })} />
       ) : props.kind === 'choice' ? (
@@ -216,12 +242,12 @@ function OpenAnswer(props: { id: string; answer: string; onAnswer: (answer: stri
   const { t } = useTranslation()
   return (
     <>
-      <label htmlFor={`${props.id}-answer`} className="small">
+      <label htmlFor={`${props.id}-answer`} className={SMALL}>
         {t('common.yourAnswer')}
       </label>
-      <textarea
+      <Textarea
         id={`${props.id}-answer`}
-        className="field" dir="auto"
+        className="min-h-11 py-3 leading-snug hover:enabled:border-foreground" dir="auto"
         rows={3}
         value={props.answer}
         onChange={(e) => props.onAnswer(e.target.value)}
@@ -234,18 +260,18 @@ export function QuizResult(props: { answer: string; confidence: number; result: 
   const { result } = props
   const { t } = useTranslation()
   return (
-    <div className="quiz-result">
-      <div className="attempt">
-        <span className="label">
+    <div className={RESULT}>
+      <div className={ATTEMPT}>
+        <span className={LABEL}>
           {props.unknown ? t('common.yourAnswer') : t('quiz.answerSure', { percent: percent(props.confidence) })}
         </span>
         <GivenAnswer answer={props.answer} unknown={props.unknown} items={props.items} misplaced={result.misplaced} picked={props.picked} />
       </div>
-      <div className={result.correct ? 'solution' : 'hint'}>
-        <div className="label">{result.correct ? t('quiz.correct') : t('quiz.notQuite')}</div>
+      <div className={result.correct ? SOLUTION : HINT}>
+        <div className={cn(LABEL, !result.correct && 'text-warm')}>{result.correct ? t('quiz.correct') : t('quiz.notQuite')}</div>
         {!result.correct && !props.items && <Markdown>{t('quiz.answerKey', { answer: result.answer_key })}</Markdown>}
         <Markdown>{props.feedback || result.explanation}</Markdown>
-        {result.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: result.misconception })}</InlineMarkdown></p>}
+        {result.misconception && <p><InlineMarkdown>{t('quiz.belief', { belief: result.misconception })}</InlineMarkdown></p>}
         {result.confident_miss && (
           <p>{t('quiz.confidentMiss', { percent: percent(props.confidence) })}</p>
         )}
@@ -266,8 +292,8 @@ export function GradedAnswer({ data: d }: { data: QuizData }) {
   const { t } = useTranslation()
   if (d.correct === undefined)
     return (
-      <div className="attempt">
-        <span className="label">{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
+      <div className={ATTEMPT}>
+        <span className={LABEL}>{t('quiz.grading', { percent: percent(d.confidence!) })}</span>
         <AnswerText text={d.answer!} picked={d.kind === 'choice'} />
       </div>
     )
@@ -278,23 +304,23 @@ export function GradedAnswer({ data: d }: { data: QuizData }) {
 function SelfGrade(props: { answer: string; confidence: number; answerKey: string; explanation?: string; disabled?: boolean; onGrade: (correct: boolean) => void }) {
   const { t } = useTranslation()
   return (
-    <div className="quiz-result">
-      <div className="attempt">
-        <span className="label">{t('quiz.answerSure', { percent: percent(props.confidence) })}</span>
+    <div className={RESULT}>
+      <div className={ATTEMPT}>
+        <span className={LABEL}>{t('quiz.answerSure', { percent: percent(props.confidence) })}</span>
         <AnswerText text={props.answer} />
       </div>
-      <div className="solution">
-        <div className="label">{t('review.model')}</div>
+      <div className={SOLUTION}>
+        <div className={LABEL}>{t('review.model')}</div>
         <Markdown>{props.answerKey}</Markdown>
         <Markdown>{props.explanation ?? ''}</Markdown>
       </div>
-      <div className="row">
-        <button className="btn" disabled={props.disabled} onClick={() => props.onGrade(false)}>
+      <div className={ROW}>
+        <Button variant="outline" disabled={props.disabled} onClick={() => props.onGrade(false)}>
           {t('review.missed')}
-        </button>
-        <button className="btn primary" disabled={props.disabled} onClick={() => props.onGrade(true)}>
+        </Button>
+        <Button disabled={props.disabled} onClick={() => props.onGrade(true)}>
           {t('review.right')}
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -304,23 +330,23 @@ function SelfGrade(props: { answer: string; confidence: number; answerKey: strin
 function AuthoredKey({ data: d }: { data: QuizData }) {
   const { t } = useTranslation()
   return (
-    <div className="solution">
+    <div className={SOLUTION}>
       {d.kind === 'sort' ? (
-        <ul className="sort-outcome">
+        <ul className={SORT_OUTCOME}>
           {sortItems(d.options).map((o) => (
             <li key={o.text}>
               <Markdown>{o.text}</Markdown>
-              <span className="chip">{o.category ?? '?'}</span>
+              <Badge variant="secondary" className={CHIP}>{o.category ?? '?'}</Badge>
             </li>
           ))}
         </ul>
       ) : (
         d.options.length > 0 && (
-          <ul className="book-options">
+          <ul className="m-0 flex flex-col gap-2 ps-6 [&_p]:m-0">
             {(d.options as string[]).map((o) => (
-              <li key={o} className={o === d.answer_key ? 'picked' : undefined}>
+              <li key={o} className={o === d.answer_key ? 'font-semibold' : undefined}>
                 <Markdown>{o}</Markdown>
-                {d.misconceptions?.[o] && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: d.misconceptions[o] })}</InlineMarkdown></p>}
+                {d.misconceptions?.[o] && <p><InlineMarkdown>{t('quiz.belief', { belief: d.misconceptions[o] })}</InlineMarkdown></p>}
               </li>
             ))}
           </ul>
@@ -328,7 +354,7 @@ function AuthoredKey({ data: d }: { data: QuizData }) {
       )}
       {d.kind !== 'sort' && (
         <>
-          <div className="label">{t('quiz.key')}</div>
+          <div className={LABEL}>{t('quiz.key')}</div>
           <Markdown>{d.answer_key ?? ''}</Markdown>
         </>
       )}
@@ -357,7 +383,7 @@ function OfflineAnswer(props: { id: number; data: QuizData; given?: Given; onGiv
   return (
     <>
       <QuizResult picked={d.kind === 'choice'} answer={given.answer} confidence={given.confidence} result={result} items={d.kind === 'sort' ? sortItems(d.options) : undefined} />
-      <div className="small">{t('offline.kept')}</div>
+      <div className={SMALL}>{t('offline.kept')}</div>
     </>
   )
 }
@@ -378,10 +404,10 @@ export function QuizCard(props: QuizCardProps) {
   const d = props.data
   const { t } = useTranslation()
   return (
-    <section id={`block-${props.id}`} className="block quiz">
-      <div className="label">
+    <section id={`block-${props.id}`} className={`${BLOCK} ${QUIZ}`}>
+      <div className={QUIZ_HEAD}>
         {props.data.pretest ? t('quiz.pretest') : d.kind === 'sort' ? t('quiz.sort') : t('quiz.quickCheck')}
-        {d.number !== undefined && <span className="count">{t('quiz.numbered', { number: d.number, of: d.of })}</span>}
+        {d.number !== undefined && <span className="ms-auto text-muted-foreground tabular-nums">{t('quiz.numbered', { number: d.number, of: d.of })}</span>}
       </div>
       <Markdown>{props.question}</Markdown>
       <Translation text={d.translation} />
@@ -422,21 +448,21 @@ function ReviewEnd(props: { total: number; left: number; then: string | null; on
   const { t } = useTranslation()
   const { left, then } = props
   return (
-    <main className="home">
-      <h1>{left > 0 ? t('review.timeUp') : props.total ? t('review.done') : t('review.nothingDue')}</h1>
-      {left > 0 && <p className="muted">{t('review.left', { count: left })}</p>}
-      <div className="row">
+    <main className={PAGE}>
+      <h1 className="m-0 max-w-none">{left > 0 ? t('review.timeUp') : props.total ? t('review.done') : t('review.nothingDue')}</h1>
+      {left > 0 && <p className="text-muted-foreground">{t('review.left', { count: left })}</p>}
+      <div className="flex flex-wrap items-center gap-2">
         {then ? (
-          <a className="btn primary as-link" href={then} onClick={goOn(then)}>
+          <a className={buttonVariants()} href={then} onClick={goOn(then)}>
             {t('review.onToNext')}
           </a>
         ) : (
-          <a className="btn as-link" href="#/">{t('review.back')}</a>
+          <a className={buttonVariants({ variant: 'outline' })} href="#/">{t('review.back')}</a>
         )}
         {left > 0 && (
-          <button type="button" className="btn" onClick={props.onMore}>
+          <Button type="button" variant="outline" onClick={props.onMore}>
             {t('review.more')}
-          </button>
+          </Button>
         )}
       </div>
     </main>
@@ -449,27 +475,32 @@ function ReviewChoice(props: { options: string[]; picked: string | null; result:
   const { result, picked } = props
   return (
     <>
-      <div className="quiz-options">
+      <div className="flex flex-col gap-2">
         {props.options.map((o) => (
-          <button
+          <Button
             key={o}
             type="button"
-            className={result ? (o === result.answer_key ? 'quiz-option right' : o === picked ? 'quiz-option wrong' : 'quiz-option') : 'quiz-option'}
+            variant="outline"
+            className={cn(
+              OPTION,
+              'h-auto w-full justify-start bg-card text-start text-base font-normal whitespace-normal text-foreground hover:bg-card hover:enabled:border-primary disabled:cursor-default disabled:opacity-100',
+              result && (o === result.answer_key ? PICKED : o === picked && 'border-destructive text-muted-foreground'),
+            )}
             disabled={picked !== null}
             onClick={() => props.onPick(o)}
           >
             <Markdown>{o}</Markdown>
-          </button>
+          </Button>
         ))}
       </div>
       {result && (
         <>
           {!result.correct && <Markdown>{result.explanation}</Markdown>}
-          {result.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: result.misconception })}</InlineMarkdown></p>}
-          <div className="row">
-            <button className="btn primary" onClick={props.onNext}>
+          {result.misconception && <p><InlineMarkdown>{t('quiz.belief', { belief: result.misconception })}</InlineMarkdown></p>}
+          <div className={ROW}>
+            <Button onClick={props.onNext}>
               {t('common.next')}
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -482,26 +513,26 @@ function ReviewOpen(props: { shown: { answer_key: string; explanation: string } 
   const { t } = useTranslation()
   if (!props.shown) {
     return (
-      <div className="row">
-        <button className="btn primary" onClick={props.onShow}>
+      <div className={ROW}>
+        <Button onClick={props.onShow}>
           {t('review.showAnswer')}
-        </button>
+        </Button>
       </div>
     )
   }
   return (
     <>
-      <div className="solution">
+      <div className={SOLUTION}>
         <Markdown>{props.shown.answer_key}</Markdown>
         <Markdown>{props.shown.explanation}</Markdown>
       </div>
-      <div className="row">
-        <button className="btn" onClick={() => props.onKnew(false)}>
+      <div className={ROW}>
+        <Button variant="outline" onClick={() => props.onKnew(false)}>
           {t('review.didnt')}
-        </button>
-        <button className="btn primary" onClick={() => props.onKnew(true)}>
+        </Button>
+        <Button onClick={() => props.onKnew(true)}>
           {t('review.knewIt')}
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -511,12 +542,12 @@ function ReviewHead(props: { card: DueCard; n: number; total: number; then: stri
   const { t } = useTranslation()
   const { card, then } = props
   return (
-    <div className="label">
+    <div className={QUIZ_HEAD}>
       <span dir="auto">{card.topic}</span>
-      <span className="muted">{t('review.position', { n: props.n, total: props.total })}</span>
-      {card.confident_miss && <span className="chip warn">{t('review.sureAndMissed')}</span>}
+      <span className="text-muted-foreground">{t('review.position', { n: props.n, total: props.total })}</span>
+      {card.confident_miss && <Badge variant="secondary" className={WARN}>{t('review.sureAndMissed')}</Badge>}
       {then && (
-        <a className="btn as-link skip" href={then} onClick={goOn(then)}>
+        <a className={cn(buttonVariants({ variant: 'outline' }), 'ms-auto whitespace-normal')} href={then} onClick={goOn(then)}>
           {t('review.skipWarmup')}
         </a>
       )}
@@ -543,7 +574,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
     api<DueCard[]>(`/api/reviews?profile=${profile}${then ? '&warmup=true' : ''}`).then(setCards, (e) => setError(e.message))
   }, [profile, then])
 
-  if (!cards) return <main className="home">{error && <div className="error">{error}</div>}</main>
+  if (!cards) return <main className={PAGE}>{error && <div className={ERROR}>{error}</div>}</main>
 
   const card = over ? undefined : cards[index]
   if (!card) {
@@ -582,11 +613,11 @@ export function Review({ profile, then }: { profile: number; then: string | null
   }
 
   return (
-    <main ref={box} className="home">
-      <section key={card.id} className="block quiz review-card">
+    <main ref={box} className={PAGE}>
+      <section key={card.id} className={`${BLOCK} ${QUIZ}`}>
         <ReviewHead card={card} n={index + 1} total={cards.length} then={then} />
-        <div className="review-time" aria-hidden="true">
-          <span style={{ animationDuration: `${REVIEW_BOX_MS}ms`, animationDelay: `-${Date.now() - started}ms` }} />
+        <div className="h-[3px] overflow-hidden rounded-[2px] bg-border" aria-hidden="true">
+          <span className="block h-full origin-left animate-[review-time_linear_forwards] bg-primary rtl:origin-right" style={{ animationDuration: `${REVIEW_BOX_MS}ms`, animationDelay: `-${Date.now() - started}ms` }} />
         </div>
         <Markdown>{card.question}</Markdown>
         <Translation text={card.translation} />
@@ -595,7 +626,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
         ) : (
           <ReviewOpen shown={shown} onShow={show} onKnew={knew} />
         )}
-        {error && <div className="error">{error}</div>}
+        {error && <div className={ERROR}>{error}</div>}
       </section>
     </main>
   )
@@ -616,18 +647,18 @@ export function ReviewPanels({ profile }: { profile: number }) {
   const byTopic = [...counts]
 
   return (
-    <div className="panels">
-      <section className="block">
-        <div className="label">{t('review.due')}</div>
-        {byTopic.length === 0 && <div className="muted">{t('review.nothingDueNow')}</div>}
+    <div className="flex flex-col gap-6">
+      <section className={PANEL}>
+        <div className={LABEL}>{t('review.due')}</div>
+        {byTopic.length === 0 && <div className="text-muted-foreground">{t('review.nothingDueNow')}</div>}
         {byTopic.map(([topic, count]) => (
-          <div key={topic} className="due-row">
+          <div key={topic} className="flex justify-between gap-4 border-b pb-2 text-sm">
             <span>{topic}</span>
-            <strong>{count}</strong>
+            <strong className="tabular-nums">{count}</strong>
           </div>
         ))}
         {due.length > 0 && (
-          <a className="btn as-link" href="#/review">
+          <a className={buttonVariants({ variant: 'outline' })} href="#/review">
             {t('review.start')}
           </a>
         )}
@@ -635,33 +666,33 @@ export function ReviewPanels({ profile }: { profile: number }) {
       </section>
 
       {calibration && calibration.n > 0 && (
-        <section className="block">
-          <div className="label">{t('review.calibration')}</div>
-          <div className="bars">
+        <section className={PANEL}>
+          <div className={LABEL}>{t('review.calibration')}</div>
+          <div className="flex gap-6">
             {calibration.buckets
               .filter((b) => b.n > 0)
               .map((b) => (
-                <div key={b.label} className="bar-group">
-                  <div className="bar-pair">
-                    <span className="bar stated" style={{ height: `${b.stated! * 100}%` }} title={t('review.said', { percent: percent(b.stated!) })} />
-                    <span className="bar actual" style={{ height: `${b.actual! * 100}%` }} title={t('review.wasRight', { percent: percent(b.actual!) })} />
+                <div key={b.label} className="flex flex-col items-center gap-0.5">
+                  <div className="flex h-[110px] items-end gap-1">
+                    <span className="inline-block min-h-0.5 w-[22px] bg-warm" style={{ height: `${b.stated! * 100}%` }} title={t('review.said', { percent: percent(b.stated!) })} />
+                    <span className="inline-block min-h-0.5 w-[22px] bg-primary" style={{ height: `${b.actual! * 100}%` }} title={t('review.wasRight', { percent: percent(b.actual!) })} />
                   </div>
-                  <span className="small" dir="ltr">
+                  <span className={SMALL} dir="ltr">
                     {b.label}
                   </span>
-                  <span className="small">{t('review.ofN', { percent: percent(b.actual!), n: b.n })}</span>
+                  <span className={SMALL}>{t('review.ofN', { percent: percent(b.actual!), n: b.n })}</span>
                 </div>
               ))}
           </div>
-          <div className="legend">
+          <div className="flex flex-wrap gap-4 text-sm">
             <span>
-              <i className="bar stated" /> {t('review.howSure')}
+              <i className="me-2 inline-block size-3 bg-warm align-[-1px]" /> {t('review.howSure')}
             </span>
             <span>
-              <i className="bar actual" /> {t('review.howOften')}
+              <i className="me-2 inline-block size-3 bg-primary align-[-1px]" /> {t('review.howOften')}
             </span>
           </div>
-          <div className="muted small">{t('review.brier', { brier: calibration.brier!.toFixed(2), n: calibration.n })}</div>
+          <div className={SMALL}>{t('review.brier', { brier: calibration.brier!.toFixed(2), n: calibration.n })}</div>
         </section>
       )}
     </div>

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 
 export type PodcastData = {
   lang: string
@@ -123,15 +125,15 @@ export function PodcastCard(props: { id: number; title: string; data: unknown; a
   }, [pending])
 
   return (
-    <section id={`block-${props.id}`} className="block podcast">
-      <h2>{props.title}</h2>
-      <div className="small">
+    <section id={`block-${props.id}`} className="block border-t pt-6 first:border-t-0 first:pt-0">
+      <h2 className="mt-6 mb-2">{props.title}</h2>
+      <div className="text-sm text-muted-foreground">
         {d.cues.length ? t('cast.quiz') : t('cast.recap')} ({t('cast.experimental')}){d.duration !== null && <>, {clock(d.duration)}</>}
       </div>
       {d.status === 'rendering' && (
-        <div className="small">{t('cast.rendering', { done: d.done, total: d.lines.length })}</div>
+        <div className="text-sm text-muted-foreground">{t('cast.rendering', { done: d.done, total: d.lines.length })}</div>
       )}
-      {d.status === 'failed' && <div className="error">{t('cast.failed', { error: d.error })}</div>}
+      {d.status === 'failed' && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{t('cast.failed', { error: d.error })}</div>}
       {d.audio && (
         <audio
           ref={audio}
@@ -140,33 +142,33 @@ export function PodcastCard(props: { id: number; title: string; data: unknown; a
           src={d.audio}
           onTimeUpdate={() => setTime(audio.current?.currentTime ?? 0)}
           onPlay={claimControls}
-          style={{ width: '100%' }}
+          className="w-full"
         />
       )}
       {d.audio && kept !== null && (
-        <div className="row">
-          <button type="button" className="btn" onClick={toggleKept}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={toggleKept}>
             {kept ? t('cast.drop') : t('cast.keep')}
-          </button>
-          {kept && <span className="small">{t('cast.kept')}</span>}
+          </Button>
+          {kept && <span className="text-sm text-muted-foreground">{t('cast.kept')}</span>}
         </div>
       )}
-      {keepError && <div className="error">{keepError}</div>}
-      {pending !== null && <div className="hint">{t('cast.paused')}</div>}
+      {keepError && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{keepError}</div>}
+      {pending !== null && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{t('cast.paused')}</div>}
       {d.glossary.length > 0 && (
-        <div className="targets">
+        <div className="flex flex-wrap items-center gap-2">
           {d.glossary.map((g) => (
-            <span key={g.word} className="chip" lang={d.lang} dir="auto" title={g.meaning}>
+            <Badge key={g.word} variant="secondary" className="h-auto rounded-sm bg-accent px-2 py-0.5 text-base text-accent-foreground" lang={d.lang} dir="auto" title={g.meaning}>
               {g.word}
-            </span>
+            </Badge>
           ))}
         </div>
       )}
       <details>
-        <summary>{t('cast.transcript')}</summary>
-        <div className="transcript" lang={d.lang} dir="auto">
+        <summary className="cursor-pointer text-sm text-muted-foreground">{t('cast.transcript')}</summary>
+        <div lang={d.lang} dir="auto">
           {d.lines.map((l, i) => (
-            <p key={i} className={i === line ? 'current' : undefined}>
+            <p key={i} className={i === line ? 'my-2 bg-accent' : 'my-2'}>
               <strong>{l.speaker}:</strong> {l.text}
             </p>
           ))}
