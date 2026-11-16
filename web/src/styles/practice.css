@@ -1,1 +1,18 @@
 /* CSS for the practice screens that Tailwind utilities cannot express (third-party DOM, keyframes, print) */
+
+/* the review's time box, filling up as it runs */
+@keyframes review-time {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes recap-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
