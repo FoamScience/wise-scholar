@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
+import { Badge } from '@/components/ui/badge'
 import i18n, { moment, number } from './i18n'
+
+const MAIN = 'mx-auto flex w-full max-w-160 flex-col gap-10 px-6 pt-10 pb-16'
+const CELL = 'border px-3 py-2 text-start'
+const NUM = 'border px-3 py-2 text-end whitespace-nowrap tabular-nums'
 
 type Sums = { turns: number; input: number; output: number; cache_read: number; cache_write: number; cost: number | null; last: string }
 type CourseUsage = Sums & {
@@ -26,17 +31,17 @@ export function UsagePage({ profile }: { profile: number }) {
     api<CourseUsage[]>(`/api/usage?profile=${profile}`).then(setCourses, (e: Error) => setError(e.message))
   }, [profile])
 
-  if (!courses) return <main className="home">{error && <div className="error">{error}</div>}</main>
+  if (!courses) return <main className={MAIN}>{error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div>}</main>
 
   const total = courses.reduce((sum, c) => sum + (c.cost ?? 0), 0)
 
   function cells(s: Sums) {
     return (
       <>
-        <td>{dollars(s.cost)}</td>
-        <td>{number(s.turns)}</td>
-        <td>{tokens(s.input + s.cache_read + s.cache_write)}</td>
-        <td>{tokens(s.output)}</td>
+        <td className={NUM}>{dollars(s.cost)}</td>
+        <td className={NUM}>{number(s.turns)}</td>
+        <td className={NUM}>{tokens(s.input + s.cache_read + s.cache_write)}</td>
+        <td className={NUM}>{tokens(s.output)}</td>
       </>
     )
   }
@@ -45,29 +50,29 @@ export function UsagePage({ profile }: { profile: number }) {
     return (
       <thead>
         <tr>
-          <th>{first}</th>
-          <th>{t('usage.cost')}</th>
-          <th>{t('usage.turns')}</th>
-          <th>{t('usage.input')}</th>
-          <th>{t('usage.output')}</th>
+          <th className={CELL}>{first}</th>
+          <th className={NUM}>{t('usage.cost')}</th>
+          <th className={NUM}>{t('usage.turns')}</th>
+          <th className={NUM}>{t('usage.input')}</th>
+          <th className={NUM}>{t('usage.output')}</th>
         </tr>
       </thead>
     )
   }
 
   return (
-    <main className="home usage-page">
-      <h1>{t('usage.heading')}</h1>
-      <div className="muted">{t('usage.intro')}</div>
-      {courses.length === 0 && <div className="muted">{t('usage.empty')}</div>}
-      {courses.length > 0 && <div className="label">{t('usage.total', { cost: dollars(total) })}</div>}
+    <main className={MAIN}>
+      <h1 className="m-0 max-w-none font-heading text-2xl font-semibold">{t('usage.heading')}</h1>
+      <div className="text-muted-foreground">{t('usage.intro')}</div>
+      {courses.length === 0 && <div className="text-muted-foreground">{t('usage.empty')}</div>}
+      {courses.length > 0 && <div className="text-sm leading-snug font-medium text-ink-2">{t('usage.total', { cost: dollars(total) })}</div>}
       {courses.map((c) => (
-        <section key={c.id} className="block entry">
-          <div className="label">
+        <section key={c.id} className="flex flex-col gap-3 border-t pt-6">
+          <div className="text-sm leading-snug font-medium text-ink-2">
             <span dir="auto">{c.topic}</span>
-            {c.archived ? <span className="chip">{t('usage.archived')}</span> : null}
+            {c.archived ? <Badge className="ms-2 h-auto rounded-sm bg-accent px-2 py-0.5 text-sm text-accent-foreground">{t('usage.archived')}</Badge> : null}
           </div>
-          <div className="small">
+          <div className="text-sm text-muted-foreground">
             {t('usage.summary', {
               cost: dollars(c.cost),
               input: tokens(c.input + c.cache_read + c.cache_write),
@@ -76,13 +81,13 @@ export function UsagePage({ profile }: { profile: number }) {
               last: moment(c.last.replace(' ', 'T') + 'Z'),
             })}
           </div>
-          <div className="table-scroll">
-            <table>
+          <div className="overflow-x-auto">
+            <table className="m-0 w-full border-collapse text-sm">
               {head(t('usage.lesson'))}
               <tbody>
                 {c.lessons.map((l) => (
                   <tr key={l.id ?? 'none'}>
-                    <td dir="auto">{l.title ?? t('usage.noLesson')}</td>
+                    <td dir="auto" className={CELL}>{l.title ?? t('usage.noLesson')}</td>
                     {cells(l)}
                   </tr>
                 ))}
@@ -90,14 +95,14 @@ export function UsagePage({ profile }: { profile: number }) {
             </table>
           </div>
           <details>
-            <summary className="small">{t('usage.byKind')}</summary>
-            <div className="table-scroll">
-              <table>
+            <summary className="cursor-pointer text-sm text-muted-foreground">{t('usage.byKind')}</summary>
+            <div className="overflow-x-auto">
+              <table className="m-0 w-full border-collapse text-sm">
                 {head(t('usage.kind'))}
                 <tbody>
                   {c.kinds.map((k) => (
                     <tr key={k.kind}>
-                      <td>{t(`usage.kinds.${k.kind}`, { defaultValue: k.kind })}</td>
+                      <td className={CELL}>{t(`usage.kinds.${k.kind}`, { defaultValue: k.kind })}</td>
                       {cells(k)}
                     </tr>
                   ))}

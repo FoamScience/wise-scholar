@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
 
 type Theme = 'light' | 'dark'
 
@@ -30,7 +31,7 @@ export function ThemeToggle() {
     }
   }
   return (
-    <button type="button" className="btn theme" onClick={flip} title={theme === 'dark' ? t('header.toLight') : t('header.toDark')} aria-label={t('header.toggleTheme')}>
+    <Button type="button" variant="outline" size="icon" className="size-10 shrink-0 hover:border-foreground" onClick={flip} title={theme === 'dark' ? t('header.toLight') : t('header.toDark')} aria-label={t('header.toggleTheme')}>
       {theme === 'dark' ? (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="12" cy="12" r="4" />
@@ -41,6 +42,6 @@ export function ThemeToggle() {
           <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
         </svg>
       )}
-    </button>
+    </Button>
   )
 }

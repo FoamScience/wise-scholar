@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DirectionProvider } from '@base-ui/react/direction-provider'
+import { cn } from 'cn'
+import { buttonVariants } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { api } from './api'
 import i18n from './i18n'
 import Logo from './Logo'
@@ -27,6 +32,9 @@ import { Home } from './Home'
 import { ThemeToggle } from './ThemeToggle'
 import { Workspace } from './Workspace'
 import { courseRoute, profileRoute } from './route'
+
+const NAV_LINK =
+  'inline-flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-3 text-sm font-medium text-ink-2 no-underline transition-colors hover:bg-muted hover:text-foreground max-[30rem]:min-w-11 max-[30rem]:justify-center max-[30rem]:p-0'
 
 function useHash(): string {
   const [hash, setHash] = useState(location.hash)
@@ -152,61 +160,75 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <a className="wordmark" href="#/" title="wise-scholar">
-          <Logo />
-        </a>
-        {current && (
-          <nav className="topnav">
-            <a href="#/graph" title={t('graph.link')} aria-label={t('graph.link')}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                <circle cx="6" cy="6" r="2.5" />
-                <circle cx="18" cy="8" r="2.5" />
-                <circle cx="9" cy="18" r="2.5" />
-                <path d="M8.4 6.6 15.6 7.4M7 8.4 8.4 15.6M16.5 10 10.8 16.2" />
-              </svg>
-              <span className="nav-label">{t('graph.link')}</span>
+    <DirectionProvider direction={i18n.dir(locale)}>
+      <TooltipProvider>
+        <div className="flex h-dvh flex-col print:block print:h-auto">
+          <header className="flex h-14 shrink-0 print:hidden items-center gap-2 border-b bg-card px-4 max-[30rem]:gap-1 max-[30rem]:px-2">
+            <a className="me-2 flex h-11 shrink-0 items-center no-underline max-[30rem]:me-0" href="#/" title="wise-scholar">
+              <Logo />
             </a>
-            {current.mode !== 'teacher' && (
-              <a href="#/explore" title={t('explore.link')} aria-label={t('explore.link')}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5Z" />
-                </svg>
-                <span className="nav-label">{t('explore.link')}</span>
+            {current && (
+              <nav className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+                <a className={NAV_LINK} href="#/graph" title={t('graph.link')} aria-label={t('graph.link')}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <circle cx="6" cy="6" r="2.5" />
+                    <circle cx="18" cy="8" r="2.5" />
+                    <circle cx="9" cy="18" r="2.5" />
+                    <path d="M8.4 6.6 15.6 7.4M7 8.4 8.4 15.6M16.5 10 10.8 16.2" />
+                  </svg>
+                  <span className="max-[30rem]:hidden">{t('graph.link')}</span>
+                </a>
+                {current.mode !== 'teacher' && (
+                  <a className={NAV_LINK} href="#/explore" title={t('explore.link')} aria-label={t('explore.link')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5Z" />
+                    </svg>
+                    <span className="max-[30rem]:hidden">{t('explore.link')}</span>
+                  </a>
+                )}
+              </nav>
+            )}
+            <span className="grow" />
+            <span className="whitespace-nowrap text-sm text-muted-foreground max-md:hidden">{t('header.agent', { agent: meta.agent })}</span>
+            {localeError && <span className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{localeError}</span>}
+            <ThemeToggle />
+            <Select value={locale} items={LOCALES} onValueChange={(code) => switchLocale(code as Locale)}>
+              <SelectTrigger className="h-10 shrink-0 font-medium hover:border-foreground max-[30rem]:px-2" aria-label={t('header.language')}>
+                <SelectValue>
+                  {(code: Locale) => (
+                    <>
+                      <span className="max-sm:hidden">{LOCALES[code]}</span>
+                      <span className="sm:hidden">{code.toUpperCase()}</span>
+                    </>
+                  )}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false} align="end">
+                {Object.entries(LOCALES).map(([code, name]) => (
+                  <SelectItem key={code} value={code} lang={code}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {current && (
+              <a
+                className={cn(buttonVariants({ variant: 'outline' }), 'h-10 shrink-0 max-[30rem]:block max-[30rem]:max-w-28 max-[30rem]:truncate max-[30rem]:px-2 max-[30rem]:leading-[38px]')}
+                href="#/profile"
+              >
+                {current.name}
               </a>
             )}
-          </nav>
-        )}
-        <span className="grow" />
-        <span className="status">{t('header.agent', { agent: meta.agent })}</span>
-        {localeError && <span className="error">{localeError}</span>}
-        <ThemeToggle />
-        <span className="locale-pick">
-          <span className="btn" aria-hidden="true">
-            {locale.toUpperCase()}
-          </span>
-          <select className="btn locale" aria-label={t('header.language')} value={locale} onChange={(e) => switchLocale(e.target.value as Locale)}>
-            {Object.entries(LOCALES).map(([code, name]) => (
-              <option key={code} value={code} lang={code}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </span>
-        {current && (
-          <a className="btn as-link" href="#/profile">
-            {current.name}
-          </a>
-        )}
-      </header>
-      {!online && (
-        <div className="offline-banner" role="status">
-          {t('offline.banner')}
+          </header>
+          {!online && (
+            <div className="shrink-0 border-b bg-warm-tint px-4 py-2 text-sm" role="status">
+              {t('offline.banner')}
+            </div>
+          )}
+          {page()}
         </div>
-      )}
-      {page()}
-    </div>
+      </TooltipProvider>
+    </DirectionProvider>
   )
 }

@@ -1,7 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { lookup } from './i18n'
+
+const MAIN = 'mx-auto flex w-full max-w-160 flex-col gap-10 px-6 pt-10 pb-16'
+const BLOCK = 'flex flex-col gap-3 border-t pt-6'
+const ROW = 'flex flex-wrap items-center gap-2'
+const LABEL = 'text-sm leading-snug font-medium text-ink-2'
+const SMALL = 'text-sm text-muted-foreground'
+const ERROR = 'rounded-md bg-warm-tint px-4 py-3 text-warm-ink'
+const FIELD = 'min-w-0 flex-[1_1_16rem]'
+const CHIP = 'h-auto rounded-sm bg-accent px-2 py-0.5 text-sm text-accent-foreground'
+const WARN = 'h-auto rounded-sm bg-warm-tint px-2 py-0.5 text-sm text-warm'
 
 type Setting = {
   name: string
@@ -52,17 +66,17 @@ function useRestart(setState: (state: Settings) => void, setError: (message: str
 function RestartNotice(props: { state: Settings; restarting: boolean; changed: boolean; onRestart: () => void }) {
   const { t } = useTranslation()
   return (
-    <div className="block stack">
+    <div className={BLOCK}>
       <div>{t('settings.pending')}</div>
       {props.state.restart ? (
-        <div className="row">
-          <button type="button" className="btn primary" disabled={!props.state.editable || props.restarting || props.changed} onClick={props.onRestart}>
+        <div className={ROW}>
+          <Button type="button" disabled={!props.state.editable || props.restarting || props.changed} onClick={props.onRestart}>
             {props.restarting ? t('settings.restarting') : t('settings.restart')}
-          </button>
-          <span className="small">{t('settings.restartNote')}</span>
+          </Button>
+          <span className={SMALL}>{t('settings.restartNote')}</span>
         </div>
       ) : (
-        <div className="small">{t('settings.restartByHand')}</div>
+        <div className={SMALL}>{t('settings.restartByHand')}</div>
       )}
     </div>
   )
@@ -81,7 +95,7 @@ export function SettingsPage() {
 
   const { restarting, restart } = useRestart(setState, setError)
 
-  if (!state) return <main className="home">{error && <div className="error">{error}</div>}</main>
+  if (!state) return <main className={MAIN}>{error && <div className={ERROR}>{error}</div>}</main>
 
   const changed = Object.keys(draft).length > 0
   const pending = state.settings.some((s) => s.pending)
@@ -115,14 +129,24 @@ export function SettingsPage() {
     const disabled = !state?.editable || !s.editable || busy || restarting
     if (s.kind === 'bool')
       return (
-        <select className="field" disabled={disabled} value={value ?? s.default} onChange={(e) => set(s, e.target.value === s.default ? null : e.target.value)}>
-          <option value="1">{t('settings.on')}</option>
-          <option value="0">{t('settings.off')}</option>
-        </select>
+        <Select
+          disabled={disabled}
+          value={value ?? s.default}
+          items={{ '1': t('settings.on'), '0': t('settings.off') }}
+          onValueChange={(next) => set(s, next === s.default ? null : next)}
+        >
+          <SelectTrigger className={`${FIELD} w-auto`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectItem value="1">{t('settings.on')}</SelectItem>
+            <SelectItem value="0">{t('settings.off')}</SelectItem>
+          </SelectContent>
+        </Select>
       )
     return (
-      <input
-        className="field"
+      <Input
+        className={FIELD}
         dir="ltr"
         disabled={disabled}
         inputMode={s.kind === 'int' ? 'numeric' : undefined}
@@ -141,41 +165,41 @@ export function SettingsPage() {
 
   function row(s: Setting) {
     return (
-      <section key={s.name} className="block stack setting">
-        <div className="label">
-          {lookup(`settings.items.${s.name}.label`, s.name)} <code dir="ltr">{s.name}</code>
+      <section key={s.name} className={BLOCK}>
+        <div className={LABEL}>
+          {lookup(`settings.items.${s.name}.label`, s.name)} <code dir="ltr" className="font-mono text-[0.93em] wrap-anywhere">{s.name}</code>
         </div>
-        <div className="small">{lookup(`settings.items.${s.name}.help`, '')}</div>
-        <div className="row">
-          {s.editable ? control(s) : <code dir="ltr">{display(s, s.value)}</code>}
-          <span className={`chip ${s.source === 'shell' ? 'warn' : ''}`}>{t(`settings.source.${s.source}`)}</span>
-          {s.pending && <span className="chip warn">{t('settings.afterRestart', { value: display(s, s.saved) })}</span>}
+        <div className={SMALL}>{lookup(`settings.items.${s.name}.help`, '')}</div>
+        <div className={ROW}>
+          {s.editable ? control(s) : <code dir="ltr" className="font-mono text-[0.93em] wrap-anywhere">{display(s, s.value)}</code>}
+          <Badge className={s.source === 'shell' ? WARN : CHIP}>{t(`settings.source.${s.source}`)}</Badge>
+          {s.pending && <Badge className={WARN}>{t('settings.afterRestart', { value: display(s, s.saved) })}</Badge>}
         </div>
       </section>
     )
   }
 
   return (
-    <main className="home settings-page">
-      <h1>{t('settings.heading')}</h1>
-      <div className="muted">{t('settings.intro')}</div>
-      {!state.editable && <div className="error">{t('settings.remote')}</div>}
-      {error && <div className="error">{error}</div>}
+    <main className={MAIN}>
+      <h1 className="m-0 max-w-none font-heading text-2xl font-semibold">{t('settings.heading')}</h1>
+      <div className="text-muted-foreground">{t('settings.intro')}</div>
+      {!state.editable && <div className={ERROR}>{t('settings.remote')}</div>}
+      {error && <div className={ERROR}>{error}</div>}
       {pending && <RestartNotice state={state} restarting={restarting} changed={changed} onRestart={restart} />}
-      <h2>{t('settings.editableHeading')}</h2>
+      <h2 className="m-0 font-heading text-lg font-semibold">{t('settings.editableHeading')}</h2>
       {state.settings.filter((s) => s.changeable).map(row)}
       {state.editable && (
-        <div className="row">
-          <button type="button" className="btn primary" disabled={!changed || busy} onClick={save}>
+        <div className={ROW}>
+          <Button type="button" disabled={!changed || busy} onClick={save}>
             {t('settings.save')}
-          </button>
-          <button type="button" className="link" disabled={!changed || busy} onClick={() => setDraft({})}>
+          </Button>
+          <Button type="button" variant="ghost" className="text-ink-2" disabled={!changed || busy} onClick={() => setDraft({})}>
             {t('settings.discard')}
-          </button>
+          </Button>
         </div>
       )}
-      <h2>{t('settings.lockedHeading')}</h2>
-      <div className="muted">{t('settings.lockedIntro')}</div>
+      <h2 className="m-0 font-heading text-lg font-semibold">{t('settings.lockedHeading')}</h2>
+      <div className="text-muted-foreground">{t('settings.lockedIntro')}</div>
       {state.settings.filter((s) => !s.changeable).map(row)}
     </main>
   )
