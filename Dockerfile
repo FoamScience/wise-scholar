@@ -16,9 +16,10 @@ COPY web/ ./
 RUN npm run build
 
 FROM base AS app
-# opencode: --build-arg AGENT_PACKAGES="@anthropic-ai/claude-code opencode-ai", about 830 MB more
+# opencode: --build-arg AGENT_PACKAGES="@anthropic-ai/claude-code opencode-ai", about 830 MB more; none for the
+# anthropic backend: --build-arg AGENT_PACKAGES=""
 ARG AGENT_PACKAGES="@anthropic-ai/claude-code"
-RUN npm install -g --omit=dev $AGENT_PACKAGES && npm cache clean --force
+RUN if [ -n "$AGENT_PACKAGES" ]; then npm install -g --omit=dev $AGENT_PACKAGES && npm cache clean --force; fi
 RUN useradd --create-home --uid 1000 app
 WORKDIR /app
 COPY pyproject.toml uv.lock ./

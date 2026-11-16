@@ -899,7 +899,7 @@
       "items": {
         "WISE_SCHOLAR_AGENT": {
           "label": "الوكيل والنموذج",
-          "help": "claude أو opencode أو agy، يتبعه عند الحاجة ‎/النموذج، مثل agy/gemini-3.8-flash-high. يجب أن يستدعي النموذج الأدوات بموثوقية."
+          "help": "claude أو opencode أو agy أو anthropic، يتبعه عند الحاجة ‎/النموذج، مثل agy/gemini-3.8-flash-high أو anthropic/claude-sonnet-5-5. يجب أن يستدعي النموذج الأدوات بموثوقية."
         },
         "WISE_SCHOLAR_MODELS": {
           "label": "النموذج لكل نوع من الأدوار",
@@ -1237,7 +1237,7 @@
     "this setting is set in the shell, which overrides .env": "هذا الإعداد مضبوط في الصدفة، وهي تتقدّم على ‎.env",
     "that value cannot be written to .env": "لا يمكن كتابة هذه القيمة في ‎.env",
     "that number is too small or not a whole number": "هذا العدد صغير جدًا أو ليس عددًا صحيحًا",
-    "the agent must start with claude, opencode or agy": "يجب أن يبدأ الوكيل بـ claude أو opencode أو agy",
+    "the agent must start with claude, opencode, agy or anthropic": "يجب أن يبدأ الوكيل بـ claude أو opencode أو agy أو anthropic",
     "no such contribution": "لا توجد هذه المساهمة",
     "unknown time zone": "منطقة زمنية غير معروفة",
     "not a browser push service": "ليست خدمة إشعارات متصفح",

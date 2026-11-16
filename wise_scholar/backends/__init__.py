@@ -1,12 +1,14 @@
 import os
 import secrets
+from pathlib import Path
 
-# "<backend>" or "<backend>/<model>", e.g. "claude/sonnet", "opencode/openrouter/qwen/qwen3.8-27b:free" or
-# "agy/gemini-3.8-flash-high".
+# "<backend>" or "<backend>/<model>", e.g. "claude/sonnet", "opencode/openrouter/qwen/qwen3.8-27b:free",
+# "agy/gemini-3.8-flash-high" or "anthropic/claude-sonnet-5-5".
 AGENT = os.environ.get("WISE_SCHOLAR_AGENT", "claude")
 BACKEND, _, MODEL = AGENT.partition("/")
-if BACKEND not in ("claude", "opencode", "agy"):
-    raise SystemExit(f"WISE_SCHOLAR_AGENT must start with 'claude', 'opencode' or 'agy', got {AGENT!r}")
+BACKENDS = ("claude", "opencode", "agy", "anthropic")
+if BACKEND not in BACKENDS:
+    raise SystemExit(f"WISE_SCHOLAR_AGENT must start with 'claude', 'opencode', 'agy' or 'anthropic', got {AGENT!r}")
 
 # The port this server listens on; the backends point their MCP config at it, so several instances can run at once.
 PORT = int(os.environ.get("WISE_SCHOLAR_PORT", "8321"))
@@ -19,14 +21,16 @@ TURN_HEADER = "X-Scholar-Turn"
 # Phases whose prompt stands alone, without the tutor rules of core.md.
 ALONE = ("graph", "cards", "cleanup", "explore", "recap", "contribute")
 KINDS = ("interview", "placement", "lesson", "practice", "story", "writing", "contribution", *ALONE)
+PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 
-# Claude Code alone gets a model per kind by default: teaching on the strongest, narrow background jobs on cheaper
-# ones. A model named in WISE_SCHOLAR_AGENT, or another backend's default, serves every kind.
+# Claude Code and the Anthropic API get a model per kind by default: teaching on the strongest, narrow background jobs
+# on cheaper ones. A model named in WISE_SCHOLAR_AGENT, or another backend's default, serves every kind.
 CLAUDE_MODELS = {
     "interview": "opus", "lesson": "opus", "practice": "opus", "story": "opus", "writing": "opus", "contribution": "opus",
     "placement": "sonnet", "graph": "sonnet", "cleanup": "sonnet", "explore": "sonnet", "recap": "sonnet", "contribute": "sonnet",
     "cards": "haiku",
 }
+API_MODELS = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
 
 
 def parse_models(value: str) -> dict[str, str]:
@@ -50,7 +54,16 @@ except ValueError as e:
 def model_for(phase: str) -> str:
     """The model a turn of this phase prompt runs on; empty for the backend's own default."""
     kind = phase.removesuffix("-teacher")
-    return MODELS.get(kind) or MODEL or (CLAUDE_MODELS.get(kind, "") if BACKEND == "claude" else "")
+    if model := MODELS.get(kind) or MODEL:
+        return model
+    if BACKEND == "claude":
+        return CLAUDE_MODELS.get(kind, "")
+    return API_MODELS[CLAUDE_MODELS[kind]] if BACKEND == "anthropic" else ""
+
+
+def system_prompt(phase: str) -> str:
+    """The tutor rules of core.md and the phase prompt, or the phase prompt alone for a phase that stands alone."""
+    return "\n\n".join((PROMPTS / f"{part}.md").read_text() for part in ((phase,) if phase in ALONE else ("core", phase)))
 
 # What an agent process gets from the server's environment: the basics, its own settings and keys, and whatever the
 # owner lists in WISE_SCHOLAR_AGENT_ENV (names or prefixes ending in *), never the server's other secrets.

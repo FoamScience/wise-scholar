@@ -9,7 +9,8 @@ Everything the [README](../README.md) leaves out: prerequisites, backends, optio
 - One agent backend:
   - [Claude Code](https://claude.com/claude-code), logged in (`claude` on your `PATH`), or
   - [opencode](https://opencode.ai) 2 or newer, with a provider configured (`opencode` on your `PATH`), or
-  - the [Antigravity CLI](https://antigravity.google) 1.5 or newer, logged in with Google (`agy` on your `PATH`)
+  - the [Antigravity CLI](https://antigravity.google) 1.5 or newer, logged in with Google (`agy` on your `PATH`), or
+  - an Anthropic API key, or any server that speaks the Anthropic Messages API (a LiteLLM gateway, a local Ollama)
 - [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`, Linux), for the sandbox that commands run in
 
 > [!NOTE]
@@ -56,7 +57,7 @@ docker compose up -d --build
 docker compose exec wise-scholar claude   # once: log Claude Code in; the login stays in the home volume
 ```
 
-The image holds the server, the web interface, the diagram renderer and Claude Code (`--build-arg AGENT_PACKAGES="@anthropic-ai/claude-code opencode-ai"` adds opencode, about 830 MB more). The database and the course workspaces live in the `data` and `workspace` volumes. Compose publishes the server on `127.0.0.1:8321` (`WISE_SCHOLAR_PUBLISH` and `WISE_SCHOLAR_PORT` change that). Nothing signs anyone in: publish it on loopback or a tailnet address behind your own proxy, never on a public one. Compose passes on the settings of the table above from your environment or `.env`, except those that name paths or addresses (the container fixes them) and `WISE_SCHOLAR_SANDBOX`.
+The image holds the server, the web interface, the diagram renderer and Claude Code (`--build-arg AGENT_PACKAGES="@anthropic-ai/claude-code opencode-ai"` adds opencode, about 830 MB more; `AGENT_PACKAGES=""` leaves every agent CLI out, for the `anthropic` backend). The database and the course workspaces live in the `data` and `workspace` volumes. Compose publishes the server on `127.0.0.1:8321` (`WISE_SCHOLAR_PUBLISH` and `WISE_SCHOLAR_PORT` change that). Nothing signs anyone in: publish it on loopback or a tailnet address behind your own proxy, never on a public one. Compose passes on the settings of the table above from your environment or `.env`, except those that name paths or addresses (the container fixes them) and `WISE_SCHOLAR_SANDBOX`.
 
 bubblewrap needs the container started with seccomp, AppArmor and the system paths unconfined, so it can make its namespaces and mount `/proc` for each command; it needs no capabilities, so `compose.yaml` drops them all and sets `no-new-privileges`. A container has no user systemd: the whole container gets the memory limit instead (`WISE_SCHOLAR_CONTAINER_MEMORY`, 6 GB by default, swap off) and 1,024 tasks, and when memory runs out the kernel stops a learner command before the server (the image has `choom`).
 
@@ -76,7 +77,7 @@ Reviews take three minutes at a time. A card with options takes one tap; any oth
 
 ## Choose the backend and model
 
-Set `WISE_SCHOLAR_AGENT` to `<backend>` or `<backend>/<model>`. The backend is `claude`, `opencode` or `agy`.
+Set `WISE_SCHOLAR_AGENT` to `<backend>` or `<backend>/<model>`. The backend is `claude`, `opencode`, `agy` or `anthropic`.
 
 ```bash
 make serve                                                              # Claude Code, its default model
@@ -84,11 +85,13 @@ WISE_SCHOLAR_AGENT=claude/sonnet make serve                             # Claude
 WISE_SCHOLAR_AGENT=opencode make serve                                  # opencode, its default model
 WISE_SCHOLAR_AGENT='opencode/openrouter/openrouter/free' make serve   # opencode, provider/model
 WISE_SCHOLAR_AGENT=agy/gemini-3.8-flash-high make serve               # Antigravity CLI, a model `agy models` lists
+WISE_SCHOLAR_AGENT=anthropic make serve                                 # Anthropic API, a model per kind
+WISE_SCHOLAR_AGENT=anthropic/claude-sonnet-5-5 make serve               # Anthropic API, one model
 ```
 
 The model must be able to call tools reliably.
 
-With `claude` and no model named, each kind of turn gets its own model: interviews, lessons, practice, stories, writing and guided contributions run on `opus`; the placement check and the background jobs (claims graph, clean-up, course suggestions, recap, open-source contributions) on `sonnet`; splitting cards on `haiku`. A model named in `WISE_SCHOLAR_AGENT`, or the default of `opencode` or `agy`, serves every kind. `WISE_SCHOLAR_MODELS` overrides some kinds, as `kind=model` pairs separated by commas:
+With `claude` or `anthropic` and no model named, each kind of turn gets its own model: interviews, lessons, practice, stories, writing and guided contributions run on `opus`; the placement check and the background jobs (claims graph, clean-up, course suggestions, recap, open-source contributions) on `sonnet`; splitting cards on `haiku` (with `anthropic`: `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5`). A model named in `WISE_SCHOLAR_AGENT`, or the default of `opencode` or `agy`, serves every kind. `WISE_SCHOLAR_MODELS` overrides some kinds, as `kind=model` pairs separated by commas:
 
 ```bash
 WISE_SCHOLAR_MODELS='placement=opus,cards=sonnet' make serve
@@ -99,7 +102,15 @@ The kinds are `interview`, `placement`, `lesson`, `practice`, `story`, `writing`
 
 Behind an Anthropic-compatible gateway (LiteLLM, for example), set `ANTHROPIC_BASE_URL` to its address and `ANTHROPIC_API_KEY` to your key there. Claude Code reads both; opencode ignores the address, so the server points opencode's Anthropic provider at `<address>/v1` for it.
 
-A lesson left for longer than the agent's prompt cache lasts goes on in a fresh session that starts from what happened in it so far, instead of writing its whole history to the cache again. That is an hour, Claude Code's cache on a subscription; on an API key, Bedrock or Vertex it caches for five minutes, so set `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` there.
+With `anthropic` there is no agent CLI: the server calls the Messages API itself, with `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`) and, when set, `ANTHROPIC_BASE_URL`, and runs the tools the model calls through its own MCP endpoint, with the turn's token like the other backends. A session is a file of messages in `data/agents/<course>/api-sessions/`, which the clean-up of an old course removes with its other folders. A session grown past the model's context loses its older half of turns and the turn asks again, and a turn stops after 25 requests (Claude Code tutor turns have taken at most 17), so a model stuck calling tools stops spending. Requests ask the API to cache the tools, the prompt and the conversation so far for an hour (cache writes cost twice the input price, not 1.25 times), and on Claude Opus 5.5, Claude Sonnet 5.5 and Claude Fable 5.2 they let the API hand a refusal to another model (server-side fallbacks). The cost of a turn comes from the API list prices of Anthropic's current models, kept in `wise_scholar/backends/api.py`; a model without a price there (a local one, say) records its tokens without a cost. To try it without spending anything, point it at a local Ollama:
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:11434 ANTHROPIC_API_KEY=ollama WISE_SCHOLAR_AGENT=anthropic/qwen3:8b make serve
+```
+
+Start Ollama with `OLLAMA_CONTEXT_LENGTH=16384 ollama serve`: its default context of 4096 tokens is shorter than the prompt and tools of a turn, and it refuses such a request. A small local model calls the tools less reliably than Claude, so this checks that things work, not how well it teaches.
+
+A lesson left for longer than the agent's prompt cache lasts goes on in a fresh session that starts from what happened in it so far, instead of writing its whole history to the cache again. That is an hour, Claude Code's cache on a subscription; on an API key, Bedrock or Vertex it caches for five minutes, so set `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` there. The `anthropic` backend caches for an hour and keeps a lesson in its session for 30 idle minutes.
 
 With `agy` the tutor runs in a home folder of its own, `data/agy-home/`, that links only your login from `~/.gemini`: your `GEMINI.md`, MCP servers, plugins and skills stay out of its sessions, which are kept there too. agy reports tokens but no price, so its usage shows no cost.
 

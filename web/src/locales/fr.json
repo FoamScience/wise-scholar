@@ -833,7 +833,7 @@
       "items": {
         "WISE_SCHOLAR_AGENT": {
           "label": "Agent et modèle",
-          "help": "claude, opencode ou agy, suivi au besoin de /modèle, par exemple agy/gemini-3.8-flash-high. Le modèle doit appeler les outils de façon fiable."
+          "help": "claude, opencode, agy ou anthropic, suivi au besoin de /modèle, par exemple agy/gemini-3.8-flash-high ou anthropic/claude-sonnet-5-5. Le modèle doit appeler les outils de façon fiable."
         },
         "WISE_SCHOLAR_MODELS": {
           "label": "Modèle par type de tour",
@@ -1171,7 +1171,7 @@
     "this setting is set in the shell, which overrides .env": "ce réglage est défini dans le shell, qui l'emporte sur .env",
     "that value cannot be written to .env": "cette valeur ne peut pas être écrite dans .env",
     "that number is too small or not a whole number": "ce nombre est trop petit ou n'est pas entier",
-    "the agent must start with claude, opencode or agy": "l'agent doit commencer par claude, opencode ou agy",
+    "the agent must start with claude, opencode, agy or anthropic": "l'agent doit commencer par claude, opencode, agy ou anthropic",
     "no such contribution": "cette contribution n'existe pas",
     "unknown time zone": "fuseau horaire inconnu",
     "not a browser push service": "ce n'est pas un service de notification de navigateur",

@@ -5,10 +5,9 @@ import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from . import ALONE, MCP_HEADERS, MCP_URL, PORT, TURN_HEADER, environment, model_for
+from . import MCP_HEADERS, MCP_URL, PORT, TURN_HEADER, environment, model_for, system_prompt
 
 ROOT = Path(__file__).resolve().parents[2]
-PROMPTS = ROOT / "wise_scholar" / "prompts"
 MCP_PREFIX = "mcp__scholar__"
 
 CONFIGS = ROOT / "data" / "mcp"
@@ -79,7 +78,6 @@ def mcp_config(token: str) -> Path:
 
 
 def command(phase: str, config: Path, session: list[str]) -> list[str]:
-    system_prompt = "\n\n".join((PROMPTS / f"{part}.md").read_text() for part in ((phase,) if phase in ALONE else ("core", phase)))
     # Empty --setting-sources keeps user-level hooks, plugins and CLAUDE.md out of the tutor session, and with
     # --strict-mcp-config and no built-in tools nothing a command plants in the workspace is loaded or usable.
     return [
@@ -87,7 +85,7 @@ def command(phase: str, config: Path, session: list[str]) -> list[str]:
         "--output-format", "stream-json", "--include-partial-messages", "--verbose",
         "--setting-sources", "", "--disable-slash-commands",
         "--strict-mcp-config", "--mcp-config", str(config),
-        "--system-prompt", system_prompt,
+        "--system-prompt", system_prompt(phase),
         # No built-in tools: the tutor acts only through the server's MCP tools, which sandbox what they run.
         "--tools", "",
         "--allowedTools", "mcp__scholar",

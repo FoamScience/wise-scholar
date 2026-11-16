@@ -811,7 +811,7 @@
       "items": {
         "WISE_SCHOLAR_AGENT": {
           "label": "Agent backend and model",
-          "help": "claude, opencode or agy, optionally followed by /model, such as agy/gemini-3.8-flash-high. The model must call tools reliably."
+          "help": "claude, opencode, agy or anthropic, optionally followed by /model, such as agy/gemini-3.8-flash-high or anthropic/claude-sonnet-5-5. The model must call tools reliably."
         },
         "WISE_SCHOLAR_MODELS": {
           "label": "Model per kind of turn",

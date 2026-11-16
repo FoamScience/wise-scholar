@@ -8,11 +8,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .backends import parse_models
+from .backends import BACKENDS, parse_models
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 LINE = re.compile(r"^\s*(?:export\s+)?(WISE_SCHOLAR_[A-Z_]+)\s*[?:]?=\s*(.*?)\s*$")
-BACKENDS = ("claude", "opencode", "agy")
 
 
 @dataclass(frozen=True)
@@ -107,7 +106,7 @@ def _kind_problem(s: Setting, value: str) -> str | None:
     if s.kind == "int" and not (value.isdigit() and int(value) >= s.minimum):
         return "that number is too small or not a whole number"
     if s.kind == "agent" and value.partition("/")[0] not in BACKENDS:
-        return "the agent must start with claude, opencode or agy"
+        return "the agent must start with claude, opencode, agy or anthropic"
     return None
 
 

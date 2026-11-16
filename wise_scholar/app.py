@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, remind, resources, sandbox, speech, tutor, vault, vocab, widgets
 from .tools import course_plan as plan_tools, lesson_flow as flow_tools, quizzes as quiz_tools, side_turns as side_tools
-from .backends import BACKEND, MCP_SECRET, agy, claude, opencode
+from .backends import BACKEND, MCP_SECRET, agy, api, claude, opencode
 from .playbooks import describe
 
 WEB_DIST = db.ROOT / "web" / "dist"
@@ -37,7 +37,7 @@ _turn_clock: deque[float] = deque()
 _mcp_clock: deque[float] = deque()
 SOURCES = db.DB_PATH.parent / "sources"
 VERSIONS = db.DB_PATH.parent / "versions"
-backend = {"claude": claude, "opencode": opencode, "agy": agy}[BACKEND]
+backend = {"claude": claude, "opencode": opencode, "agy": agy, "anthropic": api}[BACKEND]
 
 log = logging.getLogger("wise_scholar")
 _turns: dict[int, asyncio.Task] = {}
@@ -418,8 +418,12 @@ SO_FAR = (
 )
 # A session idle past the agent's prompt cache would write its whole history to the cache again, so the lesson goes on
 # in a fresh session that starts from its record instead. Claude Code caches for an hour on a subscription and for five
-# minutes on an API key, Bedrock or Vertex, where CLAUDE_CODE_PROMPT_CACHE_TTL=5m tells both of them.
-COLD_AFTER = timedelta(minutes=5) if os.environ.get("CLAUDE_CODE_PROMPT_CACHE_TTL") == "5m" else timedelta(hours=1)
+# minutes on an API key, Bedrock or Vertex, where CLAUDE_CODE_PROMPT_CACHE_TTL=5m tells both of them. The anthropic
+# backend caches for an hour and keeps a lesson in its session for half of it, a middle ground until measured.
+COLD_AFTER = (
+    timedelta(minutes=30) if BACKEND == "anthropic"
+    else timedelta(minutes=5) if os.environ.get("CLAUDE_CODE_PROMPT_CACHE_TTL") == "5m" else timedelta(hours=1)
+)
 
 
 def _resumes(lesson: dict) -> bool:
@@ -505,6 +509,9 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
         await _converse(lesson, line, token, quiet, turn)
     except asyncio.CancelledError:
         pass
+    except Exception:
+        log.exception("turn in lesson %s failed", lesson_id)
+        turn["final"] = {"type": "turn.done", "ok": False, "error": "the tutor failed; the server log has the details"}
     finally:
         tutor.turn_ended(lesson_id)
         del _turns[lesson_id]
