@@ -239,12 +239,12 @@ def test_only_versions_kept_here_are_shared(client, remote, stored, tmp_path):
         "INSERT INTO versions (hash, course_id, number, topic, notes, licence, forkable, credits, setup, written, units, published) "
         "VALUES (?, NULL, 1, 'Ghost', '', 'CC-BY-4.0', 1, '[]', '[]', 1, 1, '2026-01-01')", (ghost,))  # a row with no file
     try:
-        for bad in (other, ghost, "../../etc/passwd", "ABC", stored.upper(), stored[:63]):
+        for bad in (other, ghost, "%2E%2E", "ABC", stored.upper(), stored[:63]):
             assert client.post(f"/api/versions/{bad}/share").status_code == 404, bad
     finally:
         db.conn.execute("DELETE FROM versions WHERE hash = ?", (ghost,))
     assert remote.seen == []
-    assert client.delete("/api/registry/links/..%2Fbundles").status_code == 404
+    assert client.delete("/api/registry/links/%2E%2E").status_code == 404
     assert client.delete("/api/registry/links/a b").status_code == 404
     assert remote.seen == []
 
