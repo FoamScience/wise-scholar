@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
@@ -19,6 +19,7 @@ type Preview = {
 type EditTarget = 'block' | 'card' | 'file' | 'course' | 'summary'
 type EditStatus = 'proposed' | 'accepted' | 'rejected'
 type Edit = { id: number; target: EditTarget; ref: string; old: string; new: string; reason: string; status: EditStatus; lesson: string | null }
+type Link = { id: string; url: string; hash: string; created: string; revoked: string | null }
 type Check = { running: boolean; failed: boolean; checked: string | null; edits: Edit[] }
 
 /** Freeze the course as a version anyone can import, after checking what it carries; and its earlier versions. */
@@ -37,6 +38,7 @@ export function PublishPage({ courseId }: { courseId: number }) {
     api<Preview>(`/api/courses/${courseId}/publish`).then(setPreview, (e: Error) => setError(e.message))
   }, [courseId])
   const { check, startCheck, decide } = useCourseCheck(courseId, setError)
+  const shared = useSharedLinks(setError)
 
   async function publish() {
     setBusy(true)
@@ -104,7 +106,8 @@ export function PublishPage({ courseId }: { courseId: number }) {
         </section>
       )}
 
-      <Versions versions={preview.versions} />
+      <Versions versions={preview.versions} shared={shared} />
+      {shared.enabled && <SharedLinks shared={shared} versions={preview.versions} />}
     </main>
   )
 }
@@ -142,6 +145,49 @@ function useCourseCheck(courseId: number, setError: (message: string) => void) {
 
   return { check, startCheck, decide }
 }
+
+/** Whether a registry is set up, its links (null until loaded; `failed` when they could not be), and revoking one. */
+function useSharedLinks(setError: (message: string) => void) {
+  const [enabled, setEnabled] = useState(false)
+  const [links, setLinks] = useState<Link[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [revoked, setRevoked] = useState<string[]>([])
+
+  const reload = useCallback(
+    () =>
+      api<Link[]>('/api/registry/links').then(
+        (found) => {
+          setLinks(found)
+          setFailed(false)
+        },
+        () => setFailed(true),
+      ),
+    [],
+  )
+
+  useEffect(() => {
+    api<{ configured: boolean }>('/api/registry').then(
+      (registry) => {
+        setEnabled(registry.configured)
+        if (registry.configured) reload()
+      },
+      (e: Error) => setError(e.message),
+    )
+  }, [reload, setError])
+
+  async function revoke(link: Link) {
+    try {
+      await api(`/api/registry/links/${encodeURIComponent(link.id)}`, undefined, 'DELETE')
+      setRevoked((urls) => [...urls, link.url])
+      await reload()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  return { enabled, links, failed, revoked, reload, revoke }
+}
+type Shared = ReturnType<typeof useSharedLinks>
 
 /** What goes into the version besides the lessons: chosen sources, files from the workspace, setup commands. */
 function Carried(props: { preview: Preview; sources: number[]; onSources: Dispatch<SetStateAction<number[]>> }) {
@@ -270,7 +316,7 @@ function EditCard(props: { edit: Edit; onDecide: (status: EditStatus) => void })
   )
 }
 
-function Versions(props: { versions: Version[] }) {
+function Versions(props: { versions: Version[]; shared: Shared }) {
   const { t } = useTranslation()
   return (
     <section className="stack">
@@ -298,7 +344,96 @@ function Versions(props: { versions: Version[] }) {
             <code className="small" dir="ltr" title={v.hash}>
               {v.hash.slice(0, 12)}
             </code>
+            {props.shared.enabled && <ShareButton hash={v.hash} shared={props.shared} />}
           </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+/** Gets a version's link (pushing it to the registry when it has none), shown with a button to copy it. */
+function ShareButton(props: { hash: string; shared: Shared }) {
+  const { t } = useTranslation()
+  const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState('')
+  const field = useRef<HTMLInputElement>(null)
+  const shown = url && !props.shared.revoked.includes(url)
+
+  async function share() {
+    setBusy(true)
+    setError('')
+    try {
+      setUrl((await api<{ url: string }>(`/api/versions/${props.hash}/share`, {})).url)
+      setCopied(false)
+      props.shared.reload()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // navigator.clipboard is missing on pages served over plain http
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setError('')
+    } catch {
+      field.current?.select()
+      setError(t('publish.copyFailed'))
+    }
+  }
+
+  return (
+    <>
+      <button type="button" className="btn" disabled={busy} title={t('publish.shareHelp')} onClick={share}>
+        {busy ? t('publish.sharing') : t('publish.share')}
+      </button>
+      {shown && (
+        <>
+          <input ref={field} className="field" dir="ltr" readOnly value={url} aria-label={t('publish.share')} onFocus={(e) => e.target.select()} />
+          <button type="button" className="btn" onClick={copy}>
+            {copied ? t('publish.copied') : t('publish.copy')}
+          </button>
+        </>
+      )}
+      {error && <span className="error">{error}</span>}
+    </>
+  )
+}
+
+/** The links made for this course's versions that still work. */
+function SharedLinks(props: { shared: Shared; versions: Version[] }) {
+  const { t } = useTranslation()
+  const numbers = new Map(props.versions.map((v) => [v.hash, v.number]))
+  const mine = (props.shared.links ?? []).filter((l) => numbers.has(l.hash) && !l.revoked)
+  if (props.shared.failed) {
+    return (
+      <div className="row">
+        <span className="small error">{t('publish.linksFailed')}</span>
+        <button type="button" className="btn" onClick={props.shared.reload}>
+          {t('publish.linksRetry')}
+        </button>
+      </div>
+    )
+  }
+  if (mine.length === 0) return null
+  return (
+    <section className="stack">
+      <h2>{t('publish.links')}</h2>
+      <div className="small">{t('publish.linksHelp')}</div>
+      {mine.map((l) => (
+        <div key={l.id} className="row">
+          <span className="chip">{t('publish.linkOf', { number: numbers.get(l.hash) })}</span>
+          <code dir="ltr">{l.url}</code>
+          <span className="small">{day(l.created)}</span>
+          <button type="button" className="btn" onClick={() => props.shared.revoke(l)}>
+            {t('publish.revoke')}
+          </button>
         </div>
       ))}
     </section>

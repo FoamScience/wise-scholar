@@ -926,6 +926,14 @@
         "WISE_SCHOLAR_GITHUB_TOKEN": {
           "label": "Jeton GitHub",
           "help": "Permet à la recherche de contributions open source de chercher dans le code et d'interroger GitHub plus souvent. Facultatif ; un accès en lecture aux dépôts publics suffit. Jamais affiché."
+        },
+        "WISE_SCHOLAR_REGISTRY_URL": {
+          "label": "Adresse du registre de cours",
+          "help": "L'endroit où les versions publiées peuvent être envoyées et partagées par lien, par exemple https://registry.example.com/registry/v1. Le partage est désactivé tant que le jeton n'est pas défini aussi."
+        },
+        "WISE_SCHOLAR_REGISTRY_TOKEN": {
+          "label": "Jeton du registre de cours",
+          "help": "Le jeton que le registre vous a donné pour envoyer des versions et créer des liens. Jamais affiché."
         }
       }
     },
@@ -982,7 +990,19 @@
         "course": "Cours",
         "summary": "Phrase de clôture"
       },
-      "stale": "{{count}} modifications acceptées ne correspondaient plus au cours et ont été laissées de côté."
+      "stale": "{{count}} modifications acceptées ne correspondaient plus au cours et ont été laissées de côté.",
+      "share": "Partager un lien",
+      "sharing": "Partage…",
+      "shareHelp": "Envoie cette version au registre de cours et crée un lien que chacun peut ouvrir pour l'importer.",
+      "copy": "Copier",
+      "copied": "Copié",
+      "copyFailed": "Copie impossible : sélectionnez l'adresse et copiez-la vous-même.",
+      "linksFailed": "Les liens partagés n'ont pas pu être chargés.",
+      "linksRetry": "Réessayer",
+      "links": "Liens partagés",
+      "linksHelp": "Révoquer un lien l'empêche de fonctionner immédiatement.",
+      "linkOf": "Version {{number}}",
+      "revoke": "Révoquer"
     },
     "replay": {
       "later": "Pas encore écrite : elle viendra dans une prochaine version de ce cours. Votre propre tuteur peut l'enseigner dès maintenant.",
@@ -1154,6 +1174,19 @@
     "the agent must start with claude, opencode or agy": "l'agent doit commencer par claude, opencode ou agy",
     "no such contribution": "cette contribution n'existe pas",
     "unknown time zone": "fuseau horaire inconnu",
-    "not a browser push service": "ce n'est pas un service de notification de navigateur"
+    "not a browser push service": "ce n'est pas un service de notification de navigateur",
+    "the registry token was refused": "le jeton du registre a été refusé",
+    "the registry does not know this address or bundle": "le registre ne connaît pas cette adresse ou ce paquet",
+    "the registry refused this bundle": "le registre a refusé ce paquet",
+    "the bundle is too large for the registry, or your registry storage is full": "le paquet est trop volumineux pour le registre, ou votre espace sur le registre est plein",
+    "the registry's push limit is reached; try again later": "la limite d'envois du registre est atteinte ; réessayez plus tard",
+    "the registry refuses pushes from this account while it is suspended": "le registre refuse les envois de ce compte tant qu'il est suspendu",
+    "the upload to the registry took too long; try again": "l'envoi vers le registre a pris trop de temps ; réessayez",
+    "the registry answered with an error; try again later": "le registre a répondu par une erreur ; réessayez plus tard",
+    "the registry cannot be reached": "le registre est injoignable",
+    "the registry address in the settings is not valid": "l'adresse du registre dans les réglages n'est pas valide",
+    "the bundle file cannot be read": "le fichier du paquet est illisible",
+    "the registry answered something this app cannot read": "le registre a répondu quelque chose que cette application ne sait pas lire",
+    "no course registry is set up": "aucun registre de cours n'est configuré"
   }
 }

@@ -6,7 +6,7 @@ from pathlib import Path
 
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
-from wise_scholar import app, challenge  # noqa: E402
+from wise_scholar import app, challenge, registry  # noqa: E402
 from wise_scholar.routes import blocks, contributions, courses, learner, lessons, media, sharing  # noqa: E402
 from wise_scholar.playbooks import PLAYBOOKS  # noqa: E402
 
@@ -38,6 +38,11 @@ def test_every_learner_facing_server_error_is_translated():
     assert "already answered" in errors and f"a course holds at most {app.SOURCES_PER_COURSE} files" in errors
     for code in ("fr", "ar"):
         assert errors - set(LOCALES[code]["server"]) == set()
+
+
+def test_every_registry_message_is_translated():
+    for code in ("fr", "ar"):
+        assert {*registry.MESSAGES, "no course registry is set up"} - set(LOCALES[code]["server"]) == set()
 
 
 def test_every_playbook_has_a_title_and_summary_in_each_language():

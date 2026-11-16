@@ -2,13 +2,14 @@ import asyncio
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from typing import Literal
 
 from .. import app as core
-from .. import book, bundle, db, hub, obsidian, recap
+from .. import book, bundle, db, hub, obsidian, recap, registry
 from ..tools import side_turns as side_tools
 from ..app import LOCALE_NAMES, _course, _cut, _now, _profile, _turns, _untrusted, app, log
 
@@ -149,14 +150,55 @@ def decide_edit(course_id: int, edit_id: int, body: EditStatus) -> dict:
     return publish_check(course_id)
 
 
-@app.get("/api/versions/{version_hash}/bundle")
-def version_bundle(version_hash: str) -> FileResponse:
+def _stored_version(version_hash: str) -> tuple[dict, Path]:
     v = db.row("SELECT * FROM versions WHERE hash = ?", version_hash) if re.fullmatch(r"[0-9a-f]{64}", version_hash) else None
     path = core.VERSIONS / f"{version_hash}.zip"
     if not v or not path.exists():
         raise HTTPException(404, "no such version")
+    return v, path
+
+
+@app.get("/api/versions/{version_hash}/bundle")
+def version_bundle(version_hash: str) -> FileResponse:
+    v, path = _stored_version(version_hash)
     name = f"{re.sub(r'[^a-z0-9]+', '-', v['topic'].lower()).strip('-')[:60] or 'course'}-v{v['number']}.zip"
     return FileResponse(path, media_type="application/zip", filename=name)
+
+
+# --- Registry: pushing a published version to the course registry the owner configured, and sharing it by link ------
+@app.get("/api/registry")
+def registry_state() -> dict:
+    return {"configured": registry.configured()}
+
+
+def _registry_call(fn, *args):
+    """The registry's answer, or 404 when none is set up and 502 with its reason when it fails."""
+    if not registry.configured():
+        raise HTTPException(404, "no course registry is set up")
+    try:
+        return fn(*args)
+    except registry.RegistryError as e:
+        raise HTTPException(502, str(e)) from None
+
+
+@app.post("/api/versions/{version_hash}/share")
+def share_version(version_hash: str) -> dict:
+    """The link that opens a published version: its live one, else the version is pushed to the registry and linked."""
+    _, path = _stored_version(version_hash)
+    return {"url": _registry_call(registry.share, version_hash, path)}
+
+
+@app.get("/api/registry/links")
+def registry_links() -> list[dict]:
+    return _registry_call(registry.links)
+
+
+@app.delete("/api/registry/links/{link_id}", status_code=204)
+def revoke_registry_link(link_id: str) -> Response:
+    if not registry.LINK_ID.fullmatch(link_id):
+        raise HTTPException(404, "no such link")
+    _registry_call(registry.revoke, link_id)
+    return Response(status_code=204)
 
 
 @app.post("/api/import")

@@ -52,6 +52,8 @@ CATALOG = (
     Setting("WISE_SCHOLAR_AGENT_ENV", "", "text", False),
     Setting("WISE_SCHOLAR_MCP_SECRET", "", "text", False, secret=True),
     Setting("WISE_SCHOLAR_GITHUB_TOKEN", "", "text", False, secret=True),
+    Setting("WISE_SCHOLAR_REGISTRY_URL", "", "text", False),
+    Setting("WISE_SCHOLAR_REGISTRY_TOKEN", "", "text", False, secret=True),
 )
 BY_NAME = {s.name: s for s in CATALOG}
 

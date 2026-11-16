@@ -992,6 +992,14 @@
         "WISE_SCHOLAR_GITHUB_TOKEN": {
           "label": "رمز GitHub",
           "help": "يتيح للبحث عن مساهمات المصادر المفتوحة البحث في الشيفرة وسؤال GitHub أكثر. اختياري؛ تكفي صلاحية قراءة المستودعات العامة. لا يُعرض أبدًا."
+        },
+        "WISE_SCHOLAR_REGISTRY_URL": {
+          "label": "عنوان سجل المقررات",
+          "help": "المكان الذي يمكن دفع الإصدارات المنشورة إليه ومشاركتها برابط، مثل https://registry.example.com/registry/v1. تبقى المشاركة معطلة ما لم يُضبط الرمز أيضًا."
+        },
+        "WISE_SCHOLAR_REGISTRY_TOKEN": {
+          "label": "رمز سجل المقررات",
+          "help": "الرمز الذي منحك إياه السجل لدفع الإصدارات وإنشاء الروابط. لا يُعرض أبدًا."
         }
       }
     },
@@ -1048,7 +1056,19 @@
         "course": "الدورة",
         "summary": "الجملة الختامية"
       },
-      "stale": "{{count}} من التعديلات المقبولة لم تعد تطابق الدورة فتُركت."
+      "stale": "{{count}} من التعديلات المقبولة لم تعد تطابق الدورة فتُركت.",
+      "share": "مشاركة رابط",
+      "sharing": "جارٍ المشاركة…",
+      "shareHelp": "يدفع هذا الإصدار إلى سجل المقررات وينشئ رابطًا يستطيع أي شخص فتحه لاستيراده.",
+      "copy": "نسخ",
+      "copied": "تم النسخ",
+      "copyFailed": "تعذّر النسخ: حدّد العنوان وانسخه بنفسك.",
+      "linksFailed": "تعذّر تحميل الروابط المشاركة.",
+      "linksRetry": "أعد المحاولة",
+      "links": "الروابط المشاركة",
+      "linksHelp": "سحب الرابط يوقف عمله فورًا.",
+      "linkOf": "الإصدار {{number}}",
+      "revoke": "سحب الرابط"
     },
     "replay": {
       "later": "لم تُكتب بعد: ستأتي في نسخة لاحقة من هذه الدورة. يمكن لمعلّمك أن يدرّسها لك الآن.",
@@ -1220,6 +1240,19 @@
     "the agent must start with claude, opencode or agy": "يجب أن يبدأ الوكيل بـ claude أو opencode أو agy",
     "no such contribution": "لا توجد هذه المساهمة",
     "unknown time zone": "منطقة زمنية غير معروفة",
-    "not a browser push service": "ليست خدمة إشعارات متصفح"
+    "not a browser push service": "ليست خدمة إشعارات متصفح",
+    "the registry token was refused": "رُفض رمز السجل",
+    "the registry does not know this address or bundle": "لا يعرف السجل هذا العنوان أو هذه الحزمة",
+    "the registry refused this bundle": "رفض السجل هذه الحزمة",
+    "the bundle is too large for the registry, or your registry storage is full": "الحزمة أكبر من أن يقبلها السجل، أو أن مساحتك في السجل ممتلئة",
+    "the registry's push limit is reached; try again later": "بلغ حدّ الدفع في السجل؛ حاول لاحقًا",
+    "the registry refuses pushes from this account while it is suspended": "يرفض السجل الدفع من هذا الحساب ما دام موقوفًا",
+    "the upload to the registry took too long; try again": "استغرق الرفع إلى السجل وقتًا طويلًا؛ حاول مجددًا",
+    "the registry answered with an error; try again later": "أجاب السجل بخطأ؛ حاول لاحقًا",
+    "the registry cannot be reached": "تعذّر الوصول إلى السجل",
+    "the registry address in the settings is not valid": "عنوان السجل في الإعدادات غير صالح",
+    "the bundle file cannot be read": "تعذّرت قراءة ملف الحزمة",
+    "the registry answered something this app cannot read": "أجاب السجل بما لا يستطيع هذا التطبيق قراءته",
+    "no course registry is set up": "لم يُعدّ أي سجل للمقررات"
   }
 }

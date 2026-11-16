@@ -904,6 +904,14 @@
         "WISE_SCHOLAR_GITHUB_TOKEN": {
           "label": "GitHub token",
           "help": "Lets the search for open-source contributions search code and ask GitHub more often. Optional; read-only access to public repositories is enough. Never shown."
+        },
+        "WISE_SCHOLAR_REGISTRY_URL": {
+          "label": "Course registry address",
+          "help": "Where published versions can be pushed and shared by link, for example https://registry.example.com/registry/v1. Sharing is off unless the token is set too."
+        },
+        "WISE_SCHOLAR_REGISTRY_TOKEN": {
+          "label": "Course registry token",
+          "help": "The token the registry gave you to push versions and make links. Never shown."
         }
       }
     },
@@ -960,7 +968,19 @@
         "course": "Course",
         "summary": "Closing line"
       },
-      "stale": "{{count}} accepted edits no longer matched the course and were left out."
+      "stale": "{{count}} accepted edits no longer matched the course and were left out.",
+      "share": "Share link",
+      "sharing": "Sharing…",
+      "shareHelp": "Pushes this version to the course registry and makes a link anyone can open to import it.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFailed": "Could not copy: select the address and copy it yourself.",
+      "linksFailed": "The shared links could not be loaded.",
+      "linksRetry": "Try again",
+      "links": "Shared links",
+      "linksHelp": "Revoking a link stops it working at once.",
+      "linkOf": "Version {{number}}",
+      "revoke": "Revoke"
     },
     "replay": {
       "later": "Not written yet: it comes in a later version of this course. Your own tutor can teach it now instead.",

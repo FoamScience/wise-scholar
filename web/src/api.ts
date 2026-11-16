@@ -6,11 +6,11 @@ export async function failure(res: Response): Promise<Error> {
   return new Error(typeof detail === 'string' ? serverMessage(detail) : res.statusText)
 }
 
-export async function api<T>(path: string, body?: unknown): Promise<T> {
+export async function api<T>(path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<T> {
   // every change goes to the server; offline it would fail with the browser's own fetch error
-  if (body !== undefined && !navigator.onLine) throw new Error(i18n.t('offline.needsConnection'))
+  if (method !== 'GET' && !navigator.onLine) throw new Error(i18n.t('offline.needsConnection'))
   const res = await fetch(path, {
-    method: body === undefined ? 'GET' : 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
