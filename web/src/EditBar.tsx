@@ -3,6 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import type { QuizData } from './Quiz'
 import type { Block, ChallengeData, ExerciseData } from './course'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+
+const LABEL = 'text-sm text-muted-foreground'
+const LINK = 'text-ink-2'
 
 type Draft = { markdown: string; solution: string; hints: string; run: string; options: string; answer_key: string; explanation: string }
 
@@ -47,24 +53,24 @@ export function EditBar(props: { block: Block; first: boolean; last: boolean; di
   if (draft) {
     return (
       <form
-        className="edit-form"
+        className="flex flex-col gap-2 rounded-lg border border-dashed px-4 py-3"
         onSubmit={(e) => {
           e.preventDefault()
           save()
         }}
       >
-        <label className="small">{t('edit.text')}</label>
-        <textarea className="field" dir="auto" rows={4} value={draft.markdown} onChange={set('markdown')} />
+        <label className={LABEL}>{t('edit.text')}</label>
+        <Textarea dir="auto" rows={4} value={draft.markdown} onChange={set('markdown')} />
         {task && (
           <>
-            <label className="small">{t('edit.hints')}</label>
-            <textarea className="field" dir="auto" rows={3} value={draft.hints} onChange={set('hints')} />
-            <label className="small">{t('edit.solution')}</label>
-            <textarea className="field" dir="auto" rows={4} value={draft.solution} onChange={set('solution')} />
+            <label className={LABEL}>{t('edit.hints')}</label>
+            <Textarea dir="auto" rows={3} value={draft.hints} onChange={set('hints')} />
+            <label className={LABEL}>{t('edit.solution')}</label>
+            <Textarea dir="auto" rows={4} value={draft.solution} onChange={set('solution')} />
             {kind === 'exercise' && (
               <>
-                <label className="small">{t('edit.run')}</label>
-                <input className="field" dir="ltr" value={draft.run} onChange={set('run')} />
+                <label className={LABEL}>{t('edit.run')}</label>
+                <Input dir="ltr" value={draft.run} onChange={set('run')} />
               </>
             )}
           </>
@@ -73,52 +79,52 @@ export function EditBar(props: { block: Block; first: boolean; last: boolean; di
           <>
             {draft.options !== '' || (block.data as QuizData).kind === 'choice' ? (
               <>
-                <label className="small">{t('edit.options')}</label>
-                <textarea className="field" dir="auto" rows={4} value={draft.options} onChange={set('options')} />
+                <label className={LABEL}>{t('edit.options')}</label>
+                <Textarea dir="auto" rows={4} value={draft.options} onChange={set('options')} />
               </>
             ) : null}
-            <label className="small">{t('edit.key')}</label>
-            <input className="field" dir="auto" value={draft.answer_key} onChange={set('answer_key')} />
-            <label className="small">{t('edit.explanation')}</label>
-            <textarea className="field" dir="auto" rows={3} value={draft.explanation} onChange={set('explanation')} />
+            <label className={LABEL}>{t('edit.key')}</label>
+            <Input dir="auto" value={draft.answer_key} onChange={set('answer_key')} />
+            <label className={LABEL}>{t('edit.explanation')}</label>
+            <Textarea dir="auto" rows={3} value={draft.explanation} onChange={set('explanation')} />
           </>
         )}
-        <div className="row">
-          <button className="btn primary" disabled={!draft.markdown.trim()}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" disabled={!draft.markdown.trim()}>
             {t('edit.save')}
-          </button>
-          <button type="button" className="btn" onClick={() => setDraft(null)}>
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setDraft(null)}>
             {t('common.cancel')}
-          </button>
+          </Button>
         </div>
       </form>
     )
   }
 
   return (
-    <div className="edit-bar row">
-      <button type="button" className="link" disabled={props.disabled} onClick={() => setDraft(draftOf(block))}>
+    <div className="-mt-3 flex flex-wrap items-center gap-4 text-sm">
+      <Button type="button" variant="ghost" className={LINK} disabled={props.disabled} onClick={() => setDraft(draftOf(block))}>
         {t('edit.edit')}
-      </button>
-      <button type="button" className="link" disabled={props.disabled || props.first} onClick={() => act('move', { direction: 'up' })}>
+      </Button>
+      <Button type="button" variant="ghost" className={LINK} disabled={props.disabled || props.first} onClick={() => act('move', { direction: 'up' })}>
         {t('edit.up')}
-      </button>
-      <button type="button" className="link" disabled={props.disabled || props.last} onClick={() => act('move', { direction: 'down' })}>
+      </Button>
+      <Button type="button" variant="ghost" className={LINK} disabled={props.disabled || props.last} onClick={() => act('move', { direction: 'down' })}>
         {t('edit.down')}
-      </button>
+      </Button>
       {confirming ? (
         <>
-          <button type="button" className="btn danger" disabled={props.disabled} onClick={() => act('remove')}>
+          <Button type="button" variant="destructive" disabled={props.disabled} onClick={() => act('remove')}>
             {t('edit.removeConfirm')}
-          </button>
-          <button type="button" className="link" onClick={() => setConfirming(false)}>
+          </Button>
+          <Button type="button" variant="ghost" className={LINK} onClick={() => setConfirming(false)}>
             {t('common.cancel')}
-          </button>
+          </Button>
         </>
       ) : (
-        <button type="button" className="link" disabled={props.disabled} onClick={() => setConfirming(true)}>
+        <Button type="button" variant="ghost" className={LINK} disabled={props.disabled} onClick={() => setConfirming(true)}>
           {t('edit.remove')}
-        </button>
+        </Button>
       )}
     </div>
   )

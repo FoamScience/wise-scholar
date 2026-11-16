@@ -13,20 +13,38 @@ import { OutlineCard } from './Outline'
 import type { Block, Concept, CourseDetail, Lesson, Ranked, Resource, SetupStep } from './course'
 import { ScopeCard, ScopeForm } from './Scope'
 import type { Source } from './Sources'
-import { ModuleGroup, SideMenu } from './CourseMap'
+import { MAP_ROW, ModuleGroup, SideMenu } from './CourseMap'
 import { AskButton, ChatPanel, PaneSwitcher } from './Chat'
 import { EditBar } from './EditBar'
 import { LessonCard, PlacementResult } from './LessonCard'
 import { useAnsweredToday, useChatDraft, useCourseStream, useFollow, useLessonVisits, useOfflineAnswers, useUnread, useUpgrade } from './workspaceState'
+import { Badge } from '@/components/ui/badge'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Skeleton as Bar } from '@/components/ui/skeleton'
+import { cn } from 'cn'
+
+// block stays for arrive.ts and the lesson pane's first-card rule; never pass it through cn, which drops it beside flex
+const CARD = 'block border-t pt-6'
+const LABEL = 'text-sm leading-snug font-medium text-ink-2'
+const SMALL = 'text-sm text-muted-foreground'
+const ROW = 'flex flex-wrap items-center gap-2'
+const LINK = 'text-primary underline decoration-current/45 hover:decoration-current'
+const ERROR = 'rounded-md bg-warm-tint px-4 py-3 text-warm-ink'
+const NEXT = 'flex flex-wrap justify-center gap-2 pt-2 pb-6'
+// on a phone one pane shows at a time; hidden, not display: none, so each keeps its scroll position
+const PANE = 'max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:bottom-13 max-md:w-auto max-md:border-0 max-md:transition-[opacity,visibility] max-md:duration-(--motion) max-md:ease-(--ease)'
+const PANE_AWAY = 'max-md:pointer-events-none max-md:invisible max-md:opacity-0'
 
 function Skeleton() {
   const { t } = useTranslation()
   return (
-    <section className="block skeleton" role="status" aria-label={t('block.tutorWorking')}>
-      <span style={{ width: '22%' }} />
-      <span style={{ width: '92%' }} />
-      <span style={{ width: '78%' }} />
-      <span style={{ width: '54%' }} />
+    <section className={`${CARD} skeleton flex flex-col gap-3`} role="status" aria-label={t('block.tutorWorking')}>
+      <Bar className="h-2.5 rounded-sm bg-border" style={{ width: '22%' }} />
+      <Bar className="h-3.5 rounded-sm bg-border" style={{ width: '92%' }} />
+      <Bar className="h-3.5 rounded-sm bg-border" style={{ width: '78%' }} />
+      <Bar className="h-3.5 rounded-sm bg-border" style={{ width: '54%' }} />
     </section>
   )
 }
@@ -43,51 +61,50 @@ function Plan(props: {
 }) {
   const { t } = useTranslation()
   return (
-    <section className="plan">
-      <div className="label">{t('plan.heading')}</div>
-      {props.ranking.map((r, i) => (
-        <label key={r.mechanism} className={r.mechanism === props.mechanism ? 'plan-card chosen' : 'plan-card'}>
-          <input
-            type="radio"
-            name="mechanism"
-            checked={r.mechanism === props.mechanism}
-            disabled={props.accepted}
-            onChange={() => props.onChoose(r.mechanism)}
-          />
-          <span>
-            <strong>
-              {i + 1}. {lookup(`playbooks.${r.mechanism}.title`, r.title)}
-            </strong>
-            <span dir="auto">{r.rationale}</span>
-            <span className="muted">{lookup(`playbooks.${r.mechanism}.summary`, r.summary)}</span>
-            <span className="evidence">
-              {t('plan.evidence')}{' '}
-              {r.evidence.map((e, n) => (
-                <span key={e.url}>
-                  {n > 0 && '; '}
-                  <a href={e.url} target="_blank" rel="noreferrer" title={e.finding}>
-                    {e.source}
-                  </a>
-                </span>
-              ))}
+    <section className="flex flex-col gap-3">
+      <div className={LABEL}>{t('plan.heading')}</div>
+      <RadioGroup className="gap-3" name="mechanism" value={props.mechanism} disabled={props.accepted} onValueChange={(mechanism) => props.onChoose(mechanism as string)}>
+        {props.ranking.map((r, i) => (
+          <label
+            key={r.mechanism}
+            className={cn('flex cursor-pointer gap-4 rounded-lg border bg-card p-4', r.mechanism === props.mechanism && 'border-primary bg-accent')}
+          >
+            <RadioGroupItem value={r.mechanism} className="mt-1" />
+            <span className="flex flex-col gap-1">
+              <strong>
+                {i + 1}. {lookup(`playbooks.${r.mechanism}.title`, r.title)}
+              </strong>
+              <span dir="auto">{r.rationale}</span>
+              <span className="text-muted-foreground">{lookup(`playbooks.${r.mechanism}.summary`, r.summary)}</span>
+              <span className={SMALL}>
+                {t('plan.evidence')}{' '}
+                {r.evidence.map((e, n) => (
+                  <span key={e.url}>
+                    {n > 0 && '; '}
+                    <a className={LINK} href={e.url} target="_blank" rel="noreferrer" title={e.finding}>
+                      {e.source}
+                    </a>
+                  </span>
+                ))}
+              </span>
             </span>
-          </span>
-        </label>
-      ))}
-      <div className="muted">{t('plan.always')}</div>
+          </label>
+        ))}
+      </RadioGroup>
+      <div className="text-muted-foreground">{t('plan.always')}</div>
       {!props.accepted && (
-        <div className="block next-step">
-          <div className="label">{props.prepared ? t('plan.nextPrepared') : t('plan.next')}</div>
+        <div className={`${CARD} flex flex-col gap-3`}>
+          <div className={LABEL}>{props.prepared ? t('plan.nextPrepared') : t('plan.next')}</div>
           <div>{props.prepared ? t('plan.preparedInfo') : t('plan.placementInfo')}</div>
-          <div className="row">
+          <div className={cn(ROW, 'gap-3')}>
             {!props.prepared && (
-              <button className="btn primary" disabled={props.disabled} onClick={props.onPlacement}>
+              <Button disabled={props.disabled} onClick={props.onPlacement}>
                 {t('plan.startPlacement')}
-              </button>
+              </Button>
             )}
-            <button className={props.prepared ? 'btn primary' : 'btn'} disabled={props.disabled} onClick={props.onAccept}>
+            <Button variant={props.prepared ? 'default' : 'outline'} disabled={props.disabled} onClick={props.onAccept}>
               {props.prepared ? t('plan.accept') : t('plan.skip')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -104,16 +121,16 @@ function MapHead(props: { course: CourseDetail; running: boolean; onStart: (kind
   const reviewDue = units.filter((c) => c.due).length
   return (
     <>
-      <div className="label">{t('map.label')}</div>
+      <div className={LABEL}>{t('map.label')}</div>
       {course.mode !== 'teacher' && units.length > 0 && (
-        <div className="small">
+        <div className={SMALL}>
           {reviewDue ? t('map.summary', { done: unitsDone, total: units.length, count: reviewDue }) : t('map.summaryDone', { done: unitsDone, total: units.length })}
         </div>
       )}
       {course.level && (
-        <div className="level-row">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span>
-            {t('map.level')} <span className="chip">{course.level}</span>
+            {t('map.level')} <Badge className="h-auto rounded-sm bg-accent px-2 py-0.5 text-base text-accent-foreground">{course.level}</Badge>
           </span>
         </div>
       )}
@@ -129,7 +146,6 @@ function MapHead(props: { course: CourseDetail; running: boolean; onStart: (kind
         />
       )}
       <form
-        className="map-search"
         role="search"
         onSubmit={(e) => {
           e.preventDefault()
@@ -137,7 +153,7 @@ function MapHead(props: { course: CourseDetail; running: boolean; onStart: (kind
           if (query.trim()) location.hash = searchHref(course.id, query)
         }}
       >
-        <input type="search" name="q" className="field" dir="auto" aria-label={t('search.label')} placeholder={t('search.placeholder')} />
+        <Input type="search" name="q" dir="auto" aria-label={t('search.label')} placeholder={t('search.placeholder')} />
       </form>
     </>
   )
@@ -156,23 +172,23 @@ function OfflineRow(props: {
   const { lesson, given } = props
   if (!lesson.batch) {
     return (
-      <div className="lesson-next batch">
-        <span className="small">{t('offline.help')}</span>
-        <button className="btn" disabled={!props.online} onClick={props.onPrepare}>
+      <div className={cn(NEXT, 'items-center gap-x-4 gap-y-3')}>
+        <span className={SMALL}>{t('offline.help')}</span>
+        <Button variant="outline" disabled={!props.online} onClick={props.onPrepare}>
           {t('offline.prepare')}
-        </button>
+        </Button>
       </div>
     )
   }
   const batchCards = lesson.blocks.filter((b) => b.kind === 'quiz' && (b.data as QuizData).answer === null)
   const ready = batchCards.filter((b) => given[b.id] && ((b.data as QuizData).kind !== 'open' || given[b.id].self_correct !== undefined))
   return (
-    <div className="lesson-next batch">
-      <span className="small">{t('offline.answered', { n: ready.length, total: batchCards.length })}</span>
+    <div className={cn(NEXT, 'items-center gap-x-4 gap-y-3')}>
+      <span className={SMALL}>{t('offline.answered', { n: ready.length, total: batchCards.length })}</span>
       {/* with nothing answered it leaves offline mode, the way out of a prepare that wrote no checks */}
-      <button className={ready.length ? 'btn primary' : 'btn'} disabled={!props.online || props.sending} onClick={() => props.onSend(ready)}>
+      <Button variant={ready.length ? 'default' : 'outline'} disabled={!props.online || props.sending} onClick={() => props.onSend(ready)}>
         {ready.length ? t('offline.send') : t('offline.leave')}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -181,28 +197,28 @@ function UpgradeCard(props: { upgrade: NonNullable<CourseDetail['upgrade']>; upg
   const { t } = useTranslation()
   const { upgrade } = props
   return (
-    <section className="block upgrade">
-      <div className="label">{t('replay.upgrade', { number: upgrade.number, date: day(upgrade.published.slice(0, 10)) })}</div>
+    <section className={CARD}>
+      <div className={cn(LABEL, 'mb-2')}>{t('replay.upgrade', { number: upgrade.number, date: day(upgrade.published.slice(0, 10)) })}</div>
       {upgrade.notes && (
-        <div className="small" dir="auto">
+        <div className={SMALL} dir="auto">
           {upgrade.notes}
         </div>
       )}
       {(['kept', 'restarted', 'added', 'removed'] as const).map(
         (part) =>
           upgrade[part].length > 0 && (
-            <div key={part} className="small" dir="auto">
+            <div key={part} className={SMALL} dir="auto">
               {t(`replay.${part}`, { count: upgrade[part].length, units: upgrade[part].join(', ') })}
             </div>
           ),
       )}
-      <div className="row">
-        <button type="button" className="btn primary" disabled={props.upgrading} onClick={props.onUpgrade}>
+      <div className={ROW}>
+        <Button type="button" disabled={props.upgrading} onClick={props.onUpgrade}>
           {props.upgrading ? t('replay.upgrading') : t('replay.upgradeNow')}
-        </button>
-        <button type="button" className="btn" disabled={props.upgrading} onClick={props.onStay}>
+        </Button>
+        <Button type="button" variant="outline" disabled={props.upgrading} onClick={props.onStay}>
           {t('replay.stay')}
-        </button>
+        </Button>
       </div>
     </section>
   )
@@ -212,27 +228,27 @@ function UpgradeCard(props: { upgrade: NonNullable<CourseDetail['upgrade']>; upg
 function SetupCard(props: { steps: SetupStep[]; onDecide: (index: number, allow: boolean) => void }) {
   const { t } = useTranslation()
   return (
-    <section className="block setup">
-      <div className="label">{t('replay.setup')}</div>
-      <div className="small">{t('replay.setupHelp')}</div>
+    <section className={`${CARD} flex flex-col gap-3`}>
+      <div className={cn(LABEL, 'mb-2')}>{t('replay.setup')}</div>
+      <div className={SMALL}>{t('replay.setupHelp')}</div>
       {props.steps.map((step, i) => (
-        <div key={i} className="setup-step">
-          <pre dir="ltr">{step.command}</pre>
-          <div className="row">
+        <div key={i} className="flex flex-col gap-2">
+          <pre dir="ltr" className="m-0">{step.command}</pre>
+          <div className={ROW}>
             {step.status === 'running' ? (
-              <span className="small">{t('replay.running')}</span>
+              <span className={SMALL}>{t('replay.running')}</span>
             ) : step.status === 'asked' || step.status === 'failed' ? (
               <>
-                {step.status === 'failed' && <span className="small">{t('replay.failed', { code: step.exit_code ?? '–' })}</span>}
-                <button type="button" className="btn primary" onClick={() => props.onDecide(i, true)}>
+                {step.status === 'failed' && <span className={SMALL}>{t('replay.failed', { code: step.exit_code ?? '–' })}</span>}
+                <Button type="button" onClick={() => props.onDecide(i, true)}>
                   {t('network.allow')}
-                </button>
-                <button type="button" className="btn" onClick={() => props.onDecide(i, false)}>
+                </Button>
+                <Button type="button" variant="outline" onClick={() => props.onDecide(i, false)}>
                   {t('network.refuse')}
-                </button>
+                </Button>
               </>
             ) : (
-              <span className="small">{t(`replay.${step.status}`)}</span>
+              <span className={SMALL}>{t(`replay.${step.status}`)}</span>
             )}
           </div>
         </div>
@@ -281,14 +297,15 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
   const lessonDone = lesson?.blocks.some((b) => b.kind === 'done') ?? false
   const answeredToday = useAnsweredToday(lessonDone, profile)
 
-  if (!course || !lesson) return <main className="home">{error && <div className="error">{error}</div>}</main>
+  if (!course || !lesson) return <main className="mx-auto flex w-full max-w-160 flex-col gap-10 px-6 pt-10 pb-16">{error && <div className={ERROR}>{error}</div>}</main>
 
   const { showPlan, finished, nextUnit, cardTotal, empty, canPrepare } = lessonView(course, lesson)
   const doing = activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working')
 
   return (
-    <div className="workspace" data-pane={pane}>
+    <div className="relative flex min-h-0 grow max-md:flex-col" data-pane={pane}>
       <MapNav
+        className={cn(PANE, pane !== 'map' && PANE_AWAY)}
         course={course}
         lesson={lesson}
         sources={sources}
@@ -318,7 +335,15 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
         }
       />
 
-      <main ref={lessonBox} className="lesson">
+      <main
+        ref={lessonBox}
+        className={cn(
+          'flex min-w-0 grow flex-col gap-6 overflow-x-hidden overflow-y-auto px-6 pt-10 pb-16 max-md:p-4 min-[1101px]:pe-23',
+          '[&_li]:max-w-[75ch] [&_p:not([class])]:max-w-[75ch] [&>.block:first-child]:border-t-0 [&>.block:first-child]:pt-0',
+          PANE,
+          pane !== 'lesson' && PANE_AWAY,
+        )}
+      >
         <CourseNotices
           course={course}
           upgrading={upgrading}
@@ -332,7 +357,9 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
             )
           }
         />
-        <h1 dir="auto">{lessonTitle(lesson, t)}</h1>
+        <h1 dir="auto" className="m-0 max-w-none">
+          {lessonTitle(lesson, t)}
+        </h1>
         <LessonIntro course={course} lesson={lesson} finished={finished} setCourse={setCourse} post={post} onError={setError} />
         <LessonCards
           course={course}
@@ -355,7 +382,7 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
           onOpenUnit={openConcept}
           row={<OfflineRow lesson={lesson} given={given} online={online} sending={sending} onSend={sendBatch} onPrepare={prepareOffline} />}
         />
-        {error && <div className="error">{error}</div>}
+        {error && <div className={ERROR}>{error}</div>}
         <div ref={lessonBottom} />
         {!open && (
           <AskButton
@@ -370,6 +397,7 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
       </main>
 
       <ChatPanel
+        className={cn(pane === 'map' && 'max-md:hidden')}
         open={open}
         running={lesson.running}
         doing={doing}
@@ -501,10 +529,10 @@ function LessonIntro(props: {
         />
       )}
       {course.mode === 'teacher' && lesson.concept_id !== null && (
-        <div className="small handouts">
+        <div className={cn(SMALL, '-mt-2')}>
           {t('handout.label')}{' '}
-          <a href={`#/lesson/${lesson.id}/handout/teacher`}>{t('handout.teacher')}</a>,{' '}
-          <a href={`#/lesson/${lesson.id}/handout/student`}>{t('handout.student')}</a>
+          <a className={LINK} href={`#/lesson/${lesson.id}/handout/teacher`}>{t('handout.teacher')}</a>,{' '}
+          <a className={LINK} href={`#/lesson/${lesson.id}/handout/student`}>{t('handout.student')}</a>
         </div>
       )}
       {lesson.phase === 'interview' &&
@@ -550,6 +578,7 @@ function PlacementNote({ course, lesson }: { course: CourseDetail; lesson: Lesso
 }
 
 function MapNav(props: {
+  className: string
   course: CourseDetail
   lesson: Lesson
   sources: Source[]
@@ -569,7 +598,7 @@ function MapNav(props: {
   const { t } = useTranslation()
   const { course, lesson } = props
   return (
-    <nav className="map" aria-label={t('map.label')}>
+    <nav className={cn('flex w-72 shrink-0 flex-col gap-2 overflow-y-auto bg-muted px-3 py-6', props.className)} aria-label={t('map.label')}>
       <MapHead course={course} running={lesson.running} onStart={(kind) => props.onCreate(`/api/courses/${course.id}/${kind}`)} />
       <SideMenu
         course={course}
@@ -584,7 +613,7 @@ function MapNav(props: {
       {course.lessons
         .filter((l) => l.concept_id === null)
         .map((l) => (
-          <button key={l.id} aria-current={l.id === lesson.id} onClick={() => props.onShow(l.id)}>
+          <button key={l.id} className={MAP_ROW} aria-current={l.id === lesson.id} onClick={() => props.onShow(l.id)}>
             {lessonTitle(l, t)}
           </button>
         ))}
@@ -602,9 +631,12 @@ function MapNav(props: {
         />
       ))}
       {course.recap?.finished && (
-        <a className="recap-entry" href={`#/course/${course.id}/recap`}>
-          <span className="concept-name">{t('recap.mapEntry')}</span>
-          <span className="done-mark" role="img" aria-label={t('common.done')}>
+        <a
+          className="mt-2 flex min-h-11 items-center justify-between gap-3 border-t px-3 py-2 font-semibold text-accent-foreground no-underline hover:rounded-md hover:bg-paper-3"
+          href={`#/course/${course.id}/recap`}
+        >
+          <span className="min-w-0 wrap-anywhere">{t('recap.mapEntry')}</span>
+          <span className="inline-flex size-4.5 items-center justify-center rounded-full bg-primary text-xs leading-none font-semibold text-primary-foreground" role="img" aria-label={t('common.done')}>
             ✓
           </span>
         </a>
@@ -628,31 +660,31 @@ function ResourcesCard(props: { resources: Resource[]; onDecide: (kind: Resource
   }
 
   return (
-    <section className="block setup">
-      <div className="label">{t('resources.heading')}</div>
-      <div className="small">{t('resources.help')}</div>
+    <section className={`${CARD} flex flex-col gap-3`}>
+      <div className={cn(LABEL, 'mb-2')}>{t('resources.heading')}</div>
+      <div className={SMALL}>{t('resources.help')}</div>
       {props.resources.map((r) => (
-        <div key={r.kind} className="setup-step">
+        <div key={r.kind} className="flex flex-col gap-2">
           <div>
             <strong>{t(`resources.${r.kind}`)}</strong>
-            {r.size !== null && <span className="small"> ({t('resources.size', { size: megabytes(r.size, i18n.language) })})</span>}
+            {r.size !== null && <span className={SMALL}> ({t('resources.size', { size: megabytes(r.size, i18n.language) })})</span>}
           </div>
-          <div className="small">{t(`resources.${r.kind}Help`)}</div>
-          <div className="row">
+          <div className={SMALL}>{t(`resources.${r.kind}Help`)}</div>
+          <div className={ROW}>
             {r.status === 'downloading' ? (
-              <span className="small">{!r.size ? t('replay.running') : r.prepares && r.done >= r.size ? t('resources.preparing') : t('resources.progress', { percent: Math.min(100, Math.floor((100 * r.done) / r.size)) })}</span>
+              <span className={SMALL}>{!r.size ? t('replay.running') : r.prepares && r.done >= r.size ? t('resources.preparing') : t('resources.progress', { percent: Math.min(100, Math.floor((100 * r.done) / r.size)) })}</span>
             ) : r.status === 'asked' || r.status === 'failed' ? (
               <>
-                {r.status === 'failed' && <span className="small">{t('resources.failed', { error: r.error ?? '' })}</span>}
-                <button type="button" className="btn primary" disabled={busy === r.kind} onClick={() => decide(r.kind, true)}>
+                {r.status === 'failed' && <span className={SMALL}>{t('resources.failed', { error: r.error ?? '' })}</span>}
+                <Button type="button" disabled={busy === r.kind} onClick={() => decide(r.kind, true)}>
                   {t('resources.download')}
-                </button>
-                <button type="button" className="btn" disabled={busy === r.kind} onClick={() => decide(r.kind, false)}>
+                </Button>
+                <Button type="button" variant="outline" disabled={busy === r.kind} onClick={() => decide(r.kind, false)}>
                   {t('network.refuse')}
-                </button>
+                </Button>
               </>
             ) : (
-              <span className="small">{t(`replay.${r.status === 'ready' ? 'done' : 'refused'}`)}</span>
+              <span className={SMALL}>{t(`replay.${r.status === 'ready' ? 'done' : 'refused'}`)}</span>
             )}
           </div>
         </div>
@@ -712,8 +744,8 @@ function LessonCards(props: {
       />
     )
     const shown = n ? (
-      <div key={b.id} className="numbered">
-        <span className="card-n" aria-label={t('outline.card', n)}>
+      <div key={b.id} className="relative [&>.block>.label]:pe-[4.5em]">
+        <span className="absolute end-0 top-6 text-sm leading-snug text-muted-foreground tabular-nums" aria-label={t('outline.card', n)}>
           {n.n} / {n.total}
         </span>
         {card}
@@ -734,12 +766,12 @@ function LessonCards(props: {
 function NextUnit(props: { unit: Concept; stop: boolean; onOpen: () => void }) {
   const { t } = useTranslation()
   return (
-    <div className="lesson-next">
-      <button className="btn primary" onClick={props.onOpen}>
+    <div className={NEXT}>
+      <Button onClick={props.onOpen}>
         {t('lesson.nextUnit', { title: props.unit.title })}
-      </button>
+      </Button>
       {props.stop && (
-        <a className="btn as-link" href="#/sitting">
+        <a className={buttonVariants({ variant: 'outline' })} href="#/sitting">
           {t('sitting.stop')}
         </a>
       )}

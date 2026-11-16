@@ -2,6 +2,7 @@ import { diffWords } from 'diff'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
+import { Button } from '@/components/ui/button'
 
 /** The learner's text against its correction, word by word; a toggle shows the clean corrected text instead. */
 export function Correction({ attempt, corrected }: { attempt: string; corrected: string }) {
@@ -10,16 +11,20 @@ export function Correction({ attempt, corrected }: { attempt: string; corrected:
   const parts = diffWords(attempt, corrected)
   const changed = parts.some((p) => p.added || p.removed)
   return (
-    <div className="correction">
+    <div>
       {clean || !changed ? (
         <Markdown>{corrected}</Markdown>
       ) : (
-        <p className="word-diff" dir="auto">
+        <p className="mt-0 mb-2 whitespace-pre-wrap" dir="auto">
           {parts.map((p, i) =>
             p.removed ? (
-              <del key={i}>{p.value}</del>
+              <del key={i} className="text-warm line-through decoration-2">
+                {p.value}
+              </del>
             ) : p.added ? (
-              <ins key={i}>{p.value}</ins>
+              <ins key={i} className="text-accent-foreground underline decoration-2 underline-offset-3">
+                {p.value}
+              </ins>
             ) : (
               <span key={i}>{p.value}</span>
             ),
@@ -27,11 +32,11 @@ export function Correction({ attempt, corrected }: { attempt: string; corrected:
         </p>
       )}
       {changed && (
-        <button type="button" className="link" onClick={() => setClean(!clean)}>
+        <Button type="button" variant="ghost" className="text-ink-2 in-[.book]:hidden" onClick={() => setClean(!clean)}>
           {clean ? t('notebook.showChanges') : t('notebook.showClean')}
-        </button>
+        </Button>
       )}
-      {!changed && <div className="small">{t('notebook.noChanges')}</div>}
+      {!changed && <div className="text-sm text-muted-foreground">{t('notebook.noChanges')}</div>}
     </div>
   )
 }

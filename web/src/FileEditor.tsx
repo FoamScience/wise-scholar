@@ -4,6 +4,8 @@ import { api } from './api'
 import type { Completion, ExerciseFile } from './course'
 import type { Editor } from './editor'
 import { sameText, toDisk } from './editorSync'
+import { Button } from '@/components/ui/button'
+import { cn } from 'cn'
 
 const SAVE_AFTER_MS = 800
 
@@ -130,19 +132,19 @@ export function FileEditor(props: {
 
   return (
     <>
-      {!loaded && <pre>{content}</pre>}
+      {!loaded && <pre className="m-0 max-h-[420px] overflow-auto rounded-none">{content}</pre>}
       <div ref={host} className="code-editor" />
       {(status || failed) && (
-        <div className={failed ? 'error small' : 'small muted'} role="status">
+        <div className={cn('px-4 py-1 text-sm text-muted-foreground', failed && 'rounded-md bg-warm-tint')} role="status">
           {failed || (status === 'saving' ? t('exercise.saving') : t('exercise.saved'))}
         </div>
       )}
       {disk !== null && (
-        <div className="row file-conflict" role="alert">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2" role="alert">
           <span className="grow">{t('exercise.conflict')}</span>
-          <button
+          <Button
             type="button"
-            className="btn"
+            variant="outline"
             onClick={() => {
               onDisk.current = disk
               showConflict(null)
@@ -150,10 +152,10 @@ export function FileEditor(props: {
             }}
           >
             {t('exercise.useDisk')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn"
+            variant="outline"
             onClick={() => {
               onDisk.current = disk
               showConflict(null)
@@ -161,7 +163,7 @@ export function FileEditor(props: {
             }}
           >
             {t('exercise.keepMine')}
-          </button>
+          </Button>
         </div>
       )}
     </>

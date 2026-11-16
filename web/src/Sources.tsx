@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { api, failure } from './api'
 import { fileSize } from './i18n'
 import { Swap } from './Swap'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { cn } from 'cn'
 
 export const SOURCE_TYPES =
   '.pdf,.epub,.html,.htm,.md,.markdown,.txt,.rst,.py,.rs,.js,.ts,.tsx,.c,.cpp,.h,.hs,.go,.java,.kt,.rb,.sh,.toml,.yaml,.yml,.json,.csv,.tex'
@@ -39,19 +42,19 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
   }
 
   return (
-    <div className="sources">
-      <div className="label">{t('sources.label')}</div>
+    <div className="flex flex-col gap-2 border-t py-3">
+      <div className="text-sm leading-snug font-medium text-ink-2">{t('sources.label')}</div>
       {props.sources.map((s) => (
-        <div key={s.id} className="source-row" title={s.error ?? undefined}>
+        <div key={s.id} className="flex items-center gap-2 text-sm break-words" title={s.error ?? undefined}>
           <span className="grow">
-            {s.name} <span className="muted">({fileSize(s.size)})</span>
+            {s.name} <span className="text-muted-foreground">({fileSize(s.size)})</span>
           </span>
-          <span className={`chip${s.status === 'failed' ? ' warn' : ''}`}>
+          <Badge className={cn('h-auto rounded-sm px-2 py-0.5 text-sm', s.status === 'failed' ? 'bg-warm-tint text-warm' : 'bg-accent text-accent-foreground')}>
             {s.status === 'ready' ? t('sources.sections', { count: s.sections }) : s.status === 'failed' ? t('sources.failed') : t('sources.processing')}
-          </span>
-          <button type="button" className="link" aria-label={t('sources.remove', { name: s.name })} onClick={() => remove(s)}>
+          </Badge>
+          <Button type="button" variant="ghost" className="text-ink-2" aria-label={t('sources.remove', { name: s.name })} onClick={() => remove(s)}>
             ×
-          </button>
+          </Button>
         </div>
       ))}
       <input
@@ -61,10 +64,10 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
         hidden
         onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
       />
-      <button type="button" className="btn" disabled={busy} onClick={() => input.current?.click()}>
+      <Button type="button" variant="outline" className="justify-start" disabled={busy} onClick={() => input.current?.click()}>
         <Swap labels={[t('sources.add'), t('sources.uploading')]} at={busy ? 1 : 0} />
-      </button>
-      <div className="small">{t('sources.help')}</div>
+      </Button>
+      <div className="text-sm text-muted-foreground">{t('sources.help')}</div>
     </div>
   )
 }
