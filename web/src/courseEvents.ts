@@ -20,6 +20,7 @@ export type TutorEvent =
   | { type: 'setup.updated'; setup: SetupStep[] }
   | { type: 'resources.updated'; resources: Resource[] }
   | { type: 'turn.done'; lesson_id: number; ok: boolean; error: string | null; message: Message | null }
+  | { type: 'recap.written' | 'contributions.written' }
 
 /** The lesson an event changes the cards of, and how; null when it changes none. */
 export function lessonChange(ev: TutorEvent): [number, (l: Lesson) => Lesson] | null {
@@ -75,5 +76,35 @@ export function sourcesChange(ev: TutorEvent): ((all: Source[]) => Source[]) | n
       return (all) => all.filter((s) => s.id !== ev.id)
     default:
       return null
+  }
+}
+
+/** Follows the course's live events until the returned stop is called. A proxy answering 502 while the server restarts
+ * closes an EventSource for good, so a closed stream is opened again; onResume runs on opening after any failure, to
+ * fetch what was missed while it was down. */
+export function followCourse(courseId: number, onEvent: (ev: TutorEvent) => void, onResume: () => void): () => void {
+  let source: EventSource
+  let retry: ReturnType<typeof setTimeout> | undefined
+  let missed = false
+  let wait = 1000
+  function open() {
+    source = new EventSource(`/api/courses/${courseId}/events`)
+    source.onmessage = (raw) => onEvent(JSON.parse(raw.data))
+    source.onopen = () => {
+      wait = 1000
+      if (missed) onResume()
+      missed = false
+    }
+    source.onerror = () => {
+      missed = true
+      if (source.readyState !== EventSource.CLOSED) return
+      retry = setTimeout(open, wait)
+      wait = Math.min(wait * 2, 30000)
+    }
+  }
+  open()
+  return () => {
+    clearTimeout(retry)
+    source.close()
   }
 }

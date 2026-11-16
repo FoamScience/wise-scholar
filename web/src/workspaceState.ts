@@ -6,7 +6,7 @@ import { loadGiven, saveGiven } from './offline'
 import type { Given } from './offline'
 import type { Block, CourseDetail, Lesson, Message } from './course'
 import type { Source } from './Sources'
-import { courseChange, lessonChange, sourcesChange, type TutorEvent } from './courseEvents'
+import { courseChange, followCourse, lessonChange, sourcesChange, type TutorEvent } from './courseEvents'
 import { clearTabMark, markTab } from './tabMark'
 
 
@@ -123,9 +123,17 @@ export function useCourseStream({ courseId, concept, start, foundLesson }: Openi
         ({ concepts, strands, vocabulary, recap }) => setCourse((c) => c && { ...c, concepts, strands, vocabulary, recap }),
         () => {},
       )
-    const source = new EventSource(`/api/courses/${courseId}/events`)
-    source.onmessage = (raw) => {
-      const ev: TutorEvent = JSON.parse(raw.data)
+    const resync = () =>
+      api<CourseDetail>(`/api/courses/${courseId}`).then(
+        (c) => {
+          setCourse(c)
+          setStreaming('')
+          setWriting(false)
+          setActivity(c.lessons.some((l) => l.running) ? 'thinking' : '')
+        },
+        () => {},
+      )
+    const stop = followCourse(courseId, (ev: TutorEvent) => {
       const toLesson = lessonChange(ev)
       if (toLesson) patchLesson(...toLesson)
       const toCourse = courseChange(ev)
@@ -150,7 +158,7 @@ export function useCourseStream({ courseId, concept, start, foundLesson }: Openi
       } else if (ev.type === 'turn.done') {
         finishTurn(ev)
       }
-    }
+    }, resync)
     // a sitting opens with a few due reviews before the lesson; a card looked up by search opens straight away
     if (!start && foundLesson === null && navigator.onLine) askWarmup(courseId)
     api<Source[]>(`/api/courses/${courseId}/sources`).then(setSources, () => {})
@@ -178,7 +186,7 @@ export function useCourseStream({ courseId, concept, start, foundLesson }: Openi
       },
       (e) => setError(e.message),
     )
-    return () => source.close()
+    return stop
   }, [courseId, concept, start, foundLesson])
 
   return { course, setCourse, sources, setSources, lessonId, setLessonId, streaming, activity, writing, error, setError, patchLesson, addLesson }

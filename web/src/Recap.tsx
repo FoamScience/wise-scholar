@@ -6,6 +6,7 @@ import { cn } from 'cn'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { api } from './api'
 import { practiceTitle } from './course'
+import { followCourse } from './courseEvents'
 import { day, number, percent } from './i18n'
 import { LOCALES } from './locale'
 import type { Locale } from './locale'
@@ -260,13 +261,14 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
     load()
     if (!preview) api(`/api/courses/${courseId}/recap/seen`, {}).catch(() => {})
     api<{ suggestions: Suggestion[] }>(`/api/suggestions?profile=${profile}`).then((s) => setNext(s.suggestions), () => {})
-    const source = new EventSource(`/api/courses/${courseId}/events`)
-    source.onmessage = (raw) => {
-      const type = JSON.parse(raw.data).type
-      if (type === 'recap.written') load()
-      else if (type === 'contributions.written') setContributed((n) => n + 1)
-    }
-    return () => source.close()
+    return followCourse(
+      courseId,
+      ({ type }) => {
+        if (type === 'recap.written') load()
+        else if (type === 'contributions.written') setContributed((n) => n + 1)
+      },
+      load,
+    )
   }, [courseId, preview]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // print shows every step open and the whole graph
