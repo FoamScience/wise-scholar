@@ -3,6 +3,20 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { day, fileSize } from './i18n'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from 'cn'
+
+const label = 'text-sm leading-snug font-medium text-ink-2'
+const small = 'text-sm text-muted-foreground'
+const errorBox = 'rounded-md bg-warm-tint px-4 py-3 text-warm-ink'
+const chip = 'inline-block rounded-sm bg-[var(--teal-tint)] px-2 py-0.5 leading-snug font-medium text-accent-foreground'
+const stack = 'flex flex-col gap-3'
+const row = 'flex flex-wrap items-center gap-2'
+const card = 'flex flex-col gap-3 border-t border-border pt-6 [&>:last-child]:mb-0'
+const select = 'h-11 w-full rounded-md border border-input bg-card px-4 hover:border-foreground'
 
 type Licence = 'CC-BY-SA-4.0' | 'CC-BY-4.0' | 'CC-BY-NC-SA-4.0' | 'all-rights-reserved'
 type Version = { hash: string; number: number; notes: string; licence: Licence; forkable: number; published: string; written: number; units: number }
@@ -55,53 +69,53 @@ export function PublishPage({ courseId }: { courseId: number }) {
     }
   }
 
-  if (!preview) return <main className="home">{error && <div className="error">{error}</div>}</main>
+  if (!preview) return <main className="mx-auto flex w-full max-w-[var(--measure)] flex-col gap-10 px-6 pt-10 pb-16">{error && <div className={errorBox}>{error}</div>}</main>
   const blocked = preview.forked_from !== null && !preview.forked_from.forkable
 
   return (
-    <main className="home publish-page">
-      <a className="link" href={`#/course/${courseId}`}>
+    <main className="mx-auto flex w-full max-w-[var(--measure)] flex-col gap-10 px-6 pt-10 pb-16 [&_h1]:m-0 [&_h1]:font-semibold [&_h2]:font-semibold [&_h1]:text-[length:var(--text-display)] [&_h2]:m-0 [&_h2]:text-[length:var(--text-section)]">
+      <a className={cn(buttonVariants({ variant: 'ghost' }), 'self-start text-ink-2')} href={`#/course/${courseId}`}>
         {t('publish.back')}
       </a>
       <h1>{t('publish.heading')}</h1>
-      <div className="muted">{t('publish.intro')}</div>
-      {error && <div className="error">{error}</div>}
-      {stale > 0 && <div className="small">{t('publish.stale', { count: stale })}</div>}
+      <div className="text-muted-foreground">{t('publish.intro')}</div>
+      {error && <div className={errorBox}>{error}</div>}
+      {stale > 0 && <div className={small}>{t('publish.stale', { count: stale })}</div>}
       {preview.forked_from && (
-        <div className="small">{t(blocked ? 'publish.locked' : 'publish.forkOf', { topic: preview.forked_from.topic, number: preview.forked_from.number })}</div>
+        <div className={small}>{t(blocked ? 'publish.locked' : 'publish.forkOf', { topic: preview.forked_from.topic, number: preview.forked_from.number })}</div>
       )}
 
       {!blocked && (
-        <section className="block stack">
-          <div className="label">{t('publish.written', { written: preview.written, units: preview.units })}</div>
-          <div className="small">{t('publish.writtenHelp')}</div>
+        <section className={card}>
+          <div className={label}>{t('publish.written', { written: preview.written, units: preview.units })}</div>
+          <div className={small}>{t('publish.writtenHelp')}</div>
 
           <Carried preview={preview} sources={sources} onSources={setSources} />
 
           {check && <CourseCheck check={check} written={preview.written} onStart={startCheck} onDecide={decide} />}
 
-          <label className="label" htmlFor="publish-notes">
+          <label className={label} htmlFor="publish-notes">
             {t('publish.notes')}
           </label>
-          <textarea id="publish-notes" className="field" dir="auto" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          <label className="label" htmlFor="publish-licence">
+          <Textarea id="publish-notes" dir="auto" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <label className={label} htmlFor="publish-licence">
             {t('publish.licence')}
           </label>
-          <select id="publish-licence" className="field" value={licence} onChange={(e) => setLicence(e.target.value as Licence)}>
+          <select id="publish-licence" className={select} value={licence} onChange={(e) => setLicence(e.target.value as Licence)}>
             {preview.licences.map((l) => (
               <option key={l} value={l}>
                 {t(`publish.licences.${l}`)}
               </option>
             ))}
           </select>
-          <label className="row">
-            <input type="checkbox" checked={forkable} onChange={(e) => setForkable(e.target.checked)} />
+          <label className={row}>
+            <Checkbox checked={forkable} onCheckedChange={setForkable} />
             <span>{t('publish.forkable')}</span>
           </label>
-          <div className="row">
-            <button type="button" className="btn primary" disabled={busy || preview.written === 0 || check?.running} onClick={publish}>
+          <div className={row}>
+            <Button type="button" disabled={busy || preview.written === 0 || check?.running} onClick={publish}>
               {busy ? t('publish.publishing') : t('publish.publish', { number: (preview.versions[0]?.number ?? 0) + 1 })}
-            </button>
+            </Button>
           </div>
         </section>
       )}
@@ -195,28 +209,27 @@ function Carried(props: { preview: Preview; sources: number[]; onSources: Dispat
   return (
     <>
       {props.preview.sources.length > 0 && (
-        <fieldset className="stack">
-          <legend className="label">{t('publish.sources')}</legend>
-          <div className="small">{t('publish.sourcesHelp')}</div>
+        <fieldset className={cn(stack, 'm-0 min-w-0 border-0 p-0')}>
+          <legend className={cn(label, 'mb-3 p-0')}>{t('publish.sources')}</legend>
+          <div className={small}>{t('publish.sourcesHelp')}</div>
           {props.preview.sources.map((s) => (
-            <label key={s.id} className="row">
-              <input
-                type="checkbox"
+            <label key={s.id} className={row}>
+              <Checkbox
                 checked={props.sources.includes(s.id)}
-                onChange={(e) => props.onSources((all) => (e.target.checked ? [...all, s.id] : all.filter((x) => x !== s.id)))}
+                onCheckedChange={(checked) => props.onSources((all) => (checked ? [...all, s.id] : all.filter((x) => x !== s.id)))}
               />
               <span dir="auto">{s.name}</span>
-              <span className="small">{fileSize(s.size)}</span>
+              <span className={small}>{fileSize(s.size)}</span>
             </label>
           ))}
         </fieldset>
       )}
 
       {props.preview.from_workspace.length > 0 && (
-        <div className="stack">
-          <div className="label">{t('publish.fromWorkspace')}</div>
-          <div className="small">{t('publish.fromWorkspaceHelp')}</div>
-          <ul className="small">
+        <div className={stack}>
+          <div className={label}>{t('publish.fromWorkspace')}</div>
+          <div className={small}>{t('publish.fromWorkspaceHelp')}</div>
+          <ul className={cn(small, 'm-0 list-disc ps-6')}>
             {props.preview.from_workspace.map((x) => (
               <li key={x.block}>
                 <span dir="auto">{x.lesson}</span>: <code>{x.files.join(', ')}</code>
@@ -227,9 +240,9 @@ function Carried(props: { preview: Preview; sources: number[]; onSources: Dispat
       )}
 
       {props.preview.setup.length > 0 && (
-        <div className="stack">
-          <div className="label">{t('publish.setup')}</div>
-          <div className="small">{t('publish.setupHelp')}</div>
+        <div className={stack}>
+          <div className={label}>{t('publish.setup')}</div>
+          <div className={small}>{t('publish.setupHelp')}</div>
           <pre dir="ltr">{props.preview.setup.join('\n')}</pre>
         </div>
       )}
@@ -240,25 +253,25 @@ function Carried(props: { preview: Preview; sources: number[]; onSources: Dispat
 function CourseCheck(props: { check: Check; written: number; onStart: () => void; onDecide: (edit: Edit, status: EditStatus) => void }) {
   const { t } = useTranslation()
   return (
-    <div className="stack publish-check">
-      <div className="label">{t('publish.check')}</div>
-      <div className="small">{t('publish.checkHelp')}</div>
+    <div className={stack}>
+      <div className={label}>{t('publish.check')}</div>
+      <div className={small}>{t('publish.checkHelp')}</div>
       {props.check.running ? (
-        <div className="muted">{t('publish.checking')}</div>
+        <div className="text-muted-foreground">{t('publish.checking')}</div>
       ) : (
         <>
-          {props.check.failed && <div className="error">{t('publish.checkFailed')}</div>}
+          {props.check.failed && <div className={errorBox}>{t('publish.checkFailed')}</div>}
           {props.check.checked && !props.check.failed && (
-            <div className="small">
+            <div className={small}>
               {t('publish.checked', { date: day(props.check.checked.slice(0, 10)) })}{' '}
               {props.check.edits.length === 0 && t('publish.checkNone')}
             </div>
           )}
-          <div className="row">
-            <button type="button" className="btn" disabled={props.written === 0} onClick={props.onStart}>
+          <div className={row}>
+            <Button type="button" variant="outline" disabled={props.written === 0} onClick={props.onStart}>
               {props.check.checked ? t('publish.checkAgain') : t('publish.checkRun')}
-            </button>
-            {!props.check.checked && <span className="small">{t('publish.checkSkip')}</span>}
+            </Button>
+            {!props.check.checked && <span className={small}>{t('publish.checkSkip')}</span>}
           </div>
         </>
       )}
@@ -272,8 +285,8 @@ function CourseCheck(props: { check: Check; written: number; onStart: () => void
 function EditCard(props: { edit: Edit; onDecide: (status: EditStatus) => void }) {
   const { t } = useTranslation()
   return (
-    <div className={`block entry edit ${props.edit.status}`}>
-      <div className="label">
+    <div className={cn(card, 'entry', props.edit.status === 'rejected' && 'opacity-60')}>
+      <div className={label}>
         {t(`publish.targets.${props.edit.target}`)}
         {props.edit.lesson && (
           <span dir="auto">
@@ -282,34 +295,34 @@ function EditCard(props: { edit: Edit; onDecide: (status: EditStatus) => void })
           </span>
         )}
         {props.edit.target === 'file' && (
-          <code className="small" dir="ltr">
+          <code className={small} dir="ltr">
             {' '}
             {props.edit.ref}
           </code>
         )}
-        {props.edit.status !== 'proposed' && <span className="chip">{t(`publish.${props.edit.status}`)}</span>}
+        {props.edit.status !== 'proposed' && <span className={chip}>{t(`publish.${props.edit.status}`)}</span>}
       </div>
-      <div className="edit-change" dir="auto">
-        <del>{props.edit.old}</del>
-        <ins>{props.edit.new}</ins>
+      <div className="flex flex-col gap-2 [overflow-wrap:anywhere] whitespace-pre-wrap" dir="auto">
+        <del className="text-destructive">{props.edit.old}</del>
+        <ins className="rounded-sm bg-[var(--teal-tint)] px-2 no-underline">{props.edit.new}</ins>
       </div>
-      <div className="small" dir="auto">
+      <div className={small} dir="auto">
         {props.edit.reason}
       </div>
-      <div className="row">
+      <div className={row}>
         {props.edit.status === 'proposed' ? (
           <>
-            <button type="button" className="btn primary" onClick={() => props.onDecide('accepted')}>
+            <Button type="button" onClick={() => props.onDecide('accepted')}>
               {t('publish.accept')}
-            </button>
-            <button type="button" className="btn" onClick={() => props.onDecide('rejected')}>
+            </Button>
+            <Button type="button" variant="outline" onClick={() => props.onDecide('rejected')}>
               {t('publish.reject')}
-            </button>
+            </Button>
           </>
         ) : (
-          <button type="button" className="btn" onClick={() => props.onDecide('proposed')}>
+          <Button type="button" variant="outline" onClick={() => props.onDecide('proposed')}>
             {t('publish.undo')}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -319,29 +332,29 @@ function EditCard(props: { edit: Edit; onDecide: (status: EditStatus) => void })
 function Versions(props: { versions: Version[]; shared: Shared }) {
   const { t } = useTranslation()
   return (
-    <section className="stack">
+    <section className={stack}>
       <h2>{t('publish.versions')}</h2>
-      {props.versions.length === 0 && <div className="muted">{t('publish.none')}</div>}
+      {props.versions.length === 0 && <div className="text-muted-foreground">{t('publish.none')}</div>}
       {props.versions.map((v) => (
-        <div key={v.hash} className="block entry">
-          <div className="label">
+        <div key={v.hash} className={cn(card, 'entry')}>
+          <div className={label}>
             {t('publish.version', { number: v.number, date: day(v.published.slice(0, 10)) })}
-            <span className="chip">{t('publish.writtenShort', { written: v.written, units: v.units })}</span>
+            <span className={chip}>{t('publish.writtenShort', { written: v.written, units: v.units })}</span>
           </div>
           {v.notes && (
-            <div className="small" dir="auto">
+            <div className={small} dir="auto">
               {v.notes}
             </div>
           )}
-          <div className="small">
+          <div className={small}>
             {t(`publish.licences.${v.licence}`)}
             {v.forkable ? '' : `, ${t('publish.noForks')}`}
           </div>
-          <div className="row">
-            <a className="btn as-link" href={`/api/versions/${v.hash}/bundle`} download>
+          <div className={row}>
+            <a className={buttonVariants({ variant: 'outline' })} href={`/api/versions/${v.hash}/bundle`} download>
               {t('publish.download')}
             </a>
-            <code className="small" dir="ltr" title={v.hash}>
+            <code className={small} dir="ltr" title={v.hash}>
               {v.hash.slice(0, 12)}
             </code>
             {props.shared.enabled && <ShareButton hash={v.hash} shared={props.shared} />}
@@ -390,18 +403,18 @@ function ShareButton(props: { hash: string; shared: Shared }) {
 
   return (
     <>
-      <button type="button" className="btn" disabled={busy} title={t('publish.shareHelp')} onClick={share}>
+      <Button type="button" variant="outline" disabled={busy} title={t('publish.shareHelp')} onClick={share}>
         {busy ? t('publish.sharing') : t('publish.share')}
-      </button>
+      </Button>
       {shown && (
         <>
-          <input ref={field} className="field" dir="ltr" readOnly value={url} aria-label={t('publish.share')} onFocus={(e) => e.target.select()} />
-          <button type="button" className="btn" onClick={copy}>
+          <Input ref={field} className="w-auto" dir="ltr" readOnly value={url} aria-label={t('publish.share')} onFocus={(e) => e.target.select()} />
+          <Button type="button" variant="outline" onClick={copy}>
             {copied ? t('publish.copied') : t('publish.copy')}
-          </button>
+          </Button>
         </>
       )}
-      {error && <span className="error">{error}</span>}
+      {error && <span className={errorBox}>{error}</span>}
     </>
   )
 }
@@ -413,27 +426,27 @@ function SharedLinks(props: { shared: Shared; versions: Version[] }) {
   const mine = (props.shared.links ?? []).filter((l) => numbers.has(l.hash) && !l.revoked)
   if (props.shared.failed) {
     return (
-      <div className="row">
-        <span className="small error">{t('publish.linksFailed')}</span>
-        <button type="button" className="btn" onClick={props.shared.reload}>
+      <div className={row}>
+        <span className={cn(small, errorBox)}>{t('publish.linksFailed')}</span>
+        <Button type="button" variant="outline" onClick={props.shared.reload}>
           {t('publish.linksRetry')}
-        </button>
+        </Button>
       </div>
     )
   }
   if (mine.length === 0) return null
   return (
-    <section className="stack">
+    <section className={stack}>
       <h2>{t('publish.links')}</h2>
-      <div className="small">{t('publish.linksHelp')}</div>
+      <div className={small}>{t('publish.linksHelp')}</div>
       {mine.map((l) => (
-        <div key={l.id} className="row">
-          <span className="chip">{t('publish.linkOf', { number: numbers.get(l.hash) })}</span>
+        <div key={l.id} className={row}>
+          <span className={chip}>{t('publish.linkOf', { number: numbers.get(l.hash) })}</span>
           <code dir="ltr">{l.url}</code>
-          <span className="small">{day(l.created)}</span>
-          <button type="button" className="btn" onClick={() => props.shared.revoke(l)}>
+          <span className={small}>{day(l.created)}</span>
+          <Button type="button" variant="outline" onClick={() => props.shared.revoke(l)}>
             {t('publish.revoke')}
-          </button>
+          </Button>
         </div>
       ))}
     </section>

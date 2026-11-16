@@ -1,1 +1,79 @@
 /* CSS for the book screens that Tailwind utilities cannot express (third-party DOM, keyframes, print) */
+
+/* the options list Quiz.tsx also draws */
+.book-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin: 0;
+  padding-inline-start: var(--space-lg);
+  list-style: disc;
+}
+
+.book-options li.picked {
+  font-weight: 600;
+}
+
+.book-options p {
+  margin: 0;
+}
+
+.book .figure-box {
+  cursor: default;
+}
+
+.book .correction .link {
+  display: none;
+}
+
+@page {
+  size: A4;
+  margin: 22mm 18mm;
+}
+
+@media print {
+  html,
+  body {
+    background: var(--ground);
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Block layout with margins: flex columns overlap their items at page breaks. */
+  .book .block {
+    display: block;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
+  .book .block > * + * {
+    margin-top: var(--space-sm);
+  }
+
+  .book .label,
+  .book h3 {
+    break-after: avoid;
+  }
+
+  .book pre,
+  .book .attempt,
+  .book .hint,
+  .book .solution,
+  .book .figure-box,
+  .book .plot-box,
+  .book .mermaid,
+  .book tr {
+    break-inside: avoid;
+  }
+
+  .book .block.plot,
+  .book .block.widget {
+    break-inside: avoid;
+  }
+
+  .book pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+

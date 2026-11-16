@@ -28,6 +28,19 @@ import { textDirection } from './text'
 import { pageStyle } from './print'
 import { useTheme } from './theme'
 import { Swap } from './Swap'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from 'cn'
+
+const page = 'mx-auto flex w-full max-w-[var(--measure)] flex-col gap-10 px-6 pt-10 pb-16'
+const chip = 'inline-block rounded-sm bg-[var(--teal-tint)] px-2 py-0.5 leading-snug font-medium text-accent-foreground'
+const label = 'text-sm leading-snug font-medium text-ink-2'
+const errorBox = 'rounded-md bg-warm-tint px-4 py-3 text-warm-ink'
+const muted = 'text-muted-foreground'
+const bookNumber = 'text-sm font-semibold'
+const note = 'rounded-md px-4 py-3 print:break-inside-avoid [&>:last-child]:mb-0'
+
+const file = 'overflow-hidden rounded-md border border-border [&_pre]:m-0 [&_pre]:max-h-[420px] [&_pre]:overflow-auto [&_pre]:rounded-none'
+const fileHead = 'flex min-h-11 items-center justify-between gap-3 ps-4 pe-1 [overflow-wrap:anywhere]'
 
 type Files = Map<number, ExerciseFile[]>
 
@@ -38,10 +51,17 @@ function conceptStatus(concept: Concept, started: boolean, t: TFunction): string
   return concept.mastery === null ? t('map.started') : t('map.mastery', { n: Math.round(concept.mastery * 3) })
 }
 
-function Card(props: { label: ReactNode; className?: string; children: ReactNode }) {
+function Card(props: { label: ReactNode; className?: string; boxed?: boolean; avoid?: boolean; children: ReactNode }) {
   return (
-    <section className={`block ${props.className ?? ''}`}>
-      <div className="label">{props.label}</div>
+    <section
+      className={cn(
+        'flex flex-col gap-2 border-t border-border pt-6 print:block print:[box-decoration-break:clone] print:[&>*+*]:mt-2 [&_h3]:m-0 [&_h3]:text-lg [&_h3]:font-medium [&_p:first-of-type]:mt-0 [&>:last-child]:mb-0',
+        props.boxed && 'rounded-lg border border-primary bg-card p-6',
+        props.avoid && 'print:break-inside-avoid',
+        props.className,
+      )}
+    >
+      <div className={cn(label, 'flex items-center gap-2 print:break-after-avoid')}>{props.label}</div>
       {props.children}
     </section>
   )
@@ -51,7 +71,7 @@ function QuizBlock({ block }: { block: Block }) {
   const { t } = useTranslation()
   const d = block.data as QuizData
   return (
-    <Card label={d.pretest ? t('quiz.pretest') : d.kind === 'sort' ? t('quiz.sort') : t('quiz.quickCheck')} className="quiz">
+    <Card label={d.pretest ? t('quiz.pretest') : d.kind === 'sort' ? t('quiz.sort') : t('quiz.quickCheck')} className="quiz" avoid>
       <Markdown>{block.markdown}</Markdown>
       <Translation text={d.translation} open />
       <QuizOptions data={d} />
@@ -70,7 +90,7 @@ function QuizOptions({ data: d }: { data: QuizData }) {
             <Markdown>{o.text}</Markdown>
           </li>
         ))}
-        <li className="muted">{d.categories?.join(', ')}</li>
+        <li className={muted}>{d.categories?.join(', ')}</li>
       </ul>
     )
   if (d.kind !== 'choice') return null
@@ -87,7 +107,7 @@ function QuizOptions({ data: d }: { data: QuizData }) {
 
 function QuizOutcome({ data: d }: { data: QuizData }) {
   const { t } = useTranslation()
-  if (d.answer === null) return <div className="muted">{t('book.unanswered')}</div>
+  if (d.answer === null) return <div className={muted}>{t('book.unanswered')}</div>
   return <GradedAnswer data={d} />
 }
 
@@ -105,7 +125,7 @@ function ReadingBlock({ block }: { block: Block }) {
         </p>
       ))}
       {d.glossary.length > 0 && (
-        <dl className="book-glossary">
+        <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-1 border-t border-border pt-3 [&_dd]:m-0 [&_dd]:text-muted-foreground [&_dt]:font-medium [&>div]:flex [&>div]:gap-2">
           {d.glossary.map((g) => (
             <div key={g.word}>
               <dt lang={d.lang} dir="auto">
@@ -128,14 +148,14 @@ function ExerciseBlock({ block, files }: { block: Block; files: ExerciseFile[] }
       <Markdown>{block.markdown}</Markdown>
       <Helper data={d} open />
       {files.map((f) => (
-        <div key={f.path} className="file">
-          <div className="file-head">
+        <div key={f.path} className={file}>
+          <div className={fileHead}>
             <code>{f.path}</code>
           </div>
           {f.content === null ? (
             <pre>{t('exercise.missing')}</pre>
           ) : (
-            <div className="file-body">
+            <div>
               <Markdown>{`\`\`\`\`${f.path.split('.').pop() ?? ''}\n${f.content}\n\`\`\`\``}</Markdown>
             </div>
           )}
@@ -143,9 +163,9 @@ function ExerciseBlock({ block, files }: { block: Block; files: ExerciseFile[] }
       ))}
       <code>$ {d.run}</code>
       {d.last_run && (
-        <div className="file">
-          <div className="file-head">
-            <span className="label">
+        <div className={file}>
+          <div className={fileHead}>
+            <span className={label}>
               {d.last_run.exit_code === null ? t('exercise.outputStopped') : t('exercise.outputExit', { code: d.last_run.exit_code })}
             </span>
           </div>
@@ -190,19 +210,19 @@ function BookBlock(props: BlockProps) {
 
 function SolvedChip({ data: d }: { data: ChallengeData }) {
   const { t } = useTranslation()
-  return d.solved && <span className="chip">{d.writing ? t('common.done') : t('common.solved')}</span>
+  return d.solved && <span className={chip}>{d.writing ? t('common.done') : t('common.solved')}</span>
 }
 
 function QuestionBlock({ block }: { block: Block }) {
   const { t } = useTranslation()
   const d = block.data as QuestionData
   return (
-    <Card label={t('card.question')} className="question">
+    <Card label={t('card.question')} className="question" boxed avoid>
       <h3 dir="auto"><InlineMarkdown>{block.markdown}</InlineMarkdown></h3>
       {d.answer === null ? (
-        <div className="muted">{t('book.unanswered')}</div>
+        <div className={muted}>{t('book.unanswered')}</div>
       ) : (
-        <span className="chip">
+        <span className={cn(chip, 'w-full rounded-md px-3 py-2 font-medium')}>
           <AnswerText text={d.answer} />
         </span>
       )}
@@ -244,12 +264,12 @@ function SpeakingBlock({ block }: { block: Block }) {
       }
       className="challenge"
     >
-      <p className="spoken-text" lang={d.lang} dir="auto">
+      <p className="m-0 text-lg" lang={d.lang} dir="auto">
         {block.markdown}
       </p>
       {d.scores.map((a, i) => (
-        <div key={i} className="attempt">
-          <span className="label">{t('speaking.attemptScore', { n: i + 1, score: percent(a.score) })}</span>
+        <div key={i} className={attempt}>
+          <span className={label}>{t('speaking.attemptScore', { n: i + 1, score: percent(a.score) })}</span>
           {a.heard !== null && <span lang={d.lang} dir="auto">{a.heard}</span>}
         </div>
       ))}
@@ -268,7 +288,7 @@ function VocabBlock({ block }: { block: Block }) {
       ))}
       {d.tier && (
         <div>
-          {t('vocab.yours')} <span className="chip">{t('vocab.tier', { tier: d.tier })}</span> {t('vocab.working', { n: d.tier * TIER_WORDS })}
+          {t('vocab.yours')} <span className={chip}>{t('vocab.tier', { tier: d.tier })}</span> {t('vocab.working', { n: d.tier * TIER_WORDS })}
         </div>
       )}
     </Card>
@@ -296,9 +316,9 @@ function FigureBlock({ block, sketched }: { block: Block; sketched: boolean }) {
   const { t } = useTranslation()
   const d = block.data as FigureData
   return (
-    <Card label={t('block.figure')} className="figure">
+    <Card label={t('block.figure')} className="figure" avoid>
       {d.frames && d.frames.length > 1 ? (
-        <div className="frames">
+        <div className="flex flex-wrap items-start gap-2 [&_.figure-box]:min-w-[220px] [&_.figure-box]:flex-[1_1_220px]">
           {d.frames.map((frame, i) => (
             <Drawing key={i} className="figure-box" svg={frame} alt={`${d.alt}, ${t('block.stage', { n: i + 1 })}`} sketched={false} />
           ))}
@@ -306,7 +326,7 @@ function FigureBlock({ block, sketched }: { block: Block; sketched: boolean }) {
       ) : (
         <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram && !d.crafted} />
       )}
-      {block.markdown && <div className="caption"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>}
+      {block.markdown && <div className="text-sm text-muted-foreground"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>}
       <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />
     </Card>
@@ -319,7 +339,7 @@ function PlacementCard(props: { level: string | null; text: string; areas: Area[
     <Card
       label={
         <>
-          {t('block.placementResult')} <span className="chip">{props.level}</span>
+          {t('block.placementResult')} <span className={chip}>{props.level}</span>
         </>
       }
     >
@@ -333,14 +353,14 @@ function Plan({ course }: { course: CourseDetail }) {
   const { t } = useTranslation()
   return (
     <Card label={t('plan.heading')}>
-      <ol className="book-plan">
+      <ol className="m-0 flex list-decimal flex-col gap-2 ps-6">
         {course.ranking.map((r) => (
           <li key={r.mechanism}>
             <strong>{lookup(`playbooks.${r.mechanism}.title`, r.title)}</strong>
-            {r.mechanism === course.mechanism && <span className="chip">{t('book.chosen')}</span>}
+            {r.mechanism === course.mechanism && <span className={chip}>{t('book.chosen')}</span>}
             <div dir="auto">{r.rationale}</div>
-            <div className="muted">{lookup(`playbooks.${r.mechanism}.summary`, r.summary)}</div>
-            <div className="evidence">
+            <div className={muted}>{lookup(`playbooks.${r.mechanism}.summary`, r.summary)}</div>
+            <div className="text-sm text-muted-foreground">
               {t('plan.evidence')}{' '}
               {r.evidence.map((e, n) => (
                 <span key={e.url}>
@@ -358,31 +378,35 @@ function Plan({ course }: { course: CourseDetail }) {
 
 function BookTurn({ message, learner }: { message: Message; learner: string }) {
   const { t } = useTranslation()
+  const mine = message.role === 'learner'
   return (
-    <div className={`book-turn ${message.role}`}>
-      <span className="label">{message.role === 'learner' ? learner : t('chat.tutor')}</span>
-      {message.role === 'learner' ? (
-        <div className="bubble learner">
-          <span dir={textDirection(message.text)}>{message.text}</span>
-        </div>
-      ) : (
-        <div className="bubble">
-          <Markdown>{message.text}</Markdown>
-        </div>
-      )}
+    <div className={cn('flex flex-col items-start gap-1 print:block', mine && 'items-end')}>
+      <span className={cn(label, 'print:block print:break-after-avoid', mine && 'print:text-end')}>{mine ? learner : t('chat.tutor')}</span>
+      <div
+        className={cn(
+          'max-w-[78%] rounded-lg border border-border bg-card px-4 py-3 [overflow-wrap:anywhere] print:mt-1 print:w-fit print:[box-decoration-break:clone] [&>:first-child]:mt-0 [&>:last-child]:mb-0',
+          mine && 'border-primary bg-primary whitespace-pre-wrap text-primary-foreground print:ms-auto',
+        )}
+      >
+        {mine ? <span dir={textDirection(message.text)}>{message.text}</span> : <Markdown>{message.text}</Markdown>}
+      </div>
     </div>
   )
 }
+
+const chapterHead = 'mt-6 flex flex-col gap-2 border-b-2 border-primary pb-3 print:mt-0 print:break-after-avoid'
+const h2 = 'm-0 text-2xl leading-tight font-semibold'
+const attempt = 'flex flex-col gap-0.5 rounded-md bg-secondary px-4 py-3 whitespace-pre-wrap print:break-inside-avoid'
 
 function Chapter(props: { n: number; lesson: Lesson; course: CourseDetail; files: Files; learner: string; sketched: boolean }) {
   const { t } = useTranslation()
   const { lesson, course } = props
   const lastPlacement = course.lessons.filter((l) => l.phase === 'placement').at(-1)
   return (
-    <article id={`book-lesson-${lesson.id}`} className="book-chapter">
-      <header className="book-chapter-head">
-        <span className="book-number">{t('book.chapter', { n: props.n })}</span>
-        <h2 dir="auto">{lessonTitle(lesson, t)}</h2>
+    <article id={`book-lesson-${lesson.id}`} className="book-chapter flex flex-col gap-4 print:block print:break-before-page print:[&>*+*]:mt-4">
+      <header className={chapterHead}>
+        <span className={cn(bookNumber, 'text-primary')}>{t('book.chapter', { n: props.n })}</span>
+        <h2 className={h2} dir="auto">{lessonTitle(lesson, t)}</h2>
       </header>
       {lesson.phase === 'interview' && <ScopeCard course={course} />}
       {timeline(lesson, course.mode === 'teacher').map((item) =>
@@ -407,26 +431,26 @@ function NotebookEntry({ entry: e }: { entry: Entry }) {
       label={
         <>
           {e.kind === 'writing' ? t('common.correctedText') : t('notebook.confidentMiss')}, {day(e.created)}
-          {e.pinned ? <span className="chip">{t('notebook.pinned')}</span> : null}
-          {e.resolved ? <span className="chip">{t('notebook.resolve')}</span> : null}
+          {e.pinned ? <span className={chip}>{t('notebook.pinned')}</span> : null}
+          {e.resolved ? <span className={chip}>{t('notebook.resolve')}</span> : null}
         </>
       }
-      className="entry"
+      className={cn('entry', 'print:break-inside-avoid', e.resolved && 'opacity-60')}
     >
       {e.kind === 'quiz' && <Markdown>{e.prompt}</Markdown>}
-      <div className="attempt">
-        <span className="label">{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
+      <div className={attempt}>
+        <span className={label}>{e.kind === 'writing' ? t('notebook.youWrote') : t('notebook.youSaid')}</span>
         <Said entry={e} />
       </div>
-      <div className="solution">
-        <div className="label">{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
+      <div className={cn(note, 'flex flex-col bg-[var(--teal-tint)]')}>
+        <div className={label}>{e.kind === 'writing' ? t('notebook.corrected') : t('notebook.rightAnswer')}</div>
         <Corrected entry={e} />
         {e.explanation && <Markdown>{e.explanation}</Markdown>}
-        {e.misconception && <p className="belief"><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
+        {e.misconception && <p><InlineMarkdown>{t('quiz.belief', { belief: e.misconception })}</InlineMarkdown></p>}
       </div>
       {e.note && (
-        <div className="hint">
-          <div className="label">{t('book.yourNote')}</div>
+        <div className={cn(note, 'bg-warm-tint text-warm-ink')}>
+          <div className={cn(label, 'text-warm')}>{t('book.yourNote')}</div>
           <span dir={textDirection(e.note)}>{e.note}</span>
         </div>
       )}
@@ -436,7 +460,7 @@ function NotebookEntry({ entry: e }: { entry: Entry }) {
 
 /** What the learner wrote or said: a writing entry as plain text, a quiz entry as its answer. */
 function Said({ entry: e }: { entry: Entry }) {
-  return e.kind === 'writing' ? <span dir={textDirection(e.said)}>{e.said}</span> : <AnswerText text={e.said} />
+  return e.kind === 'writing' ? <span className="line-through decoration-warm decoration-2" dir={textDirection(e.said)}>{e.said}</span> : <span className="line-through decoration-warm decoration-2"><AnswerText text={e.said} /></span>
 }
 
 /** A writing entry's text corrected against what was written; a quiz entry's right answer. */
@@ -447,10 +471,10 @@ function Corrected({ entry: e }: { entry: Entry }) {
 function Notebook({ entries }: { entries: Entry[] }) {
   const { t } = useTranslation()
   return (
-    <article id="book-notebook" className="book-chapter">
-      <header className="book-chapter-head">
-        <span className="book-number">{t('book.appendix')}</span>
-        <h2>{t('review.errorNotebook')}</h2>
+    <article id="book-notebook" className="book-chapter flex flex-col gap-4 print:block print:break-before-page print:[&>*+*]:mt-4">
+      <header className={chapterHead}>
+        <span className={cn(bookNumber, 'text-primary')}>{t('book.appendix')}</span>
+        <h2 className={h2}>{t('review.errorNotebook')}</h2>
       </header>
       {entries.map((e) => (
         <NotebookEntry key={e.id} entry={e} />
@@ -466,21 +490,25 @@ const jump = (id: string) => (e: { preventDefault: () => void }) => {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 }
 
+const coverBox =
+  'book-cover flex min-h-[560px] flex-col items-start gap-4 rounded-lg bg-primary px-16 pt-16 pb-10 text-primary-foreground print:!m-0 print:box-border print:h-[296mm] print:rounded-none print:px-[24mm] print:pt-[40mm] print:pb-[24mm] print:break-after-page'
+const rule = 'block h-[3px] w-16 bg-warm'
+
 function Cover({ course, learner, exported }: { course: CourseDetail; learner: string; exported: string }) {
   const { t } = useTranslation()
   return (
-    <header className="book-cover">
+    <header className={coverBox}>
       <Logo size={56} />
-      <span className="book-number">{t('book.kicker')}</span>
-      <h1 dir="auto">{course.topic}</h1>
-      <span className="book-rule" />
-      {course.mechanism && <div className="book-subtitle">{lookup(`playbooks.${course.mechanism}.title`, course.mechanism)}</div>}
-      <div className="grow" />
+      <span className={bookNumber}>{t('book.kicker')}</span>
+      <h1 className="m-0 text-[48px] leading-[1.1] font-semibold" dir="auto">{course.topic}</h1>
+      <span className={rule} />
+      {course.mechanism && <div className="text-lg">{lookup(`playbooks.${course.mechanism}.title`, course.mechanism)}</div>}
+      <div className="flex-grow" />
       <div>
         {learner}
         {course.level && `, ${t('map.level')} ${course.level}`}
       </div>
-      <div className="book-number">{t('book.exported', { date: day(exported) })}</div>
+      <div className={bookNumber}>{t('book.exported', { date: day(exported) })}</div>
     </header>
   )
 }
@@ -490,12 +518,12 @@ function Contents(props: { course: CourseDetail; parts: ReturnType<typeof parts>
   const { t } = useTranslation()
   const { course } = props
   return (
-    <nav className="book-contents">
-      <h2>{t('book.contents')}</h2>
+    <nav className="flex flex-col gap-4 py-6 print:break-before-page [&_a]:text-inherit [&_a]:no-underline [&_ol]:m-0 [&_ol]:mt-2 [&_ol]:flex [&_ol]:list-decimal [&_ol]:flex-col [&_ol]:gap-2 [&_ol]:ps-6 [&_ul]:m-0 [&_ul]:mt-2 [&_ul]:flex [&_ul]:list-disc [&_ul]:flex-col [&_ul]:gap-2 [&_ul]:ps-6">
+      <h2 className={h2}>{t('book.contents')}</h2>
       {props.parts.map((part, i) => (
         <div key={i}>
           {part.title && (
-            <div className="book-number" dir="auto">
+            <div className={cn(bookNumber, 'text-primary')} dir="auto">
               {part.title}
             </div>
           )}
@@ -536,18 +564,18 @@ function Contents(props: { course: CourseDetail; parts: ReturnType<typeof parts>
 function BookMap({ course }: { course: CourseDetail }) {
   const { t } = useTranslation()
   return (
-    <section className="book-map">
-      <h2>{t('map.label')}</h2>
+    <section className="flex flex-col gap-4 py-6 print:break-before-page print:[&:is(nav+*)]:break-before-auto">
+      <h2 className={h2}>{t('map.label')}</h2>
       {[...new Set(course.concepts.map((c) => c.module))].map((module) => (
         <div key={module}>
-          <h3 dir="auto">{module}</h3>
-          <ul>
+          <h3 className="m-0 text-base font-medium" dir="auto">{module}</h3>
+          <ul className="m-0 mt-2 flex list-disc flex-col gap-2 ps-6">
             {course.concepts
               .filter((c) => c.module === module)
               .map((c) => (
-                <li key={c.id}>
+                <li key={c.id} className="flex justify-between gap-4 border-b border-dotted border-rule-strong">
                   <span dir="auto">{c.kind === 'practice' ? practiceTitle(c.title, t) : c.title}</span>
-                  <span className="muted">{conceptStatus(c, course.lessons.some((l) => l.concept_id === c.id), t)}</span>
+                  <span className={muted}>{conceptStatus(c, course.lessons.some((l) => l.concept_id === c.id), t)}</span>
                 </li>
               ))}
           </ul>
@@ -603,17 +631,17 @@ function useBookData(courseId: number) {
 function BookBar(props: { course: CourseDetail; pdf: boolean; preparing: boolean; onDownload: () => void }) {
   const { t } = useTranslation()
   return (
-    <div className="book-bar">
-      <a className="btn as-link" href={`#/course/${props.course.id}`}>{t('book.back')}</a>
-      <span className="grow small">{!props.pdf && t('book.saveHint')}</span>
+    <div className="flex flex-wrap items-center gap-4 print:hidden">
+      <a className={buttonVariants({ variant: 'outline' })} href={`#/course/${props.course.id}`}>{t('book.back')}</a>
+      <span className="grow text-sm text-muted-foreground">{!props.pdf && t('book.saveHint')}</span>
       {props.pdf ? (
-        <button type="button" className="btn primary" disabled={props.preparing} onClick={props.onDownload}>
+        <Button type="button" disabled={props.preparing} onClick={props.onDownload}>
           <Swap labels={[t('book.download'), t('book.preparing')]} at={props.preparing ? 1 : 0} />
-        </button>
+        </Button>
       ) : (
-        <button type="button" className="btn primary" onClick={() => window.print()}>
+        <Button type="button" onClick={() => window.print()}>
           {t('book.save')}
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -622,18 +650,18 @@ function BookBar(props: { course: CourseDetail; pdf: boolean; preparing: boolean
 function Projects({ capstones }: { capstones: CourseDetail['capstones'] }) {
   const { t } = useTranslation()
   return (
-    <article id="book-projects" className="book-chapter">
-      <header className="book-chapter-head">
-        <span className="book-number">{t('book.appendix')}</span>
-        <h2>{t('book.projects')}</h2>
+    <article id="book-projects" className="book-chapter flex flex-col gap-4 print:block print:break-before-page print:[&>*+*]:mt-4">
+      <header className={chapterHead}>
+        <span className={cn(bookNumber, 'text-primary')}>{t('book.appendix')}</span>
+        <h2 className={h2}>{t('book.projects')}</h2>
       </header>
       {capstones.map((k) => (
         <Card key={k.id} label={<span dir="auto">{k.module}</span>}>
           <h3 dir="auto">{k.title}</h3>
           <Markdown>{k.brief}</Markdown>
-          <ul className="book-milestones">
+          <ul className="m-0 flex flex-col gap-2 ps-6">
             {k.milestones.map((m) => (
-              <li key={m.id} className={m.done ? 'done' : undefined}>
+              <li key={m.id} className={m.done ? "list-['●__']" : "list-['○__']"}>
                 <strong dir="auto">{m.concept}</strong> <span dir="auto">{m.deliverable}</span>
               </li>
             ))}
@@ -651,7 +679,7 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
   const [preparing, setPreparing] = useState(false)
   const [exported] = useState(() => new Date().toISOString())
 
-  if (!loaded) return <main className="home">{error && <div className="error">{error}</div>}</main>
+  if (!loaded) return <main className={page}>{error && <div className={errorBox}>{error}</div>}</main>
   const { course, entries, files } = loaded
 
   async function download(topic: string) {
@@ -665,10 +693,10 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
   const all = parts(course, t)
   const numbers = new Map(all.flatMap((p) => p.lessons).map((l, i) => [l.id, i + 1]))
   return (
-    <main className="book">
+    <main className="book mx-auto flex w-full max-w-[820px] flex-col gap-4 px-6 pt-6 pb-16 print:block print:max-w-none print:p-0 print:text-[10.5pt] print:[&>*+*]:mt-4">
       <style key={theme}>{pageStyle(course.topic)}</style>
       <BookBar course={course} pdf={pdf} preparing={preparing} onDownload={() => download(course.topic)} />
-      {error && <div className="error">{error}</div>}
+      {error && <div className={errorBox}>{error}</div>}
 
       <Cover course={course} learner={learner} exported={exported} />
 
@@ -677,11 +705,11 @@ export function Book({ courseId, learner, pdf, sketched }: { courseId: number; l
       {course.concepts.length > 0 && <BookMap course={course} />}
 
       {all.map((part, i) => (
-        <section key={i} className="book-part">
+        <section key={i} className="flex flex-col gap-4 print:block print:[&>*+*]:mt-4">
           {part.title && (
-            <header className="book-part-head">
-              <span className="book-rule" />
-              <h2 dir="auto">{part.title}</h2>
+            <header className="flex flex-col items-center gap-4 pt-16 pb-6 text-center print:break-before-page print:pt-[90mm]">
+              <span className={rule} />
+              <h2 className={cn(h2, 'text-3xl')} dir="auto">{part.title}</h2>
             </header>
           )}
           {part.lessons.map((l) => (

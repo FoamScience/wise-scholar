@@ -6,6 +6,15 @@ import { api } from './api'
 import { useTheme } from './theme'
 import { STATE_COLOR, loadCytoscape, token } from './claims'
 import type { State } from './claims'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from 'cn'
+
+const label = 'text-sm leading-snug font-medium text-ink-2'
+const small = 'text-sm text-muted-foreground'
+const row = 'flex flex-wrap items-center gap-2'
+const LEGEND_DOT: Record<State, string> = { held: 'bg-primary', fading: 'bg-warm-line', shaky: 'bg-destructive', unseen: 'bg-off' }
 
 type Source = { id: number; title: string; concept_id: number | null; course_id: number; topic: string }
 type Evidence = { block_id: number; lesson_id: number; kind: string; markdown: string; verdict: 'held' | 'shaky' | null }
@@ -247,11 +256,11 @@ export function GraphPage({ profile, course }: { profile: number; course: number
   const claim = graph?.claims.find((c) => c.id === selected) ?? null
 
   return (
-    <main className="home graph-page">
-      <div className="row">
-        <h1 className="grow">{t('graph.heading', { n: graph?.claims.length ?? 0 })}</h1>
+    <main className="mx-auto flex w-full flex-col gap-4 px-6 pt-10 pb-16">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="m-0 grow text-[length:var(--text-display)] font-semibold">{t('graph.heading', { n: graph?.claims.length ?? 0 })}</h1>
         {courses.length > 1 && (
-          <select className="btn graph-course" aria-label={t('graph.course')} value={filter ?? ''} onChange={(e) => setFilter(e.target.value ? Number(e.target.value) : null)}>
+          <select className="h-11 max-w-full min-w-0 rounded-md border border-input bg-card px-4 font-medium text-ellipsis hover:border-foreground" aria-label={t('graph.course')} value={filter ?? ''} onChange={(e) => setFilter(e.target.value ? Number(e.target.value) : null)}>
             <option value="">{t('graph.allCourses')}</option>
             {courses.map(([id, topic]) => (
               <option key={id} value={id}>
@@ -261,18 +270,19 @@ export function GraphPage({ profile, course }: { profile: number; course: number
           </select>
         )}
       </div>
-      {error && <div className="error">{error}</div>}
-      {graph && shown.claims.length === 0 && <div className="muted">{t('graph.empty')}</div>}
-      <div className="graph-legend small">
+      {error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div>}
+      {graph && shown.claims.length === 0 && <div className="text-muted-foreground">{t('graph.empty')}</div>}
+      <div className="my-2 flex flex-wrap gap-3 text-sm text-muted-foreground">
         {(Object.keys(STATE_COLOR) as State[]).map((s) => (
-          <span key={s} className={`legend-dot state-${s}`}>
+          <span key={s} className="inline-flex items-center gap-1">
+            <span className={cn('inline-block size-[0.7rem] rounded-full', LEGEND_DOT[s])} />
             {t(`graph.state.${s}`)}
           </span>
         ))}
         <span>{t('graph.edges')}</span>
       </div>
-      <div className="graph-layout">
-        <div ref={box} className="graph-canvas" role="img" aria-label={t('graph.canvas')} />
+      <div className={cn('grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]', !claim && 'md:grid-cols-1')}>
+        <div ref={box} className="h-[55dvh] min-h-96 rounded-lg border border-border bg-card md:h-[calc(100dvh-var(--bar-height)-14rem)]" role="img" aria-label={t('graph.canvas')} />
         {claim && <ClaimPanel key={claim.id} claim={claim} all={graph!.claims} reload={reload} onChange={apply} onClose={() => setSelected(null)} />}
       </div>
     </main>
@@ -290,35 +300,35 @@ function ClaimPanel(props: { claim: Claim; all: Claim[]; reload: () => Promise<G
     : []
 
   return (
-    <aside className="block claim-panel">
-      <div className="row">
-        <span className="label grow">{t(`graph.state.${claim.state}`)}</span>
-        <button type="button" className="link" onClick={props.onClose}>
+    <aside className="grid gap-2 rounded-lg border border-primary bg-card p-6 [&_ul]:m-0 [&_ul]:ps-4">
+      <div className={row}>
+        <span className={cn(label, 'grow')}>{t(`graph.state.${claim.state}`)}</span>
+        <Button type="button" variant="ghost" className={'text-ink-2'} onClick={props.onClose}>
           {t('graph.close')}
-        </button>
+        </Button>
       </div>
-      <textarea className="field" dir="auto" rows={3} value={text} onChange={(e) => setText(e.target.value)} />
-      <div className="row">
-        <button
+      <Textarea dir="auto" rows={3} value={text} onChange={(e) => setText(e.target.value)} />
+      <div className={row}>
+        <Button
           type="button"
-          className="btn"
+          variant="outline"
           disabled={!text.trim() || text.trim() === claim.text}
           onClick={() => props.onChange(api(`/api/claims/${claim.id}`, { text }).then(props.reload))}
         >
           {t('graph.reword')}
-        </button>
+        </Button>
         {confirming ? (
-          <button type="button" className="btn danger" onClick={() => props.onChange(api(`/api/claims/${claim.id}`, { wrong: true }).then(props.reload))}>
+          <Button type="button" variant="destructive" onClick={() => props.onChange(api(`/api/claims/${claim.id}`, { wrong: true }).then(props.reload))}>
             {t('graph.wrongConfirm')}
-          </button>
+          </Button>
         ) : (
-          <button type="button" className="link" onClick={() => setConfirming(true)}>
+          <Button type="button" variant="ghost" className={'text-ink-2'} onClick={() => setConfirming(true)}>
             {t('graph.wrong')}
-          </button>
+          </Button>
         )}
       </div>
-      <div className="small">{t('graph.from')}</div>
-      <ul className="small">
+      <div className={small}>{t('graph.from')}</div>
+      <ul className={small}>
         {claim.sources.map((s) => (
           <li key={s.id}>
             <a href={s.concept_id ? `#/course/${s.course_id}?concept=${s.concept_id}` : `#/course/${s.course_id}`}>{s.topic}</a>: <span dir="auto">{s.title}</span>
@@ -327,8 +337,8 @@ function ClaimPanel(props: { claim: Claim; all: Claim[]; reload: () => Promise<G
       </ul>
       {claim.evidence.length > 0 && (
         <>
-          <div className="small">{t('graph.evidence')}</div>
-          <ul className="small">
+          <div className={small}>{t('graph.evidence')}</div>
+          <ul className={small}>
             {claim.evidence.map((e) => (
               <li key={e.block_id} dir="auto">
                 {e.verdict ? t(`graph.verdict.${e.verdict}`) : t('graph.verdict.open')}: {plain(e.markdown)}
@@ -337,14 +347,14 @@ function ClaimPanel(props: { claim: Claim; all: Claim[]; reload: () => Promise<G
           </ul>
         </>
       )}
-      <label className="small" htmlFor="merge">
+      <label className={small} htmlFor="merge">
         {t('graph.mergeInto')}
       </label>
-      <input id="merge" className="field" dir="auto" value={find} onChange={(e) => setFind(e.target.value)} placeholder={t('graph.mergeFind')} />
+      <Input id="merge" dir="auto" value={find} onChange={(e) => setFind(e.target.value)} placeholder={t('graph.mergeFind')} />
       {choices.map((c) => (
-        <button key={c.id} type="button" className="link merge-choice" dir="auto" onClick={() => props.onChange(api(`/api/claims/${claim.id}/merge`, { into: c.id }))}>
+        <Button key={c.id} type="button" variant="ghost" className="h-auto min-h-11 justify-start py-2 text-start font-medium whitespace-normal text-ink-2" dir="auto" onClick={() => props.onChange(api(`/api/claims/${claim.id}/merge`, { into: c.id }))}>
           {c.text}
-        </button>
+        </Button>
       ))}
     </aside>
   )
