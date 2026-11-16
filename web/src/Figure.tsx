@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { cn } from 'cn'
 import { sketch } from './sketch'
 import { InlineMarkdown } from './Md'
 
@@ -23,7 +26,7 @@ export function Limits({ teaches }: { teaches?: Teaches }) {
   const { t } = useTranslation()
   if (!teaches?.limits) return null
   return (
-    <div className="limits" dir="auto">
+    <div className="text-sm text-muted-foreground" dir="auto">
       <InlineMarkdown>{t('block.limits', { limits: teaches.limits })}</InlineMarkdown>
     </div>
   )
@@ -35,7 +38,7 @@ export function Credits({ credits }: { credits?: Credit[] }) {
   if (!credits?.length) return null
   const packs = [...new Map(credits.map((c) => [c.pack, c.url]))]
   return (
-    <div className="credits">
+    <div className="text-xs text-muted-foreground">
       {t('block.art')} {credits.map((c) => `${c.name} (${c.author}, ${c.licence})`).join(', ')}
       {'; '}
       {packs.map(([pack, url]) => (
@@ -61,7 +64,7 @@ export function Drawing({ svg, alt, sketched, className }: { svg: string; alt: s
       el.innerHTML = svg // a shape rough.js cannot redraw: the figure is shown as drawn
     }
   }, [svg, sketched])
-  return <div ref={box} className={className} role="img" aria-label={alt} />
+  return <div ref={box} dir="ltr" className={className} role="img" aria-label={alt} />
 }
 
 /** Buttons to hold an animation at one of its stages, or let it play; the stage times come from the SVG itself. */
@@ -84,15 +87,15 @@ function Stages({ box, count }: { box: React.RefObject<HTMLDivElement | null>; c
     setHeld(stage)
   }
   return (
-    <div className="stages">
+    <div className="flex flex-wrap gap-2">
       {Array.from({ length: count }, (_, i) => (
-        <button key={i} type="button" className={held === i ? 'btn small primary' : 'btn small'} onClick={() => hold(i)}>
+        <Button key={i} variant={held === i ? 'default' : 'outline'} size="sm" onClick={() => hold(i)}>
           {t('block.stage', { n: i + 1 })}
-        </button>
+        </Button>
       ))}
-      <button type="button" className={held === null ? 'btn small primary' : 'btn small'} onClick={() => hold(null)}>
+      <Button variant={held === null ? 'default' : 'outline'} size="sm" onClick={() => hold(null)}>
         {t('block.play')}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -103,22 +106,21 @@ function Redraw(props: { disabled?: boolean; onRedraw: (notes: string) => void }
   const [notes, setNotes] = useState<string | null>(null)
   if (notes === null) {
     return (
-      <button type="button" className="link small" disabled={props.disabled} onClick={() => setNotes('')}>
+      <Button variant="ghost" size="sm" className="self-start text-muted-foreground" disabled={props.disabled} onClick={() => setNotes('')}>
         {t('block.redraw')}
-      </button>
+      </Button>
     )
   }
   return (
     <form
-      className="redraw"
+      className="grid gap-2"
       onSubmit={(e) => {
         e.preventDefault()
         props.onRedraw(notes)
         setNotes(null)
       }}
     >
-      <input
-        className="field"
+      <Input
         dir="auto"
         maxLength={1000}
         aria-label={t('block.redrawNotes')}
@@ -128,13 +130,13 @@ function Redraw(props: { disabled?: boolean; onRedraw: (notes: string) => void }
         onKeyDown={(e) => e.key === 'Escape' && setNotes(null)}
         autoFocus
       />
-      <div className="row">
-        <button className="btn small primary" disabled={props.disabled}>
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={props.disabled}>
           {t('block.redrawGo')}
-        </button>
-        <button type="button" className="btn small" onClick={() => setNotes(null)}>
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setNotes(null)}>
           {t('common.cancel')}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -147,11 +149,11 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
   const [large, setLarge] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   return (
-    <section id={`block-${props.id}`} className="block figure">
-      <div className="label">{t('block.figure')}</div>
+    <section id={`block-${props.id}`} className="block flex flex-col gap-2 border-t border-border pt-6 break-inside-avoid first:border-t-0 first:pt-0">
+      <div className="text-sm leading-snug font-medium text-ink-2 break-after-avoid">{t('block.figure')}</div>
       <button
         type="button"
-        className={large ? 'figure-box large' : 'figure-box'}
+        className={cn('figure-box mx-auto block w-full break-inside-avoid text-start', large ? 'max-w-full cursor-zoom-out' : 'max-w-[600px] cursor-zoom-in')}
         aria-label={large ? t('block.shrinkFigure') : t('block.enlargeFigure', { alt: d.alt })}
         onClick={() => setLarge(!large)}
       >
@@ -160,14 +162,14 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
         </div>
       </button>
       {d.frames && d.frames.length > 1 && <Stages key={d.svg} box={box} count={d.frames.length} />}
-      {props.caption && <div className="caption"><InlineMarkdown>{props.caption}</InlineMarkdown></div>}
+      {props.caption && <div className="text-sm text-muted-foreground"><InlineMarkdown>{props.caption}</InlineMarkdown></div>}
       <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />
       {props.onRedraw && <Redraw disabled={props.disabled} onRedraw={props.onRedraw} />}
       {d.previous && props.onRestore && (
-        <button type="button" className="link small" disabled={props.disabled} onClick={props.onRestore}>
+        <Button variant="ghost" size="sm" className="self-start text-muted-foreground" disabled={props.disabled} onClick={props.onRestore}>
           {d.restored ? t('block.backToRedrawn') : t('block.restoreDrawing')}
-        </button>
+        </Button>
       )}
     </section>
   )

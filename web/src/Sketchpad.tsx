@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getStroke } from 'perfect-freehand'
+import { Button } from '@/components/ui/button'
 import Markdown from './Md'
 
 type Point = [number, number, number]
@@ -127,37 +128,36 @@ export function Sketchpad(props: { blockId: number; task: string; onSend: (pages
   const written = pages.filter((p) => p.some((s) => !s.erase))
 
   return (
-    <div className="sketchpad" role="dialog" aria-modal="true" aria-label={t('pad.label')}>
-      <canvas ref={canvas} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} />
-      <div className="pad-tools" role="toolbar" aria-label={t('pad.tools')}>
-        <button type="button" className={taskOpen ? 'btn picked' : 'btn'} aria-expanded={taskOpen} onClick={() => setTaskOpen((o) => !o)}>
+    <div className="fixed inset-0 z-50 bg-white" role="dialog" aria-modal="true" aria-label={t('pad.label')}>
+      <canvas ref={canvas} className="absolute inset-0 size-full cursor-crosshair touch-none" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} />
+      <div className="absolute inset-x-2 top-2 flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1 text-foreground shadow-float" role="toolbar" aria-label={t('pad.tools')}>
+        <Button variant="outline" className="aria-expanded:border-primary aria-expanded:bg-accent" aria-expanded={taskOpen} onClick={() => setTaskOpen((o) => !o)}>
           {t('pad.task')}
-        </button>
-        <button type="button" className={erasing ? 'btn' : 'btn picked'} aria-pressed={!erasing} onClick={() => setErasing(false)}>
+        </Button>
+        <Button variant="outline" className="aria-pressed:border-primary aria-pressed:bg-accent" aria-pressed={!erasing} onClick={() => setErasing(false)}>
           {t('pad.pen')}
-        </button>
-        <button type="button" className={erasing ? 'btn picked' : 'btn'} aria-pressed={erasing} onClick={() => setErasing(true)}>
+        </Button>
+        <Button variant="outline" className="aria-pressed:border-primary aria-pressed:bg-accent" aria-pressed={erasing} onClick={() => setErasing(true)}>
           {t('pad.eraser')}
-        </button>
-        <button
-          type="button"
-          className="btn"
+        </Button>
+        <Button
+          variant="outline"
           disabled={pages[at].length === 0}
           onClick={() => setPages((all) => all.map((page, i) => (i === at ? page.slice(0, -1) : page)))}
         >
           {t('pad.undo')}
-        </button>
-        <button type="button" className="btn" disabled={pages[at].length === 0} onClick={() => setPages((all) => all.map((page, i) => (i === at ? [] : page)))}>
+        </Button>
+        <Button variant="outline" disabled={pages[at].length === 0} onClick={() => setPages((all) => all.map((page, i) => (i === at ? [] : page)))}>
           {t('pad.clear')}
-        </button>
-        <span className="pad-pages">
-          <button type="button" className="btn" disabled={at === 0} aria-label={t('pad.previous')} onClick={() => setAt(at - 1)}>
+        </Button>
+        <span className="inline-flex items-center gap-1">
+          <Button variant="outline" size="icon" disabled={at === 0} aria-label={t('pad.previous')} onClick={() => setAt(at - 1)}>
             ‹
-          </button>
-          <span className="small">{t('pad.page', { n: at + 1, total: pages.length })}</span>
-          <button
-            type="button"
-            className="btn"
+          </Button>
+          <span className="text-sm text-muted-foreground">{t('pad.page', { n: at + 1, total: pages.length })}</span>
+          <Button
+            variant="outline"
+            size="icon"
             aria-label={at === pages.length - 1 ? t('pad.newPage') : t('pad.next')}
             onClick={() => {
               if (at === pages.length - 1) setPages((all) => [...all, []])
@@ -165,15 +165,13 @@ export function Sketchpad(props: { blockId: number; task: string; onSend: (pages
             }}
           >
             {at === pages.length - 1 ? '+' : '›'}
-          </button>
+          </Button>
         </span>
         <span className="grow" />
-        <button type="button" className="btn" onClick={props.onClose}>
+        <Button variant="outline" onClick={props.onClose}>
           {t('pad.close')}
-        </button>
-        <button
-          type="button"
-          className="btn primary"
+        </Button>
+        <Button
           disabled={written.length === 0}
           onClick={async () => {
             const files = []
@@ -183,10 +181,10 @@ export function Sketchpad(props: { blockId: number; task: string; onSend: (pages
           }}
         >
           {t('pad.send', { count: written.length })}
-        </button>
+        </Button>
       </div>
       {taskOpen && (
-        <aside className="pad-task">
+        <aside className="absolute start-2 top-17 max-h-[calc(100%-76px)] w-[min(24rem,calc(100%-1rem))] overflow-y-auto rounded-lg border border-border bg-card p-4 text-foreground shadow-float">
           <Markdown>{props.task}</Markdown>
         </aside>
       )}

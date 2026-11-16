@@ -1,3 +1,4 @@
+import { isValidElement } from 'react'
 import type { ComponentProps, ReactNode } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import Mermaid from './Mermaid'
@@ -11,6 +12,13 @@ function Code(props: ComponentProps<'code'>) {
       {children}
     </code>
   )
+}
+
+// A diagram is drawn in place of its code block, so it does not sit in a code box.
+function Pre(props: ComponentProps<'pre'>) {
+  const { children, node: _, ...rest } = props as ComponentProps<'pre'> & { node?: unknown }
+  if (isValidElement<{ className?: string }>(children) && children.props.className?.includes('language-mermaid')) return children
+  return <pre {...rest}>{children}</pre>
 }
 
 // Figures in a hand-out travel as inline SVG data URLs; everything else keeps react-markdown's safe list.
@@ -38,17 +46,22 @@ function Link(props: ComponentProps<'a'>) {
 function Table(props: ComponentProps<'table'>) {
   const { node: _, ...rest } = props as ComponentProps<'table'> & { node?: unknown }
   return (
-    <div className="md-table">
+    <div className="max-w-full overflow-x-auto">
       <table {...rest} />
     </div>
   )
 }
 
+const PROSE =
+  'prose prose-ws max-w-none text-[length:inherit] leading-[inherit] prose-headings:font-heading prose-headings:font-semibold prose-h2:mt-6 prose-h2:mb-2 prose-h2:text-lg prose-h3:text-base prose-p:my-4 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-pre:rounded-md prose-table:my-2 prose-table:w-max prose-table:max-w-[44rem]'
+
 export default function Markdown({ children }: { children: string }) {
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={{ code: Code, a: Link, table: Table }} urlTransform={imageOrSafe}>
-      {children}
-    </ReactMarkdown>
+    <div className={PROSE}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={{ code: Code, pre: Pre, a: Link, table: Table }} urlTransform={imageOrSafe}>
+        {children}
+      </ReactMarkdown>
+    </div>
   )
 }
 

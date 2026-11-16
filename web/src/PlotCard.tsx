@@ -21,9 +21,9 @@ export function PlotCard(props: { id: number; title: string; data: unknown }) {
   const { t } = useTranslation()
   const d = props.data as PlotData
   return (
-    <section id={`block-${props.id}`} className="block plot">
-      <div className="label">{t('block.plot')}</div>
-      {props.title && <h2><InlineMarkdown>{props.title}</InlineMarkdown></h2>}
+    <section id={`block-${props.id}`} className="block flex flex-col gap-2 border-t border-border pt-6 break-inside-avoid first:border-t-0 first:pt-0">
+      <div className="text-sm leading-snug font-medium text-ink-2 break-after-avoid">{t('block.plot')}</div>
+      {props.title && <h2 className="m-0 text-lg"><InlineMarkdown>{props.title}</InlineMarkdown></h2>}
       <PlotBox spec={d.spec} alt={d.alt} />
       <Limits teaches={d.teaches} />
     </section>
@@ -86,11 +86,11 @@ export function PlotBox({ spec, alt }: { spec: PlotSpec; alt: string }) {
 
   return (
     <>
-      <div ref={box} className="plot-box" role="img" aria-label={alt} style={error ? undefined : { minHeight: spec.height ?? 320 }} />
+      <div ref={box} dir="ltr" className="plot-box overflow-x-auto break-inside-avoid" role="img" aria-label={alt} style={error ? undefined : { minHeight: spec.height ?? 320 }} />
       {error && (
-        <div className="mermaid-error">
-          <pre>{JSON.stringify(spec, null, 1).slice(0, 2000)}</pre>
-          <div className="error">{t('block.plotFailed', { error })}</div>
+        <div>
+          <pre dir="ltr" className="mb-2 overflow-x-auto rounded-md bg-code px-4 py-3 text-[0.93em] text-code-foreground">{JSON.stringify(spec, null, 1).slice(0, 2000)}</pre>
+          <div className="error rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{t('block.plotFailed', { error })}</div>
         </div>
       )}
     </>

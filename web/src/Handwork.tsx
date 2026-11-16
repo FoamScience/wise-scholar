@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import QRCode from 'qrcode'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from 'cn'
 import { api, failure } from './api'
 import { type ChallengeData, pendingPhotos } from './course'
 import Markdown from './Md'
@@ -44,7 +48,7 @@ export function PhotoTray(props: { blockId: number; task: string; data: Challeng
 
   return (
     <div
-      className={dragging ? 'photo-tray dragging' : 'photo-tray'}
+      className={cn('my-2 flex flex-col gap-2 rounded-md border border-dashed p-2', dragging ? 'border-primary bg-accent' : 'border-transparent')}
       onDragOver={(e) => {
         e.preventDefault()
         setDragging(true)
@@ -57,26 +61,27 @@ export function PhotoTray(props: { blockId: number; task: string; data: Challeng
       }}
     >
       {pending.length > 0 && (
-        <ul className="photos">
+        <ul className="m-0 mt-1 flex list-none flex-wrap gap-2 p-0">
           {pending.map((p) => (
-            <li key={p.name}>
+            <li key={p.name} className="relative">
               <a href={photoUrl(props.blockId, p.name)} target="_blank" rel="noreferrer">
-                <img src={photoUrl(props.blockId, p.name)} alt={t('hand.photoAlt')} />
+                <img className="block size-22 rounded-sm border border-border bg-muted object-cover" src={photoUrl(props.blockId, p.name)} alt={t('hand.photoAlt')} />
               </a>
-              <button
-                type="button"
-                className="btn remove"
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="absolute -end-2 -top-2 rounded-full bg-card leading-none"
                 aria-label={t('hand.remove')}
                 disabled={props.disabled}
                 onClick={() => api(`/api/blocks/${props.blockId}/photos/${p.name}/delete`, {}).catch((e: Error) => props.onError(e.message))}
               >
                 ×
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
-      <div className="row">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           ref={input}
           type="file"
@@ -89,28 +94,28 @@ export function PhotoTray(props: { blockId: number; task: string; data: Challeng
             e.target.value = ''
           }}
         />
-        <button
-          type="button"
-          className="btn icon"
+        <Button
+          variant="outline"
+          size="icon"
           disabled={props.disabled}
           aria-label={t(phone() ? 'hand.takePhoto' : 'hand.addPhoto')}
           title={t(phone() ? 'hand.takePhoto' : 'hand.addPhoto')}
           onClick={() => input.current?.click()}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg className="size-5" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" />
             <circle cx="12" cy="13" r="3" />
           </svg>
-        </button>
+        </Button>
         {touchscreen() && (
-          <button type="button" className="btn" disabled={props.disabled} onClick={() => setWriting(true)}>
+          <Button variant="outline" disabled={props.disabled} onClick={() => setWriting(true)}>
             {t('pad.open')}
-          </button>
+          </Button>
         )}
         {!phone() && (
-          <button
-            type="button"
-            className="btn icon"
+          <Button
+            variant="outline"
+            size="icon"
             disabled={props.disabled}
             aria-label={t('hand.usePhone')}
             title={t('hand.usePhone')}
@@ -121,13 +126,13 @@ export function PhotoTray(props: { blockId: number; task: string; data: Challeng
               )
             }
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg className="size-5" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="6" y="2" width="12" height="20" rx="2" />
               <path d="M11 18h2" />
             </svg>
-          </button>
+          </Button>
         )}
-        <span className="small muted">{sending > 0 ? t('hand.sending') : pending.length > 0 ? t('hand.waiting', { count: pending.length }) : t('hand.hint')}</span>
+        <span className="text-sm text-muted-foreground">{sending > 0 ? t('hand.sending') : pending.length > 0 ? t('hand.waiting', { count: pending.length }) : t('hand.hint')}</span>
       </div>
       {writing && (
         <Sketchpad
@@ -147,34 +152,32 @@ export function PhotoTray(props: { blockId: number; task: string; data: Challeng
 
 function PhoneHandoff(props: { link: string; count: number; onClose: () => void }) {
   const { t } = useTranslation()
-  const dialog = useRef<HTMLDialogElement>(null)
   const [qr, setQr] = useState('')
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
 
   useEffect(() => {
-    dialog.current?.showModal()
     QRCode.toDataURL(props.link, { margin: 1, width: 240 }).then(setQr)
   }, [props.link])
 
   return (
-    <dialog ref={dialog} className="handoff" onClose={props.onClose}>
-      <h2>{t('hand.phoneHeading')}</h2>
-      <p>{t('hand.phoneSteps')}</p>
-      {qr ? <img className="qr" src={qr} width={240} height={240} alt={t('hand.qrAlt')} /> : <div className="qr" />}
-      {local && <p className="small error">{t('hand.localAddress')}</p>}
-      <p className="small">
-        <a href={props.link} target="_blank" rel="noreferrer">
-          {t('hand.openLink')}
-        </a>{' '}
-        · {t('hand.expires')}
-      </p>
-      <p className="small muted" role="status">
-        {t('hand.waiting', { count: props.count })}
-      </p>
-      <form method="dialog">
-        <button className="btn primary">{t('common.done')}</button>
-      </form>
-    </dialog>
+    <Dialog open disablePointerDismissal onOpenChange={(open) => !open && props.onClose()}>
+      <DialogContent showCloseButton={false} className="w-[min(22rem,calc(100vw-2rem))] gap-3 border border-border bg-card p-6 text-center text-base">
+        <DialogTitle className="m-0 text-lg">{t('hand.phoneHeading')}</DialogTitle>
+        <p>{t('hand.phoneSteps')}</p>
+        {qr ? <img className="mx-auto my-3 block size-60 rounded-sm bg-white" src={qr} width={240} height={240} alt={t('hand.qrAlt')} /> : <div className="mx-auto my-3 size-60 rounded-sm bg-white" />}
+        {local && <p className="rounded-md bg-warm-tint px-4 py-3 text-sm text-warm-ink">{t('hand.localAddress')}</p>}
+        <p className="text-sm text-muted-foreground">
+          <a className="text-primary" href={props.link} target="_blank" rel="noreferrer">
+            {t('hand.openLink')}
+          </a>{' '}
+          · {t('hand.expires')}
+        </p>
+        <p className="text-sm text-muted-foreground" role="status">
+          {t('hand.waiting', { count: props.count })}
+        </p>
+        <DialogClose render={<Button className="mx-auto" />}>{t('common.done')}</DialogClose>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -188,23 +191,23 @@ export function AttemptWork(props: { blockId: number; data: ChallengeData; attem
   const marked = reading ? props.marks.filter((m) => reading.text.includes(m)) : []
   return (
     <>
-      <ul className="photos">
+      <ul className="m-0 mt-1 flex list-none flex-wrap gap-2 p-0">
         {sent.map((p) => (
           <li key={p.name}>
             <a href={photoUrl(props.blockId, p.name)} target="_blank" rel="noreferrer">
-              <img src={photoUrl(props.blockId, p.name)} alt={t('hand.photoAlt')} />
+              <img className="block size-22 rounded-sm border border-border bg-muted object-cover" src={photoUrl(props.blockId, p.name)} alt={t('hand.photoAlt')} />
             </a>
           </li>
         ))}
       </ul>
       {reading && (
-        <div className="hand-reading">
-          <div className="label">
+        <div className="mt-2 flex flex-col gap-1 rounded-sm border-s-3 border-rule-strong bg-muted px-3 py-2">
+          <div className="flex items-baseline gap-3 text-sm leading-snug font-medium text-ink-2">
             {t(reading.by === 'learner' ? 'hand.readByYou' : 'hand.readByTutor')}
             {draft === null && (
-              <button type="button" className="link" onClick={() => setDraft(reading.text)}>
+              <Button variant="ghost" className="text-ink-2" onClick={() => setDraft(reading.text)}>
                 {t('hand.fixReading')}
-              </button>
+              </Button>
             )}
           </div>
           {draft !== null ? (
@@ -217,19 +220,19 @@ export function AttemptWork(props: { blockId: number; data: ChallengeData; attem
                 )
               }}
             >
-              <textarea className="field" dir="auto" rows={6} value={draft} onChange={(e) => setDraft(e.target.value)} />
-              <div className="row">
-                <button type="button" className="btn" onClick={() => setDraft(null)}>
+              <Textarea dir="auto" rows={6} value={draft} onChange={(e) => setDraft(e.target.value)} />
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => setDraft(null)}>
                   {t('common.cancel')}
-                </button>
-                <button className="btn primary" disabled={!draft.trim()}>
+                </Button>
+                <Button type="submit" disabled={!draft.trim()}>
                   {t('hand.saveReading')}
-                </button>
+                </Button>
               </div>
             </form>
           ) : marked.length > 0 ? (
             // a hint's marks point at pieces of the reading, so it shows as text with them
-            <p className="marked-reading" dir="auto">
+            <p className="m-0 whitespace-pre-wrap" dir="auto">
               {splitBy(reading.text, marked).map((piece, j) => (piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text))}
             </p>
           ) : (
@@ -269,9 +272,9 @@ export function HandPage({ token }: { token: string }) {
   }
 
   return (
-    <main className="home hand-page">
-      <h1>{t('hand.pageHeading')}</h1>
-      {error && <div className="error">{error}</div>}
+    <main className="mx-auto flex w-full max-w-(--measure) flex-col gap-10 px-6 pt-10 pb-16">
+      <h1 className="m-0 max-w-none text-2xl">{t('hand.pageHeading')}</h1>
+      {error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div>}
       {card && (
         <>
           <input
@@ -286,22 +289,22 @@ export function HandPage({ token }: { token: string }) {
               e.target.value = ''
             }}
           />
-          <button type="button" className="btn primary big" disabled={sending > 0} onClick={() => input.current?.click()}>
+          <Button className="h-14" disabled={sending > 0} onClick={() => input.current?.click()}>
             {sending > 0 ? t('hand.sending') : card.photos.length ? t('hand.another') : t('hand.takePhoto')}
-          </button>
+          </Button>
           {card.photos.length > 0 && (
             <>
-              <ul className="photos">
+              <ul className="m-0 mt-1 flex list-none flex-wrap gap-2 p-0">
                 {card.photos.map((name) => (
                   <li key={name}>
-                    <img src={photoUrl(card.block_id, name)} alt={t('hand.photoAlt')} />
+                    <img className="block size-30 rounded-sm border border-border bg-muted object-cover" src={photoUrl(card.block_id, name)} alt={t('hand.photoAlt')} />
                   </li>
                 ))}
               </ul>
               <p>{t('hand.sentBack')}</p>
             </>
           )}
-          <details className="block">
+          <details className="block border-t border-border pt-6">
             <summary>{t('hand.task')}</summary>
             <Markdown>{card.markdown}</Markdown>
           </details>
