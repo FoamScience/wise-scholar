@@ -8,7 +8,7 @@ import { useOnline } from './offline'
 import type { Given } from './offline'
 import type { QuizData } from './Quiz'
 import { LevelPanel } from './Language'
-import { lessonTitle, lessonView, moduleRuns, outlineOf, replayShown, unitDone, searchHref } from './course'
+import { lessonTitle, lessonView, moduleRuns, outlineOf, replayShown, unitDone } from './course'
 import { OutlineCard } from './Outline'
 import type { Block, Concept, CourseDetail, Lesson, Ranked, Resource, SetupStep } from './course'
 import { ScopeCard, ScopeForm } from './Scope'
@@ -20,7 +20,6 @@ import { LessonCard, PlacementResult } from './LessonCard'
 import { useAnsweredToday, useChatDraft, useCourseStream, useFollow, useLessonVisits, useOfflineAnswers, useUnread, useUpgrade } from './workspaceState'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Skeleton as Bar } from '@/components/ui/skeleton'
 import { cn } from 'cn'
@@ -112,26 +111,15 @@ function Plan(props: {
   )
 }
 
-/** The map's head: progress, level, the language panel and the search. */
+/** The map's head: the level and the language panel. */
 function MapHead(props: { course: CourseDetail; running: boolean; onStart: (kind: 'episode' | 'writing') => void }) {
   const { t } = useTranslation()
   const { course } = props
-  const units = course.concepts.filter((c) => c.kind === 'concept')
-  const unitsDone = units.filter((c) => unitDone(c, course.lessons.find((l) => l.concept_id === c.id))).length
-  const reviewDue = units.filter((c) => c.due).length
   return (
     <>
-      <div className={LABEL}>{t('map.label')}</div>
-      {course.mode !== 'teacher' && units.length > 0 && (
-        <div className={SMALL}>
-          {reviewDue ? t('map.summary', { done: unitsDone, total: units.length, count: reviewDue }) : t('map.summaryDone', { done: unitsDone, total: units.length })}
-        </div>
-      )}
       {course.level && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span>
-            {t('map.level')} <Badge className="h-auto rounded-sm bg-accent px-2 py-0.5 text-base text-accent-foreground">{course.level}</Badge>
-          </span>
+        <div className="min-w-0">
+          {t('map.level')} <Badge className="h-auto max-w-full shrink rounded-sm bg-accent px-2 py-0.5 text-start text-base break-words whitespace-normal text-accent-foreground">{course.level}</Badge>
         </div>
       )}
       {course.strands && course.concepts.length > 0 && (
@@ -145,16 +133,6 @@ function MapHead(props: { course: CourseDetail; running: boolean; onStart: (kind
           story={course.lang !== null}
         />
       )}
-      <form
-        role="search"
-        onSubmit={(e) => {
-          e.preventDefault()
-          const query = String(new FormData(e.currentTarget).get('q') ?? '')
-          if (query.trim()) location.hash = searchHref(course.id, query)
-        }}
-      >
-        <Input type="search" name="q" dir="auto" aria-label={t('search.label')} placeholder={t('search.placeholder')} />
-      </form>
     </>
   )
 }

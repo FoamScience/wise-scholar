@@ -4,6 +4,7 @@ import { DirectionProvider } from '@base-ui/react/direction-provider'
 import { cn } from 'cn'
 import { buttonVariants } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { api } from './api'
 import i18n from './i18n'
@@ -32,6 +33,7 @@ import { Home } from './Home'
 import { ThemeToggle } from './ThemeToggle'
 import { Workspace } from './Workspace'
 import { courseRoute, profileRoute } from './route'
+import { searchHref } from './course'
 
 const NAV_LINK =
   'inline-flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-3 text-sm font-medium text-ink-2 no-underline transition-colors hover:bg-muted hover:text-foreground max-[30rem]:min-w-11 max-[30rem]:justify-center max-[30rem]:p-0'
@@ -159,6 +161,10 @@ export default function App() {
     return coursePage(hash, current, meta) ?? profilePage(hash, current) ?? <Home key={current.id} profile={current.id} teacher={current.mode === 'teacher'} />
   }
 
+  // the course a page belongs to, for the search box in the bar; the search page has its own
+  const shown = courseRoute(hash)
+  const searchCourse = shown && 'courseId' in shown && shown.page !== 'search' ? shown.courseId : null
+
   return (
     <DirectionProvider direction={i18n.dir(locale)}>
       <TooltipProvider>
@@ -168,7 +174,7 @@ export default function App() {
               <Logo />
             </a>
             {current && (
-              <nav className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+              <nav className="flex shrink-0 items-center gap-1">
                 <a className={NAV_LINK} href="#/graph" title={t('graph.link')} aria-label={t('graph.link')}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                     <circle cx="6" cy="6" r="2.5" />
@@ -188,6 +194,19 @@ export default function App() {
                   </a>
                 )}
               </nav>
+            )}
+            {searchCourse !== null && (
+              <form
+                role="search"
+                className="min-w-16 flex-[0_1_14rem]"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const query = String(new FormData(e.currentTarget).get('q') ?? '')
+                  if (query.trim()) location.hash = searchHref(searchCourse, query)
+                }}
+              >
+                <Input type="search" name="q" dir="auto" className="h-10 w-full" aria-label={t('search.label')} placeholder={t('search.placeholder')} />
+              </form>
             )}
             <span className="grow" />
             <span className="whitespace-nowrap text-sm text-muted-foreground max-md:hidden">{t('header.agent', { agent: meta.agent })}</span>
