@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
 import { Drawing, Limits } from './Figure'
 import type { Teaches } from './Figure'
 import { PlotBox } from './PlotCard'
@@ -71,29 +72,30 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
     setAt(next)
   }
   return (
-    <section id={`block-${props.id}`} className="block widget">
-      <div className="label">{t('block.widget')}</div>
-      {props.title && <h2><InlineMarkdown>{props.title}</InlineMarkdown></h2>}
-      {d.figure && <Drawing className="figure-box" svg={filled(d.figure, state.figure ?? [])} alt={(props.data as WidgetData).alt} sketched={false} />}
+    <section id={`block-${props.id}`} className="block flex flex-col gap-2 border-t border-border pt-6 break-inside-avoid first:border-t-0 first:pt-0">
+      <div className="text-sm leading-snug font-medium text-ink-2 break-after-avoid">{t('block.widget')}</div>
+      {props.title && <h2 className="m-0 text-lg"><InlineMarkdown>{props.title}</InlineMarkdown></h2>}
+      {d.figure && <Drawing className="figure-box mx-auto w-full max-w-[600px] break-inside-avoid" svg={filled(d.figure, state.figure ?? [])} alt={(props.data as WidgetData).alt} sketched={false} />}
       {plot && <PlotBox spec={plot} alt={(props.data as WidgetData).alt} />}
-      <dl className="readouts" aria-live="polite">
+      <dl className="m-0 flex flex-wrap gap-x-6 gap-y-2" aria-live="polite">
         {d.readouts.map((r, i) => (
           <div key={i}>
-            <dt><InlineMarkdown>{r.label}</InlineMarkdown></dt>
-            <dd>
+            <dt className="text-sm text-muted-foreground"><InlineMarkdown>{r.label}</InlineMarkdown></dt>
+            <dd className="m-0 text-lg font-semibold tabular-nums">
               <output>{state.readouts[i] === null ? t('block.widgetUndefined') : `${format(state.readouts[i] as number, r.digits)}${r.unit ? ` ${r.unit}` : ''}`}</output>
             </dd>
           </div>
         ))}
       </dl>
-      <div className="controls">
+      <div className="flex flex-col">
         {d.controls.map((c, i) => {
           const shown = `${c.values[at[i]].toLocaleString(i18n.language, { maximumFractionDigits: 6 })}${c.unit ? ` ${c.unit}` : ''}`
           return (
-            <div key={c.name} className="control">
+            <div key={c.name} className="grid grid-cols-[1fr_auto] items-center gap-3 min-[481px]:grid-cols-[minmax(8rem,auto)_1fr_minmax(4rem,auto)]">
               <label htmlFor={`${props.id}-${c.name}`}><InlineMarkdown>{c.label}</InlineMarkdown></label>
               <input
                 id={`${props.id}-${c.name}`}
+                className="col-span-full row-start-2 h-11 min-w-0 accent-primary min-[481px]:col-auto min-[481px]:row-auto"
                 type="range"
                 min={0}
                 max={c.values.length - 1}
@@ -102,14 +104,14 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
                 aria-valuetext={shown}
                 onChange={(e) => move(at.map((p, k) => (k === i ? Number(e.target.value) : p)))}
               />
-              <output htmlFor={`${props.id}-${c.name}`}>{shown}</output>
+              <output className="tabular-nums" htmlFor={`${props.id}-${c.name}`}>{shown}</output>
             </div>
           )
         })}
       </div>
-      <button type="button" className="btn small" disabled={!moved} onClick={() => move(starts)}>
+      <Button variant="outline" size="sm" className="self-start print:hidden" disabled={!moved} onClick={() => move(starts)}>
         {t('block.widgetReset')}
-      </button>
+      </Button>
       <Limits teaches={(props.data as WidgetData).teaches} />
     </section>
   )

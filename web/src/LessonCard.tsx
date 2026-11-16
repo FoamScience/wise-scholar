@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
+import { ChevronDown } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from 'cn'
 import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { api, failure, transcribe } from './api'
 import { lookup, percent } from './i18n'
@@ -41,26 +47,26 @@ function QuestionCard(props: { block: Block; disabled: boolean; onAnswer: (answe
   }
 
   return (
-    <section id={`block-${props.block.id}`} className="block question">
-      <h2 dir="auto"><InlineMarkdown>{props.block.markdown}</InlineMarkdown></h2>
-      {multiple && <div className="small">{t(goals ? 'question.goals' : 'question.several')}</div>}
-      <form className="stack" onSubmit={submit}>
-        <div className="options">
+    <section id={`block-${props.block.id}`} className="block flex flex-col gap-4 rounded-lg border border-primary bg-card p-6 break-inside-avoid">
+      <h2 className="m-0 text-lg" dir="auto"><InlineMarkdown>{props.block.markdown}</InlineMarkdown></h2>
+      {multiple && <div className="text-sm text-muted-foreground">{t(goals ? 'question.goals' : 'question.several')}</div>}
+      <form className="flex flex-col gap-2" onSubmit={submit}>
+        <div className="flex flex-wrap gap-3">
           {options.map((o) => (
             <OptionButton key={o} option={o} state={picked.includes(o) ? 'on' : ruled.includes(o) ? 'ruled' : 'off'} disabled={props.disabled} onToggle={() => toggle(o)} />
           ))}
         </div>
-        <label htmlFor={`own-${props.block.id}`}>{t('question.own')}</label>
-        <div className="row">
-          <input
+        <label className="text-sm text-muted-foreground" htmlFor={`own-${props.block.id}`}>{t('question.own')}</label>
+        <div className="flex flex-wrap items-center gap-3">
+          <Input
             id={`own-${props.block.id}`}
-            className="field" dir="auto"
+            className="flex-1" dir="auto"
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          <button className="btn primary" disabled={props.disabled || !(given || ruled.length)}>
+          <Button type="submit" disabled={props.disabled || !(given || ruled.length)}>
             {submitLabel(t, picked.length, ruled.length, Boolean(multiple) && !text.trim())}
-          </button>
+          </Button>
         </div>
       </form>
     </section>
@@ -95,11 +101,11 @@ function AnsweredQuestion({ block }: { block: Block }) {
   const { t } = useTranslation()
   const { options, answer, non_goals } = block.data as QuestionData
   return (
-    <section id={`block-${block.id}`} className="block answered">
-      <div className="muted" dir="auto"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>
-      {answer && <span className="chip"><AnswerText text={answer} picked={options.includes(answer)} /></span>}
+    <section id={`block-${block.id}`} className="block flex flex-col items-start gap-2 border-t border-border p-4 first:border-t-0 first:pt-0">
+      <div className="text-muted-foreground" dir="auto"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>
+      {answer && <Badge className="h-auto rounded-sm bg-accent text-sm whitespace-normal text-accent-foreground"><AnswerText text={answer} picked={options.includes(answer)} /></Badge>}
       {non_goals?.map((o) => (
-        <span key={o} className="chip ruled" dir="auto"><InlineMarkdown>{t('question.notWanted', { option: o })}</InlineMarkdown></span>
+        <Badge key={o} variant="ghost" className="h-auto bg-transparent text-sm font-normal whitespace-normal text-muted-foreground" dir="auto"><InlineMarkdown>{t('question.notWanted', { option: o })}</InlineMarkdown></Badge>
       ))}
     </section>
   )
@@ -109,9 +115,9 @@ function OptionButton(props: { option: string; state: 'on' | 'ruled' | 'off'; di
   const { t } = useTranslation()
   const ruled = props.state === 'ruled'
   return (
-    <button
-      type="button"
-      className={props.state === 'off' ? 'btn option' : `btn option ${props.state}`}
+    <Button
+      variant="outline"
+      className="h-auto min-h-9 max-w-full justify-start border-input py-2 text-start text-base leading-snug font-normal whitespace-normal [overflow-wrap:anywhere] hover:border-primary hover:bg-accent aria-pressed:border-primary aria-pressed:bg-accent aria-[pressed=mixed]:border-dashed aria-[pressed=mixed]:bg-transparent aria-[pressed=mixed]:text-muted-foreground aria-[pressed=mixed]:line-through"
       aria-pressed={props.state === 'on' ? true : ruled ? 'mixed' : false}
       aria-label={ruled ? t('question.notWanted', { option: props.option }) : undefined}
       dir="auto"
@@ -119,7 +125,7 @@ function OptionButton(props: { option: string; state: 'on' | 'ruled' | 'off'; di
       onClick={props.onToggle}
     >
       <InlineMarkdown>{props.option}</InlineMarkdown>
-    </button>
+    </Button>
   )
 }
 
@@ -131,16 +137,16 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
   const spoken = Boolean(d.spoken && d.lang)
 
   return (
-    <section id={`block-${props.block.id}`} className="block challenge">
-      <div className="label">
+    <section id={`block-${props.block.id}`} className="block flex flex-col gap-3 border-t border-border pt-6 first:border-t-0 first:pt-0">
+      <div className="flex items-center gap-3 text-sm leading-snug font-medium text-ink-2">
         {challengeLabel(d, props.speech, t)}
-        {d.solved && <span className="chip">{d.writing ? t('common.done') : t('common.solved')}</span>}
+        {d.solved && <Badge className="rounded-sm bg-accent text-accent-foreground">{d.writing ? t('common.done') : t('common.solved')}</Badge>}
         {spoken && <ListenButton player={player} text={props.block.markdown} />}
       </div>
       {!spoken && <Markdown>{props.block.markdown}</Markdown>}
       <Comparison data={d} />
       <Helper data={d} />
-      {player.error && <div className="error">{player.error}</div>}
+      {player.error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{player.error}</div>}
 
       <Ladder data={d} blockId={props.block.id} onError={props.onError} />
 
@@ -157,9 +163,9 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
 function ListenButton({ player, text }: { player: ReturnType<typeof usePlayer>; text: string }) {
   const { t } = useTranslation()
   return (
-    <button type="button" className="btn" onClick={() => (player.current ? player.stop() : player.play([text]))}>
+    <Button variant="outline" onClick={() => (player.current ? player.stop() : player.play([text]))}>
       {player.current ? t('common.stop') : t('common.listen')}
-    </button>
+    </Button>
   )
 }
 
@@ -178,11 +184,11 @@ function AttemptForm(props: { block: Block; disabled: boolean; speech: boolean; 
   }
 
   return (
-    <form onSubmit={submit}>
-      <label htmlFor={`attempt-${props.block.id}`}>
+    <form className="flex flex-col gap-2" onSubmit={submit}>
+      <label className="text-sm text-muted-foreground" htmlFor={`attempt-${props.block.id}`}>
         {t('common.yourAnswer')}
         {d.words && (
-          <span className="muted">
+          <span>
             {' '}
             {t(d.structure ? 'challenge.wordRangeStructure' : 'challenge.wordRange', {
               min: d.words[0],
@@ -193,15 +199,15 @@ function AttemptForm(props: { block: Block; disabled: boolean; speech: boolean; 
           </span>
         )}
       </label>
-      <textarea
+      <Textarea
         id={`attempt-${props.block.id}`}
-        className="field" dir="auto"
+        className="resize-y" dir="auto"
         rows={3}
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
       {!d.spoken && <PhotoTray blockId={props.block.id} task={props.block.markdown} data={d} disabled={props.disabled} onError={props.onError} />}
-      <div className="row">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
         {d.spoken && props.speech && (
           <Mic
@@ -211,9 +217,9 @@ function AttemptForm(props: { block: Block; disabled: boolean; speech: boolean; 
             limit={d.teachback ? 60 : undefined}
           />
         )}
-        <button className="btn primary" disabled={props.disabled || !ready}>
+        <Button type="submit" disabled={props.disabled || !ready}>
           {t('challenge.submit')}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -238,25 +244,25 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
   }
 
   return (
-    <section id={`block-${props.block.id}`} className="block challenge speaking">
-      <div className="label">
+    <section id={`block-${props.block.id}`} className="block flex flex-col gap-3 border-t border-border pt-6 first:border-t-0 first:pt-0">
+      <div className="flex items-center gap-3 text-sm leading-snug font-medium text-ink-2">
         {d.speaking === 'shadow' ? t('speaking.shadow') : t('speaking.read')}
-        {d.solved && <span className="chip">{t('common.done')}</span>}
+        {d.solved && <Badge className="rounded-sm bg-accent text-accent-foreground">{t('common.done')}</Badge>}
         <ListenButton player={player} text={props.block.markdown} />
       </div>
       {(d.speaking === 'read' || d.scores.length > 0) && (
-        <p className="spoken-text" lang={d.lang} dir="auto">
+        <p className="m-0 text-lg" lang={d.lang} dir="auto">
           {splitBy(props.block.markdown, marks).map((piece, j) => (piece.hit ? <mark key={j}>{piece.text}</mark> : piece.text))}
         </p>
       )}
-      {player.error && <div className="error">{player.error}</div>}
+      {player.error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{player.error}</div>}
       {d.scores.map((a, i) => (
         <SpokenAttempt key={i} n={i + 1} attempt={a} lang={d.lang} />
       ))}
       <HintList data={d} />
       {open && (
         <>
-          <div className="row">
+          <div className="flex flex-wrap items-center gap-2">
             <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />
             <Mic onClip={upload} onError={props.onError} label={t('speaking.record')} disabled={props.disabled} />
           </div>
@@ -270,15 +276,15 @@ function SpeakingCard(props: { block: Block; disabled: boolean; speech: boolean;
 function SpokenAttempt({ n, attempt, lang }: { n: number; attempt: SpeakingData['scores'][number]; lang: string }) {
   const { t } = useTranslation()
   return (
-    <div className="attempt">
-      <span className="label">{t('speaking.attemptScore', { n, score: percent(attempt.score) })}</span>
+    <div className="flex flex-col gap-0.5 rounded-md bg-muted px-4 py-3 whitespace-pre-wrap break-inside-avoid">
+      <span className="text-sm leading-snug font-medium text-ink-2">{t('speaking.attemptScore', { n, score: percent(attempt.score) })}</span>
       <span lang={lang} dir="auto">
         {attempt.words.map((w, j) => (
-          <span key={j} className={w.score < WEAK_WORD ? 'word weak' : 'word'} title={percent(w.score)}>
+          <span key={j} className={w.score < WEAK_WORD ? 'underline decoration-warm decoration-wavy underline-offset-3' : undefined} title={percent(w.score)}>
             {w.word}{' '}
           </span>
         ))}
-        {attempt.heard !== null && <span className="small"> {t('speaking.heard', { text: attempt.heard })}</span>}
+        {attempt.heard !== null && <span className="text-sm text-muted-foreground"> {t('speaking.heard', { text: attempt.heard })}</span>}
       </span>
     </div>
   )
@@ -289,18 +295,18 @@ function HintButton(props: { data: ChallengeData; disabled: boolean; onAct: Act 
   const { hints, max_hints } = props.data
   const label = hints.length ? t('challenge.nextHint') : t('challenge.hint')
   return (
-    <button
-      type="button"
-      className="btn icon"
+    <Button
+      variant="outline"
+      size="icon"
       disabled={props.disabled || hints.length >= max_hints}
       aria-label={label}
       title={label}
       onClick={() => props.onAct('hint')}
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg className="size-5" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4" />
       </svg>
-    </button>
+    </Button>
   )
 }
 
@@ -308,7 +314,7 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
   const { t } = useTranslation()
   const attemptsLeft = props.data.reveal_after - props.data.attempts.length
   return (
-    <div className="locked">
+    <div className="flex items-center gap-3 rounded-md bg-warm-tint px-4 py-3 text-warm">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
         <rect x="5" y="11" width="14" height="9" rx="1" />
         <path d="M8 11V8a4 4 0 0 1 8 0v3" />
@@ -318,9 +324,9 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
           ? t(props.data.writing ? 'challenge.correctionLocked' : 'challenge.solutionLocked', { count: attemptsLeft })
           : t('challenge.unlocked')}
       </span>
-      <button type="button" className="link" disabled={props.disabled} onClick={() => props.onAct('give-up')}>
+      <Button variant="ghost" className="text-ink-2" disabled={props.disabled} onClick={() => props.onAct('give-up')}>
         {attemptsLeft > 0 ? t('challenge.giveUp') : t('challenge.showSolution')}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -336,10 +342,10 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
   const kept = files.length > 0 && files.every((f) => f.kept)
 
   return (
-    <section id={`block-${props.block.id}`} className="block challenge">
-      <div className="label">
+    <section id={`block-${props.block.id}`} className="block flex flex-col gap-3 border-t border-border pt-6 first:border-t-0 first:pt-0">
+      <div className="flex items-center gap-3 text-sm leading-snug font-medium text-ink-2">
         {d.milestone ? t('challenge.milestone') : t('exercise.label')}
-        {d.solved && <span className="chip">{t('common.solved')}</span>}
+        {d.solved && <Badge className="rounded-sm bg-accent text-accent-foreground">{t('common.solved')}</Badge>}
       </div>
       <Markdown>{props.block.markdown}</Markdown>
       <Helper data={d} />
@@ -347,15 +353,15 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       <ExerciseFiles blockId={blockId} files={files} open={open} completions={d.completions ?? []} reads={reads} flushes={flushes} />
 
       {open && (
-        <form onSubmit={(e) => e.preventDefault()}>
-          <label htmlFor={`answer-${blockId}`}>{t('exercise.answer')}</label>
-          <textarea id={`answer-${blockId}`} className="field" dir="auto" rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} />
+        <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
+          <label className="text-sm text-muted-foreground" htmlFor={`answer-${blockId}`}>{t('exercise.answer')}</label>
+          <Textarea id={`answer-${blockId}`} className="resize-y" dir="auto" rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} />
           <PhotoTray blockId={blockId} task={props.block.markdown} data={d} disabled={props.disabled} onError={props.onError} />
         </form>
       )}
 
-      <div className="row">
-        <code className="grow">$ {d.run}</code>
+      <div className="flex flex-wrap items-center gap-2">
+        <code dir="ltr" className="grow text-start">$ {d.run}</code>
         {open && <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />}
         {props.commands && !kept && <RunButton running={running} onRun={run} />}
         {open && (
@@ -372,7 +378,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       </div>
 
       {d.last_run && <RunOutput run={d.last_run} />}
-      {error && <div className="error">{error}</div>}
+      {error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div>}
 
       <Ladder data={d} blockId={blockId} onError={props.onError} />
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}
@@ -408,7 +414,7 @@ function ExerciseFiles(props: {
           }}
         />
       ))}
-      <div className="small">{kept ? t('exercise.cleaned') : editing ? t('exercise.editHere') : t('exercise.follows')}</div>
+      <div className="text-sm text-muted-foreground">{kept ? t('exercise.cleaned') : editing ? t('exercise.editHere') : t('exercise.follows')}</div>
     </>
   )
 }
@@ -416,18 +422,18 @@ function ExerciseFiles(props: {
 function RunButton({ running, onRun }: { running: boolean; onRun: () => void }) {
   const { t } = useTranslation()
   return (
-    <button type="button" className="btn" disabled={running} onClick={onRun}>
+    <Button variant="outline" disabled={running} onClick={onRun}>
       {running ? t('exercise.running') : t('exercise.run')}
-    </button>
+    </Button>
   )
 }
 
 function CheckButton({ disabled, onCheck }: { disabled: boolean; onCheck: () => void }) {
   const { t } = useTranslation()
   return (
-    <button type="button" className="btn primary" disabled={disabled} onClick={onCheck}>
+    <Button disabled={disabled} onClick={onCheck}>
       {t('exercise.check')}
-    </button>
+    </Button>
   )
 }
 
@@ -490,26 +496,27 @@ function ExerciseFileView(props: {
   const f = props.file
   return (
     // closed at first: a card with several files stays short, and the run button stays in reach
-    <details className="file">
-      <summary className="file-head">
-        <code>{f.location}</code>
-        <button
-          type="button"
-          className="link"
+    <details className="group overflow-hidden rounded-md border border-border">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 ps-4 pe-1 [overflow-wrap:anywhere] [&::-webkit-details-marker]:hidden">
+        <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground transition-transform duration-(--dur-micro) group-not-open:ltr:-rotate-90 group-not-open:rtl:rotate-90" />
+        <code dir="ltr" className="flex-1 text-start">{f.location}</code>
+        <Button
+          variant="ghost"
+          className="text-ink-2"
           onClick={(e) => {
             e.preventDefault()
             navigator.clipboard.writeText(f.location)
           }}
         >
           {t('exercise.copyPath')}
-        </button>
+        </Button>
       </summary>
       {f.content === null ? (
-        <pre>{t('exercise.missing')}</pre>
+        <pre className="m-0 max-h-[420px] overflow-auto bg-code px-4 py-3 text-[0.93em] text-code-foreground">{t('exercise.missing')}</pre>
       ) : props.editable ? (
         <FileEditor blockId={props.blockId} file={f} completions={props.completions} onSaving={props.onSaving} register={props.register} />
       ) : (
-        <div className="file-body">
+        <div className="[&_pre]:m-0! [&_pre]:max-h-[420px] [&_pre]:overflow-auto! [&_pre]:rounded-none!">
           <Markdown>{`\`\`\`\`${f.path.split('.').pop() ?? ''}\n${f.content}\n\`\`\`\``}</Markdown>
         </div>
       )}
@@ -520,11 +527,11 @@ function ExerciseFileView(props: {
 function RunOutput({ run }: { run: NonNullable<ExerciseData['last_run']> }) {
   const { t } = useTranslation()
   return (
-    <div className="file">
-      <div className="file-head">
-        <span className="label">{run.exit_code === null ? t('exercise.outputStopped') : t('exercise.outputExit', { code: run.exit_code })}</span>
+    <div className="overflow-hidden rounded-md border border-border">
+      <div className="flex min-h-11 items-center justify-between gap-3 ps-4 pe-1">
+        <span className="text-sm leading-snug font-medium text-ink-2">{run.exit_code === null ? t('exercise.outputStopped') : t('exercise.outputExit', { code: run.exit_code })}</span>
       </div>
-      <pre className={run.exit_code === 0 ? '' : 'failed'}>{run.output || t('exercise.noOutput')}</pre>
+      <pre dir="ltr" className={cn('m-0 max-h-[420px] overflow-auto bg-code px-4 py-3 text-start text-[0.93em]', run.exit_code === 0 ? 'text-code-foreground' : 'text-(--code-failed)')}>{run.output || t('exercise.noOutput')}</pre>
     </div>
   )
 }
@@ -532,9 +539,9 @@ function RunOutput({ run }: { run: NonNullable<ExerciseData['last_run']> }) {
 export function PlacementResult(props: { id?: number; level: string | null; text: string | null; areas: Area[] | undefined }) {
   const { t } = useTranslation()
   return (
-    <section id={props.id ? `block-${props.id}` : undefined} className="block">
-      <div className="label">
-        {t('block.placementResult')} <span className="chip">{props.level}</span>
+    <section id={props.id ? `block-${props.id}` : undefined} className="block border-t border-border pt-6 first:border-t-0 first:pt-0">
+      <div className="mb-2 text-sm leading-snug font-medium text-ink-2">
+        {t('block.placementResult')} <Badge className="ms-1 rounded-sm bg-accent text-accent-foreground">{props.level}</Badge>
       </div>
       <Markdown>{props.text ?? ''}</Markdown>
       <PlacementAreas areas={props.areas} />
@@ -674,8 +681,8 @@ function ShownCard(props: CardProps) {
         answered={(id) => (lesson.blocks.find((q) => q.id === id)?.data as QuizData | undefined)?.answer != null}
       />
     ) : (
-      <section key={b.id} id={`block-${b.id}`} className="block">
-        <div className="label">{lookup(`block.${b.kind}`, b.kind)}</div>
+      <section key={b.id} id={`block-${b.id}`} className="block border-t border-border pt-6 first:border-t-0 first:pt-0">
+        <div className="mb-2 text-sm leading-snug font-medium text-ink-2">{lookup(`block.${b.kind}`, b.kind)}</div>
         <Markdown>{b.markdown}</Markdown>
       </section>
     )

@@ -59,10 +59,10 @@ export default function Mermaid({ code }: { code: string }) {
 
   if (error)
     return (
-      <div className="mermaid-error">
-        <pre>{code}</pre>
-        <div className="error">{t('block.diagramFailed', { error })}</div>
+      <div>
+        <pre dir="ltr" className="mb-2">{code}</pre>
+        <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{t('block.diagramFailed', { error })}</div>
       </div>
     )
-  return <div ref={box} className="mermaid" />
+  return <div ref={box} dir="ltr" className="mermaid my-3 overflow-x-auto break-inside-avoid" />
 }

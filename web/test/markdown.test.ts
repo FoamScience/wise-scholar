@@ -68,16 +68,16 @@ test('fenced code in Haskell and Python gets syntax classes', () => {
 
 test('a mermaid block becomes a diagram placeholder, not highlighted code', () => {
   const html = renderToStaticMarkup(createElement(Markdown, null, '```mermaid\nflowchart LR\n  A --> B\n```'))
-  assert.ok(html.includes('class="mermaid"'))
+  assert.ok(/class="mermaid[ "]/.test(html))
   assert.ok(!html.includes('hljs'))
 })
 
 test('a correction shows removed and added words, and nothing for an identical text', async () => {
   const { Correction } = await import('../src/Diff.tsx')
   const html = renderToStaticMarkup(createElement(Correction, { attempt: 'Ich helfe den Mann.', corrected: 'Ich helfe dem Mann.' }))
-  assert.ok(html.includes('<del>den</del>') && html.includes('<ins>dem</ins>'))
+  assert.ok(/<del[^>]*>den<\/del>/.test(html) && /<ins[^>]*>dem<\/ins>/.test(html))
   const same = renderToStaticMarkup(createElement(Correction, { attempt: 'Gut.', corrected: 'Gut.' }))
-  assert.ok(!same.includes('<del>') && same.includes('already matched'))
+  assert.ok(!same.includes('<del') && same.includes('already matched'))
 })
 
 test('a figure embedded in prose renders as an image with its alt text', () => {
