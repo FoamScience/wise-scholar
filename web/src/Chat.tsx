@@ -5,17 +5,23 @@ import { transcribe } from './api'
 import type { Message } from './course'
 import { textDirection } from './text'
 import { Mic } from './Mic'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from 'cn'
+
+const BUBBLE = 'bubble max-w-[90%] rounded-lg px-4 py-3 wrap-anywhere [&>:first-child]:mt-0 [&>:last-child]:mb-0'
 
 /** A tutor or learner message in the chat sidebar. */
 function Remark({ message }: { message: Message }) {
   if (message.role === 'learner')
     return (
-      <div id={`msg-${message.id}`} className="bubble learner" dir={textDirection(message.text)}>
+      <div id={`msg-${message.id}`} className={cn(BUBBLE, 'self-end whitespace-pre-wrap bg-primary text-primary-foreground')} dir={textDirection(message.text)}>
         {message.text}
       </div>
     )
   return (
-    <div id={`msg-${message.id}`} className="bubble">
+    <div id={`msg-${message.id}`} className={cn(BUBBLE, 'self-start bg-muted')}>
       <Markdown>{message.text}</Markdown>
     </div>
   )
@@ -29,13 +35,13 @@ function ChatIcon({ size }: { size: number }) {
   )
 }
 
-function UnreadBadge({ unread }: { unread: number }) {
+function UnreadBadge({ unread, className }: { unread: number; className: string }) {
   const { t } = useTranslation()
   return (
-    <span className="badge">
+    <Badge className={cn('bg-warm text-xs text-primary-foreground', className)}>
       <span aria-hidden="true">{unread}</span>
-      <span className="visually-hidden"> {t('chat.unread', { count: unread })}</span>
-    </span>
+      <span className="sr-only"> {t('chat.unread', { count: unread })}</span>
+    </Badge>
   )
 }
 
@@ -43,18 +49,24 @@ function UnreadBadge({ unread }: { unread: number }) {
 export function AskButton(props: { unread: number; working: string | null; onAsk: () => void }) {
   const { t } = useTranslation()
   return (
-    <button type="button" id="ask" className="btn primary icon ask" aria-label={t('chat.ask')} title={t('chat.ask')} onClick={props.onAsk}>
+    <Button
+      type="button"
+      id="ask"
+      className="sticky bottom-4 min-w-11 self-end overflow-visible px-3 shadow-float animate-in fade-in slide-in-from-bottom-2 duration-(--motion) ease-(--ease) max-md:hidden min-[1101px]:-me-17 [&_svg:not([class*='size-'])]:size-5"
+      aria-label={t('chat.ask')}
+      title={t('chat.ask')}
+      onClick={props.onAsk}
+    >
       <ChatIcon size={20} />
-      {props.unread > 0 && <UnreadBadge unread={props.unread} />}
-      <span className="live" role="status">
-        {props.working !== null && ` (${props.working})`}
-      </span>
-    </button>
+      {props.unread > 0 && <UnreadBadge unread={props.unread} className="absolute -end-2 -top-2 h-5.5 min-w-5.5 rounded-[11px] border-2 border-card px-2 leading-[18px]" />}
+      <span role="status">{props.working !== null && ` (${props.working})`}</span>
+    </Button>
   )
 }
 
 /** The chat with the tutor: its messages, the reply coming in, and the composer. */
-export function ChatPanel({ messagesRef, ...props }: {
+export function ChatPanel({ messagesRef, className, ...props }: {
+  className: string
   open: boolean
   running: boolean
   doing: string
@@ -75,59 +87,70 @@ export function ChatPanel({ messagesRef, ...props }: {
   const { t } = useTranslation()
   return (
     <aside
-      className="chat"
+      className={cn(
+        'flex w-92 shrink-0 flex-col border-s bg-card transition-opacity duration-(--motion) ease-(--ease) starting:opacity-0',
+        'md:max-[1100px]:absolute md:max-[1100px]:inset-y-0 md:max-[1100px]:end-0 md:max-[1100px]:z-5 md:max-[1100px]:shadow-float',
+        'max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:bottom-13 max-md:z-5 max-md:w-auto max-md:border-0',
+        className,
+      )}
       aria-label={t('chat.label')}
       hidden={!props.open}
       onKeyDown={(e) => {
         if (e.key === 'Escape') props.onClose()
       }}
     >
-      <div className="chat-head">
+      <div className="flex h-13 shrink-0 items-center justify-between border-b px-4">
         <strong>{t('chat.tutor')}</strong>
-        <span className={props.running ? 'status live' : 'status'} role="status">
+        <span className={cn('text-sm whitespace-nowrap', props.running ? 'font-medium text-primary' : 'text-muted-foreground')} role="status">
           {props.running && props.doing}
         </span>
-        <button type="button" className="link" onClick={props.onClose}>
+        <Button type="button" variant="ghost" className="text-ink-2" onClick={props.onClose}>
           {t('chat.close')}
-        </button>
+        </Button>
       </div>
-      <div ref={messagesRef} className="messages">
+      <div ref={messagesRef} className="flex grow flex-col gap-3 overflow-y-auto p-4">
         {props.messages.map((m) => (
           <Remark key={m.id} message={m} />
         ))}
         {props.open && props.streaming && (
-          <div className="bubble">
+          <div className={cn(BUBBLE, 'self-start bg-muted')}>
             <Markdown>{props.streaming}</Markdown>
-            <span className="caret" />
+            <span className="ms-1 inline-block h-4 w-2 bg-foreground align-text-bottom" />
           </div>
         )}
       </div>
-      <div className="composer">
-        <label htmlFor="chat">{t('chat.message')}</label>
-        <textarea
+      <div className="flex shrink-0 flex-col gap-2 border-t px-4 pt-3 pb-4">
+        <label htmlFor="chat" className="text-sm text-muted-foreground">
+          {t('chat.message')}
+        </label>
+        <Textarea
           id="chat"
-          className="field" dir="auto"
+          className="resize-none py-3"
+          dir="auto"
           rows={3}
           value={props.draft}
           placeholder={props.placeholder}
           onChange={(e) => props.onDraft(() => e.target.value)}
           onKeyDown={props.onKey}
         />
-        <div className="row">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {props.speech && <Mic onClip={(clip) => transcribe(clip).then((t) => props.onDraft((d) => (d ? `${d} ${t}` : t)))} onError={props.onError} />}
           {props.running && (
-            <button className="btn" onClick={props.onStop}>
+            <Button variant="outline" onClick={props.onStop}>
               {t('common.stop')}
-            </button>
+            </Button>
           )}
-          <button className="btn primary" onClick={props.onSend} disabled={!props.canSend}>
+          <Button onClick={props.onSend} disabled={!props.canSend}>
             {t('common.send')}
-          </button>
+          </Button>
         </div>
       </div>
     </aside>
   )
 }
+
+const PANE =
+  'inline-flex min-h-13 flex-1 items-center justify-center border-0 border-t-3 border-transparent bg-transparent text-muted-foreground aria-pressed:border-t-primary aria-pressed:font-semibold aria-pressed:text-accent-foreground'
 
 const PANE_ICONS = {
   map: (
@@ -155,10 +178,11 @@ export function PaneSwitcher(props: {
 }) {
   const { t } = useTranslation()
   return (
-    <nav className="panes" aria-label={t('panes.label')}>
+    <nav className="mt-auto hidden shrink-0 border-t bg-card max-md:flex" aria-label={t('panes.label')}>
       {(['map', 'lesson'] as const).map((p) => (
         <button
           key={p}
+          className={PANE}
           aria-pressed={props.pane === p && !props.open}
           aria-label={p === 'map' ? t('map.label') : t('panes.lesson')}
           title={p === 'map' ? t('map.label') : t('panes.lesson')}
@@ -169,12 +193,12 @@ export function PaneSwitcher(props: {
           </svg>
         </button>
       ))}
-      <button aria-pressed={props.open} aria-label={t('chat.ask')} title={t('chat.ask')} onClick={props.onChat}>
+      <button className={PANE} aria-pressed={props.open} aria-label={t('chat.ask')} title={t('chat.ask')} onClick={props.onChat}>
         <ChatIcon size={22} />
-        {props.unread > 0 && !props.open && <UnreadBadge unread={props.unread} />}
+        {props.unread > 0 && !props.open && <UnreadBadge unread={props.unread} className="ms-1 h-5 min-w-5 rounded-[10px] px-1" />}
         {/* the chat's head names what the tutor is doing; with the chat closed, a pulse here says it is at work */}
-        {props.working !== null && <span className="live" aria-hidden="true" />}
-        <span className="visually-hidden" role="status">
+        {props.working !== null && <span className="ms-1 mb-3.5 size-2 animate-pulse rounded-full bg-primary" aria-hidden="true" />}
+        <span className="sr-only" role="status">
           {props.working}
         </span>
       </button>

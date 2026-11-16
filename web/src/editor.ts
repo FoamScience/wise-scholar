@@ -16,6 +16,26 @@ export type Editor = {
   destroy: () => void
 }
 
+const tooltip = { backgroundColor: 'var(--code-bg)', color: 'var(--code-ink)', border: '1px solid var(--code-comment)' }
+
+const theme = EditorView.theme({
+  '&': { maxHeight: '420px', backgroundColor: 'var(--code-bg)', color: 'var(--code-ink)', fontSize: '0.875rem' },
+  '&.cm-focused': { outline: '2px solid var(--color-accent)', outlineOffset: '-2px' },
+  '.cm-scroller': { fontFamily: 'var(--mono)', overflow: 'auto' },
+  '.cm-gutters': { backgroundColor: 'var(--code-bg)', color: 'var(--code-comment)', border: '0' },
+  '.cm-content': { caretColor: 'var(--code-ink)' },
+  '.cm-cursor': { borderInlineStartColor: 'var(--code-ink)' },
+  '.cm-activeLine': { backgroundColor: 'color-mix(in oklab, var(--code-ink) 8%, transparent)' },
+  '.cm-activeLineGutter': { backgroundColor: 'color-mix(in oklab, var(--code-ink) 8%, transparent)' },
+  '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'color-mix(in oklab, var(--code-ink) 30%, transparent) !important',
+  },
+  '.cm-tooltip': tooltip,
+  '.cm-tooltip.cm-completionInfo': tooltip,
+  '.cm-completionDetail': { color: 'var(--code-comment)' },
+  '.cm-tooltip-autocomplete ul li[aria-selected]': { backgroundColor: 'color-mix(in oklab, var(--code-ink) 22%, var(--code-bg))', color: 'var(--code-ink)' },
+})
+
 function source(completions: Completion[]): CompletionSource {
   return (context) => {
     const line = context.state.doc.lineAt(context.pos)
@@ -54,6 +74,7 @@ export function createEditor(props: {
       doc: props.text,
       extensions: [
         basicSetup,
+        theme,
         EditorState.languageData.of(() => hints),
         keymap.of([indentWithTab]),
         syntaxHighlighting(classHighlighter),
