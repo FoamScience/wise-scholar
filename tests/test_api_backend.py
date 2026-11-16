@@ -277,3 +277,18 @@ def test_the_anthropic_backend_picks_a_model_per_kind(monkeypatch):
     assert backends.model_for("lesson") == "claude-haiku-5-5"
     monkeypatch.setattr(backends, "MODEL", "claude-sonnet-5-5")
     assert backends.model_for("lesson") == "claude-sonnet-5-5"
+
+
+def test_closing_the_turn_early_as_the_app_does_ends_it_cleanly(fake):
+    fake(reply({"type": "text", "text": "Done."}, stop="end_turn"), reply({"type": "text", "text": "Again."}, stop="end_turn"))
+
+    async def run(stop_at):
+        events = api.run_turn("hi", session_id=stop_at, resume=False, name="n", cwd=Path("/workspace/course"), phase="lesson", token="t")
+        async for event in events:
+            if event["type"] == stop_at:
+                break
+        await events.aclose()
+        return event
+
+    assert asyncio.run(run("turn.done"))["ok"]
+    assert asyncio.run(run("chat.delta"))["text"] == "Again."

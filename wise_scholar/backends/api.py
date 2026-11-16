@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import re
@@ -236,13 +237,30 @@ async def run_turn(
     _save(path, messages)
     usage = Usage()
     model = model_for(phase)
-    async with _tools(token) as tools:
-        # Caught inside the MCP client: its task group would hand them on wrapped in an ExceptionGroup.
+    events: asyncio.Queue[dict | None] = asyncio.Queue()
+
+    async def converse() -> None:
         try:
-            async for event in _converse(model, phase, tools, messages, path, usage):
-                yield event
-        except anthropic.APIStatusError as e:
-            yield {"type": "turn.done", "ok": False, "error": f"the model API answered {e.status_code}: {e.message}"[:500], "usage": usage.report()}
-        except (anthropic.APIConnectionError, httpx2.TransportError) as e:
-            # A stream cut off midway raises the transport's own error, not the SDK's.
-            yield {"type": "turn.done", "ok": False, "error": f"the model API could not be reached: {e}"[:500], "usage": usage.report()}
+            async with _tools(token) as tools:
+                # Caught inside the MCP client: its task group would hand them on wrapped in an ExceptionGroup.
+                try:
+                    async for event in _converse(model, phase, tools, messages, path, usage):
+                        await events.put(event)
+                except anthropic.APIStatusError as e:
+                    await events.put({"type": "turn.done", "ok": False, "error": f"the model API answered {e.status_code}: {e.message}"[:500], "usage": usage.report()})
+                except (anthropic.APIConnectionError, httpx2.TransportError) as e:
+                    # A stream cut off midway raises the transport's own error, not the SDK's.
+                    await events.put({"type": "turn.done", "ok": False, "error": f"the model API could not be reached: {e}"[:500], "usage": usage.report()})
+        finally:
+            events.put_nowait(None)
+
+    # The MCP client's task group lives in a task of its own: the app closes this generator as soon as the turn is done
+    # (or stopped), and closing it while it waits inside a task group would raise out of the group.
+    task = asyncio.create_task(converse())
+    try:
+        while (event := await events.get()) is not None:
+            yield event
+        await task
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
