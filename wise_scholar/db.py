@@ -627,6 +627,12 @@ MIGRATIONS = [
         PRIMARY KEY (course_id, kind)
     );
     """,
+    # prepared_offline: the tutor finished writing the unit for offline study, so it publishes like a finished one;
+    # the lessons taken offline before this column were prepared in full
+    """
+    ALTER TABLE lessons ADD COLUMN prepared_offline INTEGER NOT NULL DEFAULT 0;
+    UPDATE lessons SET prepared_offline = 1 WHERE batch = 1;
+    """,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)

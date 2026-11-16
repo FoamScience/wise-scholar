@@ -62,8 +62,8 @@ def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypa
     from wise_scholar.tools import quizzes as quiz_tools
     from wise_scholar.routes import lessons as lessons_routes
 
-    turns = []
-    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    turns, ended_well = [], []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, then=None: (turns.append(line), ended_well.append(then)))
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Batcher')").lastrowid
     course = db.create_course("Chemistry", who)["id"]
     db.set_concepts(course, [{"title": "Bonds", "concepts": ["Ionic bonds"], "known": []}])
@@ -84,6 +84,10 @@ def test_a_batch_lesson_carries_its_keys_and_takes_its_answers_together(monkeypa
 
     asyncio.run(lessons_routes.prepare_offline(lesson))
     assert turns[-1].startswith("[batch] The learner takes this unit offline") and app._lesson_view(lesson)["batch"] == 1
+    # The unit counts as written for publishing only once the preparing turn has ended well.
+    assert db.row("SELECT prepared_offline FROM lessons WHERE id = ?", lesson)["prepared_offline"] == 0
+    ended_well[-1]()
+    assert db.row("SELECT prepared_offline FROM lessons WHERE id = ?", lesson)["prepared_offline"] == 1
     with pytest.raises(HTTPException, match="already prepared"):
         asyncio.run(lessons_routes.prepare_offline(lesson))
     # No opening attempt gates the explanations: the whole unit is written in one turn.

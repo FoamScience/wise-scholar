@@ -923,7 +923,7 @@
       "forkOf": "Made from {{topic}}, version {{number}}; a version you publish credits it.",
       "locked": "Made from {{topic}}, version {{number}}, whose author does not allow new versions made from it.",
       "written": "{{written}} of {{units}} units written",
-      "writtenHelp": "A unit is written once its lesson is finished. The rest of the map ships too, marked as coming in a later version.",
+      "writtenHelp": "A unit is written once its lesson is finished or prepared in full for offline study. The rest of the map ships too, marked as coming in a later version.",
       "sources": "Your materials",
       "sourcesHelp": "Left out unless you tick them. Include only what you may share.",
       "fromWorkspace": "Exercise files taken as they are now",

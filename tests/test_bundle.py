@@ -137,6 +137,14 @@ def assert_installed_files_and_sources(course, places):
     assert (places["source_dir"] / str(course["id"]) / f"{source['id']}-notes.md").read_bytes() == b"notes.md"
 
 
+def test_a_unit_prepared_for_offline_study_ships_as_written(places):
+    a = _authored(places)
+    fitting, _ = a["units"]
+    assert bundle.preview(a["course"])["written"] == 1
+    db.conn.execute("UPDATE lessons SET prepared_offline = 1 WHERE concept_id = ?", (fitting["id"],))
+    assert bundle.preview(a["course"])["written"] == 2
+
+
 def test_a_published_version_carries_the_content_and_none_of_the_author(places):
     a = _authored(places)
     preview = bundle.preview(a["course"])
@@ -250,6 +258,13 @@ def test_the_endpoints_publish_download_and_import_a_version(places, monkeypatch
     empty = db.create_course("Nothing yet", reader)["id"]
     with pytest.raises(HTTPException, match="nothing to publish"):
         sharing_routes.publish_version(empty, sharing_routes.Publish())
+    # a unit written in full for offline study is enough to publish, with nothing finished
+    db.set_concepts(empty, [{"title": "Basics", "concepts": ["Pressure"], "known": []}])
+    offline = db.create_lesson(empty, "Pressure", "lesson", db.concepts(empty)[0]["id"])
+    db.add_block(offline, "prose", "Pressure is force over area.")
+    db.conn.execute("UPDATE lessons SET prepared_offline = 1 WHERE id = ?", (offline,))
+    sharing_routes.publish_version(empty, sharing_routes.Publish())
+    assert bundle.versions(empty)[0]["written"] == 1
     with pytest.raises(HTTPException, match="does not allow"):
         sharing_routes.publish_version(made["id"], sharing_routes.Publish())
     with pytest.raises(HTTPException, match="not a course bundle"):
