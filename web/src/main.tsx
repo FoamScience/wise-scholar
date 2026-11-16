@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './i18n'
-import './index.css'
+import './app.css'
 import 'katex/dist/katex.min.css'
 import App from './App.tsx'
 import { linkParts } from './parts'

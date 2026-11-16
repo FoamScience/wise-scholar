@@ -1,0 +1,129 @@
+@layer theme, base, legacy, components, utilities;
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import './base.css' layer(base);
+@import './index.css' layer(legacy);
+@import './styles/shell.css' layer(components);
+@import './styles/home.css' layer(components);
+@import './styles/workspace.css' layer(components);
+@import './styles/lesson.css' layer(components);
+@import './styles/practice.css' layer(components);
+@import './styles/book.css' layer(components);
+/* unlayered, so the WS tokens win over Tailwind's own variables of the same name (--text-*, --ease-*) */
+@import './tokens.css';
+
+@plugin '@tailwindcss/typography';
+
+/* dark follows the system unless the theme toggle set data-theme, as tokens.css does */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme='light']), :root:not([data-theme='light']) *) {
+      @slot;
+    }
+  }
+}
+
+/* shadcn's names read the WS tokens, which already switch with the theme, so there is no .dark block */
+:root {
+  --background: var(--color-paper);
+  --foreground: var(--color-ink);
+  --card: var(--color-raised);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-raised);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-accent-ink);
+  --secondary: var(--color-paper-2);
+  --secondary-foreground: var(--color-ink);
+  --muted-foreground: var(--color-muted);
+  --accent: var(--color-accent-tint);
+  --accent-foreground: var(--color-accent-deep);
+  --destructive: var(--color-error);
+  --border: var(--color-rule);
+  --input: var(--color-rule-strong);
+  --ring: var(--color-focus);
+  --chart-1: var(--color-accent);
+  --chart-2: var(--color-warm);
+  --chart-3: var(--color-accent-deep);
+  --chart-4: var(--color-warm-line);
+  --chart-5: var(--color-rule-strong);
+  --radius: var(--radius-card);
+  --sidebar: var(--color-paper-2);
+  --sidebar-foreground: var(--color-ink);
+  --sidebar-primary: var(--color-accent);
+  --sidebar-primary-foreground: var(--color-accent-ink);
+  --sidebar-accent: var(--color-raised);
+  --sidebar-accent-foreground: var(--color-accent-deep);
+  --sidebar-border: var(--color-rule);
+  --sidebar-ring: var(--color-focus);
+}
+
+@theme inline {
+  --font-sans: var(--font-body);
+  --font-heading: var(--font-display);
+  --font-mono: var(--font-outlier);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  /* not via --muted: tokens.css already names the muted text colour --muted (read by iso.css, Plot, Graph, print) */
+  --color-muted: var(--color-paper-2);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* the WS tones shadcn has no name for */
+  --color-ink-2: var(--color-ink-2);
+  --color-paper-3: var(--color-paper-3);
+  --color-rule-strong: var(--color-rule-strong);
+  --color-warm: var(--color-warm);
+  --color-warm-tint: var(--color-warm-tint);
+  --color-warm-line: var(--color-warm-line);
+  --color-warm-ink: var(--color-warm-ink);
+  --color-spark: var(--color-spark);
+  --color-success: var(--color-success);
+  --color-off: var(--color-off);
+  --color-code: var(--code-bg);
+  --color-code-foreground: var(--code-ink);
+  --radius-sm: var(--radius-inner);
+  --radius-md: var(--radius-input);
+  --radius-lg: var(--radius-card);
+  --radius-xl: calc(var(--radius-card) * 1.4);
+  --shadow-float: var(--shadow-float);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
