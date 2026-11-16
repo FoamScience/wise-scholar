@@ -194,11 +194,18 @@ def finished_lessons(course_id: int) -> set[int]:
 
 
 def written_units(course_id: int) -> set[int]:
-    """The units whose lesson reached its end: only these carry lessons and cards into a version; the rest of the
-    map ships as coming later."""
+    """The units whose lesson reached its end or was written in full for offline study: only these carry lessons and
+    cards into a version; the rest of the map ships as coming later."""
+    done = finished_lessons(course_id)
     return {r["concept_id"] for r in db.rows(
-        f"SELECT concept_id FROM lessons WHERE id IN ({','.join('?' * len(done))}) AND concept_id IS NOT NULL", *done,
-    )} if (done := finished_lessons(course_id)) else set()
+        f"SELECT concept_id FROM lessons WHERE course_id = ? AND concept_id IS NOT NULL "
+        f"AND (prepared_offline = 1 OR id IN ({','.join('?' * len(done))}))", course_id, *done,
+    )}
+
+
+def publishable(course_id: int) -> bool:
+    """Whether a version would carry any lesson: one finished, or a unit written in full for offline study."""
+    return bool(finished_lessons(course_id) or written_units(course_id))
 
 
 def setup_commands(course_id: int) -> list[str]:

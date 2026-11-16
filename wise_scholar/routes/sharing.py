@@ -39,8 +39,8 @@ def publish_version(course_id: int, body: Publish) -> dict:
         raise HTTPException(409, "the author of this course does not allow versions made from it")
     if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
         raise HTTPException(409, "wait for the tutor to finish before publishing")
-    if not bundle.finished_lessons(course_id):
-        raise HTTPException(409, "no lesson of this course is finished yet, so there is nothing to publish")
+    if not bundle.publishable(course_id):
+        raise HTTPException(409, "no lesson of this course is finished or prepared for offline study yet, so there is nothing to publish")
     if course_id in _checks:
         raise HTTPException(409, "wait for the check of this course to finish before publishing")
     return bundle.publish(course_id, notes=body.notes, licence=body.licence, forkable=body.forkable, sources=body.sources,
@@ -120,8 +120,8 @@ async def start_publish_check(course_id: int) -> dict:
         raise HTTPException(404, "no such course")
     if course_id in _checks:
         raise HTTPException(409, "this course is already being checked")
-    if not bundle.finished_lessons(course_id):
-        raise HTTPException(409, "no lesson of this course is finished yet, so there is nothing to check")
+    if not bundle.publishable(course_id):
+        raise HTTPException(409, "no lesson of this course is finished or prepared for offline study yet, so there is nothing to check")
     _checks_failed.discard(course_id)
 
     async def run() -> None:

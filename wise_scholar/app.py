@@ -8,6 +8,7 @@ import secrets
 import time
 import uuid
 from collections import deque
+from collections.abc import Callable
 from contextlib import aclosing, asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
@@ -498,7 +499,7 @@ def _record_usage(lesson: dict, kind: str, final: dict, seconds: float | None = 
         db.add_usage(lesson["course_id"], lesson["id"], kind, BACKEND, used, seconds)
 
 
-async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
+async def _run_turn(lesson: dict, line: str, quiet: bool = False, then: Callable[[], None] | None = None) -> None:
     lesson_id = lesson["id"]
     # what the turn said so far and how it ended; a stopped turn keeps the reply it streamed
     turn = {"reply": "", "final": {"type": "turn.done", "ok": False, "error": "stopped"}}
@@ -515,6 +516,8 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False) -> None:
     finally:
         tutor.turn_ended(lesson_id)
         del _turns[lesson_id]
+    if then and turn["final"]["ok"]:
+        then()
     _turn_over(lesson, turn["reply"], turn["final"], time.monotonic() - started, quiet)
 
 
@@ -823,9 +826,10 @@ def _phase_prompt(lesson: dict) -> str:
     return lesson["phase"]
 
 
-def _start_turn(lesson: dict, line: str, quiet: bool = False) -> None:
-    """quiet: a turn the learner does not see: nothing of it is streamed or kept in the chat, only what its tools do."""
-    _turns[lesson["id"]] = asyncio.create_task(_run_turn(lesson, line, quiet))
+def _start_turn(lesson: dict, line: str, quiet: bool = False, then: Callable[[], None] | None = None) -> None:
+    """quiet: a turn the learner does not see: nothing of it is streamed or kept in the chat, only what its tools do.
+    then: runs once the turn has ended well, not after a stop or a failure."""
+    _turns[lesson["id"]] = asyncio.create_task(_run_turn(lesson, line, quiet, then))
     if quiet:
         return
     hub.publish(lesson["course_id"], {"type": "turn.started", "lesson_id": lesson["id"]})

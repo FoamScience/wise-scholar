@@ -157,7 +157,8 @@ async def prepare_offline(lesson_id: int) -> None:
         raise HTTPException(409, "this lesson is finished")
     core._require_idle(lesson_id)
     db.conn.execute("UPDATE lessons SET batch = 1 WHERE id = ?", (lesson_id,))
-    core._start_turn(db.lesson(lesson_id), BATCH_PREPARE)
+    core._start_turn(db.lesson(lesson_id), BATCH_PREPARE,
+                     then=lambda: db.conn.execute("UPDATE lessons SET prepared_offline = 1 WHERE id = ?", (lesson_id,)))
 
 
 def _checked_batch(lesson_id: int, body: Batch) -> list[tuple[dict, dict, BatchAnswer]]:
