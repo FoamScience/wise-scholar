@@ -2,12 +2,17 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { InlineMarkdown } from './Md'
 import { api } from './api'
+import { cn } from 'cn'
 import type { Course } from './course'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type Suggestion = { id: number; title: string; pitch: string; kind: 'deeper' | 'adjacent'; builds_on: string }
 type Suggestions = { suggestions: Suggestion[]; running: boolean; failed: boolean }
 
 const POLL_MS = 4000
+const grid = 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'
 
 /** The learner's suggested next courses. Opening asks the server, which writes new ones only when they are due. */
 export function useSuggestions(profile: number, enabled = true) {
@@ -42,22 +47,24 @@ function SuggestionCard({ suggestion, onDismiss, onError }: { suggestion: Sugges
   }
 
   return (
-    <article className="suggestion">
-      <span className={`chip ${suggestion.kind}`}>{t(`explore.kinds.${suggestion.kind}`)}</span>
-      <h2 dir="auto">{suggestion.title}</h2>
-      <p dir="auto">
+    <article className="flex flex-col items-start gap-2 rounded-lg border border-border bg-card p-4 transition-colors duration-[var(--dur-micro)] hover:border-input focus-within:border-input">
+      <Badge variant="secondary" className={cn('h-auto rounded-sm px-2 py-0.5 text-sm', suggestion.kind === 'adjacent' ? 'bg-warm-tint text-warm-ink' : 'bg-accent text-accent-foreground')}>
+        {t(`explore.kinds.${suggestion.kind}`)}
+      </Badge>
+      <h2 dir="auto" className="m-0 text-base leading-snug font-semibold">{suggestion.title}</h2>
+      <p dir="auto" className="m-0 flex-1 text-sm">
         <InlineMarkdown>{suggestion.pitch}</InlineMarkdown>
       </p>
-      <div className="muted small" dir="auto">
+      <div className="text-sm text-muted-foreground" dir="auto">
         {t('explore.buildsOn', { course: suggestion.builds_on })}
       </div>
-      <div className="row">
-        <button type="button" className="btn" disabled={starting} onClick={start}>
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <Button type="button" variant="outline" disabled={starting} onClick={start}>
           {starting ? t('home.starting') : t('explore.start')}
-        </button>
-        <button type="button" className="link" disabled={starting} onClick={onDismiss}>
+        </Button>
+        <Button type="button" variant="ghost" className="text-ink-2" disabled={starting} onClick={onDismiss}>
           {t('explore.dismiss')}
-        </button>
+        </Button>
       </div>
     </article>
   )
@@ -68,13 +75,13 @@ function NoSuggestions({ state }: { state: Suggestions }) {
   const { t } = useTranslation()
   if (state.running)
     return (
-      <div className="suggestions" role="status" aria-label={t('explore.writing')}>
+      <div className={grid} role="status" aria-label={t('explore.writing')}>
         {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="suggestion skeleton">
-            <span style={{ width: '30%' }} />
-            <span style={{ width: '82%' }} />
-            <span style={{ width: '96%' }} />
-            <span style={{ width: '64%' }} />
+          <div key={i} className="flex min-h-48 flex-col items-stretch gap-2 rounded-lg border border-border bg-card p-4">
+            <Skeleton className="h-4 w-[30%]" />
+            <Skeleton className="h-4 w-[82%]" />
+            <Skeleton className="h-4 w-[96%]" />
+            <Skeleton className="h-4 w-[64%]" />
           </div>
         ))}
       </div>
@@ -101,15 +108,15 @@ export function ExplorePage({ profile }: { profile: number }) {
 
   const cards = state?.suggestions ?? []
   return (
-    <main className="home explore">
-      <header className="stack">
-        <h1>{t('explore.heading')}</h1>
-        <p className="muted">{t('explore.help')}</p>
+    <main className="mx-auto flex w-full max-w-(--page) flex-col gap-10 px-6 pt-10 pb-16">
+      <header className="flex flex-col gap-3">
+        <h1 className="m-0 max-w-none">{t('explore.heading')}</h1>
+        <p className="m-0 max-w-(--measure) text-muted-foreground">{t('explore.help')}</p>
       </header>
-      {error && <div className="error">{error}</div>}
-      {state?.failed && !state.running && <div className="error">{t('explore.failed')}</div>}
+      {error && <div className="rounded-md bg-warm-tint px-4 py-2 text-warm-ink">{error}</div>}
+      {state?.failed && !state.running && <div className="rounded-md bg-warm-tint px-4 py-2 text-warm-ink">{t('explore.failed')}</div>}
       {cards.length > 0 && (
-        <div className="suggestions">
+        <div className={grid}>
           {cards.map((s) => (
             <SuggestionCard key={s.id} suggestion={s} onDismiss={() => dismiss(s.id)} onError={setError} />
           ))}
@@ -117,10 +124,10 @@ export function ExplorePage({ profile }: { profile: number }) {
       )}
       {state && cards.length === 0 && <NoSuggestions state={state} />}
       {state && (cards.length > 0 || state.failed) && (
-        <div className="row">
-          <button type="button" className="btn" disabled={state.running} aria-busy={state.running} onClick={others}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" disabled={state.running} aria-busy={state.running} onClick={others}>
             {state.running ? t('explore.writing') : t('explore.others')}
-          </button>
+          </Button>
         </div>
       )}
     </main>

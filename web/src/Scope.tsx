@@ -3,6 +3,10 @@ import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CourseDetail } from './course'
 import { textDirection } from './text'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
 export type Scope = { details: string; hours: number | null }
 
@@ -20,12 +24,12 @@ export function ScopeForm(props: { disabled: boolean; onStart: (scope: Scope) =>
   }
 
   return (
-    <form className="block scope" onSubmit={submit}>
-      <div className="label">{t('scope.label')}</div>
-      <label htmlFor="scope-details">{t('scope.details')}</label>
-      <textarea
+    <form className="block space-y-2 border-t border-border pt-6" onSubmit={submit}>
+      <div className="text-sm leading-snug font-medium text-ink-2">{t('scope.label')}</div>
+      <Label htmlFor="scope-details" className="text-base leading-normal font-normal">{t('scope.details')}</Label>
+      <Textarea
         id="scope-details"
-        className="field"
+        className="min-h-24 py-3"
         dir="auto"
         rows={3}
         maxLength={2000}
@@ -33,13 +37,13 @@ export function ScopeForm(props: { disabled: boolean; onStart: (scope: Scope) =>
         placeholder={t('scope.detailsHint')}
         onChange={(e) => setDetails(e.target.value)}
       />
-      <label htmlFor="scope-hours">{t('scope.hours')}</label>
-      <input id="scope-hours" className="field" type="number" min={1} max={5000} step={1} value={hours} onChange={(e) => setHours(e.target.value)} />
-      <div className="small">{t('scope.help')}</div>
-      <div className="row">
-        <button className="btn primary" disabled={props.disabled || starting}>
+      <Label htmlFor="scope-hours" className="text-base leading-normal font-normal">{t('scope.hours')}</Label>
+      <Input id="scope-hours" className="max-w-40" type="number" min={1} max={5000} step={1} value={hours} onChange={(e) => setHours(e.target.value)} />
+      <div className="text-sm text-muted-foreground">{t('scope.help')}</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" disabled={props.disabled || starting}>
           {t('scope.start')}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -50,10 +54,10 @@ export function ScopeCard({ course }: { course: Pick<CourseDetail, 'details' | '
   const { t } = useTranslation()
   if (!course.details && !course.hours) return null
   return (
-    <section className="block scope">
-      <div className="label">{t('scope.summary')}</div>
+    <section className="block space-y-2 border-t border-border pt-6">
+      <div className="text-sm leading-snug font-medium text-ink-2">{t('scope.summary')}</div>
       {course.details && <div dir={textDirection(course.details)}>{course.details}</div>}
-      {!!course.hours && <div className="muted">{t('scope.planned', { count: course.hours })}</div>}
+      {!!course.hours && <div className="text-muted-foreground">{t('scope.planned', { count: course.hours })}</div>}
     </section>
   )
 }

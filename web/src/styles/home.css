@@ -1,1 +1,6 @@
 /* CSS for the home screens that Tailwind utilities cannot express (third-party DOM, keyframes, print) */
+
+.plan-steps > li:not(.later) + li.later {
+  margin-top: var(--space-xs);
+  border-top: 1px solid var(--color-rule);
+}

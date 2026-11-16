@@ -4,6 +4,8 @@ import Markdown from './Md'
 import { api } from './api'
 import { type TodayPlan, unitTitle } from './course'
 import { day, percent } from './i18n'
+import { cn } from 'cn'
+import { buttonVariants } from '@/components/ui/button'
 
 type Summary = { answers: number; sure?: number; right?: number; misses?: string[]; ended?: string; current?: boolean }
 
@@ -18,13 +20,13 @@ export function SittingSummary({ profile }: { profile: number }) {
   if (!summary) return null
   if (!summary.answers) return null
   return (
-    <section className="block sitting">
-      <div className="label">{summary.current ? t('sitting.this') : `${t('sitting.last')}, ${day(summary.ended!)}`}</div>
+    <section className="block space-y-2 border-t border-border pt-6">
+      <div className="text-sm leading-snug font-medium text-ink-2">{summary.current ? t('sitting.this') : `${t('sitting.last')}, ${day(summary.ended!)}`}</div>
       <p>{t('sitting.line', { count: summary.answers, sure: percent(summary.sure!), right: percent(summary.right!) })}</p>
       {summary.misses!.length > 0 && (
         <>
-          <div className="small">{t('sitting.misses')}</div>
-          <ul>
+          <div className="text-sm text-muted-foreground">{t('sitting.misses')}</div>
+          <ul className="list-disc space-y-2 ps-6">
             {summary.misses!.map((question, i) => (
               <li key={i}>
                 <Markdown>{question}</Markdown>
@@ -47,9 +49,9 @@ function NextTime({ profile }: { profile: number }) {
   if (!plan || (plan.due === 0 && plan.units.length === 0)) return null
   const unit = plan.units[0]
   return (
-    <section className="block">
-      <div className="label">{t('sitting.next')}</div>
-      <ul>
+    <section className="block space-y-2 border-t border-border pt-6">
+      <div className="text-sm leading-snug font-medium text-ink-2">{t('sitting.next')}</div>
+      <ul className="list-disc ps-6">
         {plan.due > 0 && <li>{t('today.reviews', { count: plan.warmup })}</li>}
         {unit && <li>{t('today.unit', { topic: unit.topic, title: unitTitle(unit, t) })}</li>}
       </ul>
@@ -61,11 +63,11 @@ function NextTime({ profile }: { profile: number }) {
 export function SittingPage({ profile }: { profile: number }) {
   const { t } = useTranslation()
   return (
-    <main className="home">
-      <h1>{t('sitting.ended')}</h1>
+    <main className="mx-auto flex w-full max-w-(--measure) flex-col gap-10 px-6 pt-10 pb-16">
+      <h1 className="m-0 max-w-none">{t('sitting.ended')}</h1>
       <SittingSummary profile={profile} />
       <NextTime profile={profile} />
-      <a className="btn as-link" href="#/">{t('review.back')}</a>
+      <a className={cn(buttonVariants({ variant: 'outline' }), 'w-fit')} href="#/">{t('review.back')}</a>
     </main>
   )
 }
