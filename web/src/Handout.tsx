@@ -6,6 +6,8 @@ import type { Lesson } from './course'
 import { useTheme } from './theme'
 import { pageStyle } from './print'
 import { Swap } from './Swap'
+import { Button, buttonVariants } from '@/components/ui/button'
+
 
 type Version = 'student' | 'teacher'
 type Head = Pick<Lesson, 'id' | 'title' | 'phase' | 'concept_id'> & { course_id: number; topic: string }
@@ -46,41 +48,41 @@ export function Handout({ lessonId, version, pdf }: { lessonId: number; version:
   }
 
   // The cover shows even when a request failed, so the printer sees the page settle and the error is printed on it.
-  if (!error && (!head || text === null)) return <main className="home" />
+  if (!error && (!head || text === null)) return <main className="mx-auto w-full max-w-[var(--measure)] px-6 pt-10 pb-16" />
   const other: Version = version === 'student' ? 'teacher' : 'student'
 
   return (
-    <main className="book">
+    <main className="book mx-auto flex w-full max-w-[820px] flex-col gap-4 px-6 pt-6 pb-16 print:block print:max-w-none print:p-0 print:text-[10.5pt] print:[&>*+*]:mt-4">
       <style key={theme}>{pageStyle(head?.topic ?? '')}</style>
-      <div className="book-bar">
-        <a className="btn as-link" href={head ? `#/course/${head.course_id}?concept=${head.concept_id}` : '#/'}>{t('handout.back')}</a>
-        <a className="btn as-link" href={`#/lesson/${lessonId}/handout/${other}`}>
+      <div className="flex items-center gap-4 print:hidden">
+        <a className={buttonVariants({ variant: 'outline' })} href={head ? `#/course/${head.course_id}?concept=${head.concept_id}` : '#/'}>{t('handout.back')}</a>
+        <a className={buttonVariants({ variant: 'outline' })} href={`#/lesson/${lessonId}/handout/${other}`}>
           {t(`handout.${other}`)}
         </a>
-        <a className="btn as-link" href={`/api/lessons/${lessonId}/handout.md?version=${version}`} download>
+        <a className={buttonVariants({ variant: 'outline' })} href={`/api/lessons/${lessonId}/handout.md?version=${version}`} download>
           {t('handout.markdown')}
         </a>
         <span className="grow" />
         {pdf ? (
-          <button type="button" className="btn primary" disabled={preparing} onClick={download}>
+          <Button type="button" disabled={preparing} onClick={download}>
             <Swap labels={[t('book.download'), t('book.preparing')]} at={preparing ? 1 : 0} />
-          </button>
+          </Button>
         ) : (
-          <button type="button" className="btn primary" onClick={() => window.print()}>
+          <Button type="button" onClick={() => window.print()}>
             {t('book.save')}
-          </button>
+          </Button>
         )}
       </div>
-      {error && <div className="error">{error}</div>}
-      <header className="book-cover handout-cover">
-        <span className="book-number">{t(`handout.${version}`)}</span>
-        <h1 dir="auto">{head?.title ?? ''}</h1>
-        <div className="book-subtitle" dir="auto">
+      {error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div>}
+      <header className="book-cover flex flex-col items-start gap-4 rounded-lg bg-primary px-16 pt-16 pb-10 text-primary-foreground print:box-border print:h-[296mm] print:rounded-none print:px-[24mm] print:pt-[40mm] print:pb-[24mm] print:break-after-page">
+        <span className="text-sm font-semibold">{t(`handout.${version}`)}</span>
+        <h1 className="m-0 text-[48px] leading-[1.1] font-semibold" dir="auto">{head?.title ?? ''}</h1>
+        <div className="text-lg" dir="auto">
           {head?.topic ?? ''}
         </div>
       </header>
       {text !== null && (
-        <section className="chapter">
+        <section className="flex flex-col gap-4 print:block print:[&>*+*]:mt-4">
           <Markdown>{text}</Markdown>
         </section>
       )}
