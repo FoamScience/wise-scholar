@@ -270,5 +270,10 @@ def test_the_anthropic_backend_picks_a_model_per_kind(monkeypatch):
     assert backends.model_for("lesson-teacher") == "claude-opus-5-5"
     assert backends.model_for("graph") == "claude-sonnet-5-5"
     assert backends.model_for("cards") == "qwen3:8b"
+    monkeypatch.setattr(backends, "MODELS", {"lesson": "sonnet"})
+    assert backends.model_for("lesson-teacher") == "claude-sonnet-5-5"
+    monkeypatch.setattr(backends, "MODELS", {})
+    monkeypatch.setattr(backends, "MODEL", "haiku")
+    assert backends.model_for("lesson") == "claude-haiku-5-5"
     monkeypatch.setattr(backends, "MODEL", "claude-sonnet-5-5")
     assert backends.model_for("lesson") == "claude-sonnet-5-5"

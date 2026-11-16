@@ -91,7 +91,7 @@ WISE_SCHOLAR_AGENT=anthropic/claude-sonnet-5-5 make serve               # Anthro
 
 The model must be able to call tools reliably.
 
-With `claude` or `anthropic` and no model named, each kind of turn gets its own model: interviews, lessons, practice, stories, writing and guided contributions run on `opus`; the placement check and the background jobs (claims graph, clean-up, course suggestions, recap, open-source contributions) on `sonnet`; splitting cards on `haiku` (with `anthropic`: `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5`). A model named in `WISE_SCHOLAR_AGENT`, or the default of `opencode` or `agy`, serves every kind. `WISE_SCHOLAR_MODELS` overrides some kinds, as `kind=model` pairs separated by commas:
+With `claude` or `anthropic` and no model named, each kind of turn gets its own model: interviews, lessons, practice, stories, writing and guided contributions run on `opus`; the placement check and the background jobs (claims graph, clean-up, course suggestions, recap, open-source contributions) on `sonnet`; splitting cards on `haiku` (with `anthropic`: `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5`, which `opus`, `sonnet` and `haiku` also name wherever a model is set). A model named in `WISE_SCHOLAR_AGENT`, or the default of `opencode` or `agy`, serves every kind. `WISE_SCHOLAR_MODELS` overrides some kinds, as `kind=model` pairs separated by commas:
 
 ```bash
 WISE_SCHOLAR_MODELS='placement=opus,cards=sonnet' make serve

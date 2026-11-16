@@ -55,7 +55,8 @@ def model_for(phase: str) -> str:
     """The model a turn of this phase prompt runs on; empty for the backend's own default."""
     kind = phase.removesuffix("-teacher")
     if model := MODELS.get(kind) or MODEL:
-        return model
+        # Claude Code resolves opus, sonnet and haiku itself; the API takes only full ids.
+        return API_MODELS.get(model, model) if BACKEND == "anthropic" else model
     if BACKEND == "claude":
         return CLAUDE_MODELS.get(kind, "")
     return API_MODELS[CLAUDE_MODELS[kind]] if BACKEND == "anthropic" else ""
