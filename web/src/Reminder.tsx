@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import { api } from './api'
 import type { Profile } from './profiles'
 
@@ -71,37 +74,37 @@ export function Reminder(props: { profile: Profile; onChanged: () => Promise<unk
   }
 
   return (
-    <section className="block stack">
-      <div className="label">{t('remind.heading')}</div>
+    <section className="flex flex-col gap-3 border-t pt-6">
+      <div className="text-sm leading-snug font-medium text-ink-2">{t('remind.heading')}</div>
       {!supported ? (
-        <div className="small">{t('remind.unsupported')}</div>
+        <div className="text-sm text-muted-foreground">{t('remind.unsupported')}</div>
       ) : (
         <>
-          <label className="check">
-            <input type="checkbox" checked={on} disabled={device === undefined} onChange={(e) => run(e.target.checked ? turnOn : turnOff)} />
+          <label className="flex items-center gap-2">
+            <Checkbox checked={on} disabled={device === undefined} onCheckedChange={(checked) => run(checked ? turnOn : turnOff)} />
             {t('remind.toggle')}
           </label>
-          <div className="row">
+          <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="remind-at">{t('remind.at')}</label>
-            <input
+            <Input
               id="remind-at"
-              className="field"
+              className="w-auto"
               type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
               onBlur={() => on && time && time !== profile.remind_at && run(() => schedule(time))}
             />
             {on && (
-              <button type="button" className="btn" onClick={() => run(test)}>
+              <Button type="button" variant="outline" onClick={() => run(test)}>
                 {t('remind.test')}
-              </button>
+              </Button>
             )}
           </div>
-          <div className="small">{t('remind.help')}</div>
-          {status && <div className="small">{status}</div>}
+          <div className="text-sm text-muted-foreground">{t('remind.help')}</div>
+          {status && <div className="text-sm text-muted-foreground">{status}</div>}
         </>
       )}
-      {error && <div className="error">{error}</div>}
+      {error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div>}
     </section>
   )
 }

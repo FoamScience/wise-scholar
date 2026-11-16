@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
+import { cn } from 'cn'
 
 /** Push-to-talk: records while pressed, sends the clip to the recogniser, hands back the transcript. */
 export function Mic(props: { onClip: (clip: Blob) => Promise<void>; onError: (message: string) => void; label?: string; disabled?: boolean; limit?: number }) {
@@ -35,9 +37,10 @@ export function Mic(props: { onClip: (clip: Blob) => Promise<void>; onError: (me
   }
 
   return (
-    <button
+    <Button
       type="button"
-      className={recording ? 'btn recording' : 'btn'}
+      variant="outline"
+      className={cn(recording && 'border-destructive bg-destructive text-primary-foreground hover:bg-destructive/90 hover:text-primary-foreground')}
       disabled={props.disabled && !recording}
       aria-label={recording ? t('speaking.stopRecording') : (props.label ?? t('speaking.speakMessage'))}
       title={recording ? t('speaking.stopRecording') : (props.label ?? t('speaking.speakMessage'))}
@@ -48,6 +51,6 @@ export function Mic(props: { onClip: (clip: Blob) => Promise<void>; onError: (me
         <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
       </svg>
       {recording ? ` ${t('common.stop')}` : props.label ? ` ${props.label}` : ''}
-    </button>
+    </Button>
   )
 }
