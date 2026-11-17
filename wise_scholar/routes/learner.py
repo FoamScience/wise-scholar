@@ -509,7 +509,7 @@ async def open_concept(concept_id: int) -> dict:
         return view
     strands = _strands_brief(lesson, concept["course_id"])
     earlier = _earlier_brief(concept["course_id"], lesson_id)
-    core._start_turn(lesson, f"[event] The lesson begins. Course map:\n{outline}{strands}{earlier}{_claims_brief(lesson)}")
+    core._start_turn(lesson, f"[event] The lesson begins. Course map:\n{outline}{strands}{earlier}{_claims_brief(lesson)}{core._playbook_line(lesson['mechanism'])}")
     return view
 
 

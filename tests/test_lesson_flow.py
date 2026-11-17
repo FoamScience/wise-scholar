@@ -348,3 +348,25 @@ def test_a_sitting_summary_covers_the_answers_back_to_the_last_two_hour_gap():
     old = learner_routes.sitting(who)
     assert old["answers"] == 3 and old["current"] is False  # the last sitting, over, not this one
     assert len(learner_routes.calibration(who)["buckets"]) > 0  # the calibration panel still reads the same answers
+
+
+def test_a_resumed_session_is_told_only_the_header_lines_it_has_not_seen():
+    from wise_scholar import app
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Header')").lastrowid
+    course = db.create_course("Rust", who)["id"]
+    db.add_fact(course, "Knows C", about_learner=False)
+    lesson = db.lesson(db.create_lesson(course, "Ownership", "lesson"))
+    first = app._turn_prompt(lesson, "[event] a", False, "s1")
+    assert "Knows C" in first and "[language]" in first and "[state]" in first
+    again = app._turn_prompt(lesson, "[event] b", True, "s1")
+    assert "Knows C" not in again and "[language]" not in again
+    assert "[state]" in again and app.MATH_FORMAT in again
+    db.add_fact(course, "Prefers short units", about_learner=False)
+    newer = app._turn_prompt(lesson, "[event] c", True, "s1")
+    assert "Prefers short units" in newer and "Knows C" not in newer
+    assert "Knows C" in app._turn_prompt(lesson, "[event] d", True, "s2")
+    db.conn.execute("DELETE FROM facts WHERE text = 'Prefers short units'")
+    after = app._turn_prompt(lesson, "[event] e", True, "s2")
+    assert "[withdrawn] No longer holds: [known] (this course) Prefers short units" in after and "Knows C" not in after
+    db.delete_course(course)

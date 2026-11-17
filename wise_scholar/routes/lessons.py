@@ -74,7 +74,12 @@ async def post_turn(lesson_id: int, body: Turn) -> dict:
     if not text:
         raise HTTPException(422, "message is empty")
     message = db.add_message(lesson_id, "learner", text)
-    core._start_turn(lesson, f"[learner] {_untrusted(text)}")
+    line = f"[learner] {_untrusted(text)}"
+    if lesson["phase"] == "placement" and (held := core._held_answers(lesson_id))[0]:
+        # a batch whose turn failed reaches the tutor with the learner's next message
+        core._start_turn(lesson, f"{held[0]}\n\n{line}", then=held[1])
+    else:
+        core._start_turn(lesson, line)
     return message
 
 

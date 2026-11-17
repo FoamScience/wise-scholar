@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, remind, resources, sandbox, speech, tutor, vault, vocab, widgets
 from .tools import course_plan as plan_tools, lesson_flow as flow_tools, quizzes as quiz_tools, side_turns as side_tools
 from .backends import BACKEND, MCP_SECRET, agy, api, claude, opencode
-from .playbooks import describe
+from .playbooks import PLAYBOOKS, describe
 
 WEB_DIST = db.ROOT / "web" / "dist"
 CLIP_LIMIT = 25 * 1024 * 1024
@@ -258,6 +258,11 @@ def _map_outline(course_id: int, current: int | None) -> str:
     return "\n".join(lines)
 
 
+def _playbook_line(mechanism: str | None) -> str:
+    """The course's playbook in the event that needs it, so the turn does not spend a request reading it."""
+    return f"\n[playbook {mechanism}] The course's teaching procedure:\n{PLAYBOOKS[mechanism]['body']}" if mechanism in PLAYBOOKS else ""
+
+
 def _plain(name: str) -> str:
     """A file name as one line of plain text."""
     return " ".join(name.replace("[", "(").replace("]", ")").split())
@@ -386,15 +391,36 @@ def _language_line(locale: str) -> str:
     )
 
 
-def _turn_prompt(lesson: dict, line: str, resume: bool | None = None) -> str:
-    if not (_resumes(lesson) if resume is None else resume):
+def _turn_prompt(lesson: dict, line: str, resume: bool | None = None, session_id: str | None = None) -> str:
+    """session_id: the session the turn runs in; a resumed one is sent only the header lines it has not been told."""
+    resume = _resumes(lesson) if resume is None else resume
+    if not resume:
         if _replayed(lesson):
             line = f"{REPLAY}{_replay_record(lesson['id'])}\n{line}"
         elif lesson["session_started"]:
             line = f"{SO_FAR}{_lesson_record(lesson['id'], newest=True)}\n{line}"
-    return "\n".join(
-        [_state_line(lesson), *_known_lines(lesson), MATH_FORMAT, _language_line(lesson["locale"]), *_tool_lines(), *_widget_tries(lesson["id"]), line]
-    )
+    known, told = _known_lines(lesson), [_language_line(lesson["locale"]), *_tool_lines()]
+    if session_id is not None:
+        known, told = _untold(lesson["id"], session_id, resume, known, told)
+    return "\n".join([_state_line(lesson), *known, MATH_FORMAT, *told, *_widget_tries(lesson["id"]), line])
+
+
+# The header lines each lesson's session has been told, so a resumed turn carries only the new and the changed ones;
+# a restart forgets, and the next turn tells them all again.
+_told: dict[int, tuple[str, set[str]]] = {}
+
+
+def _untold(lesson_id: int, session_id: str, resume: bool, *parts: list[str]) -> tuple[list[str], ...]:
+    """The lines of each part the session has not been told; a fresh session is told them all. A line told earlier
+    and gone since (a fact the learner deleted, one that changed) is withdrawn in the first part."""
+    lines = {line for part in parts for line in part}
+    earlier = _told.get(lesson_id)
+    _told[lesson_id] = (session_id, lines)
+    if not resume or not earlier or earlier[0] != session_id:
+        return parts
+    gone = [f"[withdrawn] No longer holds: {line}" for line in sorted(earlier[1] - lines)]
+    fresh = [[line for line in part if line not in earlier[1]] for part in parts]
+    return (gone + fresh[0], *fresh[1:])
 
 
 def _widget_tries(lesson_id: int) -> list[str]:
@@ -521,6 +547,9 @@ async def _run_turn(lesson: dict, line: str, quiet: bool = False, then: Callable
     finally:
         tutor.turn_ended(lesson_id)
         del _turns[lesson_id]
+    if not turn["final"]["ok"]:
+        # the session may not have kept the turn's header
+        _told.pop(lesson_id, None)
     if then and turn["final"]["ok"]:
         then()
     _turn_over(lesson, turn["reply"], turn["final"], time.monotonic() - started, quiet)
@@ -541,7 +570,7 @@ async def _converse(lesson: dict, line: str, token: str, quiet: bool, turn: dict
             await asyncio.sleep(wait)
         async with _turn_slots:
             events = _events(backend.run_turn(
-                _turn_prompt(lesson, line, resume),
+                _turn_prompt(lesson, line, resume, session_id),
                 session_id=session_id,
                 resume=resume,
                 name=f"wise-scholar · {lesson['profile']} · {lesson['topic']} · {lesson['title']}",
@@ -808,6 +837,9 @@ async def _events(events, lesson_id: int, session_id: str, course_id: int):
     try:
         async for event in events:
             if event["type"] == "session.started":
+                if event.get("session_id", session_id) != session_id:
+                    # the backend went on in a fresh session, which was told only this turn's new header lines
+                    _told.pop(lesson_id, None)
                 db.conn.execute(
                     "UPDATE lessons SET session_started = 1, backend = ?, session_id = ? WHERE id = ?",
                     (BACKEND, event.get("session_id", session_id), lesson_id),
@@ -829,6 +861,21 @@ def _phase_prompt(lesson: dict) -> str:
     if lesson["mode"] == "teacher" and lesson["phase"] in ("interview", "lesson"):
         return f"{lesson['phase']}-teacher"
     return lesson["phase"]
+
+
+def _held_answers(lesson_id: int) -> tuple[str, Callable[[], None]]:
+    """A placement batch's answers waiting for the tutor once none of its cards is open, and what drops them once a
+    turn that carried them ended well; a failed turn leaves them for the next one."""
+    quizzes = [b for b in db.blocks(lesson_id) if b["kind"] == "quiz"]
+    held = [b for b in quizzes if b["data"].get("unheard") is not None]
+    if not held or any(b["data"]["answer"] is None for b in quizzes):
+        return "", lambda: None
+
+    def heard() -> None:
+        for b in map(db.block, (b["id"] for b in held)):
+            db.set_block_data(b["id"], {k: v for k, v in b["data"].items() if k != "unheard"})
+
+    return "\n\n".join(b["data"]["unheard"] for b in held), heard
 
 
 def _start_turn(lesson: dict, line: str, quiet: bool = False, then: Callable[[], None] | None = None) -> None:

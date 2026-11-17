@@ -17,7 +17,7 @@ from urllib.parse import unquote
 from .. import app as core
 from .. import db, egress, handwork, hub, resources, sandbox, search, sources, vault
 from ..tools import course_plan as plan_tools, practice as practice_tools
-from ..app import Decision, SITTING_GAP, SOURCES_PER_COURSE, _areas_line, _course, _due, _lesson, _lesson_view, _map_outline, _profile, _queue_claims, _turns, _untrusted, _warmed, app, log
+from ..app import Decision, SITTING_GAP, SOURCES_PER_COURSE, _areas_line, _course, _due, _lesson, _lesson_view, _map_outline, _playbook_line, _profile, _queue_claims, _turns, _untrusted, _warmed, app, log
 
 
 SOURCE_LIMIT = 50 * 1024 * 1024
@@ -335,7 +335,7 @@ async def accept_plan(course_id: int) -> None:
     core._require_idle(interview["id"])
     who = "The teacher" if course["mode"] == "teacher" else "The learner"
     tail = "" if course["mode"] == "teacher" else " and skipped the placement check"
-    core._start_turn(interview, f"[event] {who} accepted the plan with mechanism {course['mechanism']}{tail}. Build the course map.")
+    core._start_turn(interview, f"[event] {who} accepted the plan with mechanism {course['mechanism']}{tail}. Build the course map.{_playbook_line(course['mechanism'])}")
 
 
 LINK_MAP = (
@@ -410,9 +410,19 @@ async def start_placement(course_id: int) -> dict:
     core._start_turn(
         _lesson(lesson_id),
         f"[event] The learner accepted the plan with mechanism {course['mechanism']}. The placement check begins. "
-        f"It has {questions} questions.",
+        f"It has {questions} questions{_batches(questions)}.{_playbook_line(course['mechanism'])}",
     )
     return view
+
+
+# A placement check of up to this many questions comes in two batches, a longer one in three.
+PLACEMENT_TWO_BATCHES = 6
+
+
+def _batches(questions: int) -> str:
+    """How the start of a placement check asks for its questions: a few batches, each answered before the next."""
+    batches = 2 if questions <= PLACEMENT_TWO_BATCHES else 3
+    return f", posed in {batches} batches of about {math.ceil(questions / batches)}"
 
 
 def placement_length(hours: float | None) -> int:
@@ -452,7 +462,7 @@ async def retake_placement(course_id: int) -> dict:
         _lesson(lesson_id),
         f"[event] The learner retakes the placement check. Earlier result: {before}. Run the check again from the start. "
         + (f"About {math.ceil(hours)} of the course's {course['hours']} hours are still ahead. " if hours is not None else "")
-        + f"It has {questions} questions. At the end call set_placement, then set_known for the existing course map instead of set_course_map.",
+        + f"It has {questions} questions{_batches(questions)}. At the end call set_placement, then set_known for the existing course map instead of set_course_map.",
     )
     return view
 

@@ -250,7 +250,10 @@ def test_a_turn_is_shown_only_the_tools_it_may_call():
             assert shown("tok-graph") == set(tutor.GRAPH_TOOLS)
             lesson_tools = shown("tok-lesson")
             assert "pose_exercise" in lesson_tools and not lesson_tools & {*tutor.GRAPH_TOOLS, *tutor.CARD_TOOLS, *tutor.RECAP_TOOLS}
+            assert not lesson_tools & set(tutor.SETUP_TOOLS)
+            assert set(tutor.SETUP_TOOLS) <= everything
             assert shown("tok-interview") == set(tutor.PHASE_TOOLS["interview"])
+            assert "set_prerequisites" in shown("tok-interview")
             assert shown("tok-over") == everything
         finally:
             tutor.turn_ended(("graph", lesson["id"]))

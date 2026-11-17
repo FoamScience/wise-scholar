@@ -565,8 +565,9 @@ async def dont_know_quiz(block_id: int) -> None:
     if _replayed(lesson):
         _replay_progress(db.lesson(lesson["id"]))
         return
-    core._start_turn(
+    _quiz_turn(
         lesson,
+        block_id,
         f"[event] Quiz {block_id} result: the learner chose \"I don't know\"; the right answer is "
         f"{card['answer_key']!r}\nquestion: {card['question']!r}",
     )
@@ -711,6 +712,19 @@ async def answer_quiz(block_id: int, body: QuizAnswer) -> None:
         _replay_progress(db.lesson(lesson["id"]))
         return
     if verdict is None:
-        core._start_turn(lesson, f"[learner quiz answer] quiz {block_id}\n{said}\nGrade it with grade_quiz.")
+        _quiz_turn(lesson, block_id, f"[learner quiz answer] quiz {block_id}\n{said}\nGrade it with grade_quiz.")
     else:
-        core._start_turn(lesson, f"[event] Quiz {block_id} result: {verdict}\n{said}")
+        _quiz_turn(lesson, block_id, f"[event] Quiz {block_id} result: {verdict}\n{said}")
+
+
+def _quiz_turn(lesson: dict, block_id: int, line: str) -> None:
+    """A placement check poses its questions in batches: the tutor hears the answers together once the batch is
+    answered. Any other lesson hears each answer as it comes."""
+    if lesson["phase"] != "placement":
+        core._start_turn(lesson, line)
+        return
+    block = db.block(block_id)
+    db.set_block_data(block_id, {**block["data"], "unheard": line})
+    held, heard = core._held_answers(lesson["id"])
+    if held:
+        core._start_turn(lesson, held, then=heard)
