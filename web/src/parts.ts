@@ -1,6 +1,14 @@
 // A term in the lesson text (`[left ventricle](#part-ventricle)`) and the figure part it names
 // (`data-part="ventricle"`) light up together: pointing at either marks both, and the figure dims its other parts.
 const SCOPE = '.lesson, .book-chapter'
+
+// `[the peak](#plot-12-x=3.2)` in the lesson text pins the point of plot 12 nearest x = 3.2.
+export const PIN_PLOT = 'ws:pin-plot'
+
+export function pinPlot(id: number, x: number) {
+  document.getElementById(`block-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  document.dispatchEvent(new CustomEvent(PIN_PLOT, { detail: { id, x } }))
+}
 const LINKED = '[data-ref], [data-part]'
 
 function lit(scope: ParentNode, id: string, on: boolean) {

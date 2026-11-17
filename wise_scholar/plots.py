@@ -130,7 +130,7 @@ def _attach_rows(i: int, kind: str, mark: dict, resolved: dict, workspace: Path)
     if "fn" in mark:
         label = mark.get("label") or mark["fn"]
         rows = [{**r, "series": label} for r in sample(mark["fn"], mark.get("domain", [-10, 10]), mark.get("samples", DEFAULT_SAMPLES))]
-        resolved.update(data=rows, x="x", y="y", stroke=mark.get("stroke", "series"))
+        resolved.update(data=rows, x="x", y="y", stroke=mark.get("stroke", "series"), expr=mark["fn"])
     elif "file" in mark:
         resolved["data"] = load_rows(Path(mark["file"]), workspace)
     elif kind == "rule":

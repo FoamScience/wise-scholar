@@ -2,6 +2,7 @@ import { isValidElement } from 'react'
 import type { ComponentProps, ReactNode } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import Mermaid from './Mermaid'
+import { pinPlot } from './parts'
 import { inlineRemarkPlugins, rehypePlugins, remarkPlugins } from './markdown'
 
 function Code(props: ComponentProps<'code'>) {
@@ -29,6 +30,13 @@ function imageOrSafe(url: string): string {
 // `[term](#part-id)` names a part of a figure in the lesson: the term and the part light up together (see parts.ts).
 function Link(props: ComponentProps<'a'>) {
   const { href, children, node: _, ...rest } = props as ComponentProps<'a'> & { node?: unknown }
+  const point = href?.match(/^#plot-(\d+)-x=(-?[\d.]+(?:e[-+]?\d+)?)$/i)
+  if (point)
+    return (
+      <button type="button" className="term" onClick={() => pinPlot(Number(point[1]), Number(point[2]))}>
+        {children}
+      </button>
+    )
   const part = href?.match(/^#part-([-\w]+)$/)?.[1]
   if (part)
     return (

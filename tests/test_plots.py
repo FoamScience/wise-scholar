@@ -35,6 +35,7 @@ def test_specs_resolve_rows_from_functions_inline_data_and_workspace_files(tmp_p
     assert out["marks"][0]["data"][0] == {"x": 0.0, "y": 1.0, "series": "decay"} and out["marks"][0]["stroke"] == "series"
     assert out["marks"][1]["data"][3] == {"t": 1.0, "residual": 0.9, "case": "B"}
     assert "fn" not in out["marks"][0] and "file" not in out["marks"][1]
+    assert out["marks"][0]["expr"] == "exp(-x)"
     for bad, reason in [
         ({"marks": []}, "non-empty"),
         ({"marks": [{"type": "pie", "data": [{}]}]}, "type must be"),

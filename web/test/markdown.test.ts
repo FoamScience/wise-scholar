@@ -99,7 +99,7 @@ test('a plot card says what to look for when the tutor named it', async () => {
 })
 
 test('the hoverable points gather every curve and dot, keep extra columns and name each series', async () => {
-  const { pointable } = await import('../src/PlotCard.tsx')
+  const { pointable } = await import('../src/plotPoints.ts')
   const { rows, columns } = pointable({
     marks: [
       { type: 'line', data: [{ x: 0, y: 1, series: 'sin(x)' }], x: 'x', y: 'y', stroke: 'series' },
@@ -110,6 +110,20 @@ test('the hoverable points gather every curve and dot, keep extra columns and na
   })
   assert.deepEqual(rows, [{ series: 'sin(x)', x: 0, y: 1 }, { s: 0.4, series: 'measured', x: 2, y: 3 }])
   assert.deepEqual(columns.sort(), ['s', 'series'])
+})
+
+test('a link in the text finds the point nearest its x, and the pinned case writes x into the expression', async () => {
+  const { nearestX, substituted } = await import('../src/plotPoints.ts')
+  const rows = [{ x: 0, y: 2 }, { x: 1.5, y: 1 }, { x: 'band', y: 3 }, { x: 3, y: 0 }]
+  assert.deepEqual(nearestX(rows, 1.2), { x: 1.5, y: 1 })
+  assert.equal(substituted('2*cos(x) + exp(-x)', 0.6981317), '2*cos(0.6981) + exp(-0.6981)')
+  assert.equal(substituted('x**2', -0.5), '(-0.5)**2')
+  assert.equal(substituted('max(x, 1)', 1.2e-17), 'max(0, 1)')
+})
+
+test('a plot link in the text is a button, not a jump', () => {
+  const html = renderToStaticMarkup(createElement(Markdown, null, 'See [the peak](#plot-12-x=3.2).'))
+  assert.ok(html.includes('<button type="button" class="term">the peak</button>'))
 })
 
 test('each block takes the direction most of its prose is written in, ignoring code and math', () => {
