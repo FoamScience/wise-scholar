@@ -669,7 +669,7 @@ function ShownCard(props: CardProps) {
     ) : b.kind === 'widget' ? (
       <WidgetCard key={b.id} id={b.id} title={b.markdown} data={b.data} onTry={authored ? undefined : (at) => props.post(`/api/blocks/${b.id}/widget`, { at })} />
     ) : b.kind === 'figure' ? (
-      <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={features.sketched} speech={features.speech} disabled={lesson.running} onRestore={() => props.post(`/api/blocks/${b.id}/restore`, {})} onRedraw={features.crafted ? (notes) => props.post(`/api/blocks/${b.id}/redraw`, { notes }) : undefined} />
+      <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={features.sketched} disabled={lesson.running} onRestore={() => props.post(`/api/blocks/${b.id}/restore`, {})} onRedraw={features.crafted ? (notes) => props.post(`/api/blocks/${b.id}/redraw`, { notes }) : undefined} onAsk={authored || lesson.replay ? undefined : (part, question, parts) => props.post(`/api/blocks/${b.id}/ask`, { part, question, parts })} />
     ) : b.kind === 'placement' ? (
       <PlacementResult key={b.id} id={b.id} level={(b.data as { level: string }).level} text={b.markdown} areas={(b.data as { areas?: Area[] }).areas} />
     ) : b.kind === 'podcast' ? (

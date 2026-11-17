@@ -1,17 +1,22 @@
-"""A figure played as a whiteboard: its `data-part` groups drawn in narrated steps, one sentence spoken while each
-step draws or erases its parts. Parts no step draws stand from the start."""
+"""A figure played as a whiteboard: its `data-part` groups drawn in narrated steps, one sentence shown while each
+step draws or erases its parts. Parts no step draws stand from the start. A learner's question about a part is
+answered by drawing on the same figure: new parts merged in, played as further steps."""
+import re
 from xml.etree import ElementTree as ET
 
 from defusedxml import ElementTree as safe
 from pydantic import BaseModel, Field
 
+from . import art, figures
 
 MIN_STEPS, MAX_STEPS = 2, 8
+MAX_ADDED = 3
 SAY_CHARS = 300
+VIEWBOX = re.compile(r'viewBox="([^"]*)"')
 
 
 class BoardStep(BaseModel):
-    """One step of a board: the sentence said while it draws its parts and erases others."""
+    """One step of a board: the sentence shown while it draws its parts and erases others."""
     say: str = Field(max_length=SAY_CHARS)
     draw: list[str] = []
     erase: list[str] = []
@@ -64,3 +69,20 @@ def _order_error(known: dict[str, set[str]], stepped: set[str], steps: list[dict
             on.add(p)
     return None
 
+
+def merge(svg: str, fragment: str, prefix: str) -> tuple[str, list[str], list[dict]]:
+    """The drawing with the fragment's parts added on top, the new part ids and the art they credit; raises ValueError
+    when the fragment is not a series of new `<g data-part>` groups."""
+    box = VIEWBOX.search(svg)
+    wrapped, credits = art.inline(figures.clean(f'<svg xmlns="{figures.SVG_NS}" viewBox="{box[1] if box else "0 0 600 400"}">{fragment}</svg>'))
+    added = safe.fromstring(wrapped)
+    new = [child.get("data-part") for child in added if child.tag != f"{{{figures.SVG_NS}}}defs"]
+    if not new or not all(new):
+        raise ValueError('the drawing to add is one or more <g data-part="id"> groups, each a new part with its labels and arrows')
+    if taken := sorted(set(new) & set(parts(svg))):
+        raise ValueError(f"the figure already has a part {', '.join(taken)}; give each added part a new id")
+    if len(set(new)) < len(new):
+        raise ValueError("each added part has its own id")
+    inner = figures.prefix_ids(wrapped, prefix).split(">", 1)[1].rpartition("</svg>")[0]
+    head, _, _ = svg.rpartition("</svg>")
+    return f"{head}{inner}</svg>", new, credits

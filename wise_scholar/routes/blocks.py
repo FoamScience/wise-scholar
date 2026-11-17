@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from .. import app as core
-from .. import challenge, course_files, crafted, db, handwork, hub, quiz, sandbox, speech, tutor, vocab, widgets
+from .. import board, challenge, course_files, crafted, db, handwork, hub, quiz, sandbox, speech, tutor, vocab, widgets
 from ..tools import language as language_tools, practice as practice_tools
 from ..app import CLIP_LIMIT, Decision, QuizAnswer, SelfGrade, _add_photo, _handwork_block, _lesson, _now, _pending_photos, _record_answer, _replay_progress, _replayed, _require_answerable, _turns, _unanswered_quiz, _untrusted, _update_block, app, log
 
@@ -20,6 +20,19 @@ MISMATCH_SHARE = 0.5
 
 class Redraw(BaseModel):
     notes: str = Field(default="", max_length=1000)
+
+
+class BoardPart(BaseModel):
+    """A part of a figure as the learner's page lays it out: its box in the figure's viewBox units and its text."""
+    id: str = Field(max_length=64)
+    box: tuple[float, float, float, float]
+    text: str = Field(default="", max_length=200)
+
+
+class BoardQuestion(BaseModel):
+    part: str = Field(max_length=64)
+    question: str = Field(max_length=1000)
+    parts: list[BoardPart] = Field(default=[], max_length=80)
 # The few learner-facing sentences the server writes itself; everything else comes from the tutor or the web dictionaries.
 WORD_CARD = {
     "en": ("What does **{}** mean?", "From the text “{}”."),
@@ -108,6 +121,42 @@ async def redraw_figure(block_id: int, body: Redraw) -> dict:
         db.add_message(lesson["id"], "learner", notes)
         line += f"\n[learner] {_untrusted(notes)}"
     core._start_turn(lesson, line)
+    return {"figure": block_id}
+
+
+def _board_line(block: dict, body: BoardQuestion, question: str) -> str:
+    viewbox = board.VIEWBOX.search(block["data"]["svg"])
+    named = board.parts(block["data"]["svg"])
+    on = "\n".join(
+        f"  {p.id}: box {', '.join(f'{v:.0f}' for v in p.box)}" + (f"; text {_untrusted(p.text)!r}" if p.text.strip() else "")
+        for p in body.parts if p.id in named
+    )
+    return (
+        f"[board question] The learner points at the part {body.part!r} of figure {block['id']} (viewBox {viewbox[1] if viewbox else 'unknown'}) "
+        f"and asks the question below. Parts on the board now, each with its box as x, y, width, height:\n{on}\n"
+        f"Answer on the board: one annotate_figure call on figure {block['id']} that draws the answer in free space beside "
+        "or onto that part (an arrow, a label, a small sketch), in one to three steps whose sentences carry the answer; "
+        "erase only what the answer replaces. Then at most one chat sentence. When the answer has nothing to draw, answer "
+        f"in two or three chat sentences instead.\n[learner] {_untrusted(question)}"
+    )
+
+
+@app.post("/api/blocks/{block_id}/ask", status_code=202)
+async def ask_about_part(block_id: int, body: BoardQuestion) -> dict:
+    """The learner points at a part of a figure and asks about it; the tutor answers by drawing on the figure."""
+    block = db.block(block_id)
+    if not block or block["kind"] != "figure":
+        raise HTTPException(404, "no such figure")
+    _require_answerable(block)
+    core._require_idle(block["lesson_id"])
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(422, "message is empty")
+    if block["data"].get("frames") or body.part not in board.parts(block["data"]["svg"]):
+        raise HTTPException(404, "no such part")
+    lesson = _lesson(block["lesson_id"])
+    db.add_message(lesson["id"], "learner", question)
+    core._start_turn(lesson, _board_line(block, body, question))
     return {"figure": block_id}
 
 

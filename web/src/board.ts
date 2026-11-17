@@ -175,3 +175,27 @@ export async function play(svg: SVGSVGElement, steps: BoardStep[], n: number, ru
     pen(svg).style.display = 'none'
   }
 }
+
+export type PartBox = { id: string; box: [number, number, number, number]; text: string }
+
+/** Each part on view with its box in the figure's viewBox units and its text, as the tutor needs them to draw beside it. */
+export function partBoxes(svg: SVGSVGElement): PartBox[] {
+  const vb = svg.viewBox.baseVal
+  const frame = svg.getBoundingClientRect()
+  const scale = vb.width / (frame.width || 1)
+  const found = new Map<string, { x1: number; y1: number; x2: number; y2: number; text: string }>()
+  for (const el of svg.querySelectorAll<SVGGraphicsElement>('[data-part]')) {
+    if (getComputedStyle(el).visibility === 'hidden') continue
+    const r = el.getBoundingClientRect()
+    if (!r.width && !r.height) continue
+    const id = el.getAttribute('data-part')!
+    const was = found.get(id)
+    const x1 = vb.x + (r.left - frame.left) * scale, y1 = vb.y + (r.top - frame.top) * scale
+    const x2 = x1 + r.width * scale, y2 = y1 + r.height * scale
+    const text = [...el.querySelectorAll('text')].map((t) => t.textContent?.trim()).filter(Boolean).join(' ')
+    found.set(id, was
+      ? { x1: Math.min(was.x1, x1), y1: Math.min(was.y1, y1), x2: Math.max(was.x2, x2), y2: Math.max(was.y2, y2), text: `${was.text} ${text}`.trim() }
+      : { x1, y1, x2, y2, text })
+  }
+  return [...found].map(([id, b]) => ({ id, box: [b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1], text: b.text.slice(0, 200) }))
+}

@@ -43,6 +43,33 @@ MEASURE = """([smallest, slack, overlap]) => {
   return found
 }"""
 
+# What an answer drawn onto a figure must leave alone: its new labels may not sit on what was there. Shapes as large as
+# a quarter of the figure (a frame, a backdrop, a passage) are ground the labels may sit on.
+COVERS = """([fresh, overlap]) => {
+  const svg = document.querySelector('svg')
+  const vb = svg.viewBox.baseVal, s = svg.getBoundingClientRect(), scale = s.width / vb.width
+  const box = (e) => { const r = e.getBoundingClientRect(); return { x1: r.left - s.left, y1: r.top - s.top, x2: r.right - s.left, y2: r.bottom - s.top } }
+  const isFresh = (e) => fresh.includes(e.closest('[data-part]')?.getAttribute('data-part'))
+  const drawn = [...svg.querySelectorAll('path, rect, circle, ellipse, line, polyline, polygon, text, use')]
+    .filter((e) => !e.closest('defs, marker, symbol, clipPath, mask, pattern') && !isFresh(e))
+    .map((e) => ({ e, b: box(e) }))
+    .filter(({ b }) => (b.x2 - b.x1) * (b.y2 - b.y1) < 0.25 * vb.width * vb.height * scale * scale)
+  const found = []
+  for (const text of svg.querySelectorAll('text')) {
+    if (!isFresh(text) || !text.textContent.trim()) continue
+    const a = box(text), area = (a.x2 - a.x1) * (a.y2 - a.y1)
+    const hit = drawn.find(({ b }) => {
+      const w = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1), h = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1)
+      return w > 0 && h > 0 && w * h > overlap * area
+    })
+    if (hit) {
+      const what = hit.e.closest('[data-part]')?.getAttribute('data-part')
+      found.push(`the new label "${text.textContent.trim()}" sits on ${what ? `the part ${what}` : 'what is already drawn'}; put it in free space and point with an arrow`)
+    }
+  }
+  return found
+}"""
+
 _checking = asyncio.Lock()
 
 
@@ -50,10 +77,11 @@ def available() -> bool:
     return importlib.util.find_spec("playwright") is not None
 
 
-async def problems(drawings: list[str], small_text: bool = True, where: list[str] | None = None) -> list[str]:
+async def problems(drawings: list[str], small_text: bool = True, where: list[str] | None = None, fresh: list[str] | None = None) -> list[str]:
     """What is wrong with scrubbed drawings (a figure, or the stages of one) laid out at the lesson's width; empty when
     nothing is, or nothing could look. small_text: whether labels under the readable size count. where: what each
-    drawing is, to name it in a problem; stages by number when not given."""
+    drawing is, to name it in a problem; stages by number when not given. fresh: parts just drawn onto the figure,
+    whose labels may not sit on what was there."""
     if not available():
         return []
     from playwright.async_api import async_playwright
@@ -75,6 +103,8 @@ async def problems(drawings: list[str], small_text: bool = True, where: list[str
                 )
                 stage = f"{where[n]}: " if where else f"stage {n + 1}: " if len(drawings) > 1 else ""
                 found += [stage + f for f in await tab.evaluate(MEASURE, [SMALLEST_PX if small_text else 0, EDGE_SLACK, OVERLAP])]
+                if fresh:
+                    found += await tab.evaluate(COVERS, [fresh, OVERLAP])
         finally:
             await browser.close()
     return found
