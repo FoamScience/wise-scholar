@@ -503,7 +503,7 @@ function LessonIntro(props: {
         <OutlineCard
           key={lesson.id}
           data={outline}
-          onTestOut={course.pace === 'speed' && !props.finished && !lesson.running ? (scope) => props.post(`/api/lessons/${lesson.id}/testout`, { scope }) : undefined}
+          onTestOut={course.pace === 'speed' && lesson.phase === 'lesson' && !props.finished && !lesson.running ? (scope) => props.post(`/api/lessons/${lesson.id}/testout`, { scope }) : undefined}
         />
       )}
       {course.mode === 'teacher' && lesson.concept_id !== null && (

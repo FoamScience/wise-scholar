@@ -179,7 +179,7 @@ def _unfinished(lesson: dict, blocks: list[dict]) -> str | None:
 
 @mcp.tool()
 async def finish_lesson(lesson_id: int, summary: str) -> str:
-    """Close a unit lesson once its concept is covered and the quick checks are answered.
+    """Close a unit lesson once its concept is covered and the quick checks are answered, or a revisit once its items are.
 
     summary: two or three sentences to the learner on what they can now do. It becomes the last card of
     the lesson, under which the learner gets a button to the next unit. Call it once, then end the turn.
@@ -187,8 +187,8 @@ async def finish_lesson(lesson_id: int, summary: str) -> str:
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    if lesson["concept_id"] is None:
-        return "error: only a unit lesson is finished this way"
+    if lesson["concept_id"] is None and lesson["phase"] != "revisit":
+        return "error: only a unit lesson or a revisit is finished this way"
     if problem := _unfinished(lesson, db.blocks(lesson_id)):
         return problem
     if (outline := _outline(lesson_id)) and outline["data"]["at"] < len(outline["data"]["steps"]):

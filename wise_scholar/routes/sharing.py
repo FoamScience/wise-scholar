@@ -10,8 +10,8 @@ from typing import Literal
 
 from .. import app as core
 from .. import book, bundle, db, hub, obsidian, recap, registry
-from ..tools import side_turns as side_tools
-from ..app import LOCALE_NAMES, _course, _cut, _now, _profile, _turns, _untrusted, app, log
+from ..tools import lesson_flow as flow_tools, side_turns as side_tools
+from ..app import LOCALE_NAMES, _course, _cut, _lesson, _lesson_view, _now, _profile, _turns, _untrusted, app, log
 
 
 @app.get("/api/courses/{course_id}/publish")
@@ -272,7 +272,7 @@ _recap_failed: set[int] = set()  # tried in this process and failed: only the le
 async def _write_recap(course_id: int) -> None:
     lesson = db.lesson(db.row("SELECT id FROM lessons WHERE course_id = ? ORDER BY id LIMIT 1", course_id)["id"])
     story = await asyncio.to_thread(recap.story, course_id, _now())
-    job = {"weeks": story["weeks"], "locale": lesson["locale"], "finished": story["finished"], "done": False}
+    job = {"weeks": story["weeks"], "locale": lesson["locale"], "finished": story["finished"], "revisits": recap.revisits_done(course_id), "done": False}
     side_tools.recap_jobs[course_id] = job
     try:
         prompt = "\n".join([
@@ -321,7 +321,11 @@ async def get_recap(course_id: int, preview: bool = False) -> dict:
     if not finished and not (preview and RECAP_PREVIEW):
         raise HTTPException(409, "this course is not finished yet")
     story = await asyncio.to_thread(recap.story, course_id, _now())
-    stale = finished and (not story["narrative"] or story["narrative"]["finished"] != story["finished"])
+    narrative = story["narrative"]
+    # written again once the course is finished anew, or once a revisit has changed what is still shaky
+    stale = finished and (
+        not narrative or narrative["finished"] != story["finished"] or narrative.get("revisits", 0) != recap.revisits_done(course_id)
+    )
     if stale and course_id not in _recapping and course_id not in _recap_failed:
         _start_recap(course_id)
     return {**story, "preview": not finished, "writing": course_id in _recapping, "failed": course_id in _recap_failed}
@@ -358,6 +362,35 @@ def save_recap_layout(course_id: int, body: RecapLayout) -> dict:
         raise HTTPException(409, "this course has no recap")
     db.set_recap(course_id, positions={str(k): list(v) for k, v in body.positions.items()})
     return {"saved": len(body.positions)}
+
+
+@app.post("/api/courses/{course_id}/revisit")
+async def revisit(course_id: int) -> dict:
+    """A lesson that goes over, on the board, what the finished course left shaky; the open one when there is one."""
+    _recap_course(course_id)
+    state = db.sync_recap(course_id)
+    if not (state and state["finished"]):
+        raise HTTPException(409, "this course is not finished yet")
+    story = await asyncio.to_thread(recap.story, course_id, _now())
+    # no await from here to the new lesson, so a second request finds the lesson this one opens
+    open_lesson = db.row(
+        "SELECT id FROM lessons l WHERE course_id = ? AND phase = 'revisit' "
+        "AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.lesson_id = l.id AND b.kind = 'done') ORDER BY id DESC LIMIT 1", course_id,
+    )
+    if open_lesson:
+        return _lesson_view(open_lesson["id"])
+    items = recap.revisit_items(story)
+    if not items:
+        raise HTTPException(409, "nothing is left to go over")
+    n = db.row("SELECT COUNT(*) AS n FROM lessons WHERE course_id = ? AND phase = 'revisit'", course_id)["n"] + 1
+    # each item is a board and a check; the closing summary is one more card
+    lesson_id = db.create_lesson(course_id, f"Revisit {n}", "revisit", cards=2 * len(items) + 1)
+    outline = db.add_block(lesson_id, "outline", "", recap.revisit_outline(items))
+    flow_tools._write_outline(outline, outline["data"])
+    view = _lesson_view(lesson_id)
+    hub.publish(course_id, {"type": "lesson.created", "lesson": view})
+    core._start_turn(_lesson(lesson_id), recap.revisit_line(items, _untrusted))
+    return view
 
 
 @app.get("/api/courses/{course_id}/book.pdf")

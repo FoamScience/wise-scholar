@@ -143,6 +143,7 @@ export function lessonTitle(lesson: Lesson, t: TFunction): string {
   if (lesson.phase === 'placement') return n ? t('lesson.placementRetake', { n }) : t('lesson.placement')
   if (lesson.phase === 'story') return t('lesson.episode', { n })
   if (lesson.phase === 'writing') return t('lesson.writingSession', { n })
+  if (lesson.phase === 'revisit') return t('lesson.revisit', { n })
   return lesson.title
 }
 

@@ -20,13 +20,13 @@ MCP_HEADERS = {"Authorization": f"Bearer {MCP_SECRET}"}
 TURN_HEADER = "X-Scholar-Turn"
 # Phases whose prompt stands alone, without the tutor rules of core.md.
 ALONE = ("graph", "cards", "cleanup", "explore", "recap", "contribute")
-KINDS = ("interview", "placement", "lesson", "practice", "story", "writing", "contribution", *ALONE)
+KINDS = ("interview", "placement", "lesson", "practice", "revisit", "story", "writing", "contribution", *ALONE)
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 
 # Claude Code and the Anthropic API get a model per kind by default: teaching on the strongest, narrow background jobs
 # on cheaper ones. A model named in WISE_SCHOLAR_AGENT, or another backend's default, serves every kind.
 CLAUDE_MODELS = {
-    "interview": "opus", "lesson": "opus", "practice": "opus", "story": "opus", "writing": "opus", "contribution": "opus",
+    "interview": "opus", "lesson": "opus", "practice": "opus", "revisit": "opus", "story": "opus", "writing": "opus", "contribution": "opus",
     "placement": "sonnet", "graph": "sonnet", "cleanup": "sonnet", "explore": "sonnet", "recap": "sonnet", "contribute": "sonnet",
     "cards": "haiku",
 }

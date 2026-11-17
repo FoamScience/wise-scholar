@@ -87,8 +87,26 @@ def _quiz_shown(
     return shown
 
 
+def _revisit_item(lesson: dict, item: int) -> dict | str | None:
+    """The claim or mistake a revisit's check is on, from its outline; None outside a revisit, an error when unnamed."""
+    if lesson["phase"] != "revisit":
+        return None
+    outline = next((b for b in db.blocks(lesson["id"]) if b["kind"] == "outline"), None)
+    items = outline["data"].get("items", []) if outline else []
+    if not 1 <= item <= len(items):
+        return f"error: in a revisit every check names its item, 1 to {len(items)}, as item"
+    if item - 1 > outline["data"]["at"]:
+        from .lesson_flow import _write_outline
+
+        _show(lesson, _write_outline(outline, {**outline["data"], "at": item - 1}), "block.updated")
+    return items[item - 1]
+
+
 def _show_quiz(lesson: dict, question: str, shown: dict) -> str:
     block = db.add_block(lesson["id"], "quiz", question, shown)
+    # a revisit's check is evidence for the claim it is on; a mistake is put right when it is answered right
+    if claim := shown.get("revisit_claim"):
+        db.conn.execute("INSERT OR IGNORE INTO claim_evidence (claim_id, block_id) VALUES (?, ?)", (claim, block["id"]))
     _show(lesson, block)
     return f"shown as quiz {block['id']}; {'go on with the unit' if lesson['batch'] else 'end the turn and wait for the answer'}"
 
@@ -106,6 +124,7 @@ async def pose_quiz(
     form: str = "",
     translation: str = "",
     misconceptions: dict[str, str] | None = None,
+    item: int = 0,
 ) -> str:
     """Show a quick check that the learner answers together with how sure they are.
 
@@ -129,6 +148,7 @@ async def pose_quiz(
     misconceptions: for a choice, each wrong option that a plausible wrong belief leads to, mapped to that belief
     in a few words ("a heavier object falls faster"). Write the options so each wrong one comes from such a
     belief; a learner who picks it is told the belief, and it is kept in their error notebook.
+    item: in a revisit only, the number of the listed item this check is on.
     """
     lesson = db.lesson(lesson_id)
     if not lesson:
@@ -139,9 +159,14 @@ async def pose_quiz(
     number = placement_posed(lesson_id) + 1 if lesson["questions"] else None
     if problem := _quiz_error(lesson, question, kind, answer_key, options, misconceptions, number, lemma, pretest):
         return problem
+    revisit = _revisit_item(lesson, item)
+    if isinstance(revisit, str):
+        return revisit
     options = _shuffled(options) if kind == "choice" else []
     card_id = _quiz_card(lesson, question, kind, options, answer_key, explanation, lemma, pretest, translation, misconceptions)
     shown = _quiz_shown(lesson, card_id, kind, options, answer_key, explanation, pretest, form, translation, misconceptions, number)
+    if revisit:
+        shown |= {f"revisit_{what}": id_ for what, id_ in revisit.items()}
     return _show_quiz(lesson, question, shown)
 
 

@@ -217,3 +217,65 @@ def outline(s: dict) -> str:
     lines += [f"[still {c['state']}] {c['text']}" for c in weak[:20]]
     lines += [f"[open mistake] {m['prompt'][:200]}" for m in s["mistakes"] if not m["put_right"]][:20]
     return "\n".join(lines)
+
+
+# --- Revisit: what a finished course left shaky, gone over on the board ---------------------------------------------
+REVISIT_ITEMS = 4
+REVISIT_FIGURES = 3
+OUTLINE_LABEL = 90
+
+
+def revisit_items(s: dict) -> list[dict]:
+    """What a revisit goes over, most pressing first: open mistakes, then shaky claims, then fading ones."""
+    def unit(n: int | None) -> dict | None:
+        return s["steps"][n] if n is not None else None
+
+    mistakes = [{"kind": "mistake", "unit": unit(m["step"]), **m} for m in s["mistakes"] if not m["put_right"]]
+    claims = [{"kind": c["state"], "unit": unit(c["step"]), **c} for state in ("shaky", "fading") for c in s["claims"] if c["state"] == state]
+    return (mistakes + claims)[:REVISIT_ITEMS]
+
+
+def revisit_outline(items: list[dict]) -> dict:
+    """The revisit's outline: one step per item, each step knowing the claim or the mistake its check is on."""
+    def label(item: dict) -> str:
+        text = " ".join(((item["prompt"] if item["kind"] == "mistake" else item["text"]) or "").split())
+        return text if len(text) <= OUTLINE_LABEL else text[: OUTLINE_LABEL - 1] + "…"
+
+    return {
+        "steps": [label(i) for i in items], "at": 0, "added": None, "cards": 2 * len(items) + 1,
+        "items": [{"error": i["id"]} if i["kind"] == "mistake" else {"claim": i["id"]} for i in items],
+    }
+
+
+def revisits_done(course_id: int) -> int:
+    """How many revisits of the course are finished; the recap's narrative is written again after each one."""
+    return db.row(
+        "SELECT COUNT(*) AS n FROM lessons l WHERE l.course_id = ? AND l.phase = 'revisit' "
+        "AND EXISTS (SELECT 1 FROM blocks b WHERE b.lesson_id = l.id AND b.kind = 'done')", course_id,
+    )["n"]
+
+
+def _unit_figures(concept_id: int) -> list[str]:
+    return [
+        r["markdown"] for r in db.rows(
+            "SELECT b.markdown FROM blocks b JOIN lessons l ON l.id = b.lesson_id WHERE l.concept_id = ? AND b.kind = 'figure' "
+            "AND b.markdown != '' ORDER BY b.id LIMIT ?", concept_id, REVISIT_FIGURES,
+        )
+    ]
+
+
+def revisit_line(items: list[dict], untrusted) -> str:
+    """The event that opens a revisit, one entry per item with the unit that taught it and the figures it showed."""
+    lines = [
+        "[event] The course is finished, and these items are still shaky. Go over them on the board, one per turn, in this "
+        "order, as your instructions say."
+    ]
+    for n, item in enumerate(items, 1):
+        if item["kind"] == "mistake":
+            lines.append(f"{n}. [open mistake] Card: {(item['prompt'] or '')[:300]} | the learner answered: {untrusted(item['said'] or '')[:300]} | right: {(item['correct'] or '')[:300]}")
+        else:
+            lines.append(f"{n}. [claim, {item['kind']}] {item['text']}")
+        if item["unit"]:
+            shown = _unit_figures(item["unit"]["concept_id"])
+            lines.append(f"   Taught in: {item['unit']['title']}." + (f" Its figures showed: {'; '.join(shown)}" if shown else " It showed no figure."))
+    return "\n".join(lines)

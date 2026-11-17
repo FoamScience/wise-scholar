@@ -318,7 +318,7 @@ async def write_recap(course_id: int, intro: str, weeks: list[WeekCaption], can_
         return problem
     db.set_recap(course_id, narrative={
         "intro": intro, "weeks": captions, "can_do": can_do, "strengthen": strengthen, "next_step": next_step,
-        "locale": job["locale"], "finished": job["finished"],
+        "locale": job["locale"], "finished": job["finished"], "revisits": job.get("revisits", 0),
     })
     job["done"] = True
     return "recorded"

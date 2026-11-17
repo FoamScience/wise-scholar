@@ -628,6 +628,7 @@ function WeakSection({ story, weak, open, unitLink }: { story: Story; weak: Clai
           ))}
         </ul>
       )}
+      {!story.preview && (weak.length > 0 || open.length > 0) && <Revisit courseId={story.course.id} />}
       {toStrengthen.length > 0 && (
         <ul className={LIST}>
           {toStrengthen.map((g) => (
@@ -674,6 +675,31 @@ function WeakSection({ story, weak, open, unitLink }: { story: Story; weak: Clai
           </ul>
         </details>
       )}
+    </div>
+  )
+}
+
+/** Opens the lesson that goes over what is still shaky on the board, or the one already open. */
+function Revisit({ courseId }: { courseId: number }) {
+  const { t } = useTranslation()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  function start() {
+    setBusy(true)
+    setError('')
+    api(`/api/courses/${courseId}/revisit`, {}).then(
+      () => (location.hash = `#/course/${courseId}`),
+      (e: Error) => {
+        setBusy(false)
+        setError(e.message)
+      },
+    )
+  }
+  return (
+    <div className="mb-4 flex flex-col items-start gap-2">
+      <Button onClick={start} disabled={busy}>{t('recap.revisit')}</Button>
+      <p className={cn(SMALL, 'm-0')}>{t('recap.revisitNote')}</p>
+      {error && <div className="rounded-md bg-warm-tint px-4 py-2 text-warm-ink">{error}</div>}
     </div>
   )
 }
