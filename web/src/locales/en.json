@@ -29,6 +29,7 @@
       "placement": "Placement",
       "placementRetake": "Placement: retake {{n}}",
       "episode": "Episode {{n}}",
+      "revisit": "Revisit {{n}}",
       "writingSession": "Writing session {{n}}",
       "nextUnit": "Next: {{title}}"
     },
@@ -80,6 +81,8 @@
       "chartAlt": "Each week of the course: how sure you said you were, and how often you were right",
       "brier": "Brier score {{start}} in your first answers, {{end}} in your last. 0 is perfect; 0.25 is what always saying 50% scores.",
       "weakTitle": "Still to strengthen",
+      "revisit": "Go over them on the board",
+      "revisitNote": "The tutor redraws up to four of them a new way, then checks each one.",
       "weakClaims": "Claims still shaky or fading",
       "openMistakes": "Mistakes still open",
       "nothingWeak": "Nothing is shaky and no mistake is open.",

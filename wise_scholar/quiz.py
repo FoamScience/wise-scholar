@@ -125,6 +125,14 @@ def _record_recall(card: dict, answer: dict, correct: bool, miss: bool, belief: 
     return days
 
 
+def _put_right(card_id: int) -> None:
+    """A revisit's check answered right puts right the mistake it was posed on."""
+    db.conn.execute(
+        "UPDATE errors SET resolved = 1 WHERE id IN (SELECT json_extract(data, '$.revisit_error') FROM blocks "
+        "WHERE kind = 'quiz' AND json_extract(data, '$.card_id') = ?)", (card_id,),
+    )
+
+
 def grade(answer_id: int, correct: bool, misconception: str = "") -> dict:
     """Finalize a stored answer: record correctness, reschedule the card, disclose the key. A wrong answer carries the
     belief behind it: the one the grader named, else the one the card names for the option chosen."""
@@ -134,6 +142,8 @@ def grade(answer_id: int, correct: bool, misconception: str = "") -> dict:
     miss = review.is_confident_miss(correct, answer["confidence"])
     db.conn.execute("UPDATE answers SET correct = ? WHERE id = ?", (int(correct), answer_id))
     days = _record_recall(card, answer, correct, miss, belief)
+    if correct:
+        _put_right(card["id"])
     due = None
     if card["scheduled"]:
         fsrs, due = review.schedule(card["fsrs"], correct, answer["confidence"], days)

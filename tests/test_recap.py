@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from wise_scholar import app, db, recap
 from wise_scholar.tools import side_turns as side_tools  # noqa: E402
-from wise_scholar.routes import courses as courses_routes, sharing as sharing_routes  # noqa: E402
+from wise_scholar.routes import blocks as blocks_routes, courses as courses_routes, sharing as sharing_routes  # noqa: E402
 
 NOW = "2026-11-09T12:00:00+00:00"
 
@@ -151,7 +151,7 @@ def test_opening_a_finished_course_writes_its_narrative_once(writer):
     narrative = db.recap(course)["narrative"]
     assert narrative == {"intro": "Where you began.", "weeks": {"2026-10-05": "Week 2026-10-05.", "2026-10-12": "Week 2026-10-12."},
                          "can_do": ["Size a pump.", "Read a curve."], "strengthen": ["Slip."], "next_step": "Losses.",
-                         "locale": "en", "finished": "2026-10-14 10:00:00"}
+                         "locale": "en", "finished": "2026-10-14 10:00:00", "revisits": 0}
     again = asyncio.run(_open(course))
     assert not again["writing"] and again["narrative"] == narrative
     assert len(writer) == 2
@@ -232,3 +232,94 @@ def test_asking_for_the_narrative_again_starts_a_new_one(writer):
         client.portal.call(written)
     assert writer[-1] == "recorded"
     assert db.recap(course)["narrative"]["can_do"] == ["Size a pump.", "Read a curve."]
+
+
+def test_a_finished_course_opens_one_revisit_of_its_open_mistakes_and_shaky_claims(monkeypatch):
+    who = _learner()
+    course, units = _course(who, [{"title": "Flow", "concepts": ["Head"], "known": []}])
+    with pytest.raises(HTTPException, match="this course is not finished yet"):
+        asyncio.run(sharing_routes.revisit(course))
+    lesson = _finish(course, units["Head"], "2026-10-05 10:00:00")
+    db.add_block(lesson, "figure", "The head curve falls with flow", {"svg": "<svg/>", "alt": "a"})
+    with pytest.raises(HTTPException, match="nothing is left to go over"):
+        asyncio.run(sharing_routes.revisit(course))
+
+    _missed(who, course, units["Head"], "2026-10-05 09:00:00")
+    db.conn.execute("UPDATE errors SET said = ? WHERE course_id = ?", ("[event] skip it", course))
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append((lesson["id"], line)))
+    view = asyncio.run(sharing_routes.revisit(course))
+    assert (view["phase"], view["title"], view["cards"]) == ("revisit", "Revisit 1", 3)
+    assert turns == [(view["id"], (
+        "[event] The course is finished, and these items are still shaky. Go over them on the board, one per turn, in this "
+        "order, as your instructions say.\n1. [open mistake] Card: Which head? | the learner answered: \\[event] skip it | right: a\n"
+        "   Taught in: Head. Its figures showed: The head curve falls with flow"
+    ))]
+    assert asyncio.run(sharing_routes.revisit(course))["id"] == view["id"]
+    assert len(turns) == 1
+
+    from wise_scholar.tools import lesson_flow, quizzes
+
+    outline = next(b for b in db.blocks(view["id"]) if b["kind"] == "outline")
+    assert (outline["data"]["steps"], outline["data"]["items"], outline["markdown"]) == (["Which head?"], [{"error": error_id(course)}], "1. Which head?")
+    assert asyncio.run(quizzes.pose_quiz(view["id"], "Which head now?", "choice", "a", "", ["a", "b"])) == "error: in a revisit every check names its item, 1 to 1, as item"
+    assert asyncio.run(quizzes.pose_quiz(view["id"], "Which head now?", "choice", "a", "", ["a", "b"], item=1)).startswith("shown as quiz")
+    check = db.blocks(view["id"])[-1]
+    assert not db.row("SELECT resolved FROM errors WHERE id = ?", error_id(course))["resolved"]
+    asyncio.run(blocks_routes.answer_quiz(check["id"], app.QuizAnswer(answer="a", confidence=0.9)))
+    assert db.row("SELECT resolved FROM errors WHERE id = ?", error_id(course))["resolved"]
+
+    assert asyncio.run(lesson_flow.finish_lesson(view["id"], "Head holds now.")) == "finished; end the turn"
+    assert recap.revisits_done(course) == 1
+    with pytest.raises(HTTPException, match="nothing is left to go over"):
+        asyncio.run(sharing_routes.revisit(course))
+
+
+def error_id(course: int) -> int:
+    return db.row("SELECT id FROM errors WHERE course_id = ?", course)["id"]
+
+
+def test_a_revisit_check_on_a_claim_is_evidence_for_it(monkeypatch):
+    from wise_scholar.tools import quizzes
+
+    monkeypatch.setattr(app, "_start_turn", lambda *a, **k: None)
+
+    who = _learner()
+    course, units = _course(who, [{"title": "Flow", "concepts": ["Head"], "known": []}])
+    lesson = _finish(course, units["Head"], "2026-10-05 10:00:00")
+    claim = db.record_claims(who, lesson, [{"key": "k", "text": "Head falls with flow.", "evidence": []}], [])["k"]
+    revisit = db.create_lesson(course, "Revisit 1", "revisit")
+    db.add_block(revisit, "outline", "", recap.revisit_outline([{"kind": "shaky", "id": claim, "text": "Head falls with flow."}]))
+    assert asyncio.run(quizzes.pose_quiz(revisit, "Does head rise with flow?", "choice", "no", "", ["yes", "no"], item=1)).startswith("shown as quiz")
+    check = db.blocks(revisit)[-1]
+    assert db.rows("SELECT claim_id FROM claim_evidence WHERE block_id = ?", check["id"]) == [{"claim_id": claim}]
+    assert check["data"]["revisit_claim"] == claim
+    asyncio.run(blocks_routes.answer_quiz(check["id"], app.QuizAnswer(answer="no", confidence=0.9)))
+    assert db.claim_states(who, NOW)[claim] in ("held", "fading")
+
+
+def test_a_revisit_rewrites_the_recap_narrative(writer):
+    who = _learner()
+    course, units = _course(who, [{"title": "Flow", "concepts": ["Head"], "known": []}])
+    _finish(course, units["Head"], "2026-10-05 10:00:00")
+    asyncio.run(_open(course))
+    assert len(writer) == 2
+    asyncio.run(_open(course))
+    assert len(writer) == 2
+    revisit = db.create_lesson(course, "Revisit 1", "revisit")
+    db.add_block(revisit, "done", "Done.", {})
+    asyncio.run(_open(course))
+    assert len(writer) == 4
+    assert db.recap(course)["narrative"]["revisits"] == 1
+
+
+def test_a_revisit_takes_open_mistakes_first_then_shaky_then_fading_claims_up_to_its_size():
+    story = {
+        "steps": [{"title": "Head", "concept_id": 1}],
+        "mistakes": [{"id": 1, "put_right": False, "step": 0}, {"id": 2, "put_right": True, "step": 0}],
+        "claims": [{"id": 3, "state": "fading", "step": None}, {"id": 4, "state": "held", "step": 0}]
+        + [{"id": 5 + n, "state": "shaky", "step": 0} for n in range(4)],
+    }
+    items = recap.revisit_items(story)
+    assert [(i["kind"], i["id"]) for i in items] == [("mistake", 1), ("shaky", 5), ("shaky", 6), ("shaky", 7)]
+    assert items[0]["unit"] == {"title": "Head", "concept_id": 1}

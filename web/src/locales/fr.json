@@ -29,6 +29,7 @@
       "placement": "Test de niveau",
       "placementRetake": "Test de niveau : reprise {{n}}",
       "episode": "Épisode {{n}}",
+      "revisit": "Révision {{n}} au tableau",
       "writingSession": "Séance d'écriture {{n}}",
       "nextUnit": "Suivant : {{title}}"
     },
@@ -84,6 +85,8 @@
       "chartAlt": "Pour chaque semaine du cours : votre certitude annoncée et votre taux de réussite",
       "brier": "Score de Brier {{start}} sur vos premières réponses, {{end}} sur les dernières. 0 est parfait ; 0,25 est le score de qui dit toujours 50 %.",
       "weakTitle": "À consolider",
+      "revisit": "Les reprendre au tableau",
+      "revisitNote": "Le tuteur en redessine jusqu'à quatre autrement, puis vérifie chacun.",
       "weakClaims": "Affirmations encore fragiles ou qui s'estompent",
       "openMistakes": "Erreurs encore ouvertes",
       "nothingWeak": "Rien de fragile et aucune erreur ouverte.",
@@ -1094,6 +1097,7 @@
   "server": {
     "a prepared course has no recap": "un cours préparé n'a pas de bilan",
     "this course is not finished yet": "ce cours n'est pas encore terminé",
+    "nothing is left to go over": "il ne reste rien à reprendre",
     "this course has no recap": "ce cours n'a pas de bilan",
     "not a setting of this widget": "ce n'est pas un réglage de ce modèle",
     "a claim needs words": "une notion a besoin de mots",
