@@ -208,6 +208,7 @@
       "pose_exercise": "preparing an exercise…",
       "add_reading": "writing a text for you…",
       "add_figure": "drawing a figure…",
+      "narrate_figure": "setting up the board…",
       "add_crafted_figure": "crafting a figure…",
       "add_diagram": "laying out a diagram…",
       "add_animation": "animating a diagram…",
@@ -228,6 +229,19 @@
       "write_file": "writing exercise files…",
       "ask_network": "asking for internet access…",
       "revise_course_map": "revising the course map…"
+    },
+    "board": {
+      "play": "Play on the board",
+      "pause": "Pause",
+      "resume": "Go on",
+      "again": "Play again",
+      "back": "Back",
+      "next": "Next",
+      "steps_one": "{{count}} step",
+      "steps_other": "{{count}} steps",
+      "at": "Step {{n}} of {{count}}",
+      "whole": "Whole figure",
+      "onTheBoard": "On the board, step by step"
     },
     "block": {
       "outline": "Unit plan",

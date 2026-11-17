@@ -12,6 +12,7 @@ import type { Area, Block, ChallengeData, Concept, CourseDetail, ExerciseData, E
 import { Correction } from './Diff'
 import type { Entry } from './Errors'
 import { Credits, Drawing, Limits } from './Figure'
+import { BoardSteps } from './Board'
 import { WidgetCard } from './Widget'
 import type { FigureData } from './Figure'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
@@ -324,8 +325,9 @@ function FigureBlock({ block, sketched }: { block: Block; sketched: boolean }) {
           ))}
         </div>
       ) : (
-        <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram && !d.crafted} />
+        <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram && !d.crafted} board={d.board?.steps} />
       )}
+      {d.board && <BoardSteps steps={d.board.steps} />}
       {block.markdown && <div className="text-sm text-muted-foreground"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>}
       <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />

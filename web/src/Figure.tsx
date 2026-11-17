@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from 'cn'
 import { sketch } from './sketch'
+import { Board } from './Board'
+import { show, type BoardStep } from './board'
 import { InlineMarkdown } from './Md'
 
 export type Credit = { name: string; author: string; licence: string; pack: string; url: string }
@@ -15,6 +17,7 @@ export type FigureData = {
   diagram?: { domain: string; substance?: string; stages?: string[] }
   crafted?: { script: string }
   frames?: string[]
+  board?: { steps: BoardStep[] }
   teaches?: Teaches
   previous?: FigureData & { caption: string }
   restored?: boolean
@@ -50,20 +53,25 @@ export function Credits({ credits }: { credits?: Credit[] }) {
   )
 }
 
-/** The SVG inline, so its text follows the theme; sketched in place when the profile asks for it. */
-export function Drawing({ svg, alt, sketched, className }: { svg: string; alt: string; sketched: boolean; className?: string }) {
+/** The SVG inline, so its text follows the theme; sketched in place when the profile asks for it. A board shows as
+ * it stands after its last step. */
+export function Drawing({ svg, alt, sketched, board, className }: { svg: string; alt: string; sketched: boolean; board?: BoardStep[]; className?: string }) {
   const box = useRef<HTMLDivElement>(null)
+  // by content: a lesson refetched hands over equal steps in a new array, and redrawing would cut a playing board
+  const steps = JSON.stringify(board ?? null)
   useEffect(() => {
     const el = box.current!
     el.innerHTML = svg
-    const drawing = el.querySelector('svg')
-    if (!sketched || !drawing) return
-    try {
-      sketch(drawing)
-    } catch {
-      el.innerHTML = svg // a shape rough.js cannot redraw: the figure is shown as drawn
+    if (sketched && el.querySelector('svg')) {
+      try {
+        sketch(el.querySelector('svg')!)
+      } catch {
+        el.innerHTML = svg // a shape rough.js cannot redraw: the figure is shown as drawn
+      }
     }
-  }, [svg, sketched])
+    const drawing = el.querySelector('svg')
+    if (board && drawing) show(drawing, board, board.length)
+  }, [svg, sketched, steps]) // eslint-disable-line react-hooks/exhaustive-deps
   return <div ref={box} dir="ltr" className={className} role="img" aria-label={alt} />
 }
 
@@ -143,11 +151,12 @@ function Redraw(props: { disabled?: boolean; onRedraw: (notes: string) => void }
 }
 
 /** A tutor-drawn figure; click to see it large. */
-export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void; onRedraw?: (notes: string) => void }) {
+export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; speech: boolean; disabled?: boolean; onRestore?: () => void; onRedraw?: (notes: string) => void }) {
   const { t } = useTranslation()
   const d = props.data as FigureData
   const [large, setLarge] = useState(false)
   const box = useRef<HTMLDivElement>(null)
+  const sketched = props.sketched && !d.diagram && !d.crafted
   return (
     <section id={`block-${props.id}`} className="block flex flex-col gap-2 border-t border-border pt-6 break-inside-avoid first:border-t-0 first:pt-0">
       <div className="text-sm leading-snug font-medium text-ink-2 break-after-avoid">{t('block.figure')}</div>
@@ -158,10 +167,11 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
         onClick={() => setLarge(!large)}
       >
         <div ref={box}>
-          <Drawing svg={d.svg} alt={d.alt} sketched={props.sketched && !d.diagram && !d.crafted} />
+          <Drawing svg={d.svg} alt={d.alt} sketched={sketched} board={d.board?.steps} />
         </div>
       </button>
       {d.frames && d.frames.length > 1 && <Stages key={d.svg} box={box} count={d.frames.length} />}
+      {d.board && <Board key={`${sketched}${JSON.stringify(d.board)}${d.svg}`} box={box} steps={d.board.steps} speech={props.speech} />}
       {props.caption && <div className="text-sm text-muted-foreground"><InlineMarkdown>{props.caption}</InlineMarkdown></div>}
       <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />

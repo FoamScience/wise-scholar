@@ -1,6 +1,6 @@
 import asyncio
 
-from .. import art, crafted, db, diagrams, figcheck, figures, plots, widgets
+from .. import art, board, crafted, db, diagrams, figcheck, figures, plots, widgets
 from ..tutor import _show, mcp, pretest_blocker
 
 
@@ -77,6 +77,37 @@ async def replace_figure(lesson_id: int, block_id: int, svg: str, caption: str, 
     block = db.set_block(block_id, caption, {**data, "svg": figures.prefix_ids(data["svg"], f"f{block_id}-"), "previous": previous})
     _show(db.lesson(block["lesson_id"]), block, "block.updated")
     return f"figure {block_id} redrawn"
+
+
+@mcp.tool()
+async def narrate_figure(lesson_id: int, block_id: int, steps: list[board.BoardStep]) -> str:
+    """Play a figure of this lesson as a whiteboard: the learner presses play and watches it drawn stroke by stroke,
+    one step at a time, each step's sentence shown under it. For an idea built up in order: a derivation, a
+    mechanism, a proof, a cause and the chain of its effects, a structure assembled part by part.
+
+    steps: 2 to 8, in the order you would draw them at a board. say: the one sentence shown while the step draws,
+    about what it draws. draw: the `data-part` ids the step draws; each part is drawn once. erase: parts on the board
+    the step wipes (a first guess, a scaffold no longer needed). Parts no step draws stand from the start, so the
+    frame (axes, an outline) needs no step. A part inside another part is drawn with it or after it. A figure
+    without parts is drawn again with replace_figure or replace_crafted_figure first."""
+    block = db.block(block_id)
+    if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
+        return f"error: no figure with id {block_id} in this lesson"
+    if problem := pretest_blocker(db.lesson(lesson_id)):
+        return f"refused: {problem}"
+    if block["data"].get("frames"):
+        return "error: this figure is an animation that plays its own stages; narrate a still figure"
+    if not board.MIN_STEPS <= len(steps) <= board.MAX_STEPS:
+        return f"error: a board has {board.MIN_STEPS} to {board.MAX_STEPS} steps"
+    if problem := board.steps_error(block["data"]["svg"], steps):
+        return f"error: {problem}"
+    block = db.set_block_data(block_id, {**block["data"], "board": {"steps": [_step(s) for s in steps]}})
+    _show(db.lesson(lesson_id), block, "block.updated")
+    return f"figure {block_id} plays as a board in {len(steps)} steps"
+
+
+def _step(step: board.BoardStep) -> dict:
+    return {"say": step.say.strip(), "draw": step.draw, "erase": step.erase}
 
 
 def _figure_data(svg: str, alt: str, limit: int = figures.MAX_CHARS) -> dict:

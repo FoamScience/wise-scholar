@@ -236,6 +236,7 @@
       "pose_exercise": "يحضّر تمرينًا…",
       "add_reading": "يكتب نصًّا لك…",
       "add_figure": "يرسم شكلًا…",
+      "narrate_figure": "يجهّز السبورة…",
       "add_crafted_figure": "يصنع شكلًا…",
       "add_diagram": "يُخطّط رسمًا…",
       "add_animation": "يُحرّك رسمًا…",
@@ -256,6 +257,23 @@
       "write_file": "يكتب ملفات التمرين…",
       "ask_network": "يطلب استخدام الإنترنت…",
       "revise_course_map": "يراجع خريطة الدورة…"
+    },
+    "board": {
+      "play": "شغّل على السبورة",
+      "pause": "إيقاف مؤقت",
+      "resume": "تابع",
+      "again": "أعد التشغيل",
+      "back": "السابق",
+      "next": "التالي",
+      "steps_zero": "لا خطوات",
+      "steps_one": "خطوة واحدة",
+      "steps_two": "خطوتان",
+      "steps_few": "{{count}} خطوات",
+      "steps_many": "{{count}} خطوة",
+      "steps_other": "{{count}} خطوة",
+      "at": "الخطوة {{n}} من {{count}}",
+      "whole": "الشكل كاملًا",
+      "onTheBoard": "على السبورة خطوة بخطوة"
     },
     "block": {
       "outline": "خطة الوحدة",
