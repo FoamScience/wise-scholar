@@ -288,6 +288,7 @@
       "prose": "للقراءة",
       "example": "مثال",
       "figure": "شكل",
+      "notice": "لاحظ: {{notice}}",
       "limits": "حيث يتوقف عن مطابقة الواقع: {{limits}}",
       "restoreDrawing": "استعادة الرسم السابق",
       "backToRedrawn": "العودة إلى الشكل المعاد رسمه",

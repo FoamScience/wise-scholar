@@ -91,6 +91,27 @@ test('a plot card renders its accessible container before the library loads', as
   assert.ok(html.includes('aria-label="exp(-x) falling"') && html.includes('Decay'))
 })
 
+test('a plot card says what to look for when the tutor named it', async () => {
+  const { PlotCard } = await import('../src/PlotCard.tsx')
+  const teaches = { claim: 'c', notice: 'the knee near x = 2', misconception: '', limits: '' }
+  const html = renderToStaticMarkup(createElement(PlotCard, { id: 4, title: 'Knee', data: { spec: { marks: [] }, alt: 'a curve', teaches } }))
+  assert.ok(html.includes('Look for: the knee near x = 2'))
+})
+
+test('the hoverable points gather every curve and dot, keep extra columns and name each series', async () => {
+  const { pointable } = await import('../src/PlotCard.tsx')
+  const { rows, columns } = pointable({
+    marks: [
+      { type: 'line', data: [{ x: 0, y: 1, series: 'sin(x)' }], x: 'x', y: 'y', stroke: 'series' },
+      { type: 'dot', data: [{ t: 2, v: 3, s: 0.4 }], x: 't', y: 'v', label: 'measured' },
+      { type: 'rule', y: 0 },
+      { type: 'bar', data: [{ x: 'a', y: 2 }], x: 'x', y: 'y' },
+    ],
+  })
+  assert.deepEqual(rows, [{ series: 'sin(x)', x: 0, y: 1 }, { s: 0.4, series: 'measured', x: 2, y: 3 }])
+  assert.deepEqual(columns.sort(), ['s', 'series'])
+})
+
 test('each block takes the direction most of its prose is written in, ignoring code and math', () => {
   const html = renderToStaticMarkup(
     createElement(

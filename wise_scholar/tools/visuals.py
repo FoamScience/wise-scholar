@@ -349,7 +349,7 @@ async def add_plot(lesson_id: int, title: str, spec: dict, alt: str, teaches: fi
           "stroke"?: "case" (or "fill" for bar/area), "label"?: "..."} — up to 2,000 rows inline
       {"type": "line"|"dot"|..., "file": "results.csv", "x": "t", "y": "residual", "stroke"?: "case"} — a CSV or
           TSV in the course workspace, read here
-      {"type": "rule", "y": 0} or {"type": "rule", "x": 0}; {"type": "text", "data": [{"x", "y", "text"}]};
+      {"type": "rule", "y": 0, "label"?: "boiling point"} or {"type": "rule", "x": 0} — a label is written with the value; {"type": "text", "data": [{"x", "y", "text"}]};
       {"type": "rect", "data": [...], "x1", "x2", "y1", "y2"}.
     Name the quantity and unit on each axis label. One finding per plot. alt: what the plot shows, in words.
     teaches as for add_figure: the claim is the finding, notice is where on the plot it shows. setup as for add_figure.

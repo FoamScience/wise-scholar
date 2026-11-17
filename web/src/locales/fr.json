@@ -264,6 +264,7 @@
       "prose": "À lire",
       "example": "Exemple",
       "figure": "Figure",
+      "notice": "À observer : {{notice}}",
       "limits": "Là où cela cesse de correspondre au réel : {{limits}}",
       "restoreDrawing": "Revenir au dessin précédent",
       "backToRedrawn": "Revenir à la figure redessinée",

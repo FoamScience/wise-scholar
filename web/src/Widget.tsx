@@ -27,7 +27,7 @@ function plotOf(plot: NonNullable<WidgetData['widget']['plot']>, state: State): 
   plot.marks.forEach((m, i) => {
     const value = state.marks[i]
     if (m.type === 'rule') {
-      if (typeof value === 'number') marks.push({ type: 'rule', [m.axis ?? 'y']: value })
+      if (typeof value === 'number') marks.push({ type: 'rule', [m.axis ?? 'y']: value, label: m.label })
       return
     }
     const ys = value as (number | null)[]
