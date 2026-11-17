@@ -209,6 +209,7 @@
       "add_reading": "writing a text for you…",
       "add_figure": "drawing a figure…",
       "narrate_figure": "setting up the board…",
+      "annotate_figure": "drawing on the board…",
       "add_crafted_figure": "crafting a figure…",
       "add_diagram": "laying out a diagram…",
       "add_animation": "animating a diagram…",
@@ -239,6 +240,10 @@
       "next": "Next",
       "steps_one": "{{count}} step",
       "steps_other": "{{count}} steps",
+      "askPart": "Ask about a part",
+      "pickPart": "Click the part of the figure you mean.",
+      "askAbout": "Your question about “{{part}}”",
+      "ask": "Ask",
       "at": "Step {{n}} of {{count}}",
       "whole": "Whole figure",
       "onTheBoard": "On the board, step by step"

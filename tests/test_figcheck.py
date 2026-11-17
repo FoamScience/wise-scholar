@@ -72,3 +72,13 @@ def test_a_widget_drawing_is_checked_where_the_sliders_take_it():
     finally:
         db.delete_course(course)
         db.conn.execute("DELETE FROM profiles WHERE id = ?", (who,))
+
+
+@looks
+def test_a_label_drawn_onto_a_figure_may_not_sit_on_what_was_there():
+    svg = (
+        '<svg viewBox="0 0 300 150"><rect width="300" height="150" fill="none"/><g data-part="pump"><circle cx="60" cy="60" r="20"/></g>'
+        '<g data-part="note"><text x="45" y="65" font-size="14">here</text></g><g data-part="aside"><text x="200" y="65" font-size="14">aside</text></g></svg>'
+    )
+    assert check(svg, fresh=["note", "aside"]) == ['the new label "here" sits on the part pump; put it in free space and point with an arrow']
+    assert check(svg, fresh=["aside"]) == []

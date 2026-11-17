@@ -216,6 +216,7 @@
       "add_reading": "rédaction d'un texte pour vous…",
       "add_figure": "dessin d'une figure…",
       "narrate_figure": "préparation du tableau…",
+      "annotate_figure": "dessin au tableau…",
       "add_crafted_figure": "fabrication d'une figure…",
       "add_diagram": "mise en place d'un schéma…",
       "add_animation": "animation d'un schéma…",
@@ -247,6 +248,10 @@
       "steps_one": "{{count}} étape",
       "steps_many": "{{count}} d'étapes",
       "steps_other": "{{count}} étapes",
+      "askPart": "Poser une question sur une partie",
+      "pickPart": "Cliquez sur la partie de la figure qui vous intéresse.",
+      "askAbout": "Votre question sur « {{part}} »",
+      "ask": "Demander",
       "at": "Étape {{n}} sur {{count}}",
       "whole": "Figure entière",
       "onTheBoard": "Au tableau, étape par étape"

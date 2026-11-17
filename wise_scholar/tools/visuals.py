@@ -106,6 +106,49 @@ async def narrate_figure(lesson_id: int, block_id: int, steps: list[board.BoardS
     return f"figure {block_id} plays as a board in {len(steps)} steps"
 
 
+@mcp.tool()
+async def annotate_figure(lesson_id: int, block_id: int, svg: str, steps: list[board.BoardStep]) -> str:
+    """Answer the learner's question about a figure by drawing on it, as at a whiteboard: the new parts are added on
+    top and play right away as further steps of its board, each step's sentence shown while it draws.
+
+    svg: the drawing to add, as one or more `<g data-part="id">` groups with new ids, in the figure's own viewBox
+    coordinates (the question gives the boxes of the parts on it): an arrow, a label, a small sketch, a mark on the
+    part asked about. Put labels in free space and point with arrows; a new label that sits on what is already drawn
+    is refused. Same palette and rules as add_figure. steps: 1 to 3, each with the sentence shown while it draws; they
+    draw every added part, and may erase parts the answer replaces."""
+    block = db.block(block_id)
+    if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
+        return f"error: no figure with id {block_id} in this lesson"
+    if problem := pretest_blocker(db.lesson(lesson_id)):
+        return f"refused: {problem}"
+    if block["data"].get("frames"):
+        return "error: this figure is an animation; answer in chat"
+    if not 1 <= len(steps) <= board.MAX_ADDED:
+        return f"error: an answer on the board has 1 to {board.MAX_ADDED} steps"
+    earlier = block["data"].get("board", {}).get("steps", [])
+    try:
+        drawing, added, credits = board.merge(block["data"]["svg"], svg, f"f{block_id}-a{len(earlier)}-")
+    except ValueError as e:
+        return f"error: {e}"
+    if strays := sorted({p for s in steps for p in s.draw} - set(added)):
+        return f"error: the steps draw only the parts you add, and {', '.join(strays)} is not one of them"
+    if undrawn := [p for p in added if not any(p in s.draw for s in steps)]:
+        return f"error: every added part is drawn by a step, and {', '.join(undrawn)} is not"
+    if problem := board.steps_error(drawing, steps, earlier):
+        return f"error: {problem}"
+    before = await figcheck.problems([block["data"]["svg"]])
+    if found := [p for p in await figcheck.problems([drawing], fresh=added) if p not in before]:
+        return f"error: {figcheck.report(found)}"
+    data = block["data"] | {
+        "svg": drawing,
+        "credits": [*block["data"].get("credits", []), *(c for c in credits if c not in block["data"].get("credits", []))],
+        "board": {"steps": [*earlier, *(_step(s) for s in steps)], "answer": len(earlier)},
+    }
+    block = db.set_block_data(block_id, data)
+    _show(db.lesson(lesson_id), block, "block.updated")
+    return f"drawn on figure {block_id}; it plays now"
+
+
 def _step(step: board.BoardStep) -> dict:
     return {"say": step.say.strip(), "draw": step.draw, "erase": step.erase}
 

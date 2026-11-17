@@ -237,6 +237,7 @@
       "add_reading": "يكتب نصًّا لك…",
       "add_figure": "يرسم شكلًا…",
       "narrate_figure": "يجهّز السبورة…",
+      "annotate_figure": "يرسم على السبورة…",
       "add_crafted_figure": "يصنع شكلًا…",
       "add_diagram": "يُخطّط رسمًا…",
       "add_animation": "يُحرّك رسمًا…",
@@ -271,6 +272,10 @@
       "steps_few": "{{count}} خطوات",
       "steps_many": "{{count}} خطوة",
       "steps_other": "{{count}} خطوة",
+      "askPart": "اسأل عن جزء",
+      "pickPart": "انقر على الجزء الذي تقصده من الشكل.",
+      "askAbout": "سؤالك عن «{{part}}»",
+      "ask": "اسأل",
       "at": "الخطوة {{n}} من {{count}}",
       "whole": "الشكل كاملًا",
       "onTheBoard": "على السبورة خطوة بخطوة"

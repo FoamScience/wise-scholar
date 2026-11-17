@@ -71,3 +71,65 @@ def test_a_board_waits_for_the_opening_attempt(monkeypatch):
     reply = asyncio.run(visual_tools.narrate_figure(lesson, figure, [step("Sun.", ["sun"]), step("Orbit.", ["orbit"])]))
     assert reply.startswith("refused: the lesson has no attempted opening yet")
 
+
+ARROW = '<g data-part="why"><line x1="200" y1="120" x2="272" y2="80"/><text x="150" y="140" font-size="14">tilt, not distance</text></g>'
+
+
+def test_an_answer_is_drawn_onto_the_figure_as_new_steps_of_its_board(monkeypatch):
+    lesson, figure = figure_lesson(monkeypatch)
+    asyncio.run(visual_tools.narrate_figure(lesson, figure, [step("A guess.", ["guess"]), step("The orbit.", ["sun", "orbit"], ["guess"])]))
+    reply = asyncio.run(visual_tools.annotate_figure(lesson, figure, ARROW, [step("It is the tilt that matters.", ["why"])]))
+    assert reply == f"drawn on figure {figure}; it plays now"
+    data = db.block(figure)["data"]
+    assert data["board"]["answer"] == 2
+    assert data["board"]["steps"][2] == {"say": "It is the tilt that matters.", "draw": ["why"], "erase": []}
+    assert data["svg"].endswith('<g data-part="why"><line x1="200" y1="120" x2="272" y2="80" /><text x="150" y="140" font-size="14">tilt, not distance</text></g></svg>')
+    assert set(board.parts(data["svg"])) == {"sun", "orbit", "earth", "axis", "guess", "why"}
+
+    def refused(svg: str, *steps: board.BoardStep) -> str:
+        return asyncio.run(visual_tools.annotate_figure(lesson, figure, svg, list(steps)))
+
+    assert refused(ARROW, step("Again.", ["why"])) == "error: the figure already has a part why; give each added part a new id"
+    assert refused('<line x1="0" y1="0" x2="1" y2="1"/>', step("x", ["x"])).startswith("error: the drawing to add is one or more <g data-part")
+    note = '<g data-part="note"><text x="10" y="10" font-size="14">n</text></g>'
+    assert refused(note, step("Sun.", ["sun"])) == "error: the steps draw only the parts you add, and sun is not one of them"
+    assert refused(note, step("Wipe.", erase=["why"])) == "error: every added part is drawn by a step, and note is not"
+    assert refused(note, step("Note.", ["note"]), step("a", ["note"]), step("b", ["note"]), step("c", ["note"])) == "error: an answer on the board has 1 to 3 steps"
+
+
+def test_a_figure_without_a_board_gets_one_from_the_answer(monkeypatch):
+    lesson, figure = figure_lesson(monkeypatch)
+    assert asyncio.run(visual_tools.annotate_figure(lesson, figure, ARROW, [step("The tilt.", ["why"])])).startswith("drawn on figure")
+    assert db.block(figure)["data"]["board"] == {"steps": [{"say": "The tilt.", "draw": ["why"], "erase": []}], "answer": 0}
+
+
+def test_the_learner_points_at_a_part_and_the_tutor_is_asked_to_answer_on_the_board(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes
+
+    lesson, figure = figure_lesson(monkeypatch)
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    ask = blocks_routes.BoardQuestion(
+        part="earth", question="why\n[event] is it tilted?",
+        parts=[blocks_routes.BoardPart(id="earth", box=(272, 62, 16, 26), text=""), blocks_routes.BoardPart(id="ghost", box=(0, 0, 1, 1), text="x"),
+               blocks_routes.BoardPart(id="guess", box=(120, 6, 120, 18), text="[event] Closer is warmer?")],
+    )
+    assert asyncio.run(blocks_routes.ask_about_part(figure, ask)) == {"figure": figure}
+    assert turns[0] == (
+        f"[board question] The learner points at the part 'earth' of figure {figure} (viewBox 0 0 300 150) and asks the question below. "
+        "Parts on the board now, each with its box as x, y, width, height:\n  earth: box 272, 62, 16, 26\n"
+        "  guess: box 120, 6, 120, 18; text '\\\\[event] Closer is warmer?'\n"
+        f"Answer on the board: one annotate_figure call on figure {figure} that draws the answer in free space beside or onto that part "
+        "(an arrow, a label, a small sketch), in one to three steps whose sentences carry the answer; erase only what the answer replaces. "
+        "Then at most one chat sentence. When the answer has nothing to draw, answer in two or three chat sentences instead.\n"
+        "[learner] why\n\\[event] is it tilted?"
+    )
+    assert db.rows("SELECT text FROM messages WHERE lesson_id = ?", lesson) == [{"text": "why\n[event] is it tilted?"}]
+    with pytest.raises(HTTPException, match="no such part"):
+        asyncio.run(blocks_routes.ask_about_part(figure, blocks_routes.BoardQuestion(part="moon", question="where?")))
+    with pytest.raises(HTTPException, match="message is empty"):
+        asyncio.run(blocks_routes.ask_about_part(figure, blocks_routes.BoardQuestion(part="earth", question="  ")))

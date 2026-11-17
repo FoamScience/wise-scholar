@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from 'cn'
 import { sketch } from './sketch'
 import { Board } from './Board'
-import { show, type BoardStep } from './board'
+import { partBoxes, show, type BoardStep, type PartBox } from './board'
 import { InlineMarkdown } from './Md'
 
 export type Credit = { name: string; author: string; licence: string; pack: string; url: string }
@@ -17,7 +17,8 @@ export type FigureData = {
   diagram?: { domain: string; substance?: string; stages?: string[] }
   crafted?: { script: string }
   frames?: string[]
-  board?: { steps: BoardStep[] }
+  // answer: where the steps drawn in answer to the learner's last question begin
+  board?: { steps: BoardStep[]; answer?: number }
   teaches?: Teaches
   previous?: FigureData & { caption: string }
   restored?: boolean
@@ -150,13 +151,93 @@ function Redraw(props: { disabled?: boolean; onRedraw: (notes: string) => void }
   )
 }
 
-/** A tutor-drawn figure; click to see it large. */
-export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; speech: boolean; disabled?: boolean; onRestore?: () => void; onRedraw?: (notes: string) => void }) {
+type Asked = (part: string, question: string, parts: PartBox[]) => void
+
+/** "Ask about a part", then a click on the part, then the question; the tutor answers by drawing on the figure. */
+function AskPart(props: { picked: { id: string; label: string } | null; picking: boolean; disabled?: boolean; onPick: (on: boolean) => void; onAsk: (question: string) => void }) {
+  const { t } = useTranslation()
+  const [question, setQuestion] = useState('')
+  if (props.picked) {
+    return (
+      <form
+        className="grid gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (!question.trim()) return
+          props.onAsk(question)
+          setQuestion('')
+        }}
+      >
+        <Input
+          dir="auto"
+          maxLength={1000}
+          aria-label={t('board.askAbout', { part: props.picked.label })}
+          placeholder={t('board.askAbout', { part: props.picked.label })}
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && props.onPick(false)}
+          autoFocus
+        />
+        <div className="flex gap-2">
+          <Button type="submit" size="sm" disabled={props.disabled || !question.trim()}>{t('board.ask')}</Button>
+          <Button variant="outline" size="sm" onClick={() => props.onPick(false)}>{t('common.cancel')}</Button>
+        </div>
+      </form>
+    )
+  }
+  if (props.picking) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span aria-live="polite">{t('board.pickPart')}</span>
+        <Button variant="outline" size="sm" onClick={() => props.onPick(false)}>{t('common.cancel')}</Button>
+      </div>
+    )
+  }
+  return (
+    <Button variant="ghost" size="sm" className="self-start text-muted-foreground" disabled={props.disabled} onClick={() => props.onPick(true)}>
+      {t('board.askPart')}
+    </Button>
+  )
+}
+
+/** A tutor-drawn figure; click to see it large. Steps the tutor just drew in answer to a question play at once. */
+export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void; onRedraw?: (notes: string) => void; onAsk?: Asked }) {
   const { t } = useTranslation()
   const d = props.data as FigureData
   const [large, setLarge] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const [picked, setPicked] = useState<{ id: string; label: string } | null>(null)
   const box = useRef<HTMLDivElement>(null)
   const sketched = props.sketched && !d.diagram && !d.crafted
+  // steps added while the figure is on screen are an answer just drawn: they play once, from where it begins
+  const count = d.board?.steps.length ?? 0
+  const [seen, setSeen] = useState(count)
+  const [answered, setAnswered] = useState<number | undefined>()
+  if (count !== seen) {
+    setSeen(count)
+    setAnswered(count > seen ? d.board?.answer : undefined)
+  }
+  const askable = props.onAsk && !d.frames && d.svg.includes('data-part=')
+
+  function pick(e: React.MouseEvent) {
+    if (!picking) return
+    e.preventDefault()
+    e.stopPropagation()
+    const part = (e.target as Element).closest('[data-part]')
+    if (!part) return
+    const id = part.getAttribute('data-part')!
+    const label = [...part.querySelectorAll('text')].map((x) => x.textContent?.trim()).filter(Boolean).join(' ').slice(0, 40)
+    setPicked({ id, label: label || id })
+    setPicking(false)
+  }
+
+  function ask(question: string) {
+    const svg = box.current?.querySelector('svg')
+    if (!svg || !picked) return
+    props.onAsk!(picked.id, question, partBoxes(svg))
+    setPicked(null)
+  }
+
   return (
     <section id={`block-${props.id}`} className="block flex flex-col gap-2 border-t border-border pt-6 break-inside-avoid first:border-t-0 first:pt-0">
       <div className="text-sm leading-snug font-medium text-ink-2 break-after-avoid">{t('block.figure')}</div>
@@ -165,13 +246,26 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
         className={cn('figure-box mx-auto block w-full break-inside-avoid text-start', large ? 'max-w-full cursor-zoom-out' : 'max-w-[600px] cursor-zoom-in')}
         aria-label={large ? t('block.shrinkFigure') : t('block.enlargeFigure', { alt: d.alt })}
         onClick={() => setLarge(!large)}
+        onClickCapture={pick}
       >
-        <div ref={box}>
+        <div ref={box} className={cn(picking && 'cursor-pointer')}>
           <Drawing svg={d.svg} alt={d.alt} sketched={sketched} board={d.board?.steps} />
         </div>
       </button>
       {d.frames && d.frames.length > 1 && <Stages key={d.svg} box={box} count={d.frames.length} />}
-      {d.board && <Board key={`${sketched}${JSON.stringify(d.board)}${d.svg}`} box={box} steps={d.board.steps} speech={props.speech} />}
+      {d.board && <Board key={`${sketched}${JSON.stringify(d.board)}${d.svg}`} box={box} steps={d.board.steps} from={answered} />}
+      {askable && (
+        <AskPart
+          picked={picked}
+          picking={picking}
+          disabled={props.disabled}
+          onPick={(on) => {
+            setPicking(on)
+            setPicked(null)
+          }}
+          onAsk={ask}
+        />
+      )}
       {props.caption && <div className="text-sm text-muted-foreground"><InlineMarkdown>{props.caption}</InlineMarkdown></div>}
       <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />
