@@ -141,3 +141,9 @@ svg .label {
 .figure-box svg {
   width: 100%;
 }
+
+/* The pen of a figure played as a board (board.ts), on the stroke it is drawing */
+.board-pen {
+  fill: var(--color-spark);
+  pointer-events: none;
+}
