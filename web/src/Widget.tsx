@@ -22,18 +22,25 @@ function stateIndex(controls: Control[], at: number[]): number {
   return controls.reduce((index, c, i) => index * c.values.length + at[i], 0)
 }
 
-function plotOf(plot: NonNullable<WidgetData['widget']['plot']>, state: State): PlotSpec {
+/** The marks of one setting; a pinned one is dashed in its curves' own colours and names its setting in the tip. */
+function marksOf(plot: NonNullable<WidgetData['widget']['plot']>, state: State, pinned?: string): Mark[] {
   const marks: Mark[] = []
+  const dash = pinned ? { strokeDasharray: '5,4' } : {}
   plot.marks.forEach((m, i) => {
     const value = state.marks[i]
     if (m.type === 'rule') {
-      if (typeof value === 'number') marks.push({ type: 'rule', [m.axis ?? 'y']: value, label: m.label })
+      if (typeof value === 'number') marks.push({ type: 'rule', [m.axis ?? 'y']: value, label: pinned ? '' : m.label, ...dash })
       return
     }
     const ys = value as (number | null)[]
-    const data = (m.xs ?? []).map((x, k) => ({ x, y: ys[k], series: m.label }))
-    marks.push(m.type === 'line' ? { type: 'line', data, x: 'x', y: 'y', stroke: 'series' } : { type: 'area', data, x: 'x', y: 'y', fill: 'series', fillOpacity: 0.3 })
+    const data = (m.xs ?? []).map((x, k) => ({ x, y: ys[k], series: m.label, ...(pinned && { pinned }) }))
+    marks.push(m.type === 'line' ? { type: 'line', data, x: 'x', y: 'y', stroke: 'series', ...dash } : { type: 'area', data, x: 'x', y: 'y', fill: 'series', fillOpacity: pinned ? 0.12 : 0.3 })
   })
+  return marks
+}
+
+function plotOf(plot: NonNullable<WidgetData['widget']['plot']>, state: State, pinned?: { state: State; setting: string }): PlotSpec {
+  const marks = [...(pinned ? marksOf(plot, pinned.state, pinned.setting) : []), ...marksOf(plot, state)]
   return { x: plot.x, y: plot.y, marks }
 }
 
@@ -52,9 +59,18 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
   const d = (props.data as WidgetData).widget
   const starts = d.controls.map((c) => c.start)
   const [at, setAt] = useState(starts)
+  const [pin, setPin] = useState<number[] | null>(null)
   const state = d.states[stateIndex(d.controls, at)]
-  const plot = useMemo(() => (d.plot ? plotOf(d.plot, state) : null), [d.plot, state])
   const format = (value: number, digits: number) => value.toLocaleString(i18n.language, { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  const settingOf = (positions: number[]) =>
+    d.controls.map((c, i) => `${c.label} = ${c.values[positions[i]].toLocaleString(i18n.language, { maximumFractionDigits: 6 })}${c.unit ? ` ${c.unit}` : ''}`).join(', ')
+  const pinnedState = pin ? d.states[stateIndex(d.controls, pin)] : null
+  const pinnedSetting = pin ? settingOf(pin) : ''
+  const plot = useMemo(
+    () => (d.plot ? plotOf(d.plot, state, pinnedState ? { state: pinnedState, setting: pinnedSetting } : undefined) : null),
+    [d.plot, state, pinnedState, pinnedSetting],
+  )
+  const pinnedAway = pin !== null && pin.some((p, i) => p !== at[i])
   const moved = at.some((p, i) => p !== starts[i])
   const touched = useRef(false)
   // The page hands a new callback on every render; only a new setting restarts the wait.
@@ -84,6 +100,16 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
             <dd className="m-0 text-lg font-semibold tabular-nums">
               <output>{state.readouts[i] === null ? t('block.widgetUndefined') : `${format(state.readouts[i] as number, r.digits)}${r.unit ? ` ${r.unit}` : ''}`}</output>
             </dd>
+            {pinnedState && pinnedAway && (
+              <dd className="m-0 text-sm text-muted-foreground tabular-nums">
+                {pinnedState.readouts[i] === null
+                  ? t('block.widgetPinnedValue', { value: t('block.widgetUndefined') })
+                  : t('block.widgetPinnedValue', { value: `${format(pinnedState.readouts[i] as number, r.digits)}${r.unit ? ` ${r.unit}` : ''}` })}
+                {state.readouts[i] !== null && pinnedState.readouts[i] !== null && (
+                  <> · Δ {(state.readouts[i] as number) - (pinnedState.readouts[i] as number) >= 0 ? '+' : ''}{format((state.readouts[i] as number) - (pinnedState.readouts[i] as number), r.digits)}</>
+                )}
+              </dd>
+            )}
           </div>
         ))}
       </dl>
@@ -109,9 +135,15 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
           )
         })}
       </div>
-      <Button variant="outline" size="sm" className="self-start print:hidden" disabled={!moved} onClick={() => move(starts)}>
-        {t('block.widgetReset')}
-      </Button>
+      {pin && <div className="text-sm text-muted-foreground"><InlineMarkdown>{t('block.widgetPinned', { setting: pinnedSetting })}</InlineMarkdown></div>}
+      <div className="flex flex-wrap gap-2 print:hidden">
+        <Button variant="outline" size="sm" onClick={() => setPin(pin ? null : at)}>
+          {pin ? t('block.widgetUnpin') : t('block.widgetPin')}
+        </Button>
+        <Button variant="outline" size="sm" disabled={!moved} onClick={() => move(starts)}>
+          {t('block.widgetReset')}
+        </Button>
+      </div>
       <Limits teaches={(props.data as WidgetData).teaches} />
     </section>
   )

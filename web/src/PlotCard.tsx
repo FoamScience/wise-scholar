@@ -93,7 +93,8 @@ function heightFor(width: number): number {
 function rule(Plot: typeof import('@observablehq/plot'), opts: Record<string, unknown>) {
   const axis = 'y' in opts ? 'y' : 'x'
   const value = opts[axis] as number
-  const line = axis === 'y' ? Plot.ruleY([value]) : Plot.ruleX([value])
+  const style = { strokeDasharray: opts.strokeDasharray as string | undefined }
+  const line = axis === 'y' ? Plot.ruleY([value], style) : Plot.ruleX([value], style)
   if (!opts.label) return line
   const text = `${opts.label} = ${value.toLocaleString(undefined, { maximumSignificantDigits: 4 })}`
   const label = axis === 'y'
