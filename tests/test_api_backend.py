@@ -292,3 +292,33 @@ def test_closing_the_turn_early_as_the_app_does_ends_it_cleanly(fake):
 
     assert asyncio.run(run("turn.done"))["ok"]
     assert asyncio.run(run("chat.delta"))["text"] == "Again."
+
+
+def test_every_prefix_a_tool_answers_with_is_known_as_a_refusal_or_a_success():
+    import re
+
+    from wise_scholar import tutor
+
+    tools = Path(tutor.__file__).parent / "tools"
+    said = {m for path in tools.glob("*.py") for m in re.findall(r'return f?"(\w+):', path.read_text())}
+    assert said - {p.rstrip(":") for p in tutor.REFUSALS} == {"recorded"}
+
+
+def test_a_reply_that_poses_a_card_ends_the_turn_without_asking_again(fake, monkeypatch):
+    from wise_scholar import tutor
+
+    monkeypatch.setattr(tutor, "_turn_of", lambda token: {"kind": "lesson", "lesson_id": 1})
+    monkeypatch.setattr(tutor.db, "lesson", lambda lesson_id: {"mode": "learner", "batch": 0})
+    pose = reply({"type": "tool_use", "id": "t1", "name": "pose_quiz", "input": {}}, stop="tool_use")
+    server, tools = fake(pose)
+    done = turn()[-1]
+    assert done["ok"] and len(server.requests) == 1 and tools.calls == [("pose_quiz", {})]
+    assert [m["role"] for m in session()] == ["user", "assistant", "user"]
+
+    server, tools = fake(pose, reply({"type": "text", "text": "Retry."}, stop="end_turn"))
+    tools.fail = True
+    assert turn(session_id="s2")[-1]["ok"] and len(server.requests) == 2
+
+    monkeypatch.setattr(tutor.db, "lesson", lambda lesson_id: {"mode": "learner", "batch": 1})
+    server, _ = fake(pose, reply({"type": "text", "text": "More."}, stop="end_turn"))
+    assert turn(session_id="s3")[-1]["ok"] and len(server.requests) == 2

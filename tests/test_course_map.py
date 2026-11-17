@@ -202,7 +202,7 @@ def test_placement_choice_offers_i_dont_know_as_a_miss_that_stays_out_of_calibra
     from wise_scholar.routes import blocks as blocks_routes, learner as learner_routes
 
     turns = []
-    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, then=None: turns.append(line))
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Unsure')").lastrowid
     course = db.create_course("Chemistry", who)["id"]
     placement = db.create_lesson(course, "Placement", "placement")
@@ -253,7 +253,7 @@ def test_placement_length_follows_the_hours_ahead_and_numbers_its_questions(monk
     db.conn.execute("UPDATE courses SET hours = 2 WHERE id = ?", (course,))
     db.set_ranking(course, [{"mechanism": "concept-map", "rationale": "x"}])
     placement = asyncio.run(courses_routes.start_placement(course))["id"]
-    assert "It has 6 questions." in lines[-1] and db.lesson(placement)["questions"] == 6
+    assert "It has 6 questions, posed in 2 batches of about 3." in lines[-1] and db.lesson(placement)["questions"] == 6
     for n in range(6):
         assert f"placement=question {n} of 6 posed" in app._turn_prompt(db.lesson(placement), "[event] x")
         assert asyncio.run(quiz_tools.pose_quiz(placement, f"Q{n}?", "open", "a", "")).startswith("shown")
@@ -264,7 +264,7 @@ def test_placement_length_follows_the_hours_ahead_and_numbers_its_questions(monk
     db.set_concepts(course, [{"title": "Rigging", "concepts": ["Knots", "Sails", "Wind", "Tides"], "known": ["Knots", "Sails"]}])
     monkeypatch.setattr(app, "_require_idle", lambda lesson_id: None)
     retake = asyncio.run(courses_routes.retake_placement(course))["id"]
-    assert "About 100 of the course's 200 hours are still ahead." in lines[-1] and "It has 17 questions." in lines[-1]
+    assert "About 100 of the course's 200 hours are still ahead." in lines[-1] and "It has 17 questions, posed in 3 batches of about 6." in lines[-1]
     assert db.lesson(retake)["questions"] == 17
 
 
@@ -406,3 +406,57 @@ def test_the_course_map_fits_the_hours_at_the_time_the_learner_takes_per_unit():
     state = app._turn_prompt(db.lesson(lesson), "x")
     assert " sitting=30 min task=40 min" in state
     assert "A unit takes this learner about 40 minutes (measured over their last 2 units), so the map holds at most 5 units" in state
+
+
+def test_a_lesson_begins_with_the_course_playbook_in_its_event(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app
+    from wise_scholar.routes import learner as learner_routes
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Playbook')").lastrowid
+    course = db.create_course("Optics", who)["id"]
+    try:
+        db.set_concepts(course, [{"title": "Light", "concepts": ["Refraction"], "known": []}])
+        db.conn.execute("UPDATE courses SET mechanism = 'worked-examples' WHERE id = ?", (course,))
+        asyncio.run(learner_routes.open_concept(db.concepts(course)[0]["id"]))
+        assert turns[-1].startswith("[event] The lesson begins.") and "\n[playbook worked-examples] " in turns[-1]
+        assert app._playbook_line(None) == "" and app._playbook_line("nonsense") == ""
+    finally:
+        db.delete_course(course)
+
+
+def test_a_placement_batch_reaches_the_tutor_once_every_card_is_answered(monkeypatch):
+    from wise_scholar import app
+    from wise_scholar.routes import blocks as block_routes, courses as courses_routes
+
+    turns = []
+    started = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, then=None: (turns.append(line), started.append(then)))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Placement batcher')").lastrowid
+    course = db.create_course("Statics", who)["id"]
+    try:
+        placement = db.lesson(db.create_lesson(course, "Placement", "placement", questions=6))
+        first = db.add_block(placement["id"], "quiz", "q1", {"card_id": 0, "kind": "choice", "options": [], "answer": None})
+        second = db.add_block(placement["id"], "quiz", "q2", {"card_id": 0, "kind": "choice", "options": [], "answer": None})
+        db.set_block_data(first["id"], {**first["data"], "answer": "a"})
+        block_routes._quiz_turn(placement, first["id"], "[event] Quiz 1 result: correct")
+        assert turns == []
+        db.set_block_data(second["id"], {**second["data"], "answer": "b"})
+        block_routes._quiz_turn(placement, second["id"], "[event] Quiz 2 result: wrong")
+        assert turns == ["[event] Quiz 1 result: correct\n\n[event] Quiz 2 result: wrong"]
+        # the turn failed: the batch waits for the next turn, and goes once a turn carrying it ends well
+        assert app._held_answers(placement["id"])[0] == turns[0]
+        started[-1]()
+        assert app._held_answers(placement["id"])[0] == ""
+        assert all("unheard" not in b["data"] for b in db.blocks(placement["id"]))
+
+        lesson = db.lesson(db.create_lesson(course, "Unit", "lesson"))
+        block_routes._quiz_turn(lesson, db.add_block(lesson["id"], "quiz", "q", {"answer": "a"})["id"], "[event] one")
+        assert turns[-1] == "[event] one"
+        assert courses_routes._batches(6) == ", posed in 2 batches of about 3"
+        assert courses_routes._batches(14) == ", posed in 3 batches of about 5"
+    finally:
+        db.delete_course(course)

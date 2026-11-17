@@ -14,7 +14,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
 from mcp.types import CallToolResult, ImageContent, TextContent
 
-from .. import db
+from .. import db, tutor
 from . import MCP_HEADERS, MCP_URL, TURN_HEADER, model_for, system_prompt
 
 # Streamed, so a long reply never runs into a request timeout.
@@ -136,6 +136,13 @@ async def _call(tools: Client, block) -> dict:
     return {"type": "tool_result", "tool_use_id": block.id, "is_error": bool(result.is_error), "content": _result_content(result)}
 
 
+def _went_through(result: dict) -> bool:
+    """A tool that refuses answers with an error, or with text that starts like one of tutor.REFUSALS."""
+    return not result["is_error"] and not any(
+        part.get("type") == "text" and part["text"].startswith(tutor.REFUSALS) for part in result["content"]
+    )
+
+
 def _request(model: str, phase: str, tools: list[dict], messages: list[dict]) -> dict:
     request = {
         "model": model,
@@ -169,7 +176,9 @@ def _trim(messages: list[dict]) -> bool:
     return True
 
 
-async def _converse(model: str, phase: str, tools: Client, messages: list[dict], path: Path, usage: Usage) -> AsyncIterator[dict]:
+async def _converse(
+    model: str, phase: str, tools: Client, messages: list[dict], path: Path, usage: Usage, token: str
+) -> AsyncIterator[dict]:
     """Ask the model, run the tools it calls, and ask again until it ends its turn."""
     listed = [_tool(t) for t in (await tools.list_tools()).tools]
     for _ in range(MAX_ROUNDS):
@@ -216,8 +225,14 @@ async def _converse(model: str, phase: str, tools: Client, messages: list[dict],
             yield {"type": "turn.done", "ok": True, "error": None, "usage": usage.report()}
             return
         # One after another: the tools change the lesson, and the results go back together in one message.
-        messages.append({"role": "user", "content": [await _call(tools, block) for block in calls]})
+        results = [await _call(tools, block) for block in calls]
+        messages.append({"role": "user", "content": results})
         _save(path, messages)
+        if tutor.ends_turn(token, [(block.name, _went_through(result)) for block, result in zip(calls, results)]):
+            # The card is up and the learner answers next: asking again would only buy a line pointing at it. The
+            # results stay in the session, and the next turn's prompt joins them in one user message.
+            yield {"type": "turn.done", "ok": True, "error": None, "usage": usage.report()}
+            return
     yield {"type": "turn.done", "ok": False, "error": f"the tutor called tools {MAX_ROUNDS} times in one reply without finishing it, so it was stopped", "usage": usage.report()}
 
 
@@ -244,7 +259,7 @@ async def run_turn(
             async with _tools(token) as tools:
                 # Caught inside the MCP client: its task group would hand them on wrapped in an ExceptionGroup.
                 try:
-                    async for event in _converse(model, phase, tools, messages, path, usage):
+                    async for event in _converse(model, phase, tools, messages, path, usage, token):
                         await events.put(event)
                 except anthropic.APIStatusError as e:
                     await events.put({"type": "turn.done", "ok": False, "error": f"the model API answered {e.status_code}: {e.message}"[:500], "usage": usage.report()})

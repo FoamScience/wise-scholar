@@ -216,9 +216,37 @@ SHARED_TOOLS = (
     "craft_help", "find_art", "note_learner", "replace_crafted_figure", "revise_course_map", "view_handwork",
 )
 PHASE_TOOLS = {
-    "interview": (*SHARED_TOOLS, "get_playbook", "list_playbooks", "offer_resources", "rank_mechanisms", "set_course_map", "set_cover", "set_pace", "set_sitting"),
+    "interview": (*SHARED_TOOLS, "get_playbook", "list_playbooks", "offer_resources", "rank_mechanisms", "set_course_map", "set_cover", "set_pace", "set_prerequisites", "set_sitting"),
     "placement": (*SHARED_TOOLS, "get_playbook", "grade_quiz", "pose_quiz", "pose_vocab_check", "set_course_map", "set_known", "set_placement"),
 }
+# The tools that set a course up; the phases after the interview and the placement never see them.
+SETUP_TOOLS = (
+    "list_playbooks", "offer_resources", "pose_vocab_check", "rank_mechanisms", "set_course_map", "set_cover", "set_known",
+    "set_pace", "set_placement", "set_prerequisites", "set_sitting",
+)
+
+
+# A card the learner answers ends the turn, and the tools that go with it in the same reply return nothing the tutor must
+# read back: a backend that runs the tool loop itself ends the turn there instead of asking the model again.
+POSES = (
+    "ask", "finish_lesson", "give_hint", "pose_challenge", "pose_comparison", "pose_exercise", "pose_quiz", "pose_sort",
+    "pose_speaking", "pose_teachback", "pose_vocab_check", "pose_writing",
+)
+BESIDE_POSE = ("grade_quiz", "mark_solved", "note_learner", "set_outline", "step_done")
+# How a tool's text answer starts when it did not do what it was asked.
+REFUSALS = ("error:", "refused:", "rewrite:")
+
+
+def ends_turn(token: str, results: list[tuple[str, bool]]) -> bool:
+    """Whether a reply whose tool calls went (name, ok) ends its turn: it posed a card, every call went through, and the
+    lesson waits for the learner. A lesson taken offline or a teacher's course poses many cards in one turn."""
+    turn = _turn_of(token)
+    lesson = db.lesson(turn["lesson_id"]) if turn and turn["kind"] == "lesson" else None
+    names = [name for name, _ in results]
+    return (
+        bool(lesson) and not keyed(lesson) and any(n in POSES for n in names)
+        and all(n in POSES or n in BESIDE_POSE for n in names) and all(ok for _, ok in results)
+    )
 
 
 async def _list_tools(ctx, params) -> ListToolsResult:
@@ -228,7 +256,10 @@ async def _list_tools(ctx, params) -> ListToolsResult:
     turn = _turn_of(token) if (token := _token(ctx)) else None
     if turn is not None:
         allowed = _phase_tools(turn)
-        tools = [t for t in tools if _kind(t.name) == turn["kind"] and (allowed is None or t.name in allowed)]
+        tools = [
+            t for t in tools
+            if _kind(t.name) == turn["kind"] and (t.name in allowed if allowed is not None else t.name not in SETUP_TOOLS)
+        ]
     return ListToolsResult(tools=tools)
 
 
