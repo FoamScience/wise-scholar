@@ -898,6 +898,10 @@
           "label": "Émissions audio",
           "help": "Avec la voix installée, le tuteur peut transformer un dialogue à deux voix en une émission de 5 à 8 minutes. Nécessite ffmpeg."
         },
+        "WISE_SCHOLAR_HINTS": {
+          "label": "Échelle d'indices",
+          "help": "Les tâches ont un bouton d'indice et le tuteur y ajoute des indices. Désactivée, le tuteur guide par des questions dans le chat."
+        },
         "WISE_SCHOLAR_RECAP_PREVIEW": {
           "label": "Aperçu du bilan",
           "help": "Pour le développement : tout cours ouvre son bilan provisoire à #/course/<id>/recap, sans le récit. Les apprenants ne le voient jamais."
@@ -1117,6 +1121,7 @@
     "this server cannot craft figures": "ce serveur ne peut pas façonner de figures",
     "this challenge is closed": "ce défi est clos",
     "this challenge is already closed": "ce défi est déjà clos",
+    "this task has no hint ladder. Ask a guiding question in chat, or wait for another attempt or a give-up": "cette tâche n'a pas d'indices",
     "the hint ladder is used up. Ask a guiding question in chat, or wait for another attempt or a give-up": "tous les indices ont été donnés",
     "the tutor is still answering": "le tuteur est encore en train de répondre",
     "the tutor is still answering in this course": "le tuteur est encore en train de répondre dans ce cours",

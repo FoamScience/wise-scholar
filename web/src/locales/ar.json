@@ -964,6 +964,10 @@
           "label": "حلقات صوتية",
           "help": "مع تثبيت الصوت، يستطيع المعلّم تحويل حوار بصوتين إلى حلقة من 5 إلى 8 دقائق. يحتاج ffmpeg."
         },
+        "WISE_SCHOLAR_HINTS": {
+          "label": "سلّم التلميحات",
+          "help": "تحصل المهام على زر تلميح ويضيف المعلّم إليها تلميحات. عند إيقافه، يوجّه المعلّم بأسئلة في المحادثة."
+        },
         "WISE_SCHOLAR_RECAP_PREVIEW": {
           "label": "معاينة الحصيلة",
           "help": "للتطوير: يفتح كل مقرر حصيلته حتى الآن على #/course/<id>/recap، دون السرد. لا يراها المتعلمون أبدًا."
@@ -1183,6 +1187,7 @@
     "this server cannot craft figures": "لا يستطيع هذا الخادم صنع الأشكال",
     "this challenge is closed": "هذا التحدّي مغلق",
     "this challenge is already closed": "هذا التحدّي مغلق من قبل",
+    "this task has no hint ladder. Ask a guiding question in chat, or wait for another attempt or a give-up": "لا تلميحات لهذه المهمة",
     "the hint ladder is used up. Ask a guiding question in chat, or wait for another attempt or a give-up": "استُنفدت كل التلميحات",
     "the tutor is still answering": "المعلّم ما زال يجيب",
     "the tutor is still answering in this course": "المعلّم ما زال يجيب في هذه الدورة",

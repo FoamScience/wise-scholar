@@ -137,6 +137,7 @@ The profile page links to **Server settings**, which shows every setting below w
 | `WISE_SCHOLAR_TURNS` | tutor turns running at once | `2` |
 | `WISE_SCHOLAR_TURNS_PER_HOUR` | tutor turns that may start in an hour | `200` |
 | `WISE_SCHOLAR_TOOL_CALLS` | tool calls one turn may make | `80` |
+| `WISE_SCHOLAR_HINTS` | `1` gives challenges and exercises a hint ladder: a hint button for the learner and hints from the tutor. Off, the tutor guides with questions in the chat; writing and speaking tasks keep their correction prompts either way | `0` |
 | `WISE_SCHOLAR_MCP_CALLS` | tool calls a minute, all turns together | `600` |
 | `WISE_SCHOLAR_KEEP_DAYS` | set it to clean up the files of courses untouched for that many days: workspace, command cache and agent sessions go, the record stays and each exercise keeps a text copy of its files; checked at start and every 6 hours. Unset, nothing is ever removed on its own. `uv run python -m wise_scholar.cleanup --days N` lists what would go and `--delete` removes it, with the server stopped | unset |
 | `WISE_SCHOLAR_WORKSPACE_MB` | what one course may hold on disk, in its workspace and again in its command cache. Watched while a command runs, not a filesystem quota; with the sandbox off only the workspace is watched | `4096` |

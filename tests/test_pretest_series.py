@@ -94,10 +94,10 @@ def test_capstone_milestones_follow_the_module_and_complete_on_mark_solved():
     cap = db.capstones(course)[0]
     assert cap["done"] == 1 and [m["done"] for m in cap["milestones"]] == [1, 0]
     transfer = db.add_block(lesson, "challenge", "Transfer", {**challenge.new(), "transfer": True, "max_hints": 0})
-    assert "used up" in challenge.hint_blocker(transfer["data"])
+    assert "no hint ladder" in challenge.hint_blocker(transfer["data"])
 
 
-def test_a_long_pretest_is_refused_and_a_short_one_shown():
+def test_a_long_pretest_is_refused_and_a_short_one_shown(hints):
     import asyncio
 
     from wise_scholar import tutor

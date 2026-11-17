@@ -163,7 +163,7 @@ async def pose_writing(
     lesson = db.lesson(lesson_id)
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
-    data = {**challenge.new(reveal_after=2), "writing": True, "fluency": fluency, "marks": [],
+    data = {**challenge.new(reveal_after=2, max_hints=challenge.MAX_HINTS), "writing": True, "fluency": fluency, "marks": [],
             "words": [min_words, max_words] if max_words else None, "structure": structure, "milestone": milestone}
     block = db.add_block(lesson_id, "challenge", prompt, data)
     _show(lesson, block)
@@ -383,10 +383,10 @@ async def pose_speaking(lesson_id: int, kind: Literal["read", "shadow", "answer"
     if not speech.available():
         return "error: speech is off on this install, so there are no speaking tasks; use pose_writing instead"
     if kind == "answer":
-        data = {**challenge.new(reveal_after=2), "writing": True, "spoken": True, "lang": lang, "fluency": False, "marks": []}
+        data = {**challenge.new(reveal_after=2, max_hints=challenge.MAX_HINTS), "writing": True, "spoken": True, "lang": lang, "fluency": False, "marks": []}
         block = db.add_block(lesson_id, "challenge", text, data)
     else:
-        data = {**challenge.new(reveal_after=2), "speaking": kind, "lang": lang, "scores": [], "marks": []}
+        data = {**challenge.new(reveal_after=2, max_hints=challenge.MAX_HINTS), "speaking": kind, "lang": lang, "scores": [], "marks": []}
         block = db.add_block(lesson_id, "speaking", text, data)
     _show(lesson, block)
     return f"shown as {block['kind']} {block['id']}; end the turn and wait for the learner"

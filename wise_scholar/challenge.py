@@ -1,9 +1,15 @@
+import os
+
 KINDS = ("challenge", "exercise", "speaking")
 REVEAL_AFTER = 3
 MAX_HINTS = 3
+# WISE_SCHOLAR_HINTS=1 gives challenges and exercises a hint ladder; without it the tutor guides with questions in the
+# chat. Writing and speaking tasks keep theirs: their rungs are the tutor's corrections.
+HINTS = os.environ.get("WISE_SCHOLAR_HINTS") == "1"
 
 
-def new(reveal_after: int = REVEAL_AFTER) -> dict:
+def new(reveal_after: int = REVEAL_AFTER, max_hints: int | None = None) -> dict:
+    """max_hints: the ladder's length; by default the server's, none unless hints are on."""
     return {
         "attempts": [],
         "hints": [],
@@ -11,7 +17,7 @@ def new(reveal_after: int = REVEAL_AFTER) -> dict:
         "solved": False,
         "solution": None,
         "reveal_after": reveal_after,
-        "max_hints": MAX_HINTS,
+        "max_hints": (MAX_HINTS if HINTS else 0) if max_hints is None else max_hints,
     }
 
 
@@ -36,6 +42,8 @@ def reveal_blocker(data: dict, locked: bool = True) -> str | None:
 def hint_blocker(data: dict) -> str | None:
     if not is_open(data):
         return "this challenge is already closed"
+    if not data["max_hints"]:
+        return "this task has no hint ladder. Ask a guiding question in chat, or wait for another attempt or a give-up"
     if len(data["hints"]) >= data["max_hints"]:
         return "the hint ladder is used up. Ask a guiding question in chat, or wait for another attempt or a give-up"
     return None
