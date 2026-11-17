@@ -25,3 +25,11 @@ def search_model(monkeypatch):
     from wise_scholar import search
 
     monkeypatch.setattr(search, "_model", Words())
+
+
+@pytest.fixture
+def hints(monkeypatch):
+    """The hint ladder on, as WISE_SCHOLAR_HINTS=1 sets it; off is the default."""
+    from wise_scholar import challenge
+
+    monkeypatch.setattr(challenge, "HINTS", True)

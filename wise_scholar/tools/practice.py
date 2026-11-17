@@ -348,7 +348,7 @@ async def pose_teachback(lesson_id: int, prompt: str, key_points: str) -> str:
     if not lesson:
         return f"error: no lesson with id {lesson_id}"
     card_id = db.add_card(lesson["course_id"], lesson["concept_id"], prompt, "open", [], key_points, "", scheduled=False)
-    data = {**challenge.new(reveal_after=2), "writing": True, "spoken": True, "teachback": True, "card_id": card_id, "fluency": False, "marks": []}
+    data = {**challenge.new(reveal_after=2, max_hints=challenge.MAX_HINTS), "writing": True, "spoken": True, "teachback": True, "card_id": card_id, "fluency": False, "marks": []}
     block = db.add_block(lesson_id, "challenge", prompt, data)
     _show(lesson, block)
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"

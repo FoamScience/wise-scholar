@@ -876,6 +876,10 @@
           "label": "Audio casts",
           "help": "With speech installed, the tutor may turn a two-voice dialogue into a 5 to 8 minute audio cast. Needs ffmpeg."
         },
+        "WISE_SCHOLAR_HINTS": {
+          "label": "Hint ladder",
+          "help": "Tasks get a hint button and the tutor adds hints to them. Off, the tutor guides with questions in the chat."
+        },
         "WISE_SCHOLAR_RECAP_PREVIEW": {
           "label": "Recap preview",
           "help": "For development: any course opens its recap so far at #/course/<id>/recap, without the narrative. Learners never see it."

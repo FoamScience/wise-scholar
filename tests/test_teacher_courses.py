@@ -8,7 +8,7 @@ from wise_scholar import db, figures, search  # noqa: E402
 TEACHES = figures.Teaches(claim="Parts have a place.", notice="Where each part sits.")
 
 
-def test_a_teacher_profile_prepares_courses_with_the_designer_prompts_and_no_learner_gates(monkeypatch):  # noqa: C901
+def test_a_teacher_profile_prepares_courses_with_the_designer_prompts_and_no_learner_gates(monkeypatch, hints):  # noqa: C901
     import asyncio
 
     import pytest
@@ -60,7 +60,7 @@ def test_a_teacher_profile_prepares_courses_with_the_designer_prompts_and_no_lea
     assert retake["phase"] == "placement"
 
 
-def test_handouts_give_the_teacher_the_solutions_and_the_students_the_tasks(monkeypatch):
+def test_handouts_give_the_teacher_the_solutions_and_the_students_the_tasks(monkeypatch, hints):
     import asyncio
 
     from wise_scholar import handout

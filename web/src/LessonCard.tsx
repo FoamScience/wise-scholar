@@ -293,6 +293,7 @@ function SpokenAttempt({ n, attempt, lang }: { n: number; attempt: SpeakingData[
 function HintButton(props: { data: ChallengeData; disabled: boolean; onAct: Act }) {
   const { t } = useTranslation()
   const { hints, max_hints } = props.data
+  if (!max_hints) return null
   const label = hints.length ? t('challenge.nextHint') : t('challenge.hint')
   return (
     <Button

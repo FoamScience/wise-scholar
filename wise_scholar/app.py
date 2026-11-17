@@ -359,6 +359,11 @@ def _tool_lines() -> list[str]:
             "[tools] Crafted figures: add_crafted_figure draws a thing as itself in volume and shade, built or living, scripted "
             "against a kit (read craft_help first); replace_crafted_figure redraws an earlier figure that way in its place."
         )
+    if not challenge.HINTS:
+        tools.append(
+            "[tools] Challenges and exercises have no hint ladder on this server: guide with a question in the chat instead. "
+            "give_hint is only for the correction prompts of writing and speaking tasks."
+        )
     if not sandbox.commands():
         tools += [
             "[tools] This server runs no code: there is no run_command, write_file, read_file or pose_exercise, and no "

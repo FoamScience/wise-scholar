@@ -32,7 +32,7 @@ def test_a_photo_is_turned_upright_cut_down_and_kept_as_jpeg():
         handwork.shrink(b"%PDF-1.7 not a photo")
 
 
-def test_photos_go_with_the_next_attempt_and_the_tutor_sees_them(monkeypatch, tmp_path):
+def test_photos_go_with_the_next_attempt_and_the_tutor_sees_them(monkeypatch, tmp_path, hints):
     monkeypatch.setattr(handwork, "HANDWORK", tmp_path)
     turns = []
     monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
