@@ -83,6 +83,7 @@
       "sure": "Certitude annoncée",
       "right": "Taux de réussite",
       "chartAlt": "Pour chaque semaine du cours : votre certitude annoncée et votre taux de réussite",
+      "chartAltDaily": "Pour chaque jour du cours : votre certitude annoncée et votre taux de réussite",
       "brier": "Score de Brier {{start}} sur vos premières réponses, {{end}} sur les dernières. 0 est parfait ; 0,25 est le score de qui dit toujours 50 %.",
       "weakTitle": "À consolider",
       "revisit": "Les reprendre au tableau",
