@@ -299,6 +299,7 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
   const unitLink = (conceptId: number | null) => (conceptId ? `#/course/${courseId}?concept=${conceptId}` : `#/course/${courseId}`)
   const weak = story.claims.filter(isWeak)
   const open = story.mistakes.filter((m) => !m.put_right)
+  const sure = story.answers.length >= CHART_FROM ? sureGroups(story.answers) : null
 
   function saveLayout(positions: Record<number, [number, number]>) {
     if (!story!.preview) api(`/api/courses/${courseId}/recap/positions`, { positions }).catch(() => {})
@@ -338,7 +339,7 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
       </div>
 
       <section ref={end} className="grid grid-cols-2 gap-10 border-t pt-10 max-[60rem]:grid-cols-1 [&>div]:flex [&>div]:min-w-0 [&>div]:flex-col [&>div]:gap-3">
-        {story.answers.length >= CHART_FROM && <SureChart answers={story.answers} weeks={story.weeks} />}
+        {sure && <SureChart answers={story.answers} {...sure} />}
         <WeakSection story={story} weak={weak} open={open} unitLink={unitLink} />
         {story.narrative?.letter && (
           <div className="rounded-lg bg-accent p-6">
@@ -577,27 +578,43 @@ function Timeline(props: { story: Story; cursor: number; claims: Map<number, Cla
   )
 }
 
-/** How sure the learner was against how often they were right, week by week. */
-function SureChart({ answers, weeks: starts }: { answers: Story['answers']; weeks: string[] }) {
+/** A course's answers grouped by day when it took under two weeks, by week otherwise; null when they all fall on one day. */
+function sureGroups(answers: Story['answers']): { daily: boolean; groups: Map<string, Story['answers']> } | null {
+  const days = answers.map((a) => a.created.slice(0, 10))
+  if (days[0] === days.at(-1)) return null
+  const daily = Date.parse(days.at(-1)!) - Date.parse(days[0]) < 14 * 86_400_000
+  const groups = new Map<string, Story['answers']>()
+  answers.forEach((a, n) => {
+    const key = daily ? days[n] : monday(days[n])
+    groups.set(key, [...(groups.get(key) ?? []), a])
+  })
+  return { daily, groups }
+}
+
+/** How sure the learner was against how often they were right, day by day or week by week. */
+function SureChart({ answers, daily, groups }: { answers: Story['answers']; daily: boolean; groups: Map<string, Story['answers']> }) {
   const { t } = useTranslation()
   const quarter = Math.max(5, Math.floor(answers.length / 4))
-  const weeks = starts.map((w) => {
-    const sums = answers.filter((a) => a.created >= w && a.created < nextWeek(w))
-    return sums.length ? { week: new Date(w), sure: (100 * sums.reduce((s, a) => s + a.confidence, 0)) / sums.length, right: (100 * sums.filter((a) => a.correct).length) / sums.length } : null
-  }).filter((w) => w !== null)
+  const points = [...groups].flatMap(([key, sums]) => {
+    const when = new Date(key)
+    return [
+      { when, value: (100 * sums.reduce((s, a) => s + a.confidence, 0)) / sums.length, series: t('recap.sure') },
+      { when, value: (100 * sums.filter((a) => a.correct).length) / sums.length, series: t('recap.right') },
+    ]
+  })
   const chart = {
     height: 260,
     y: { label: '%', domain: [0, 100] as [number, number] },
     x: { label: '' },
     marks: [
-      { type: 'line' as const, data: weeks.flatMap((w) => [{ week: w.week, value: w.sure, series: t('recap.sure') }, { week: w.week, value: w.right, series: t('recap.right') }]), x: 'week', y: 'value', stroke: 'series', strokeWidth: 2 },
-      { type: 'dot' as const, data: weeks.flatMap((w) => [{ week: w.week, value: w.sure, series: t('recap.sure') }, { week: w.week, value: w.right, series: t('recap.right') }]), x: 'week', y: 'value', fill: 'series' },
+      { type: 'line' as const, data: points, x: 'when', y: 'value', stroke: 'series', strokeWidth: 2 },
+      { type: 'dot' as const, data: points, x: 'when', y: 'value', fill: 'series' },
     ],
   }
   return (
     <div className="col-span-full">
       <h2 className={H2}>{t('recap.sureTitle')}</h2>
-      <PlotBox spec={chart} alt={t('recap.chartAlt')} />
+      <PlotBox spec={chart} alt={t(daily ? 'recap.chartAltDaily' : 'recap.chartAlt')} />
       <p className={cn(SMALL, 'm-0')}>
         {t('recap.brier', { start: brier(answers.slice(0, quarter)).toFixed(2), end: brier(answers.slice(-quarter)).toFixed(2) })}
       </p>
@@ -895,9 +912,9 @@ function Prompt({ text, children }: { text: string; children: ReactNode }) {
   )
 }
 
-function nextWeek(w: string): string {
-  const d = new Date(`${w}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + 7)
+function monday(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
   return d.toISOString().slice(0, 10)
 }
 
