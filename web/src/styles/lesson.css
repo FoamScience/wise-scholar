@@ -143,6 +143,17 @@ svg .label {
   width: 100%;
 }
 
+/* The tutor draws in the light theme's hex palette (tools/visuals.py); these give each colour its token, so a figure
+   turns with the theme. Line grey reads on both grounds and stays. */
+.figure-box [fill='#0b5f5a' i] { fill: var(--teal); }
+.figure-box [stroke='#0b5f5a' i] { stroke: var(--teal); }
+.figure-box [fill='#e1f0ee' i] { fill: var(--teal-tint); }
+.figure-box [stroke='#e1f0ee' i] { stroke: var(--teal-tint); }
+.figure-box [fill='#6b3a00' i] { fill: var(--amber); }
+.figure-box [stroke='#6b3a00' i] { stroke: var(--amber); }
+.figure-box [fill='#fbebd3' i] { fill: var(--amber-tint); }
+.figure-box [stroke='#fbebd3' i] { stroke: var(--amber-tint); }
+
 /* The pen of a figure played as a board (board.ts), on the stroke it is drawing */
 .board-pen {
   fill: var(--color-spark);

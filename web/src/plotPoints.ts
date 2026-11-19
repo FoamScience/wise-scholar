@@ -43,3 +43,85 @@ export function substituted(expr: string, x: number): string {
   const value = tidy(x)
   return expr.replace(/\bx\b/g, value < 0 ? `(${value})` : String(value))
 }
+
+/** Whether a drawn curve runs through the box x0..x1, y0..y1, in the units of its rows. */
+export function crosses(rows: Row[], [x0, x1]: [number, number], [y0, y1]: [number, number]): boolean {
+  for (let i = 1; i < rows.length; i++) {
+    const [a, b] = [rows[i - 1], rows[i]]
+    if (a.series !== b.series || ![a.x, a.y, b.x, b.y].every((v) => typeof v === 'number')) continue
+    const [ax, ay, bx, by] = [a.x, a.y, b.x, b.y] as number[]
+    const lo = Math.max(Math.min(ax, bx), x0)
+    const hi = Math.min(Math.max(ax, bx), x1)
+    if (lo > hi) continue
+    const at = (x: number) => ay + ((by - ay) * (x - ax)) / (bx - ax)
+    const [ya, yb] = ax === bx ? [ay, by] : [at(lo), at(hi)]
+    if (Math.max(ya, yb) >= y0 && Math.min(ya, yb) <= y1) return true
+  }
+  return false
+}
+
+export type Place = { textAnchor: 'start' | 'middle' | 'end'; dx: number; lineAnchor?: 'bottom'; dy?: number }
+
+// how close a note is to a rule to count as on it, as a fraction of the axis span; the gap kept from the rule, in px
+const ON_RULE = 0.02
+const GAP = 6
+
+/** The span an axis shows: its stated domain, else from the smallest to the largest number the marks put on it, with
+ * the zero a bar or area is drawn up from. */
+export function span(spec: PlotSpec, axis: 'x' | 'y'): [number, number] | null {
+  const domain = spec[axis]?.domain
+  if (domain) return domain
+  let lo = Infinity
+  let hi = -Infinity
+  for (const m of spec.marks) {
+    const values: unknown[] = axis === 'y' && (m.type === 'bar' || m.type === 'area') ? [0] : []
+    for (const at of [m[axis], m[`${axis}1`], m[`${axis}2`]]) {
+      if (typeof at === 'number') values.push(at)
+      else if (typeof at === 'string') values.push(...(m.data ?? []).map((r) => r[at]))
+    }
+    for (const v of values) if (typeof v === 'number') [lo, hi] = [Math.min(lo, v), Math.max(hi, v)]
+  }
+  return hi > lo ? [lo, hi] : null
+}
+
+const SCALED: Record<string, (n: number) => number> = { log: Math.log, sqrt: (n) => Math.sign(n) * Math.sqrt(Math.abs(n)) }
+
+/** Where a value falls along an axis, through the axis's scale: 0 at the span's start, 1 at its end. */
+function fraction(spec: PlotSpec, axis: 'x' | 'y'): ((v: number) => number) | null {
+  const s = span(spec, axis)
+  if (!s) return null
+  const scaled = SCALED[spec[axis]?.type ?? ''] ?? ((n: number) => n)
+  const [a, b] = s.map(scaled)
+  return (v) => (scaled(v) - a) / (b - a)
+}
+
+export type Spot = { left: boolean; below: boolean }
+
+/** Where a horizontal rule's label goes: above it at the frame's right end, unless a curve runs there; then below it,
+ * then at the left end. width, height: the label's, as fractions of the frame's. */
+export function spot(spec: PlotSpec, value: number, width: number, height: number): Spot {
+  const spots: Spot[] = [{ left: false, below: false }, { left: false, below: true }, { left: true, below: false }, { left: true, below: true }]
+  const fx = fraction(spec, 'x')
+  const fy = fraction(spec, 'y')
+  if (!fx || !fy) return spots[0]
+  const rows = pointable(spec).rows.map((r) => (typeof r.x === 'number' && typeof r.y === 'number' ? { ...r, x: fx(r.x), y: fy(r.y) } : r))
+  const at = fy(value)
+  const clear = ({ left, below }: Spot) => !crosses(rows, left ? [0, width] : [1 - width, 1], below ? [at - height, at] : [at, at + height])
+  return spots.find(clear) ?? spots[0]
+}
+
+/** Where a note at (x, y) is written: beside a vertical rule it would sit on rather than across it, above a horizontal
+ * one, and drawn inward at the frame's sides so it is not cut off. width: the note's, as a fraction of the frame's. */
+export function place(spec: PlotSpec, x: unknown, y: unknown, width = 0): Place {
+  const along = { x: fraction(spec, 'x'), y: fraction(spec, 'y') }
+  const onRule = (axis: 'x' | 'y', f: number) =>
+    spec.marks.some((m) => m.type === 'rule' && typeof m[axis] === 'number' && Math.abs(along[axis]!(m[axis] as number) - f) < ON_RULE)
+  const placed: Place = { textAnchor: 'middle', dx: 0 }
+  const fx = typeof x === 'number' && along.x ? along.x(x) : null
+  if (fx !== null && onRule('x', fx)) Object.assign(placed, fx + width > 1 && fx > 0.5 ? { textAnchor: 'end', dx: -GAP } : { textAnchor: 'start', dx: GAP })
+  else if (fx !== null && fx - width / 2 < 0) placed.textAnchor = 'start'
+  else if (fx !== null && fx + width / 2 > 1) placed.textAnchor = 'end'
+  const fy = typeof y === 'number' && along.y ? along.y(y) : null
+  if (fy !== null && onRule('y', fy)) Object.assign(placed, { lineAnchor: 'bottom', dy: -GAP / 2 })
+  return placed
+}

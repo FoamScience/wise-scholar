@@ -115,7 +115,7 @@ function Redraw(props: { disabled?: boolean; onRedraw: (notes: string) => void }
   const [notes, setNotes] = useState<string | null>(null)
   if (notes === null) {
     return (
-      <Button variant="ghost" size="sm" className="self-start text-muted-foreground" disabled={props.disabled} onClick={() => setNotes('')}>
+      <Button variant="ghost" size="sm" className="-ms-3 self-start text-muted-foreground" disabled={props.disabled} onClick={() => setNotes('')}>
         {t('block.redraw')}
       </Button>
     )
@@ -194,7 +194,7 @@ function AskPart(props: { picked: { id: string; label: string } | null; picking:
     )
   }
   return (
-    <Button variant="ghost" size="sm" className="self-start text-muted-foreground" disabled={props.disabled} onClick={() => props.onPick(true)}>
+    <Button variant="ghost" size="sm" className="-ms-3 self-start text-muted-foreground" disabled={props.disabled} onClick={() => props.onPick(true)}>
       {t('board.askPart')}
     </Button>
   )
@@ -271,7 +271,7 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
       <Credits credits={d.credits} />
       {props.onRedraw && <Redraw disabled={props.disabled} onRedraw={props.onRedraw} />}
       {d.previous && props.onRestore && (
-        <Button variant="ghost" size="sm" className="self-start text-muted-foreground" disabled={props.disabled} onClick={props.onRestore}>
+        <Button variant="ghost" size="sm" className="-ms-3 self-start text-muted-foreground" disabled={props.disabled} onClick={props.onRestore}>
           {d.restored ? t('block.backToRedrawn') : t('block.restoreDrawing')}
         </Button>
       )}
