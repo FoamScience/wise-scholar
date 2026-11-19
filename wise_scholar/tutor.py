@@ -57,6 +57,15 @@ def keyed(lesson: dict) -> bool:
     return prepared(lesson) or bool(lesson["batch"])
 
 
+def shown_twice_error(lesson_id: int, kind: str, question: str) -> str | None:
+    """Refuses a card whose question is already on screen unanswered, as a repeated tool call would show it."""
+    same = " ".join(question.split()).casefold()
+    for b in db.blocks(lesson_id):
+        if b["kind"] == kind and " ".join(b["markdown"].split()).casefold() == same and b["data"] and b["data"].get("answer", "") is None:
+            return f"error: not shown; the same question is already on screen as card {b['id']}, not answered yet"
+    return None
+
+
 def pretest_blocker(lesson: dict) -> str | None:
     """A concept lesson explains nothing until the learner has tried its opening card (a pretest challenge or quiz,
     or an exercise); placed-out concepts and prepared courses are exempt."""

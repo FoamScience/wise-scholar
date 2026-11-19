@@ -1,7 +1,7 @@
 from typing import Literal
 
 from .. import db
-from ..tutor import _show, mcp, prepared, pretest_blocker
+from ..tutor import _show, mcp, prepared, pretest_blocker, shown_twice_error
 
 
 @mcp.tool()
@@ -38,6 +38,8 @@ async def ask(lesson_id: int, question: str, options: list[str], multiple: bool 
         return f"error: no lesson with id {lesson_id}"
     if not 2 <= len(options) <= 5:
         return "error: a question card takes 2 to 5 options"
+    if problem := shown_twice_error(lesson_id, "question", question):
+        return problem
     data = {"options": options, "answer": None, "multiple": multiple or non_goals}
     if non_goals:
         data["non_goals"] = []
