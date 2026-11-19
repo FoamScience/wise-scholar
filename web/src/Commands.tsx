@@ -6,7 +6,7 @@ import { moment, number } from './i18n'
 
 const MAIN = 'mx-auto flex w-full max-w-160 flex-col gap-10 px-6 pt-10 pb-16'
 const LABEL = 'text-sm leading-snug font-medium text-ink-2'
-const PRE = 'my-2 overflow-x-auto rounded-md bg-code px-4 py-3 font-mono text-[0.93em] text-code-foreground'
+const PRE = 'code-edge my-2 overflow-x-auto rounded-md bg-code px-4 py-3 font-mono text-[0.93em] text-code-foreground'
 
 type Entry = {
   id: number

@@ -25,7 +25,8 @@
 }
 
 /* A lighter edge shows on the side where code runs past the box; the local layers cover it once scrolled to that end. */
-.prose-ws pre {
+.prose-ws pre,
+.code-edge {
   --edge: color-mix(in oklab, var(--code-ink) 38%, var(--code-bg));
   background-image:
     linear-gradient(to right, var(--code-bg) 40%, transparent), linear-gradient(to left, var(--code-bg) 40%, transparent),

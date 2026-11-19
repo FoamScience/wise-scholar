@@ -16,6 +16,7 @@ const ERROR = 'rounded-md bg-warm-tint px-4 py-3 text-warm-ink'
 const FIELD = 'min-w-0 flex-[1_1_16rem]'
 const CHIP = 'h-auto rounded-sm bg-accent px-2 py-0.5 text-sm text-accent-foreground'
 const WARN = 'h-auto rounded-sm bg-warm-tint px-2 py-0.5 text-sm text-warm'
+const WRAP = 'min-w-0 max-w-full shrink justify-start text-start whitespace-normal wrap-anywhere'
 
 type Setting = {
   name: string
@@ -173,7 +174,7 @@ export function SettingsPage() {
         <div className={ROW}>
           {s.editable ? control(s) : <code dir="ltr" className="font-mono text-[0.93em] wrap-anywhere">{display(s, s.value)}</code>}
           <Badge className={s.source === 'shell' ? WARN : CHIP}>{t(`settings.source.${s.source}`)}</Badge>
-          {s.pending && <Badge className={WARN}>{t('settings.afterRestart', { value: display(s, s.saved) })}</Badge>}
+          {s.pending && <Badge className={`${WARN} ${WRAP}`}>{t('settings.afterRestart', { value: display(s, s.saved) })}</Badge>}
         </div>
       </section>
     )

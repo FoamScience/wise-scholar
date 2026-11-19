@@ -11,7 +11,7 @@ import { api } from './api'
 import { useArrivals } from './arrive'
 import { sortItems } from './course'
 import type { SortItem } from './course'
-import { percent } from './i18n'
+import { number, percent } from './i18n'
 import { gradeOffline, placements } from './offline'
 import type { Given } from './offline'
 
@@ -156,13 +156,13 @@ function ChoiceOptions(props: { name: string; options: string[]; answer: string;
 function Confidence(props: { id: string; value: number | null; onChange: (value: number) => void; ready: boolean }) {
   const { t } = useTranslation()
   return (
-    <div className="flex items-center gap-3 max-[760px]:flex-wrap">
-      <label id={`${props.id}-confidence-label`} className="font-medium max-[760px]:basis-full">{t('quiz.howSure')}</label>
-      <span className={SMALL}>{t('quiz.guessing')}</span>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <label id={`${props.id}-confidence-label`} className="basis-full font-medium">{t('quiz.howSure')}</label>
+      <span className={cn(SMALL, 'shrink-0')}>{t('quiz.guessing')}</span>
       <Slider
         id={`${props.id}-confidence`}
         aria-labelledby={`${props.id}-confidence-label`}
-        className="min-h-11 w-auto grow"
+        className="flex min-h-11 w-auto min-w-32 flex-1 items-center"
         min={0}
         max={100}
         step={5}
@@ -170,11 +170,13 @@ function Confidence(props: { id: string; value: number | null; onChange: (value:
         disabled={props.value === null}
         onValueChange={(v) => props.onChange(Array.isArray(v) ? v[0] : v)}
       />
-      <span className={SMALL}>{t('quiz.certain')}</span>
-      <output className="w-11 tabular-nums">{percent((props.value ?? 0) / 100)}</output>
-      <Button type="submit" disabled={!props.ready}>
-        {t('common.submit')}
-      </Button>
+      <span className={cn(SMALL, 'shrink-0')}>{t('quiz.certain')}</span>
+      <div className="ms-auto flex items-center gap-3">
+        <output className="w-11 tabular-nums">{percent((props.value ?? 0) / 100)}</output>
+        <Button type="submit" disabled={!props.ready}>
+          {t('common.submit')}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -692,7 +694,7 @@ export function ReviewPanels({ profile }: { profile: number }) {
               <i className="me-2 inline-block size-3 bg-primary align-[-1px]" /> {t('review.howOften')}
             </span>
           </div>
-          <div className={SMALL}>{t('review.brier', { brier: calibration.brier!.toFixed(2), n: calibration.n })}</div>
+          <div className={SMALL}>{t('review.brier', { brier: number(calibration.brier!, 2), n: calibration.n })}</div>
         </section>
       )}
     </div>

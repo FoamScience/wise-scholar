@@ -48,8 +48,8 @@ export const percent = (p: number) => new Intl.NumberFormat(i18n.language, { sty
 export const day = (stamp: string) =>
   new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC', numberingSystem: 'latn' }).format(new Date(stamp.slice(0, 10)))
 
-export function number(n: number): string {
-  return new Intl.NumberFormat(i18n.language, { numberingSystem: 'latn', maximumFractionDigits: 1 }).format(n)
+export function number(n: number, digits?: number): string {
+  return new Intl.NumberFormat(i18n.language, { numberingSystem: 'latn', minimumFractionDigits: digits, maximumFractionDigits: digits ?? 1 }).format(n)
 }
 
 export function moment(stamp: string): string {
