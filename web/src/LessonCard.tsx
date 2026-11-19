@@ -150,12 +150,19 @@ function ChallengeCard(props: { block: Block; disabled: boolean; speech: boolean
 
       <Ladder data={d} blockId={props.block.id} onError={props.onError} />
 
-      {open && (
+      {open && (d.pretest ? (
+        d.attempts.length === 0 && (
+          <>
+            <AttemptForm block={props.block} disabled={props.disabled} speech={props.speech} onAct={props.onAct} onError={props.onError} />
+            <OneTryRow disabled={props.disabled} onAct={props.onAct} />
+          </>
+        )
+      ) : (
         <>
           <AttemptForm block={props.block} disabled={props.disabled} speech={props.speech} onAct={props.onAct} onError={props.onError} />
           <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />
         </>
-      )}
+      ))}
     </section>
   )
 }
@@ -327,6 +334,18 @@ function LockedRow(props: { data: ChallengeData; disabled: boolean; onAct: Act }
       </span>
       <Button variant="ghost" className="text-ink-2" disabled={props.disabled} onClick={() => props.onAct('give-up')}>
         {attemptsLeft > 0 ? t('challenge.giveUp') : t('challenge.showSolution')}
+      </Button>
+    </div>
+  )
+}
+
+function OneTryRow(props: { disabled: boolean; onAct: Act }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-center gap-3 rounded-md bg-muted px-4 py-3 text-ink-2">
+      <span className="grow">{t('challenge.oneTry')}</span>
+      <Button variant="ghost" className="text-ink-2" disabled={props.disabled} onClick={() => props.onAct('give-up')}>
+        {t('challenge.showAnswer')}
       </Button>
     </div>
   )

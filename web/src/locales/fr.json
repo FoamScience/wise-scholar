@@ -379,7 +379,9 @@
       "correctionLocked_other": "Texte corrigé verrouillé. Il s'ouvre après {{count}} essais de plus, ou si vous abandonnez.",
       "unlocked": "Vous pouvez maintenant demander la solution au tuteur, ou continuer d'essayer.",
       "giveUp": "Abandonner",
-      "showSolution": "Voir la solution"
+      "showSolution": "Voir la solution",
+      "oneTry": "Pas besoin de trouver : un essai, puis la réponse.",
+      "showAnswer": "Montrez-moi"
     },
     "speaking": {
       "shadow": "Écoutez, puis dites-le de la même façon",
@@ -1138,6 +1140,7 @@
     "non-goals are options of a goal question": "les objectifs écartés sont des options d'une question sur les objectifs",
     "this suggestion is no longer on offer": "cette suggestion n’est plus proposée",
     "already answered": "déjà répondu",
+    "the opening takes one try": "l'ouverture ne prend qu'un essai",
     "try the unit's opening first": "essayez d'abord l'ouverture de l'unité",
     "a prepared course has no pace": "un cours préparé n'a pas de rythme",
     "testing out is for a unit of a course in speed mode": "le test de sortie concerne une unité d'un cours en mode rapide",
