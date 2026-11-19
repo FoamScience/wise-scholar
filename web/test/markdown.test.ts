@@ -174,3 +174,8 @@ test('a picked option renders as the tutor wrote it; a typed answer stays verbat
   assert.equal(answer('costs $5'), '<span dir="auto">costs $5</span>')
   assert.ok(answer('so $x^2$ grows').includes('class="katex"'))
 })
+
+test('an emphasised quote keeps the space after it, math inside or not', () => {
+  assert.ok(render('*"Grows like $r^2$"* forgets').endsWith('&quot;</em> forgets</p>'))
+  assert.ok(render('*"Grows like r"* forgets').endsWith('&quot;</em> forgets</p>'))
+})

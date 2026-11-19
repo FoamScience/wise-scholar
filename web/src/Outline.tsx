@@ -34,7 +34,7 @@ export function OutlineCard({ data, onTestOut }: { data: OutlineData; onTestOut?
   return (
     <section className="block border-t pt-6">
       <div className="mb-2 text-sm leading-snug font-medium text-ink-2">
-        {t('outline.label')}: {data.at >= data.steps.length ? t('outline.allDone') : t('outline.step', { n: data.at + 1, total: data.steps.length })}
+        {t('outline.status', { progress: data.at >= data.steps.length ? t('outline.allDone') : t('outline.step', { n: data.at + 1, total: data.steps.length }) })}
       </div>
       <ol className="m-0 list-decimal ps-6">
         {data.steps.map((step, i) => (

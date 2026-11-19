@@ -165,7 +165,7 @@
       "card": "Carte {{n}} sur environ {{total}}",
       "testStep": "Sauter cette étape par un test",
       "testUnit": "Sauter l'unité par un test",
-      "label": "Cette unité",
+      "status": "Cette unité : {{progress}}",
       "step": "Étape {{n}} sur {{total}}",
       "allDone": "Toutes les étapes faites",
       "added": "Ajoutée : {{step}}. {{reason}}"
@@ -728,7 +728,8 @@
       "teacher": "Version enseignant",
       "student": "Version élèves",
       "markdown": "Markdown",
-      "back": "Retour au plan"
+      "back": "Retour au plan",
+      "unavailable": "Les documents viennent d'une unité d'un cours préparé."
     },
     "edit": {
       "edit": "Modifier",
