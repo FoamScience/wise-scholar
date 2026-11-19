@@ -60,8 +60,9 @@ function Table(props: ComponentProps<'table'>) {
   )
 }
 
+// Typography's own quote marks double the ones the tutor writes; right-to-left scripts have no italic to slant.
 const PROSE =
-  'prose prose-ws max-w-none text-[length:inherit] leading-[inherit] prose-headings:font-heading prose-headings:font-semibold prose-h2:mt-6 prose-h2:mb-2 prose-h2:text-lg prose-h3:text-base prose-p:my-4 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-pre:rounded-md prose-table:my-2 prose-table:w-full'
+  'prose prose-ws max-w-none text-[length:inherit] leading-[inherit] prose-headings:font-heading prose-headings:font-semibold prose-h2:mt-6 prose-h2:mb-2 prose-h2:text-lg prose-h3:text-base prose-p:my-4 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-pre:rounded-md prose-table:my-2 prose-table:w-full [&_blockquote]:[quotes:none] [&_:where(blockquote,em,i):dir(rtl)]:not-italic'
 
 export default function Markdown({ children }: { children: string }) {
   return (

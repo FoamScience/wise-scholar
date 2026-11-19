@@ -159,7 +159,7 @@
       "card": "Card {{n}} of about {{total}}",
       "testStep": "Test out of this step",
       "testUnit": "Test out of the unit",
-      "label": "This unit",
+      "status": "This unit: {{progress}}",
       "step": "Step {{n}} of {{total}}",
       "allDone": "Every step done",
       "added": "Added: {{step}}. {{reason}}"
@@ -708,7 +708,8 @@
       "teacher": "Teacher's copy",
       "student": "Students' copy",
       "markdown": "Markdown",
-      "back": "Back to the plan"
+      "back": "Back to the plan",
+      "unavailable": "Hand-outs come from a unit of a prepared course."
     },
     "edit": {
       "edit": "Edit",

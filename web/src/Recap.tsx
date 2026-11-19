@@ -278,7 +278,7 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
     return () => removeEventListener('beforeprint', open)
   }, [])
 
-  const { cursor, playing, setPlaying, timeline, end } = useStoryScroll(story)
+  const { cursor, scrolled, playing, setPlaying, timeline, end } = useStoryScroll(story)
 
   const derived = useMemo(() => {
     if (!story) return null
@@ -291,7 +291,7 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
     () => new Set(story?.claims.filter((c) => derived!.claimAt.get(c.id)! <= cursor).map((c) => c.id) ?? []),
     [story, derived, cursor],
   )
-  const fresh = useMemo(() => new Set(story?.claims.filter((c) => derived!.claimAt.get(c.id) === cursor).map((c) => c.id) ?? []), [story, derived, cursor])
+  const fresh = useMemo(() => new Set(scrolled ? story?.claims.filter((c) => derived!.claimAt.get(c.id) === cursor).map((c) => c.id) : []), [story, derived, cursor, scrolled])
 
   if (error) return <main className="mx-auto flex w-full max-w-(--measure) flex-col gap-10 px-6 pt-10 pb-16"><div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div></main>
   if (!story || !derived) return <main className={PAGE} />
@@ -357,21 +357,21 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
 /** Where the story stands, the step crossing the middle of the screen, and its playback: play scrolls the story to
 its end in PLAY_MS, any scroll, tap or key of the learner's stops it, and Space toggles it. */
 function useStoryScroll(story: Story | null) {
-  const [cursor, setCursor] = useState(-1)
+  const [seen, setSeen] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
   const timeline = useRef<HTMLDivElement>(null)
   const end = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (!story || !timeline.current) return
-    const seen = new IntersectionObserver(
+    const watcher = new IntersectionObserver(
       (entries) => {
-        for (const e of entries) if (e.isIntersecting) setCursor(Number((e.target as HTMLElement).dataset.step))
+        for (const e of entries) if (e.isIntersecting) setSeen(Number((e.target as HTMLElement).dataset.step))
       },
       { rootMargin: '-45% 0px -55% 0px' },
     )
-    timeline.current.querySelectorAll('[data-step]').forEach((el) => seen.observe(el))
-    return () => seen.disconnect()
+    timeline.current.querySelectorAll('[data-step]').forEach((el) => watcher.observe(el))
+    return () => watcher.disconnect()
   }, [story])
 
   useEffect(() => {
@@ -419,7 +419,9 @@ function useStoryScroll(story: Story | null) {
     return () => removeEventListener('keydown', space)
   }, [])
 
-  return { cursor, playing, setPlaying, timeline, end }
+  // until the learner reaches a step the panel shows the whole story, as the header does
+  const cursor = seen ?? (story ? story.steps.length - 1 : -1)
+  return { cursor, scrolled: seen !== null, playing, setPlaying, timeline, end }
 }
 
 function RecapHero({ story, courseId }: { story: Story; courseId: number }) {
@@ -595,25 +597,38 @@ function sureGroups(answers: Story['answers']): { daily: boolean; groups: Map<st
 function SureChart({ answers, daily, groups }: { answers: Story['answers']; daily: boolean; groups: Map<string, Story['answers']> }) {
   const { t } = useTranslation()
   const quarter = Math.max(5, Math.floor(answers.length / 4))
-  const points = [...groups].flatMap(([key, sums]) => {
-    const when = new Date(key)
-    return [
-      { when, value: (100 * sums.reduce((s, a) => s + a.confidence, 0)) / sums.length, series: t('recap.sure') },
-      { when, value: (100 * sums.filter((a) => a.correct).length) / sums.length, series: t('recap.right') },
-    ]
-  })
+  const rows = [...groups].map(([key, sums]) => ({
+    when: new Date(key),
+    sure: (100 * sums.reduce((s, a) => s + a.confidence, 0)) / sums.length,
+    right: (100 * sums.filter((a) => a.correct).length) / sums.length,
+  }))
+  // fixed colours and our own legend keep the order and colours of the home calibration panel
+  const lines = [
+    { key: 'sure' as const, color: 'var(--color-warm)', label: t('recap.sure') },
+    { key: 'right' as const, color: 'var(--color-primary)', label: t('recap.right') },
+  ]
   const chart = {
     height: 260,
     y: { label: '%', domain: [0, 100] as [number, number] },
     x: { label: '' },
-    marks: [
-      { type: 'line' as const, data: points, x: 'when', y: 'value', stroke: 'series', strokeWidth: 2 },
-      { type: 'dot' as const, data: points, x: 'when', y: 'value', fill: 'series' },
-    ],
+    marks: lines.flatMap(({ key, color, label }) => {
+      const data = rows.map((r) => ({ when: r.when, value: r[key] }))
+      return [
+        { type: 'line' as const, data, x: 'when', y: 'value', stroke: color, strokeWidth: 2, label },
+        { type: 'dot' as const, data, x: 'when', y: 'value', fill: color, label },
+      ]
+    }),
   }
   return (
     <div className="col-span-full">
       <h2 className={H2}>{t('recap.sureTitle')}</h2>
+      <div className="flex flex-wrap gap-4 text-sm">
+        {lines.map(({ key, color, label }) => (
+          <span key={key}>
+            <i className="me-2 inline-block size-3 align-[-1px]" style={{ background: color }} /> {label}
+          </span>
+        ))}
+      </div>
       <PlotBox spec={chart} alt={t(daily ? 'recap.chartAltDaily' : 'recap.chartAlt')} />
       <p className={cn(SMALL, 'm-0')}>
         {t('recap.brier', { start: number(brier(answers.slice(0, quarter)), 2), end: number(brier(answers.slice(-quarter)), 2) })}
@@ -812,7 +827,7 @@ function StepCard({ step, claims, mistakes, link }: { step: Step; claims: Map<nu
         {own.length > 0 && (
           <span className="flex flex-wrap gap-1">
             {own.slice(0, 3).map((c) => (
-              <span key={c.id} className={cn('max-w-full overflow-hidden rounded-sm border border-s-3 bg-card px-2 py-0.5 text-xs text-ellipsis whitespace-nowrap sm:max-w-96', CHIP_EDGE[c.state])} dir="auto">
+              <span key={c.id} className={cn('max-w-full rounded-sm border border-s-3 bg-card px-2 py-0.5 text-xs wrap-break-word', CHIP_EDGE[c.state])} dir="auto">
                 {c.text}
               </span>
             ))}

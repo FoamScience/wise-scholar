@@ -71,3 +71,13 @@ test('plurals, server messages and numbers follow the language', async () => {
   await i18n.changeLanguage('en')
   assert.equal(i18n.t('map.hints', { count: 1 }), '1 hint')
 })
+
+test('a label and its value share one string, so each language places its own colon', async () => {
+  const progress = 'Step 1'
+  await i18n.changeLanguage('fr')
+  assert.equal(i18n.t('outline.status', { progress }), 'Cette unité : Step 1')
+  await i18n.changeLanguage('ar')
+  assert.equal(i18n.t('outline.status', { progress }), 'هذه الوحدة: Step 1')
+  await i18n.changeLanguage('en')
+  assert.equal(i18n.t('outline.status', { progress }), 'This unit: Step 1')
+})
