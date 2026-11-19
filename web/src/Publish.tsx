@@ -6,6 +6,7 @@ import { day, fileSize } from './i18n'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from 'cn'
 
@@ -16,7 +17,7 @@ const chip = 'inline-block rounded-sm bg-[var(--teal-tint)] px-2 py-0.5 leading-
 const stack = 'flex flex-col gap-3'
 const row = 'flex flex-wrap items-center gap-2'
 const card = 'flex flex-col gap-3 border-t border-border pt-6 [&>:last-child]:mb-0'
-const select = 'h-11 w-full rounded-md border border-input bg-card px-4 hover:border-foreground'
+const select = 'h-auto min-h-11 w-full py-2 text-start whitespace-normal hover:border-foreground *:data-[slot=select-value]:line-clamp-none'
 
 type Licence = 'CC-BY-SA-4.0' | 'CC-BY-4.0' | 'CC-BY-NC-SA-4.0' | 'all-rights-reserved'
 type Version = { hash: string; number: number; notes: string; licence: Licence; forkable: number; published: string; written: number; units: number }
@@ -101,13 +102,18 @@ export function PublishPage({ courseId }: { courseId: number }) {
           <label className={label} htmlFor="publish-licence">
             {t('publish.licence')}
           </label>
-          <select id="publish-licence" className={select} value={licence} onChange={(e) => setLicence(e.target.value as Licence)}>
-            {preview.licences.map((l) => (
-              <option key={l} value={l}>
-                {t(`publish.licences.${l}`)}
-              </option>
-            ))}
-          </select>
+          <Select value={licence} items={Object.fromEntries(preview.licences.map((l) => [l, t(`publish.licences.${l}`)]))} onValueChange={(next) => setLicence(next as Licence)}>
+            <SelectTrigger id="publish-licence" className={select}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              {preview.licences.map((l) => (
+                <SelectItem key={l} value={l} className="*:first:shrink *:first:whitespace-normal">
+                  {t(`publish.licences.${l}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <label className={row}>
             <Checkbox checked={forkable} onCheckedChange={setForkable} />
             <span>{t('publish.forkable')}</span>
@@ -243,7 +249,7 @@ function Carried(props: { preview: Preview; sources: number[]; onSources: Dispat
         <div className={stack}>
           <div className={label}>{t('publish.setup')}</div>
           <div className={small}>{t('publish.setupHelp')}</div>
-          <pre dir="ltr">{props.preview.setup.join('\n')}</pre>
+          <pre dir="ltr" className="overflow-x-auto">{props.preview.setup.join('\n')}</pre>
         </div>
       )}
     </>

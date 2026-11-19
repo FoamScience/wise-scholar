@@ -196,8 +196,8 @@ function UnitRow(props: UnitProps & { concept: Concept; lesson: Lesson | undefin
 function UnitMarks({ concept: c, lesson }: { concept: Concept; lesson: Lesson | undefined }) {
   const { t } = useTranslation()
   return (
-    <span className="flex w-9 shrink-0 flex-col items-start gap-1 pt-1">
-      {/* the slot stays when empty, so every unit's squares sit on the same line */}
+    <span className="flex h-lh shrink-0 items-center gap-1">
+      {/* the slot stays when empty, so every unit's squares sit in the same place */}
       {unitDone(c, lesson) ? (
         <span className={cn(DONE_MARK, 'transition-[opacity,scale] duration-(--motion) ease-(--ease)')} role="img" aria-label={t('common.done')}>
           ✓

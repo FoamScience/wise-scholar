@@ -169,7 +169,7 @@ export default function App() {
     <DirectionProvider direction={i18n.dir(locale)}>
       <TooltipProvider>
         <div className="flex h-dvh flex-col print:block print:h-auto">
-          <header className="flex h-14 shrink-0 print:hidden items-center gap-2 border-b bg-card px-4 max-[30rem]:gap-1 max-[30rem]:px-2">
+          <header className="relative flex h-14 shrink-0 print:hidden items-center gap-2 border-b bg-card px-4 max-[30rem]:gap-1 max-[30rem]:px-2">
             <a className="me-2 flex h-11 shrink-0 items-center no-underline max-[30rem]:me-0" href="#/" title="wise-scholar">
               <Logo />
             </a>
@@ -198,14 +198,18 @@ export default function App() {
             {searchCourse !== null && (
               <form
                 role="search"
-                className="min-w-16 flex-[0_1_14rem]"
+                className="group relative min-w-16 flex-[0_1_14rem] max-[30rem]:focus-within:absolute max-[30rem]:focus-within:inset-x-2 max-[30rem]:focus-within:inset-y-0 max-[30rem]:focus-within:flex max-[30rem]:focus-within:items-center max-[30rem]:focus-within:z-10 max-[30rem]:focus-within:bg-card"
                 onSubmit={(e) => {
                   e.preventDefault()
                   const query = String(new FormData(e.currentTarget).get('q') ?? '')
                   if (query.trim()) location.hash = searchHref(searchCourse, query)
                 }}
               >
-                <Input type="search" name="q" dir="auto" className="h-10 w-full" aria-label={t('search.label')} placeholder={t('search.placeholder')} />
+                <svg className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:hidden min-[30rem]:hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" />
+                </svg>
+                <Input type="search" name="q" dir="auto" className="h-10 w-full max-[30rem]:not-focus:ps-9 max-[30rem]:not-focus:placeholder:text-transparent" aria-label={t('search.label')} placeholder={t('search.placeholder')} />
               </form>
             )}
             <span className="grow" />

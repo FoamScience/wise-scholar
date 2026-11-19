@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import i18n, { moment, number } from './i18n'
 
 const MAIN = 'mx-auto flex w-full max-w-160 flex-col gap-10 px-6 pt-10 pb-16'
-const CELL = 'border px-3 py-2 text-start'
+const CELL = 'min-w-40 border px-3 py-2 text-start'
 const NUM = 'border px-3 py-2 text-end whitespace-nowrap tabular-nums'
 
 type Sums = { turns: number; input: number; output: number; cache_read: number; cache_write: number; cost: number | null; last: string }

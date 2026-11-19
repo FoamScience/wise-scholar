@@ -616,7 +616,7 @@ function SureChart({ answers, daily, groups }: { answers: Story['answers']; dail
       <h2 className={H2}>{t('recap.sureTitle')}</h2>
       <PlotBox spec={chart} alt={t(daily ? 'recap.chartAltDaily' : 'recap.chartAlt')} />
       <p className={cn(SMALL, 'm-0')}>
-        {t('recap.brier', { start: brier(answers.slice(0, quarter)).toFixed(2), end: brier(answers.slice(-quarter)).toFixed(2) })}
+        {t('recap.brier', { start: number(brier(answers.slice(0, quarter)), 2), end: number(brier(answers.slice(-quarter)), 2) })}
       </p>
     </div>
   )

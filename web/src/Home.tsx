@@ -199,7 +199,7 @@ export function Home({ profile, teacher }: { profile: number; teacher: boolean }
         </div>
         <div className="text-sm text-muted-foreground">{t('home.topicHelp')}</div>
         <div className="flex flex-wrap items-center gap-x-4 border-t border-border pt-2">
-          <Button type="button" variant="ghost" className="-ms-3 text-ink-2" disabled={starting !== ''} title={t('home.importHelp')} onClick={() => bundlePicker.current?.click()}>
+          <Button type="button" variant="ghost" className="-ms-3 px-3 text-ink-2" disabled={starting !== ''} title={t('home.importHelp')} onClick={() => bundlePicker.current?.click()}>
             {t('home.import')}
           </Button>
           <input
@@ -214,7 +214,7 @@ export function Home({ profile, teacher }: { profile: number; teacher: boolean }
             }}
           />
           <details className="open:basis-full">
-            <summary className="-ms-3 flex h-11 w-fit cursor-pointer list-none items-center rounded-md px-3 font-medium text-ink-2 hover:bg-muted hover:text-foreground [&::-webkit-details-marker]:hidden">{t('home.materials')}</summary>
+            <summary className="-ms-3 flex h-11 w-fit cursor-pointer list-none items-center rounded-md border border-transparent px-3 font-medium text-ink-2 hover:bg-muted hover:text-foreground [&::-webkit-details-marker]:hidden">{t('home.materials')}</summary>
             <div className="flex flex-col gap-3">
               <div className="text-sm text-muted-foreground">{t('home.materialsHelp')}</div>
               <div className="flex flex-wrap items-center gap-2">

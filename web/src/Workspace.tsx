@@ -150,7 +150,7 @@ function OfflineRow(props: {
   const { lesson, given } = props
   if (!lesson.batch) {
     return (
-      <div className={cn(NEXT, 'items-center gap-x-4 gap-y-3')}>
+      <div className={cn(NEXT, 'items-center justify-between gap-x-4 gap-y-3')}>
         <span className={SMALL}>{t('offline.help')}</span>
         <Button variant="outline" disabled={!props.online} onClick={props.onPrepare}>
           {t('offline.prepare')}
@@ -161,7 +161,7 @@ function OfflineRow(props: {
   const batchCards = lesson.blocks.filter((b) => b.kind === 'quiz' && (b.data as QuizData).answer === null)
   const ready = batchCards.filter((b) => given[b.id] && ((b.data as QuizData).kind !== 'open' || given[b.id].self_correct !== undefined))
   return (
-    <div className={cn(NEXT, 'items-center gap-x-4 gap-y-3')}>
+    <div className={cn(NEXT, 'items-center justify-between gap-x-4 gap-y-3')}>
       <span className={SMALL}>{t('offline.answered', { n: ready.length, total: batchCards.length })}</span>
       {/* with nothing answered it leaves offline mode, the way out of a prepare that wrote no checks */}
       <Button variant={ready.length ? 'default' : 'outline'} disabled={!props.online || props.sending} onClick={() => props.onSend(ready)}>
@@ -724,7 +724,7 @@ function LessonCards(props: {
     const shown = n ? (
       <div key={b.id} className="relative [&>.block>.label]:pe-[4.5em]">
         <span className="absolute end-0 top-6 text-sm leading-snug text-muted-foreground tabular-nums" aria-label={t('outline.card', n)}>
-          {n.n} / {n.total}
+          <bdi dir="ltr">{n.n} / {n.total}</bdi>
         </span>
         {card}
       </div>
