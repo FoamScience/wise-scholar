@@ -207,3 +207,33 @@ def test_a_quick_check_asks_one_thing():
     one = "How does the head line change as $\\beta_2$ grows from 25° to 90°? Code `x?y` and math $a?b$ do not count."
     assert asyncio.run(quiz_tools.pose_quiz(lesson, one.replace("? Code", ", with code"), "open", "a", "")).startswith("shown as quiz")
     assert asyncio.run(quiz_tools.pose_quiz(lesson, "Which point is shared ؟ لماذا؟", "open", [], "a")).startswith("error: not shown")
+
+
+def test_a_question_already_on_screen_unanswered_is_not_shown_again():
+    import asyncio
+
+    from wise_scholar.tools import lesson_flow
+    from wise_scholar.tools import quizzes as quiz_tools
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Twice')").lastrowid
+    course = db.create_course("Hydraulics", who)["id"]
+    interview = db.create_lesson(course, "Interview", "interview")
+    assert asyncio.run(lesson_flow.ask(interview, "What do you know?", ["a", "b"])).startswith("shown")
+    assert asyncio.run(lesson_flow.ask(interview, "what do you  KNOW? ", ["a", "b"])).startswith("error: not shown")
+    assert len(db.blocks(interview)) == 1
+    asked = db.blocks(interview)[0]
+    db.set_block_data(asked["id"], {**asked["data"], "answer": "a"})
+    assert asyncio.run(lesson_flow.ask(interview, "What do you know?", ["a", "b"])).startswith("shown")
+
+    lesson = db.create_lesson(course, "Pascal", "lesson")
+    cards = db.row("SELECT COUNT(*) AS n FROM cards")["n"]
+    asyncio.run(quiz_tools.pose_quiz(lesson, "Unit of pressure?", "choice", "pascal", "", options=["pascal", "newton"]))
+    assert asyncio.run(quiz_tools.pose_quiz(lesson, "Unit of pressure?", "choice", "pascal", "other", options=["pascal", "newton"])).startswith("error: not shown")
+    assert db.row("SELECT COUNT(*) AS n FROM cards")["n"] == cards + 1 and len(db.blocks(lesson)) == 1
+    asyncio.run(quiz_tools.pose_sort(lesson, "Sort these.", ["mutable", "immutable"], sort_items(), "edit in place or not"))
+    assert asyncio.run(quiz_tools.pose_sort(lesson, "Sort these.", ["mutable", "immutable"], sort_items(), "edit in place or not")).startswith("error: not shown")
+    assert db.row("SELECT COUNT(*) AS n FROM cards")["n"] == cards + 2
+
+    sort = db.blocks(lesson)[-1]
+    db.set_block_data(sort["id"], {**sort["data"], "answer": "[]"})
+    assert asyncio.run(quiz_tools.pose_sort(lesson, "Sort these.", ["mutable", "immutable"], sort_items(), "edit in place or not")).startswith("shown")

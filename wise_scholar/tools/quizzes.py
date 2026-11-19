@@ -6,7 +6,7 @@ import simplemma
 from pydantic import BaseModel
 
 from .. import db, quiz
-from ..tutor import _pretest_length_error, _show, _shuffled, keyed, mcp, prepared
+from ..tutor import _pretest_length_error, _show, _shuffled, keyed, mcp, prepared, shown_twice_error
 
 
 class SortItem(BaseModel):
@@ -159,6 +159,8 @@ async def pose_quiz(
     number = placement_posed(lesson_id) + 1 if lesson["questions"] else None
     if problem := _quiz_error(lesson, question, kind, answer_key, options, misconceptions, number, lemma, pretest):
         return problem
+    if problem := shown_twice_error(lesson_id, "quiz", question):
+        return problem
     revisit = _revisit_item(lesson, item)
     if isinstance(revisit, str):
         return revisit
@@ -211,7 +213,7 @@ async def pose_sort(lesson_id: int, question: str, categories: list[str], items:
         return "error: the question and the explanation are required"
     categories = [c.strip() for c in categories]
     placed = [{"text": i.text.strip(), "category": i.category.strip()} for i in items]
-    if problem := _sort_error(categories, placed):
+    if problem := _sort_error(categories, placed) or shown_twice_error(lesson_id, "quiz", question):
         return problem
     options = _shuffled(placed)
     card_id = db.add_card(
