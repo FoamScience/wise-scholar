@@ -314,8 +314,8 @@ function CourseCard(props: {
   }
 
   return (
-    <div className="relative rounded-lg border border-border bg-card transition-colors duration-[var(--dur-micro)] focus-within:border-input hover:border-input group-open/archived:bg-transparent">
-      <a href={`#/course/${course.id}`} className="flex min-h-full flex-col gap-1 rounded-lg pb-4 text-foreground no-underline">
+    <div className="relative flex flex-col rounded-lg border border-border bg-card transition-colors duration-[var(--dur-micro)] focus-within:border-input hover:border-input group-open/archived:bg-transparent">
+      <a href={`#/course/${course.id}`} className="flex flex-1 flex-col gap-1 rounded-lg pb-4 text-foreground no-underline">
         {course.cover ? <img className={cover} src={`/api/courses/${course.id}/cover`} alt={course.cover_alt ?? ''} /> : <span className={cover} aria-hidden="true" />}
         <strong dir="auto" className="px-4 text-base leading-snug font-medium">
           {course.topic}
