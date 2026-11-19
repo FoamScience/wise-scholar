@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import type { CollectionReturnValue, Core, Position, StylesheetJson } from 'cytoscape'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
+import { plain } from './plain'
 import { useTheme } from './theme'
 import { STATE_COLOR, loadCytoscape, token } from './claims'
 import type { State } from './claims'
@@ -43,11 +44,6 @@ function show(c: Core, eles: CollectionReturnValue) {
   const fits = c.zoom() >= READABLE
   c.zoom(READABLE)
   c.center(fits ? near : hub)
-}
-
-/** A card's opening words without the Markdown marks, for a one-line mention. */
-function plain(markdown: string): string {
-  return markdown.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim()
 }
 
 /** The size of a card that holds the whole claim, wrapped the way cytoscape wraps a label: at spaces, within CARD_TEXT. */

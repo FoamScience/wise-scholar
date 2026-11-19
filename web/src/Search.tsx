@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { SEARCH_KINDS, type SearchKind, searchHref } from './course'
 import Markdown from './Md'
+import { plainParts } from './plain'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,7 +75,7 @@ function HitCard(props: { hit: Hit; courseId: number }) {
         {h.by !== 'words' && <Badge variant="secondary" className="ms-2 h-auto rounded-sm bg-warm-tint px-2 py-0.5 text-sm text-warm">{t(`search.by.${h.by}`)}</Badge>}
       </div>
       <p dir="auto" className="m-0 break-words">
-        {h.snippet.map(([piece, matched], i) => (matched ? <mark key={i}>{piece}</mark> : piece))}
+        {(h.kind === 'code' ? h.snippet : plainParts(h.snippet)).map(([piece, matched], i) => (matched ? <mark key={i}>{piece}</mark> : piece))}
       </p>
       {h.lesson_id !== null ? (
         <a className={cn(buttonVariants({ variant: 'outline' }), 'w-fit')} href={`#/course/${props.courseId}?lesson=${h.lesson_id}&${h.kind}=${h.ref}`}>{t(h.kind === 'chat' ? 'search.openMessage' : 'search.openCard')}</a>
