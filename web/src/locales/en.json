@@ -366,7 +366,9 @@
       "correctionLocked_other": "Corrected text locked. Opens after {{count}} more attempts, or when you give up.",
       "unlocked": "You can ask the tutor for the solution now, or keep trying.",
       "giveUp": "Give up",
-      "showSolution": "Show solution"
+      "showSolution": "Show solution",
+      "oneTry": "No need to get it right: one try, then the answer.",
+      "showAnswer": "Show me"
     },
     "speaking": {
       "shadow": "Listen, then say it the same way",

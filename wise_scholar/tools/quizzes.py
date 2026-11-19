@@ -242,5 +242,5 @@ async def grade_quiz(quiz_id: int, correct: bool, feedback: str, misconception: 
     block = db.set_block_data(quiz_id, {**data, **result, "feedback": feedback})
     lesson = db.lesson(block["lesson_id"])
     _show(lesson, block, "block.updated")
-    reteach = result["confident_miss"] and lesson["phase"] != "placement"
+    reteach = result["confident_miss"] and lesson["phase"] != "placement" and not data.get("pretest")
     return "graded; a confident miss: re-teach it now" if reteach else "graded"

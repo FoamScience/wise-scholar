@@ -91,7 +91,7 @@ def _challenge_block(block_id: int) -> dict:
 def _challenge_state(block: dict) -> str:
     data = block["data"]
     return (
-        f"challenge {block['id']}; attempts {len(data['attempts'])}; "
+        f"{'opening (one try) ' if data.get('pretest') else ''}challenge {block['id']}; attempts {len(data['attempts'])}; "
         f"hints given {len(data['hints'])} of {data['max_hints']}; "
         f"solution {'locked' if challenge.reveal_blocker(data) else 'unlocked'}"
     )
@@ -282,6 +282,8 @@ async def hand_off(block_id: int) -> dict:
 @app.post("/api/blocks/{block_id}/attempt", status_code=202)
 async def attempt(block_id: int, body: Answer) -> None:
     block = _challenge_block(block_id)
+    if block["data"].get("pretest") and block["data"]["attempts"]:
+        raise HTTPException(409, "the opening takes one try")
     answer = body.answer.strip()
     if not answer and not _pending_photos(block):
         raise HTTPException(422, "answer is empty")

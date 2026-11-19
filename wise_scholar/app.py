@@ -958,14 +958,14 @@ def _unanswered_quiz(block_id: int) -> tuple[dict, dict]:
     return block, db.card(block["data"]["card_id"])
 
 
-def _answer_verdict(card: dict, correct: bool, result: dict, lesson: dict) -> str:
+def _answer_verdict(card: dict, correct: bool, result: dict, lesson: dict, pretest: bool) -> str:
     if card["kind"] == "sort":
         verdict = "correct" if correct else "wrong; misplaced: " + ", ".join(repr(i) for i in result["misplaced"])
     else:
         verdict = "correct" if correct else f"wrong, the right answer is {card['answer_key']!r}"
         if result.get("misconception"):
             verdict += f"; this option comes from the belief {result['misconception']!r}"
-    if result["confident_miss"] and lesson["phase"] != "placement":
+    if result["confident_miss"] and lesson["phase"] != "placement" and not pretest:
         verdict += "; a confident miss: re-teach it now"
     return verdict
 
@@ -982,7 +982,7 @@ def _record_answer(block: dict, card: dict, answer: str, confidence: float, extr
         return lesson, None, said
     result = quiz.grade(answer_id, correct)
     lesson, block = _update_block(block, {**given, **result})
-    return lesson, _answer_verdict(card, correct, result, lesson), said
+    return lesson, _answer_verdict(card, correct, result, lesson, bool(block["data"].get("pretest"))), said
 
 
 def _due(profile: int) -> list[dict]:

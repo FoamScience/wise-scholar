@@ -418,7 +418,9 @@
       "correctionLocked_other": "النص المصحَّح مقفل. يُفتح بعد {{count}} محاولة أخرى، أو عند استسلامك.",
       "unlocked": "يمكنك الآن أن تطلب الحل من المعلّم، أو أن تواصل المحاولة.",
       "giveUp": "استسلم",
-      "showSolution": "أظهر الحل"
+      "showSolution": "أظهر الحل",
+      "oneTry": "لا يلزم أن تصيب: محاولة واحدة، ثم الجواب.",
+      "showAnswer": "أرني"
     },
     "speaking": {
       "shadow": "استمع، ثم قلها بالطريقة نفسها",
@@ -1204,6 +1206,7 @@
     "non-goals are options of a goal question": "الأهداف المستبعدة خيارات من سؤال عن الأهداف",
     "this suggestion is no longer on offer": "لم يعد هذا الاقتراح متاحًا",
     "already answered": "أُجيب عنه من قبل",
+    "the opening takes one try": "سؤال البداية يُجاب مرة واحدة",
     "try the unit's opening first": "جرّب افتتاحية الوحدة أولًا",
     "a prepared course has no pace": "الدورة المحضَّرة ليس لها وتيرة",
     "testing out is for a unit of a course in speed mode": "اختبار التخطي خاص بوحدة في دورة بوضع السرعة",

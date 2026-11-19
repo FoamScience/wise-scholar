@@ -140,3 +140,42 @@ def test_a_long_pretest_is_refused_and_a_short_one_shown(hints):
     db.course_lang(course, "de")
     assert asyncio.run(practice_tools.pose_comparison(lesson, "p", "a", "b", ask)) == "error: a comparison is for technical subjects, not a language course"
     db.conn.execute("UPDATE courses SET lang = NULL WHERE id = ?", (course,))
+
+
+def test_a_pretest_challenge_takes_one_try_and_then_shows_its_answer(monkeypatch):
+    import asyncio
+
+    import pytest
+    from fastapi import HTTPException
+
+    from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes
+    from wise_scholar.tools import practice as practice_tools
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Once')").lastrowid
+    course = db.create_course("Optics", who)["id"]
+    db.set_concepts(course, [{"title": "Light", "concepts": ["Refraction"], "known": []}])
+    lesson = db.create_lesson(course, "Refraction", "lesson", db.concepts(course)[0]["id"])
+    asyncio.run(practice_tools.pose_challenge(lesson, "Predict: does a straw in water look bent up or down?", pretest=True))
+    opening = db.blocks(lesson)[-1]
+    assert opening["data"]["reveal_after"] == 1 and opening["data"]["max_hints"] == 0
+    assert asyncio.run(practice_tools.reveal(opening["id"], "Up.")).startswith("refused: the solution is locked")
+
+    asyncio.run(blocks_routes.attempt(opening["id"], blocks_routes.Answer(answer="down")))
+    assert turns[-1].startswith(f"[learner attempt] opening (one try) challenge {opening['id']}; attempts 1;")
+    with pytest.raises(HTTPException) as again:
+        asyncio.run(blocks_routes.attempt(opening["id"], blocks_routes.Answer(answer="up")))
+    assert again.value.status_code == 409
+    assert asyncio.run(practice_tools.reveal(opening["id"], "Up: light bends away from the normal leaving water.")) == "shown"
+
+
+def test_a_confident_miss_on_the_opening_quiz_asks_for_no_reteach():
+    from wise_scholar import app
+
+    lesson = {"phase": "lesson"}
+    card = {"kind": "choice", "answer_key": "4"}
+    miss = {"confident_miss": True}
+    assert "re-teach" not in app._answer_verdict(card, False, miss, lesson, pretest=True)
+    assert app._answer_verdict(card, False, miss, lesson, pretest=False).endswith("a confident miss: re-teach it now")

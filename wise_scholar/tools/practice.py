@@ -52,7 +52,7 @@ async def pose_challenge(
     The card has an answer box, a hint ladder and a locked solution. Attempts, hint
     requests and give-ups arrive as later turns that name the challenge id. End your
     turn after posing it. pretest: the opening attempt of a concept lesson, before anything
-    is taught; a wrong answer is expected and teaching starts from it. It asks for something the
+    is taught; the learner gets one try and no hints, a wrong answer is expected and teaching starts from it. It asks for something the
     learner can attempt, as the lesson rules say. form: for an opening, which of the lesson rules' forms
     this is (prediction, bug hunt, missing step, build, pick one, choice check, case, redo); it goes into
     the record so later lessons open differently. milestone: this is the
@@ -70,7 +70,7 @@ async def pose_challenge(
         return problem
     if variant_of is not None and (problem := _variant_error(lesson, variant_of)):
         return problem
-    data = {**challenge.new(), "pretest": pretest, "milestone": milestone, "transfer": transfer, "form": form.strip(), "helper": helper.strip()}
+    data = {**(challenge.new(reveal_after=1, max_hints=0) if pretest and not prepared(lesson) else challenge.new()), "pretest": pretest, "milestone": milestone, "transfer": transfer, "form": form.strip(), "helper": helper.strip()}
     if variant_of is not None:
         data["variant_of"] = variant_of
     if transfer:
