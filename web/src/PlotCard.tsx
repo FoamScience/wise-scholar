@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
+import type { LegendOptions, ScaleOptions } from '@observablehq/plot'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from './theme'
 import { Limits } from './Figure'
 import type { Teaches } from './Figure'
 import { InlineMarkdown } from './Md'
 import { PIN_PLOT } from './parts'
-import { nearestX, pointable, substituted, tidy } from './plotPoints'
-import type { Row } from './plotPoints'
+import { nearestX, place, pointable, spot, substituted, tidy } from './plotPoints'
+import type { Place, Row } from './plotPoints'
 import { Button } from '@/components/ui/button'
+import { cn } from 'cn'
 
 export type Mark = { type: 'line' | 'dot' | 'bar' | 'area' | 'rule' | 'text' | 'rect'; data?: Record<string, unknown>[]; [k: string]: unknown }
 type Axis = { label?: string; domain?: [number, number]; grid?: boolean; type?: 'linear' | 'log' | 'sqrt' | 'point' | 'band' }
@@ -81,32 +83,79 @@ function Pinned({ pin, spec, onClear }: { pin: Row; spec: PlotSpec; onClear: () 
   )
 }
 
+type PlotElement = Element & { scale?: (name: string) => { apply: (v: unknown) => number } | undefined }
+
 const MAX_WIDTH = 900
 const PIN_RADIUS = 40
 const MIN_HEIGHT = 280
+const FONT_SIZE = '12px'
+const MARGIN_LEFT = 48
+const MARGIN_RIGHT = 20
+const MARGIN_TOP = 20
+const MARGIN_BOTTOM = 36
 
 function heightFor(width: number): number {
   return Math.round(Math.min(440, Math.max(MIN_HEIGHT, width / 2)))
 }
 
+type Halo = { fill: string; stroke: string; strokeWidth: number }
+// a note's width, and the height of a line of text, as fractions of the plot's frame
+type Measure = { width: (text: unknown) => number; line: number }
+
+/** The colour the plot sits on: Plot's background, so its writing, and the tip and crosshair's, can be ringed in it and
+ * stay legible over grid, rules and curves. */
+function surface(el: Element | null): string {
+  for (; el; el = el.parentElement) {
+    const bg = getComputedStyle(el).backgroundColor
+    if (bg && bg !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(bg)) return bg
+  }
+  return 'var(--ground)'
+}
+
 /** A rule at one value, with its label and value written at the plot's edge when the spec names it. */
-function rule(Plot: typeof import('@observablehq/plot'), opts: Record<string, unknown>) {
+function rule(Plot: typeof import('@observablehq/plot'), spec: PlotSpec, opts: Record<string, unknown>, halo: Halo, measure: Measure) {
   const axis = 'y' in opts ? 'y' : 'x'
   const value = opts[axis] as number
   const style = { strokeDasharray: opts.strokeDasharray as string | undefined }
   const line = axis === 'y' ? Plot.ruleY([value], style) : Plot.ruleX([value], style)
   if (!opts.label) return line
   const text = `${opts.label} = ${value.toLocaleString(undefined, { maximumSignificantDigits: 4 })}`
-  const label = axis === 'y'
-    ? Plot.text([value], { y: (v: number) => v, text: () => text, frameAnchor: 'right', textAnchor: 'end', dy: -6 })
-    : Plot.text([value], { x: (v: number) => v, text: () => text, frameAnchor: 'top', textAnchor: 'start', dx: 4 })
-  return Plot.marks(line, label)
+  if (axis === 'x') {
+    return Plot.marks(line, Plot.text([value], { x: (v: number) => v, text: () => text, frameAnchor: 'top', lineAnchor: 'bottom', dy: -3, ...place(spec, value, undefined, measure.width(text)), ...halo }))
+  }
+  const { left, below } = spot(spec, value, measure.width(text), measure.line)
+  const where = { frameAnchor: left ? 'left' : 'right', textAnchor: left ? 'start' : 'end', dx: left ? 3 : 0, lineAnchor: below ? 'top' : 'bottom', dy: below ? 3 : -3 } as const
+  return Plot.marks(line, Plot.text([value], { y: (v: number) => v, text: () => text, ...where, ...halo }))
+}
+
+/** The tutor's notes, each written beside the rules rather than across them and inward from the frame's sides. */
+function notes(Plot: typeof import('@observablehq/plot'), spec: PlotSpec, data: Record<string, unknown>[], opts: Record<string, unknown>, halo: Halo, measure: Measure) {
+  const field = (channel: string) => (typeof opts[channel] === 'string' ? (opts[channel] as string) : '')
+  const groups = new Map<string, { at: Place; rows: Record<string, unknown>[] }>()
+  for (const r of data) {
+    const at = place(spec, r[field('x')], r[field('y')], measure.width(r[field('text')]))
+    const key = [at.textAnchor, at.dx, at.lineAnchor, at.dy].join()
+    if (!groups.has(key)) groups.set(key, { at, rows: [] })
+    groups.get(key)!.rows.push(r)
+  }
+  return Plot.marks(...[...groups.values()].map(({ at, rows }) => Plot.text(rows, { ...halo, ...opts, ...at })))
+}
+
+/** An axis title above or below the drawing, where it wraps instead of running past a narrow plot. */
+function axisTitle(text: string, axis: 'x' | 'y'): HTMLElement {
+  const title = document.createElement('div')
+  title.className = cn('text-xs leading-snug', axis === 'x' ? 'mt-1 text-end' : 'mb-1')
+  const words = document.createElement('bdi')
+  words.textContent = text
+  title.append(...(axis === 'x' ? [words, ' →'] : ['↑ ', words]))
+  return title
 }
 
 /** The drawing of a resolved spec, with the spec shown when Observable Plot cannot draw it. */
 export function PlotBox({ spec, alt, pin, onPin }: { spec: PlotSpec; alt: string; pin?: Row | null; onPin?: (row: Row) => void }) {
   const { t } = useTranslation()
   const box = useRef<HTMLDivElement | null>(null)
+  const drawn = useRef<PlotElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const theme = useTheme()
 
@@ -115,6 +164,15 @@ export function PlotBox({ spec, alt, pin, onPin }: { spec: PlotSpec; alt: string
     import('@observablehq/plot').then((Plot) => {
       if (!live || !box.current) return
       try {
+        const halo = { fill: 'currentColor', stroke: 'var(--plot-background)', strokeWidth: 4 }
+        const width = Math.min(MAX_WIDTH, box.current.clientWidth || 640)
+        const ctx = document.createElement('canvas').getContext('2d')!
+        ctx.font = `${FONT_SIZE} ${getComputedStyle(box.current).fontFamily}`
+        const height = spec.height ?? heightFor(width)
+        const measure = {
+          width: (text: unknown) => ctx.measureText(String(text ?? '')).width / (width - MARGIN_LEFT - MARGIN_RIGHT),
+          line: (1.3 * parseFloat(FONT_SIZE)) / (height - MARGIN_TOP - MARGIN_BOTTOM),
+        }
         const marks = spec.marks.map((m) => {
           const { type, data = [], expr: _, ...options } = m
           const opts = options as Record<string, unknown>
@@ -128,9 +186,9 @@ export function PlotBox({ spec, alt, pin, onPin }: { spec: PlotSpec; alt: string
             case 'area':
               return Plot.areaY(data, opts)
             case 'rule':
-              return rule(Plot, opts)
+              return rule(Plot, spec, opts, halo, measure)
             case 'text':
-              return Plot.text(data, opts)
+              return notes(Plot, spec, data, opts, halo, measure)
             default:
               return Plot.rect(data, opts)
           }
@@ -138,21 +196,30 @@ export function PlotBox({ spec, alt, pin, onPin }: { spec: PlotSpec; alt: string
         const { rows, columns } = pointable(spec)
         if (rows.length) {
           const channels = Object.fromEntries(columns.map((c) => [c, { value: c, label: c === 'series' ? '' : c }]))
-          marks.push(Plot.crosshair(rows, { x: 'x', y: 'y' }), Plot.tip(rows, Plot.pointer({ x: 'x', y: 'y', channels })))
+          const named = (axis: 'x' | 'y') => ({ value: axis, label: spec[axis]?.label || axis })
+          marks.push(Plot.crosshair(rows, { x: 'x', y: 'y' }), Plot.tip(rows, Plot.pointer({ x: named('x'), y: named('y'), channels })))
         }
         if (pin) marks.push(Plot.ruleX([pin], { x: 'x', strokeDasharray: '4,3' }), Plot.dot([pin], { x: 'x', y: 'y', r: 5, fill: 'currentColor' }))
-        const width = Math.min(MAX_WIDTH, box.current.clientWidth || 640)
-        const svg = Plot.plot({
+        // the axis titles are written outside the SVG, by axisTitle
+        const plot = Plot.plot({
           width,
-          height: spec.height ?? heightFor(width),
-          marginLeft: 48,
-          style: { background: 'transparent', color: 'currentColor', fontFamily: 'inherit' },
-          color: { range: palette(), legend: spec.marks.some((m) => 'stroke' in m || 'fill' in m) },
-          x: { grid: true, ...spec.x },
-          y: { grid: true, ...spec.y },
+          height,
+          marginLeft: MARGIN_LEFT,
+          marginRight: MARGIN_RIGHT,
+          marginTop: MARGIN_TOP,
+          marginBottom: MARGIN_BOTTOM,
+          style: { background: 'transparent', color: 'currentColor', fontFamily: 'inherit', fontSize: FONT_SIZE },
+          color: { range: palette(), legend: spec.marks.some((m) => 'stroke' in m || 'fill' in m), style: { fontFamily: 'inherit', fontSize: FONT_SIZE } } as ScaleOptions & Omit<LegendOptions, 'legend'>,
+          x: { grid: true, ...spec.x, label: null },
+          y: { grid: true, ...spec.y, label: null },
           marks,
-        })
-        box.current.replaceChildren(svg)
+        }) as PlotElement
+        box.current.replaceChildren(plot)
+        drawn.current = plot
+        const svg = (plot.tagName === 'svg' ? plot : plot.querySelector(':scope > svg')!) as SVGSVGElement
+        svg.style.setProperty('--plot-background', surface(box.current))
+        if (spec.y?.label) svg.before(axisTitle(spec.y.label, 'y'))
+        if (spec.x?.label) svg.after(axisTitle(spec.x.label, 'x'))
         setError(null)
       } catch (err) {
         setError((err as Error).message)
@@ -166,7 +233,7 @@ export function PlotBox({ spec, alt, pin, onPin }: { spec: PlotSpec; alt: string
 
   // Nearest point to the click in screen space, so a tap on a phone pins as well as a mouse click.
   const pick = (e: React.MouseEvent) => {
-    const root = box.current?.firstElementChild as (Element & { scale?: (name: string) => { apply: (v: unknown) => number } | undefined }) | null
+    const root = drawn.current
     const svg = root?.tagName === 'svg' ? root : root?.querySelector(':scope > svg')
     const xs = root?.scale?.('x')
     const ys = root?.scale?.('y')
@@ -184,7 +251,7 @@ export function PlotBox({ spec, alt, pin, onPin }: { spec: PlotSpec; alt: string
 
   return (
     <>
-      <div ref={box} dir="ltr" className="plot-box overflow-x-auto break-inside-avoid [&_svg]:[--plot-background:var(--popover)]!" role="img" aria-label={alt} onClick={onPin ? pick : undefined} style={error ? undefined : { minHeight: spec.height ?? MIN_HEIGHT }} />
+      <div ref={box} dir="ltr" className="plot-box overflow-x-auto break-inside-avoid" role="img" aria-label={alt} onClick={onPin ? pick : undefined} style={error ? undefined : { minHeight: spec.height ?? MIN_HEIGHT }} />
       {error && (
         <div>
           <pre dir="ltr" className="mb-2 overflow-x-auto rounded-md bg-code px-4 py-3 text-[0.93em] text-code-foreground">{JSON.stringify(spec, null, 1).slice(0, 2000)}</pre>

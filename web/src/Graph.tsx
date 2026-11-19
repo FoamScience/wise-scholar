@@ -14,7 +14,7 @@ import { cn } from 'cn'
 const label = 'text-sm leading-snug font-medium text-ink-2'
 const small = 'text-sm text-muted-foreground'
 const row = 'flex flex-wrap items-center gap-2'
-const LEGEND_DOT: Record<State, string> = { held: 'bg-primary', fading: 'bg-warm-line', shaky: 'bg-destructive', unseen: 'bg-off' }
+const LEGEND_DOT: Record<State, string> = { held: 'bg-primary', fading: 'bg-warm-line', shaky: 'bg-destructive', unseen: 'bg-off ring-1 ring-rule-strong ring-inset' }
 
 type Source = { id: number; title: string; concept_id: number | null; course_id: number; topic: string }
 type Evidence = { block_id: number; lesson_id: number; kind: string; markdown: string; verdict: 'held' | 'shaky' | null }
@@ -28,17 +28,21 @@ const FONT_SIZE = 11
 const LINE_HEIGHT = 1.3
 const MERGE_CHOICES = 8
 const PADDING = 16
-// below this zoom the cards' text falls under min-zoomed-font-size and is not drawn
-const READABLE = 0.75
+// the least zoom the graph opens at: the cards' text drawn at its own size, FONT_SIZE
+const READABLE = 1
 
-/** Fit the elements, but never so small the cards cannot be read: a bigger graph opens on its most connected claim. */
+/** Fit the elements, but never so small the cards cannot be read: a bigger graph opens on its most connected claim,
+ * with the claims it links to in view when they fit. */
 function show(c: Core, eles: CollectionReturnValue) {
   c.fit(eles, PADDING)
   if (c.zoom() >= READABLE) return
   const claims = eles.nodes('[?claim]')
   const hub = claims.max((n) => n.degree(false)).ele
+  const near = hub.closedNeighborhood()
+  c.fit(near, PADDING)
+  const fits = c.zoom() >= READABLE
   c.zoom(READABLE)
-  c.center(hub)
+  c.center(fits ? near : hub)
 }
 
 /** A card's opening words without the Markdown marks, for a one-line mention. */
@@ -120,6 +124,11 @@ function graphStyle(font: string): StylesheetJson {
         height: 'data(h)',
         'background-color': 'data(color)',
         'background-opacity': 0.16,
+        // the card is solid, so links run under it rather than through its text
+        'underlay-color': token('--panel'),
+        'underlay-opacity': 1,
+        'underlay-padding': 0,
+        'underlay-shape': 'round-rectangle',
         'border-color': 'data(color)',
         'border-width': 2,
         label: 'data(label)',
@@ -188,10 +197,13 @@ function useClaimNetwork(
   useEffect(() => {
     if (!box.current || shown.claims.length === 0) return
     let gone = false
-    loadCytoscape().then((cytoscape) => {
+    const font = getComputedStyle(document.body).fontFamily
+    // every subset of the font the cards' letters need, so a card is sized and wrapped in the font it is drawn in;
+    // a font that fails to load costs only that, never the drawing
+    const letters = document.fonts.load(`${FONT_SIZE}px ${font}`, shown.claims.map((c) => c.text).join(' '))
+    Promise.all([loadCytoscape(), letters.catch(() => undefined)]).then(([cytoscape]) => {
       if (gone || !box.current) return
       const grouped = filter === null && courses.length > 1
-      const font = getComputedStyle(document.body).fontFamily
       const ctx = document.createElement('canvas').getContext('2d')!
       ctx.font = `${FONT_SIZE}px ${font}`
       cy.current = cytoscape({
