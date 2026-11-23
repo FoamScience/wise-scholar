@@ -1,6 +1,6 @@
 import asyncio
 
-from .. import art, board, crafted, db, diagrams, figcheck, figures, plots, widgets
+from .. import art, board, crafted, db, diagrams, figcheck, figures, plots, widgets, wiseboard
 from ..tutor import _show, mcp, pretest_blocker
 
 
@@ -311,6 +311,82 @@ def _prefixed(block_id: int, data: dict) -> dict:
 async def craft_help() -> str:
     """The kit's API, the craft rules and an example script, to read before add_crafted_figure."""
     return crafted.help_text()
+
+
+NO_BOARDS = "error: this server has no wise-board, so there are no handwritten boards; draw a figure and narrate_figure it"
+
+
+@mcp.tool()
+async def board_help(topic: str = "") -> str:
+    """The board script language, to read before add_board: the whole reference, or one section of it (script,
+    elements, placement, beats, annotations, math, options, limits, errors)."""
+    if not wiseboard.available():
+        return NO_BOARDS
+    try:
+        return await wiseboard.help_text(topic.strip())
+    except wiseboard.BoardError as e:
+        return f"error: {e}"
+
+
+@mcp.tool()
+async def add_board(lesson_id: int, script: str, teaches: figures.Teaches) -> str:
+    """Show a handwritten whiteboard: math and short text written in marker, beat by beat, each beat's sentence shown
+    while it draws, as at a lecture board. For a derivation, a proof, a worked calculation, a chain of equations, the
+    gist of a lesson. Read board_help first. script: a board script as board_help describes; no coordinates or
+    colours. A refused script comes back with the engine's errors, line by line; fix those lines and call again.
+    The lesson text links a part of the board as `[the sum](#board-<block>-<id>)` or `#board-<block>-<id>.<mark>`.
+    teaches as for add_figure. A board explains, so it never comes before the opening's attempt."""
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if problem := pretest_blocker(lesson):
+        return f"refused: {problem}"
+    if not wiseboard.available():
+        return NO_BOARDS
+    try:
+        spec = figures.teaching(teaches)
+        doc, notes = await wiseboard.render(script)
+    except (ValueError, wiseboard.BoardError) as e:
+        return f"error: {e}"
+    block = db.add_block(lesson_id, "board", "", {"script": script, "doc": doc, "teaches": spec})
+    _show(lesson, block)
+    return f"shown as board {block['id']}" + _board_notes(notes)
+
+
+@mcp.tool()
+async def extend_board(block_id: int, script: str) -> str:
+    """Write more on an earlier board: new beats after its last one, drawn in its free space, with everything on it
+    left where it is. To continue a derivation, or to answer a question about a part of the board on the board.
+    script: only the new beats, starting with a `>` line, no `board` line; it may circle, box, point at, erase and
+    wipe what is on the board by its ids. Errors come back as for add_board."""
+    block = db.block(block_id)
+    if not block or block["kind"] != "board":
+        return f"error: no board with id {block_id}"
+    if problem := pretest_blocker(db.lesson(block["lesson_id"])):
+        return f"refused: {problem}"
+    if not wiseboard.available():
+        return NO_BOARDS
+    before = block["data"]["script"]
+    grown = f"{before.rstrip()}\n{script.strip()}\n"
+    if len(grown.encode()) > wiseboard.MAX_SCRIPT:
+        return f"error: board {block_id} would have a script over {wiseboard.MAX_SCRIPT} bytes; start a new board with add_board"
+    try:
+        doc, notes = await wiseboard.render(script, prior=block["data"]["doc"])
+    except wiseboard.BoardError as e:
+        return f"error: {e}"
+    # Another extend may have landed while this one was drawn; this one was drawn on what the board was before it.
+    block = db.block(block_id)
+    if not block or block["data"].get("script") != before:
+        return f"error: board {block_id} grew while this was drawn; extend it again from what it shows now"
+    block = db.set_block_data(block_id, block["data"] | {"script": grown, "doc": doc})
+    _show(db.lesson(block["lesson_id"]), block, "block.updated")
+    return f"board {block_id} extended; it plays now" + _board_notes(notes)
+
+
+def _board_notes(notes: str) -> str:
+    """The engine's warnings, when it gave any beyond `ok`."""
+    warnings = notes.removeprefix("ok").strip()
+    return f"; wise-board warns:\n{warnings}" if warnings else ""
 
 
 @mcp.tool()
