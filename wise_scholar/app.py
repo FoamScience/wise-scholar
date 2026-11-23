@@ -608,7 +608,7 @@ def _turn_over(lesson: dict, reply: str, final: dict, seconds: float, quiet: boo
         if not final["ok"]:
             log.warning("quiet turn in lesson %s failed: %s", lesson_id, final["error"])
         return
-    message = db.add_message(lesson_id, "tutor", reply) if reply.strip() else None
+    message = db.add_message(lesson_id, "tutor", reply.rstrip()) if reply.strip() else None
     hub.publish(course_id, {**final, "lesson_id": lesson_id, "message": message})
     if lesson["phase"] in ("lesson", "practice"):
         _queue_claims(db.unextracted(course_id))
@@ -934,6 +934,8 @@ async def _events(events, lesson_id: int, session_id: str, course_id: int):
                     "UPDATE lessons SET session_started = 1, backend = ?, session_id = ? WHERE id = ?",
                     (BACKEND, event.get("session_id", session_id), lesson_id),
                 )
+                continue
+            if event["type"] in ("chat.break", "chat.delta") and tutor.turn_closed(lesson_id):
                 continue
             if event["type"] == "chat.break":
                 if not reply_started:

@@ -31,6 +31,7 @@
       "episode": "الحلقة {{n}}",
       "revisit": "مراجعة {{n}} على السبورة",
       "writingSession": "جلسة الكتابة {{n}}",
+      "roleplay": "لعب الأدوار {{n}}",
       "nextUnit": "التالي: {{title}}"
     },
     "recap": {
@@ -312,6 +313,7 @@
       "enlargeFigure": "تكبير: {{alt}}",
       "plot": "مخطّط بياني",
       "widget": "جرّب بنفسك",
+      "roleplayDone": "انتهى لعب الأدوار",
       "widgetReset": "العودة إلى البداية",
       "widgetPin": "ثبّت للمقارنة",
       "widgetUnpin": "إلغاء التثبيت",
@@ -681,7 +683,8 @@
       "tier": "الشريحة {{tier}}، أكثر {{words}} كلمة شيوعًا: تعرف {{known}} من {{size}} في هذه الشريحة",
       "vocabulary": "المفردات: {{due}} مستحقّة من {{total}}",
       "nextEpisode": "الحلقة التالية",
-      "writing": "جلسة كتابة"
+      "writing": "جلسة كتابة",
+      "roleplay": "لعب الأدوار"
     },
     "notebook": {
       "practiceMiss": "أخطأت في التدريب",
@@ -1230,6 +1233,7 @@
     "a course holds at most 20 files": "تتّسع الدورة لـ 20 ملفًّا على الأكثر",
     "files are limited to 50 MB": "حجم الملف الأقصى 50 ميغابايت",
     "episodes are for language courses; the first reading sets the language": "الحلقات خاصة بدورات اللغات؛ القراءة الأولى تحدّد اللغة",
+    "role-plays are for language courses; the first reading sets the language": "لعب الأدوار خاص بدورات اللغات؛ القراءة الأولى تحدّد اللغة",
     "already in your vocabulary": "موجودة في مفرداتك من قبل",
     "this check is finished": "انتهى هذا الاختبار",
     "already graded": "صُحّح من قبل",

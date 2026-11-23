@@ -170,6 +170,51 @@ def test_a_published_version_carries_the_content_and_none_of_the_author(places):
     assert bundle.preview(course["id"])["forked_from"] == {"topic": "Blade lofting", "number": 1, "hash": version_hash, "forkable": False}
 
 
+def test_a_version_leaves_out_the_cards_made_from_the_learners_corrected_text(places):
+    import asyncio
+
+    from wise_scholar import challenge
+    from wise_scholar.tools import language as language_tools, practice as practice_tools
+
+    a = _authored(places)
+    roleplay = db.create_lesson(a["course"], "Role-play 1", "roleplay")
+    db.add_message(roleplay, "learner", "Ich möchte ein Kaffee.")
+    mistake = language_tools.Mistake(said="Ich möchte ein Kaffee.", correct="Ich möchte einen Kaffee.", explanation="Accusative.")
+    assert asyncio.run(language_tools.end_roleplay(roleplay, [mistake], "Good.")).startswith("ended with 1")
+    data = {**challenge.new(reveal_after=2, max_hints=3), "writing": True, "attempts": ["Ich habe gegeht."], "marks": []}
+    for lesson in (db.create_lesson(a["course"], "Writing session 1", "writing"), a["lesson"]):
+        block = db.add_block(lesson, "challenge", "Write about yesterday.", data)
+        practice_tools._note_writing_error(block["id"], data, "Ich bin gegangen.")
+    profile = db.course(a["course"])["profile_id"]
+    errors = db.errors(profile, a["course"])
+    keys = {db.card(e["card_id"])["key"] for e in errors}
+    assert len(keys) == 3
+
+    # A placement from the course's own cards may hold a quiz on such a card.
+    placed = db.create_lesson(a["course"], "Placement", "placement")
+    quoting = next(db.card(e["card_id"]) for e in errors if db.card(e["card_id"])["concept_id"])
+    db.add_block(placed, "quiz", quoting["question"], {"card_id": quoting["id"], "kind": "open", "options": [], "answer": None})
+    db.add_block(placed, "quiz", "Which call lofts wires?", {"card_id": a["card"], "kind": "choice", "options": ["ThruSections", "MakePipe"], "answer": None})
+
+    def assert_left_out(course):
+        manifest, _, _ = bundle.build(course, notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+        raw = json.dumps(manifest, ensure_ascii=False)
+        assert "Kaffee" not in raw and "gegeht" not in raw and "gegangen" not in raw
+        assert not keys & {c["key"] for c in manifest["cards"]}
+        assert [c["key"] for c in manifest["cards"]] == [db.card(a["card"])["key"]]
+
+    assert_left_out(a["course"])
+    for e in errors:
+        db.update_error(e["id"], None, None, True)
+    assert_left_out(a["course"])
+
+    copy = db.copy_course(a["course"], "Blade lofting again")["id"]
+    assert_left_out(copy)
+    [copied] = db.rows("SELECT id FROM lessons WHERE course_id = ? AND phase = 'placement'", copy)
+    [quiz] = db.blocks(copied["id"])
+    assert db.card(quiz["data"]["card_id"])["course_id"] == copy
+
+
 def test_the_same_content_packs_to_the_same_bytes_and_a_fork_credits_its_origin(places):
     a = _authored(places)
     manifest, assets, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])

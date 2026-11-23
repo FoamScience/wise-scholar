@@ -336,8 +336,9 @@ def build(
     unit_keys = {u["id"]: u["key"] for u in units}
     written = written_units(course_id)
     needs = db.needs(course_id)
+    corrections = db.correction_cards(course_id)
     cards = [k for k in db.rows("SELECT * FROM cards WHERE course_id = ? AND parent_id IS NULL ORDER BY id", course_id)
-             if k["concept_id"] is None or k["concept_id"] in written]
+             if (k["concept_id"] is None or k["concept_id"] in written) and k["id"] not in corrections]
     card_keys = {k["id"]: k["key"] for k in cards}
     lessons, files = _lessons(course_id, written, unit_keys, card_keys, db.WORKSPACE / course["slug"])
     unit_rows = [

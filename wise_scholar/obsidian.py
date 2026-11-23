@@ -32,7 +32,7 @@ WORDS = {
         "sure": "{}% sure", "right": "right", "wrong": "wrong", "answer": "Answer", "explanation": "Explanation",
         "feedback": "Feedback", "files": "Files", "run": "Run command", "output": "Last run", "tutor": "Tutor", "you": "You",
         "milestones": "Milestones", "done": "done", "open": "open", "note": "Your note", "said": "You said",
-        "correct": "Right answer", "resolved": "resolved", "pinned": "pinned", "unit_covered": "Unit covered", "result": "Result",
+        "correct": "Right answer", "resolved": "resolved", "pinned": "pinned", "unit_covered": "Unit covered", "roleplay_finished": "Role-play finished", "result": "Result",
         "glossary": "Glossary", "known": "known", "learning": "learning", "seen_in": "Seen in", "flashcards": "Review cards",
         "pretest": "Opening question", "gave_up": "gave up", "solved": "solved", "unanswered": "not answered", "cast": "Cast",
         "claims": "Claims", "follows_from": "Follows from", "leads_to": "Leads to", "grounded_by": "Grounded by", "grounds": "Grounds", "contrasts": "Looks like but differs from", "taught_in": "Taught in", "checked_by": "Checked by", "held": "held", "fading": "fading", "shaky": "shaky", "unseen": "not checked yet",
@@ -46,7 +46,7 @@ WORDS = {
         "sure": "sûr à {} %", "right": "juste", "wrong": "faux", "answer": "Réponse", "explanation": "Explication",
         "feedback": "Retour", "files": "Fichiers", "run": "Commande d'exécution", "output": "Dernière exécution", "tutor": "Tuteur", "you": "Vous",
         "milestones": "Jalons", "done": "fait", "open": "ouvert", "note": "Votre note", "said": "Vous avez dit",
-        "correct": "Bonne réponse", "resolved": "résolue", "pinned": "épinglée", "unit_covered": "Unité couverte", "result": "Résultat",
+        "correct": "Bonne réponse", "resolved": "résolue", "pinned": "épinglée", "unit_covered": "Unité couverte", "roleplay_finished": "Jeu de rôle terminé", "result": "Résultat",
         "glossary": "Glossaire", "known": "connu", "learning": "en cours", "seen_in": "Vu dans", "flashcards": "Cartes de révision",
         "pretest": "Question d'ouverture", "gave_up": "abandon", "solved": "résolu", "unanswered": "sans réponse", "cast": "Émission",
         "claims": "Notions", "follows_from": "Découle de", "leads_to": "Mène à", "grounded_by": "Appuyée par", "grounds": "Appuie", "contrasts": "Ressemble à mais diffère de", "taught_in": "Vue dans", "checked_by": "Vérifiée par", "held": "acquise", "fading": "à revoir", "shaky": "fragile", "unseen": "pas encore vérifiée",
@@ -60,7 +60,7 @@ WORDS = {
         "sure": "واثق بنسبة {}٪", "right": "صحيح", "wrong": "خطأ", "answer": "الجواب", "explanation": "الشرح",
         "feedback": "الملاحظات", "files": "الملفات", "run": "أمر التشغيل", "output": "آخر تشغيل", "tutor": "المعلّم", "you": "أنت",
         "milestones": "المراحل", "done": "منجز", "open": "مفتوح", "note": "ملاحظتك", "said": "قلت",
-        "correct": "الجواب الصحيح", "resolved": "تم حلّه", "pinned": "مثبّت", "unit_covered": "اكتملت الوحدة", "result": "النتيجة",
+        "correct": "الجواب الصحيح", "resolved": "تم حلّه", "pinned": "مثبّت", "unit_covered": "اكتملت الوحدة", "roleplay_finished": "انتهى لعب الأدوار", "result": "النتيجة",
         "glossary": "المسرد", "known": "معروف", "learning": "قيد التعلم", "seen_in": "ورد في", "flashcards": "بطاقات المراجعة",
         "pretest": "سؤال البداية", "gave_up": "استسلام", "solved": "محلول", "unanswered": "بلا إجابة", "cast": "حلقة",
         "claims": "المعارف", "follows_from": "تُستنتج من", "leads_to": "تؤدي إلى", "grounded_by": "تدعمها", "grounds": "تدعم", "contrasts": "تشبه لكنها تختلف عن", "taught_in": "دُرِّست في", "checked_by": "تحقق منها", "held": "مكتسبة", "fading": "تحتاج مراجعة", "shaky": "هشّة", "unseen": "لم تُختبر بعد",
@@ -386,7 +386,8 @@ class Vault:
         return f"**{t['result']}** · {t['level']}: {d.get('level', '')}\n\n{block['markdown']}\n" + (f"{areas}\n" if areas else "")
 
     def _done_text(self, block: dict) -> str:
-        return _callout("success", self.t["unit_covered"], block["markdown"], folded=False, plain=self.inline)
+        title = "roleplay_finished" if "mistakes" in (block["data"] or {}) else "unit_covered"
+        return _callout("success", self.t[title], block["markdown"], folded=False, plain=self.inline)
 
     def _podcast_text(self, block: dict) -> str:
         lines = "\n".join(f"**{l['speaker']}:** {l['text']}" for l in block["data"].get("lines", []))

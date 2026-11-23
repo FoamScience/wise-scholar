@@ -185,6 +185,16 @@ def turn_started(lesson: dict, token: str, kind: str = "lesson") -> None:
         _searched.discard(lesson["id"])
 
 
+def close_turn(lesson_id: int) -> None:
+    """What the lesson's running turn still writes in chat is dropped."""
+    if turn := turns.get(lesson_id):
+        turn["closed"] = True
+
+
+def turn_closed(lesson_id: int) -> bool:
+    return bool(turns.get(lesson_id, {}).get("closed"))
+
+
 def turn_ended(key: int | tuple[str, int]) -> None:
     turns.pop(key, None)
 
@@ -248,8 +258,8 @@ SETUP_TOOLS = (
 # A card the learner answers ends the turn, and the tools that go with it in the same reply return nothing the tutor must
 # read back: a backend that runs the tool loop itself ends the turn there instead of asking the model again.
 POSES = (
-    "ask", "finish_lesson", "give_hint", "pose_challenge", "pose_comparison", "pose_exercise", "pose_quiz", "pose_sort",
-    "pose_speaking", "pose_teachback", "pose_vocab_check", "pose_writing",
+    "ask", "end_roleplay", "finish_lesson", "give_hint", "pose_challenge", "pose_comparison", "pose_exercise", "pose_quiz",
+    "pose_sort", "pose_speaking", "pose_teachback", "pose_vocab_check", "pose_writing",
 )
 BESIDE_POSE = ("grade_quiz", "mark_solved", "note_learner", "set_outline", "step_done")
 # How a tool's text answer starts when it did not do what it was asked.

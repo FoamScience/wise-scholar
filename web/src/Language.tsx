@@ -228,7 +228,7 @@ export function LevelPanel(props: {
   units: { mastery: number | null; kind: 'concept' | 'practice' }[]
   disabled: boolean
   story: boolean
-  onStart: (kind: 'episode' | 'writing') => void
+  onStart: (kind: 'episode' | 'writing' | 'roleplay') => void
 }) {
   const { t } = useTranslation()
   const current = CEFR.find((l) => props.level?.toUpperCase().startsWith(l))
@@ -292,6 +292,11 @@ export function LevelPanel(props: {
         <Button type="button" variant="outline" disabled={props.disabled} onClick={() => props.onStart('writing')}>
           {t('level.writing')}
         </Button>
+        {props.story && (
+          <Button type="button" variant="outline" disabled={props.disabled} onClick={() => props.onStart('roleplay')}>
+            {t('level.roleplay')}
+          </Button>
+        )}
       </div>
     </div>
   )

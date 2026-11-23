@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import i18n from '../src/i18n.ts'
-import { lessonView } from '../src/course.ts'
+import { blockKey, lessonView } from '../src/course.ts'
 import type { Block, Concept, CourseDetail, Lesson } from '../src/course.ts'
 import { conceptStats } from '../src/mapStats.ts'
 
@@ -58,4 +58,11 @@ test("a unit's line on the map says where it stands, its challenges and its revi
   ]
   assert.equal(conceptStats(concept(1, { due: 1 }), lesson({ blocks: [outline, ...challenges] }), t), 'Step 2 of 3, 1/2 solved, 3 hints, gave up 1×, 1 review due')
   assert.equal(conceptStats(concept(1, { kind: 'practice' }), lesson({ blocks: [block(1, 'done')] }), t), 'Done')
+})
+
+test("only a role-play's last card is headed as a finished role-play", () => {
+  assert.equal(blockKey(block(1, 'done', { mistakes: 0 })), 'roleplayDone')
+  assert.equal(blockKey(block(1, 'done', {})), 'done')
+  assert.equal(blockKey(block(1, 'done')), 'done')
+  assert.equal(blockKey(block(1, 'prose')), 'prose')
 })

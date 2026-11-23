@@ -774,8 +774,11 @@ def _copy_capstones(course_id: int, new_id: int, concept_map: dict[int, int]) ->
 
 def _copy_cards(course_id: int, new_id: int, concept_map: dict[int, int]) -> dict[int, int]:
     card_map = {}
+    corrections = correction_cards(course_id)
     # a copy starts its reviews afresh from the lesson cards; the short parts made for reviews stay behind
     for k in rows("SELECT * FROM cards WHERE course_id = ? AND parent_id IS NULL ORDER BY id", course_id):
+        if k["id"] in corrections:
+            continue
         card_map[k["id"]] = conn.execute(
             "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, key) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -790,7 +793,9 @@ def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int]) -> N
         if b["kind"] in ("podcast", "network"):
             continue  # audio and consent belong to the original
         data = _fresh(json.loads(b["data"])) if b["data"] else None
-        if data and data.get("card_id") in card_map:
+        if data and data.get("card_id") is not None:
+            if data["card_id"] not in card_map:
+                continue  # a block on a card that stays behind
             data = {**data, "card_id": card_map[data["card_id"]]}
         copied = conn.execute(
             "INSERT INTO blocks (lesson_id, kind, markdown, data, created, key) VALUES (?, ?, ?, ?, ?, ?)",
@@ -1386,6 +1391,11 @@ def strand_counts(course_id: int) -> dict[str, int]:
             counts["fluency" if data.get("fluency") else "output"] += 1
         else:
             counts["language"] += 1
+    counts["output"] += row(
+        "SELECT COUNT(DISTINCT l.id) AS n FROM lessons l JOIN messages m ON m.lesson_id = l.id "
+        "WHERE l.course_id = ? AND l.phase = 'roleplay' AND m.role = 'learner' AND m.created >= datetime('now', '-7 days')",
+        course_id,
+    )["n"]
     return counts
 
 
@@ -1516,6 +1526,13 @@ def errors(profile_id: int, course_id: int | None = None, open_only: bool = Fals
         f"ORDER BY e.resolved, e.pinned DESC, e.id DESC{f' LIMIT {int(limit)}' if limit else ''}",
         *args,
     )
+
+
+def correction_cards(course_id: int) -> set[int]:
+    """The cards made from the learner's corrected text: they quote the learner, so they never leave the course."""
+    return {r["card_id"] for r in rows(
+        "SELECT card_id FROM errors WHERE course_id = ? AND kind = 'writing' AND card_id IS NOT NULL", course_id,
+    )}
 
 
 def update_error(error_id: int, note: str | None, pinned: bool | None, resolved: bool | None) -> dict | None:

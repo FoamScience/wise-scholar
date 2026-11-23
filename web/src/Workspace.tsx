@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
@@ -112,7 +112,7 @@ function Plan(props: {
 }
 
 /** The map's head: the level and the language panel. */
-function MapHead(props: { course: CourseDetail; running: boolean; onStart: (kind: 'episode' | 'writing') => void }) {
+function MapHead(props: { course: CourseDetail; running: boolean; onStart: (kind: 'episode' | 'writing' | 'roleplay') => void }) {
   const { t } = useTranslation()
   const { course } = props
   return (
@@ -235,7 +235,7 @@ function SetupCard(props: { steps: SetupStep[]; onDecide: (index: number, allow:
   )
 }
 
-export function Workspace({ profile, courseId, speech, commands, crafted, sketched, concept, start, found }: { profile: number; courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | null; found: { lesson: number; at: string } | null }) {
+export function Workspace({ profile, courseId, speech, commands, crafted, sketched, concept, start, found }: { profile: number; courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | 'roleplay' | null; found: { lesson: number; at: string } | null }) {
   const { t } = useTranslation()
   const foundLesson = found?.lesson ?? null
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({})
@@ -250,6 +250,11 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
 
   const lesson = course?.lessons.find((l) => l.id === lessonId) ?? null
   const { held, pane, setPane, asking, setAsking, showLesson, unmetNeeds, openConcept, opened, openLesson } = useUnitNav(course, setLessonId, addLesson, setError)
+  // a start link creates its lesson outside useUnitNav: it is shown like any lesson opened there
+  useEffect(() => {
+    setPane('lesson')
+    setAsking(null)
+  }, [start, setPane, setAsking])
   const { upgrading, upgrade } = useUpgrade(courseId, setCourse, setLessonId, setError)
   const { draft, setDraft, changing, setChanging, send, onKey } = useChatDraft(lesson, patchLesson, setError)
   const open = chatOpen(lesson, asking, found)
@@ -386,6 +391,8 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
         placeholder={changing ? t('chat.changeHint') : undefined}
         onKey={onKey}
         speech={speech}
+        voice={lesson.phase === 'roleplay' ? course.lang : null}
+        lessonId={lesson.id}
         canSend={online && !lesson.running && Boolean(course.started) && Boolean(draft.trim())}
         onSend={send}
         onStop={() => post(`/api/lessons/${lesson.id}/stop`, {})}
@@ -413,11 +420,11 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
   )
 }
 
-/** The chat sidebar follows the lesson until the learner opens or closes it: open in the interview and in a guided
- * contribution, which are conversations, and for a search hit in the chat. */
+/** The chat sidebar follows the lesson until the learner opens or closes it: open in the interview, in a guided
+ * contribution and in a role-play, which are conversations, and for a search hit in the chat. */
 function chatOpen(lesson: Lesson | null, asking: boolean | null, found: { lesson: number; at: string } | null): boolean {
   if (!lesson) return false
-  return asking ?? (lesson.phase === 'interview' || lesson.phase === 'contribution' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))
+  return asking ?? (lesson.phase === 'interview' || lesson.phase === 'contribution' || lesson.phase === 'roleplay' || (lesson.id === found?.lesson && found.at.startsWith('msg-')))
 }
 
 /** Below the cards: the placeholder while the tutor writes, the offline row, and the way on to the next unit. */
@@ -446,7 +453,7 @@ function useUnitNav(course: CourseDetail | null, setLessonId: (id: number) => vo
   const [held, setHeld] = useState<number | null>(null)
   // which column a phone shows; wider screens show all three
   const [pane, setPane] = useState<'map' | 'lesson'>('lesson')
-  // the chat sidebar; unset, it follows the lesson: open in the interview, which is a conversation
+  // the chat sidebar; unset, it follows the lesson: open in one that is a conversation
   const [asking, setAsking] = useState<boolean | null>(null)
 
   function showLesson(id: number) {
