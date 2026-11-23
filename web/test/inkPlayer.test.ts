@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { frameAt, plan, readInk } from '../src/ink.ts'
+import { INKS, frameAt, plan, readInk } from '../src/ink.ts'
 import { FIT, LOOKS, aim, cameraOn, clampCamera, inkColour, mount, runs } from '../src/inkPlayer.ts'
 import type { Aim } from '../src/inkPlayer.ts'
 import { fakeDom } from './fakeDom.ts'
@@ -50,6 +50,7 @@ test('the camera follows the pen on a narrow screen only, never on its own under
 test('an ink named after a prototype key takes the plain ink colour', () => {
   for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) assert.equal(inkColour(LOOKS.dark, name), LOOKS.dark.inks.ink)
   assert.equal(inkColour(LOOKS.dark, 'accent'), LOOKS.dark.inks.accent)
+  for (const look of Object.values(LOOKS)) assert.deepEqual(new Set(Object.keys(look.inks)), INKS)
 })
 
 const strokeEls = (host: FakeElement) => {
@@ -68,6 +69,22 @@ test('without a canvas context the board falls back to SVG, labelled as an image
   assert.deepEqual(strokeEls(host).map(strokeOf).sort(), [0, 1, 2])
   player.destroy()
   assert.equal(host.children.length, 0)
+})
+
+test('a stroke is filled with its own ink, else with its element ink', () => {
+  const { host } = fakeDom(800)
+  const d = doc2()
+  const strokes = d.strokes as { ink?: unknown }[]
+  strokes[1].ink = 'alert'
+  strokes[2].ink = 'crimson'
+  const player = mount(host as unknown as HTMLElement, readInk(d), { label: 'board' })
+  player.show(0)
+  const fill = new Map(strokeEls(host).map((e) => [strokeOf(e), e.getAttribute('fill')]))
+  const look = Object.values(LOOKS).find((l) => l.inks.ink === fill.get(0))!
+  assert.ok(look)
+  assert.equal(fill.get(1), look.inks.alert)
+  assert.equal(fill.get(2), look.inks.accent)
+  player.destroy()
 })
 
 test('reduced motion shows the beat playing at once, and the board on screen is the one a tap hits', () => {
