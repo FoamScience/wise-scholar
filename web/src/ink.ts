@@ -4,7 +4,7 @@
 export type Box = [number, number, number, number]
 export type Tip = [number, number, number] // x, y, reveal radius
 export type InkElement = { id: string; kind: string; page: number; box: Box; marks: Map<string, Box>; ink: string; alt: string }
-export type InkStroke = { el: number; marks: string[]; outline: string; path: [number, number, number, number, number][] }
+export type InkStroke = { el: number; marks: string[]; outline: string; path: [number, number, number, number, number][]; ink?: string }
 export type Sweep = { start: number; t: number; r: number; path: [number, number, number][]; strokes: number[] }
 export type InkBeat = { say: string; start: number; end: number; draw: number[]; erase: Sweep[]; focus?: string; page: number }
 export type Ghost = { beat: number; t: number; page: number; opacity: number; outline: string }
@@ -21,6 +21,7 @@ export type InkDoc = {
 
 export class InkError extends Error {}
 
+export const INKS = new Set(['ink', 'accent', 'alert', 'muted', 'good', 'note'])
 export const ANNOTATIONS = new Set(['circle', 'box', 'underline', 'cross', 'highlight', 'check', 'brace', 'arrow'])
 const MAX_T = 2 ** 53
 // Bounds the schema leaves open, wide enough for any board wise-board writes.
@@ -130,6 +131,8 @@ function read(raw: Raw, schema: 1 | 2): InkDoc {
       marks: s.marks === undefined ? [] : list(s.marks, `strokes[${i}].marks`).map((m, j) => str(m, `strokes[${i}].marks[${j}]`)),
       outline: outline(s.outline, `strokes[${i}].outline`),
       path: path(s.path, `strokes[${i}].path`, STROKE_POINT) as InkStroke['path'],
+      // an ink this player does not know falls back to the element's
+      ...(typeof s.ink === 'string' && INKS.has(s.ink) ? { ink: s.ink } : {}),
     }
   })
   strokes.forEach((s, i) => {

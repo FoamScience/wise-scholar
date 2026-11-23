@@ -92,7 +92,7 @@ export function inkColour(look: Look, name: string): string {
   return Object.hasOwn(look.inks, name) ? look.inks[name] : look.inks.ink
 }
 
-const inkOf = (doc: InkDoc, look: Look, stroke: number) => inkColour(look, doc.elements[doc.strokes[stroke].el].ink)
+const inkOf = (doc: InkDoc, look: Look, stroke: number) => inkColour(look, doc.strokes[stroke].ink ?? doc.elements[doc.strokes[stroke].el].ink)
 const under = (doc: InkDoc, stroke: number) => doc.elements[doc.strokes[stroke].el].kind === 'highlight'
 
 // Consecutive segments of a revealed centerline that share one width: the mask is stroked run by run, round-capped,

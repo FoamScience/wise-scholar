@@ -33,6 +33,19 @@ test('marks, ids and inks named after prototype keys find nothing', () => {
   assert.deepEqual(resolve(p, 'eq.__proto__', 900)?.box, [1, 1, 1, 1])
 })
 
+test('a stroke ink overrides its element ink, an unknown or missing one falls back to it', () => {
+  const d = doc2()
+  const strokes = d.strokes as { ink?: unknown }[]
+  strokes[1].ink = 'alert'
+  strokes[2].ink = 'crimson'
+  strokes[3].ink = 7
+  strokes[0].ink = '__proto__'
+  const read = readInk(d)
+  assert.equal(read.strokes[1].ink, 'alert')
+  for (const i of [0, 2, 3]) assert.equal('ink' in read.strokes[i], false, `stroke ${i}`)
+  assert.equal(readInk(doc2()).strokes.some((s) => 'ink' in s), false)
+})
+
 test('every validity rule of the schema refuses a document that breaks it', () => {
   refused((d) => (d.beats[0].draw = [9]), /out of range/)
   refused((d) => {
