@@ -23,6 +23,7 @@ import { PhotoTray } from './Handwork'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
 import type { Area, Block, ChallengeData, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
 import { FigureCard } from './Figure'
+import { InkBoardCard } from './InkBoard'
 import { WidgetCard } from './Widget'
 import { NetworkCard } from './Network'
 import { PlotCard } from './PlotCard'
@@ -690,6 +691,8 @@ function ShownCard(props: CardProps) {
       <WidgetCard key={b.id} id={b.id} title={b.markdown} data={b.data} onTry={authored ? undefined : (at) => props.post(`/api/blocks/${b.id}/widget`, { at })} />
     ) : b.kind === 'figure' ? (
       <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={features.sketched} disabled={lesson.running} onRestore={() => props.post(`/api/blocks/${b.id}/restore`, {})} onRedraw={features.crafted ? (notes) => props.post(`/api/blocks/${b.id}/redraw`, { notes }) : undefined} onAsk={authored || lesson.replay ? undefined : (part, question, parts) => props.post(`/api/blocks/${b.id}/ask`, { part, question, parts })} />
+    ) : b.kind === 'board' ? (
+      <InkBoardCard key={b.id} id={b.id} caption={b.markdown} data={b.data} disabled={lesson.running} onAsk={authored || lesson.replay ? undefined : (part, question) => props.post(`/api/blocks/${b.id}/ask`, { part, question })} />
     ) : b.kind === 'placement' ? (
       <PlacementResult key={b.id} id={b.id} level={(b.data as { level: string }).level} text={b.markdown} areas={(b.data as { areas?: Area[] }).areas} />
     ) : b.kind === 'podcast' ? (

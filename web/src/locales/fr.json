@@ -258,7 +258,13 @@
       "ask": "Demander",
       "at": "Étape {{n}} sur {{count}}",
       "whole": "Figure entière",
-      "onTheBoard": "Au tableau, étape par étape"
+      "onTheBoard": "Au tableau, étape par étape",
+      "askThis": "Poser une question à ce sujet",
+      "askPrefill": "À propos de {{what}} : ",
+      "tapToAsk": "Touchez ou cliquez une partie du tableau pour poser une question.",
+      "wholeBoard": "Tableau entier",
+      "unreadable": "Ce tableau ne peut pas être affiché dans cette version de l’application.",
+      "label": "Tableau manuscrit : {{title}}"
     },
     "block": {
       "outline": "Plan de l'unité",
@@ -292,7 +298,8 @@
       "diagramFailed": "Le schéma ne s'est pas affiché : {{error}}",
       "placementResult": "Résultat du test de niveau",
       "tutorWorking": "Le tuteur travaille",
-      "done": "Unité couverte"
+      "done": "Unité couverte",
+      "board": "Tableau"
     },
     "today": {
       "heading": "Aujourd'hui : une séance de 30 minutes",

@@ -250,7 +250,13 @@
       "ask": "Ask",
       "at": "Step {{n}} of {{count}}",
       "whole": "Whole figure",
-      "onTheBoard": "On the board, step by step"
+      "onTheBoard": "On the board, step by step",
+      "askThis": "Ask about this",
+      "askPrefill": "About {{what}}: ",
+      "tapToAsk": "Tap or click part of the board to ask about it.",
+      "wholeBoard": "Whole board",
+      "unreadable": "This board cannot be shown in this version of the app.",
+      "label": "Handwritten board: {{title}}"
     },
     "block": {
       "outline": "Unit plan",
@@ -284,7 +290,8 @@
       "diagramFailed": "Diagram did not render: {{error}}",
       "placementResult": "Placement result",
       "tutorWorking": "The tutor is working",
-      "done": "Unit covered"
+      "done": "Unit covered",
+      "board": "Board"
     },
     "today": {
       "heading": "Today: a sitting of 30 minutes",

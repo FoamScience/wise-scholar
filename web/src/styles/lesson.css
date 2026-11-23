@@ -119,6 +119,13 @@ svg .label {
   background: var(--color-accent-tint);
 }
 
+/* a board's parts, reachable by keyboard only: the focused one is ringed on the board (inkPlayer.ts) */
+.ink-part:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
 .figure-box [data-part] {
   transition: opacity var(--dur-micro) var(--ease-out);
 }
