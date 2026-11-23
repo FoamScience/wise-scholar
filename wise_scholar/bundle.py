@@ -18,11 +18,11 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
-from . import course_files, crafted, db, figures, widgets
+from . import course_files, crafted, db, figures, widgets, wiseboard
 
 SCHEMA = 1
 LICENCES = ("CC-BY-SA-4.0", "CC-BY-4.0", "CC-BY-NC-SA-4.0", "all-rights-reserved")
-BLOCK_KINDS = ("prose", "example", "quiz", "challenge", "exercise", "figure", "plot", "widget", "outline", "reading", "vocab")
+BLOCK_KINDS = ("prose", "example", "quiz", "challenge", "exercise", "figure", "plot", "widget", "outline", "reading", "vocab", "board")
 LESSON_PHASES = ("lesson", "practice")
 # What a bundle may weigh, packed and unpacked; a source alone may be 50 MB and a course holds 200 MB of them.
 BUNDLE_LIMIT = 256 * 1024 * 1024
@@ -386,6 +386,7 @@ def _capstone_rows(course_id: int, unit_keys: dict[int, str]) -> list[dict]:
 EDIT_TARGETS = ("block", "card", "file", "course", "summary")
 COURSE_FIELDS = ("topic", "details", "cover_alt")
 _NOT_TEXT = ("svg", "card")  # a figure's drawing and a quiz's card key are not read or edited as text
+BOARD_INK = ("doc", "script")  # nor a board's script and ink
 
 
 def _beliefs(card: dict) -> dict:
@@ -415,6 +416,13 @@ def _swap(value, old: str, new: str):
     return value
 
 
+def _editable(block: dict) -> dict | None:
+    """A block's data an edit may read and change: all of it, but for a board's script and ink."""
+    if block["kind"] != "board" or not block["data"]:
+        return block["data"]
+    return {k: v for k, v in block["data"].items() if k not in BOARD_INK}
+
+
 def _json(text: str) -> bool:
     try:
         json.loads(text)
@@ -434,7 +442,7 @@ def texts(manifest: dict, assets: dict[str, bytes]) -> dict[tuple[str, str], str
         if lesson["summary"]:
             out["summary", lesson["key"]] = lesson["summary"]
         for b in lesson["blocks"]:
-            out["block", b["key"]] = "\n".join(_strings([b["markdown"], b["data"]]))
+            out["block", b["key"]] = "\n".join(_strings([b["markdown"], _editable(b)]))
     for c in manifest["cards"]:
         out["card", c["key"]] = "\n".join(_strings(_card_text(c)))
     for f in manifest["files"]:
@@ -474,7 +482,8 @@ def _edit_card(manifest: dict, target: str, ref: str, old: str, new: str) -> boo
     for c, x in zip(cards, changed):
         c.update(x)
     for b in (b for b in blocks if _shows(b, ref, card_key)):
-        b["markdown"], b["data"] = _swap([b["markdown"], b["data"]], old, new)
+        b["markdown"], swapped = _swap([b["markdown"], _editable(b)], old, new)
+        b["data"] = b["data"] and {**b["data"], **swapped}
     return True
 
 
@@ -603,6 +612,15 @@ def _clean_completions(completions: object) -> list[dict]:
     return clean
 
 
+def _clean_board(data: dict) -> dict:
+    """A board's script and ink document; raises ValueError when either is not in the shape wise-board gives. A gist
+    mark is dropped: from a bundle it would stop the reader's own recap boards being written."""
+    script, doc = data.get("script"), data.get("doc")
+    if not isinstance(script, str) or len(script.encode()) > wiseboard.MAX_SCRIPT or not wiseboard.valid_doc(doc):
+        raise ValueError("a board is not one wise-board drew")
+    return {"script": script, "doc": doc}
+
+
 def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
     """A block from someone else, made safe to show and to hand to the tutor."""
     data = dict(block.data or {})
@@ -612,7 +630,9 @@ def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
                 "credits": data.get("credits") if isinstance(data.get("credits"), list) else []}
     if block.kind == "widget":
         data = {"spec": data.get("spec"), "widget": widgets.resolve(data.get("spec")), "alt": str(data.get("alt", ""))[:2000]}
-    if block.kind in ("figure", "plot", "widget") and isinstance(teaches, dict):
+    if block.kind == "board":
+        data = _clean_board(data)
+    if block.kind in ("figure", "plot", "widget", "board") and isinstance(teaches, dict):
         data["teaches"] = {k: str(teaches.get(k, ""))[:figures.TEACHES_CHARS] for k in figures.Teaches.model_fields}
     if block.kind == "exercise" and "completions" in data:
         data["completions"] = _clean_completions(data["completions"])

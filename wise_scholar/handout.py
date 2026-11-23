@@ -3,14 +3,14 @@ copy with the tasks and figures only. Markdown here; the PDF is the same page pr
 
 from . import db, obsidian
 
-STUDENT_KINDS = (*obsidian.CARD_KINDS, "figure", "widget")
+STUDENT_KINDS = (*obsidian.CARD_KINDS, "figure", "widget", "board")
 
 
-def markdown(lesson_id: int, solutions: bool) -> str | None:
+def markdown(lesson_id: int, solutions: bool, boards: dict[int, list[str]] | None = None) -> str | None:
     lesson = db.lesson(lesson_id)
     if not lesson:
         return None
-    vault = obsidian.Vault(lesson["course_id"], inline=True, solutions=solutions)
+    vault = obsidian.Vault(lesson["course_id"], inline=True, solutions=solutions, boards=boards)
     full = next((l for l in vault.lessons if l["id"] == lesson_id), None)
     if full is None:
         return None

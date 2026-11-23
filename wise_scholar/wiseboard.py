@@ -10,9 +10,11 @@ import os
 import queue
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from concurrent.futures import Future, InvalidStateError
+from pathlib import Path
 
 log = logging.getLogger("wise_scholar.wiseboard")
 
@@ -25,6 +27,13 @@ TIMEOUT = DEADLINE_MS / 1000 + 30
 MAX_SCRIPT = 64 * 1024
 MAX_PRIOR = 12 * 1024 * 1024
 MAX_LINE = 24 * 1024 * 1024
+# A stored doc's caps, the binary's own for a prior: elements, and an element's id, kind and alt text.
+MAX_PAGES = 4
+MAX_ELEMENTS = 1000
+MAX_ID = 200
+MAX_ALT = 4000
+# `render --svg` processes at once, across every export.
+SVG_SLOTS = 2
 STOP_WAIT = 5
 
 
@@ -171,6 +180,7 @@ def _settle(future: Future, result=None, error: Exception | None = None) -> None
 
 _server: _Server | None = None
 _start = threading.Lock()
+_svg_slots = threading.BoundedSemaphore(SVG_SLOTS)
 
 
 def _running() -> _Server:
@@ -242,3 +252,80 @@ async def render(script: str, prior: dict | None = None) -> tuple[dict, str]:
     if not isinstance(doc, dict) or not isinstance(doc.get("elements"), list):
         raise BoardError("wise-board drew an ink document with no elements")
     return doc, result["text"]
+
+
+def doc_json(doc) -> str | None:
+    """A stored ink document as the JSON the binary takes when it has the shape the binary writes, within its caps;
+    None otherwise. A stored doc is untrusted: it may come from someone else's bundle."""
+    if not isinstance(doc, dict) or not isinstance(elements := doc.get("elements"), list) or len(elements) > MAX_ELEMENTS:
+        return None
+    pages = doc.get("pages")
+    if not isinstance(pages, int) or isinstance(pages, bool) or not 0 < pages <= MAX_PAGES:
+        return None
+    if not all(_element(e) for e in elements):
+        return None
+    try:
+        text = json.dumps(doc, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return None
+    return text if len(text.encode()) <= MAX_PRIOR else None
+
+
+def _element(e) -> bool:
+    return (isinstance(e, dict) and isinstance(e.get("id"), str) and len(e["id"]) <= MAX_ID and isinstance(e.get("kind"), str)
+            and len(e["kind"]) <= MAX_ID and isinstance(e.get("alt", ""), str) and len(e.get("alt", "")) <= MAX_ALT)
+
+
+def valid_doc(doc) -> bool:
+    return doc_json(doc) is not None
+
+
+async def svg_pages(doc: dict, deadline: float) -> list[str]:
+    """Every page of a board at rest, as the binary draws it: an empty script on the doc as prior, so the ink is the
+    doc's own. The warm process gives no SVG, so this runs `wise-board render --svg` once a page, at most SVG_SLOTS
+    at a time across the server, each within the time left before deadline (a time.monotonic()). Raises Refused
+    when the binary refused the doc and BoardError for anything else, the first page that fails failing the board."""
+    path = binary()
+    if not path:
+        raise BoardError("wise-board is not installed on this server")
+    if (text := doc_json(doc)) is None:
+        raise BoardError("not a board this server drew")
+    return await asyncio.to_thread(_draw_pages, path, text, doc["pages"], deadline)
+
+
+def _left(deadline: float) -> float:
+    if (left := min(TIMEOUT, deadline - time.monotonic())) <= 0:
+        raise BoardError("no time left to draw this board")
+    return left
+
+
+def _draw_pages(path: str, text: str, pages: int, deadline: float) -> list[str]:
+    if not _svg_slots.acquire(timeout=_left(deadline)):
+        raise BoardError("wise-board is busy drawing other boards")
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            prior, out = Path(tmp) / "prior.json", Path(tmp) / "page.svg"
+            prior.write_text(text)
+            return [_draw_page(path, prior, out, page, _left(deadline)) for page in range(pages)]
+    finally:
+        _svg_slots.release()
+
+
+def _draw_page(path: str, prior: Path, out: Path, page: int, timeout: float) -> str:
+    try:
+        done = subprocess.run(
+            [path, "render", "-", "--prior", str(prior), "--svg", "--page", str(page), "-o", str(out)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=timeout, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise BoardError(f"wise-board did not draw page {page} within {timeout:.0f} seconds") from None
+    except OSError as e:
+        raise BoardError(f"wise-board could not start: {e}") from None
+    said = done.stderr[:4096].decode(errors="replace").strip()
+    if done.returncode == 1:
+        raise Refused(said or "wise-board refused this without saying why")
+    if done.returncode != 0:
+        raise BoardError(f"wise-board failed (exit code {done.returncode}): {said[:200]}")
+    if not out.exists() or out.stat().st_size > MAX_LINE:
+        raise BoardError(f"wise-board drew no page {page} under {MAX_LINE} bytes")
+    return out.read_text(errors="replace")

@@ -4,12 +4,22 @@ project and word, linked with wikilinks and carrying properties, so the learner'
 import base64
 import io
 import json
+import logging
 import re
+import time
 import zipfile
 from datetime import datetime, timezone
 
-from . import course_files, crafted, db, quiz, widgets
+from . import course_files, crafted, db, figures, quiz, widgets, wiseboard
 
+log = logging.getLogger("wise_scholar.obsidian")
+
+BOARD_LINES = 200
+# What one export spends on drawing boards, and how much of a hand-out inline board drawings may take; past either,
+# boards are their text.
+EXPORT_BOARDS = 40
+EXPORT_SECONDS = 120
+INLINE_BOARDS = 8 * 1024 * 1024
 # Folder and property names are fixed in English so a re-export lands on the same files; the text inside a note
 # follows the learner's language.
 FOLDER = "Wise Scholar"
@@ -26,7 +36,7 @@ WORDS = {
         "glossary": "Glossary", "known": "known", "learning": "learning", "seen_in": "Seen in", "flashcards": "Review cards",
         "pretest": "Opening question", "gave_up": "gave up", "solved": "solved", "unanswered": "not answered", "cast": "Cast",
         "claims": "Claims", "follows_from": "Follows from", "leads_to": "Leads to", "grounded_by": "Grounded by", "grounds": "Grounds", "contrasts": "Looks like but differs from", "taught_in": "Taught in", "checked_by": "Checked by", "held": "held", "fading": "fading", "shaky": "shaky", "unseen": "not checked yet",
-        "map": "Course map", "quick_check": "Quick check", "exercise": "Exercise", "challenge": "Task", "solution_n": "Solution {}", "unknown": "I don't know", "helper": "What you need to know", "limits": "Where this stops matching the real thing: {}", "starts_at": "starts at {}", "belief": "Behind this answer",
+        "map": "Course map", "quick_check": "Quick check", "exercise": "Exercise", "challenge": "Task", "solution_n": "Solution {}", "unknown": "I don't know", "helper": "What you need to know", "limits": "Where this stops matching the real thing: {}", "starts_at": "starts at {}", "belief": "Behind this answer", "board": "Board",
     },
     "fr": {
         "course": "Cours", "modules": "Modules", "units": "Unités", "lessons": "Leçons", "cards": "Cartes", "mistakes": "Erreurs",
@@ -40,7 +50,7 @@ WORDS = {
         "glossary": "Glossaire", "known": "connu", "learning": "en cours", "seen_in": "Vu dans", "flashcards": "Cartes de révision",
         "pretest": "Question d'ouverture", "gave_up": "abandon", "solved": "résolu", "unanswered": "sans réponse", "cast": "Émission",
         "claims": "Notions", "follows_from": "Découle de", "leads_to": "Mène à", "grounded_by": "Appuyée par", "grounds": "Appuie", "contrasts": "Ressemble à mais diffère de", "taught_in": "Vue dans", "checked_by": "Vérifiée par", "held": "acquise", "fading": "à revoir", "shaky": "fragile", "unseen": "pas encore vérifiée",
-        "map": "Plan du cours", "quick_check": "Question rapide", "exercise": "Exercice", "challenge": "Tâche", "solution_n": "Solution {}", "unknown": "Je ne sais pas", "helper": "Ce qu'il faut savoir", "limits": "Là où cela cesse de correspondre au réel : {}", "starts_at": "au départ {}", "belief": "Derrière cette réponse",
+        "map": "Plan du cours", "quick_check": "Question rapide", "exercise": "Exercice", "challenge": "Tâche", "solution_n": "Solution {}", "unknown": "Je ne sais pas", "helper": "Ce qu'il faut savoir", "limits": "Là où cela cesse de correspondre au réel : {}", "starts_at": "au départ {}", "belief": "Derrière cette réponse", "board": "Tableau",
     },
     "ar": {
         "course": "الدورة", "modules": "الوحدات الكبرى", "units": "الوحدات", "lessons": "الدروس", "cards": "البطاقات", "mistakes": "الأخطاء",
@@ -54,7 +64,7 @@ WORDS = {
         "glossary": "المسرد", "known": "معروف", "learning": "قيد التعلم", "seen_in": "ورد في", "flashcards": "بطاقات المراجعة",
         "pretest": "سؤال البداية", "gave_up": "استسلام", "solved": "محلول", "unanswered": "بلا إجابة", "cast": "حلقة",
         "claims": "المعارف", "follows_from": "تُستنتج من", "leads_to": "تؤدي إلى", "grounded_by": "تدعمها", "grounds": "تدعم", "contrasts": "تشبه لكنها تختلف عن", "taught_in": "دُرِّست في", "checked_by": "تحقق منها", "held": "مكتسبة", "fading": "تحتاج مراجعة", "shaky": "هشّة", "unseen": "لم تُختبر بعد",
-        "map": "خريطة الدورة", "quick_check": "سؤال سريع", "exercise": "تمرين", "challenge": "مهمة", "solution_n": "الحل {}", "unknown": "لا أعرف", "helper": "ما تحتاج إلى معرفته", "limits": "حيث يتوقف عن مطابقة الواقع: {}", "starts_at": "يبدأ عند {}", "belief": "وراء هذه الإجابة",
+        "map": "خريطة الدورة", "quick_check": "سؤال سريع", "exercise": "تمرين", "challenge": "مهمة", "solution_n": "الحل {}", "unknown": "لا أعرف", "helper": "ما تحتاج إلى معرفته", "limits": "حيث يتوقف عن مطابقة الواقع: {}", "starts_at": "يبدأ عند {}", "belief": "وراء هذه الإجابة", "board": "سبورة",
     },
 }
 CARD_KINDS = ("challenge", "exercise", "quiz", "speaking")
@@ -117,6 +127,11 @@ def _plain(text: str) -> str:
     return re.sub(r"([*_\[\]()`\\])", r"\\\1", text)
 
 
+def _inert(text: str) -> str:
+    """Text from a board's ink that stays text: no Markdown, and no HTML where the Markdown is shown as a page."""
+    return _plain(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _alt(text: str) -> str:
     return " ".join(text.replace("]", ")").replace("[", "(").split())
 
@@ -138,10 +153,12 @@ def _code(text: str, lang: str = "") -> str:
 class Vault:
     """Builds the notes of one course; paths are vault-relative so links stay valid beside other courses."""
 
-    def __init__(self, course_id: int, inline: bool = False, solutions: bool = True):
+    def __init__(self, course_id: int, inline: bool = False, solutions: bool = True, boards: dict[int, list[str]] | None = None):
         """inline: cards and figures written into the lesson text (a hand-out) instead of linked notes;
-        solutions: False leaves out solutions, hints, keys and attempts (a student's copy)."""
-        self.inline, self.solutions = inline, solutions
+        solutions: False leaves out solutions, hints, keys and attempts (a student's copy);
+        boards: each board's pages as clean SVG by block id, drawn by the caller; a board without them is its text."""
+        self.inline, self.solutions, self.boards = inline, solutions, boards or {}
+        self.inline_left = INLINE_BOARDS
         self.course = db.course(course_id)
         self.profile = db.profile(self.course["profile_id"])
         self.t = WORDS.get(self.profile["locale"], WORDS["en"])
@@ -293,7 +310,7 @@ class Vault:
         if kind in ("network", "vocab"):
             return ""
         render = {
-            "figure": self._figure_text, "plot": self._plot_text, "widget": self._widget_block, "reading": self._reading_text,
+            "figure": self._figure_text, "plot": self._plot_text, "widget": self._widget_block, "board": self._board_text, "reading": self._reading_text,
             "question": self._question_text, "placement": self._placement_text, "done": self._done_text, "podcast": self._podcast_text,
         }.get(kind)
         return render(block) if render else block["markdown"] + "\n"
@@ -327,6 +344,32 @@ class Vault:
     def _widget_block(self, block: dict) -> str:
         d = block["data"]
         return self._widget_drawing(block, d) + self._widget_text(block["markdown"], d) + self._limits(d)
+
+    def _board_text(self, block: dict) -> str:
+        """A board at rest, one drawing per page; without drawings, what is written on it."""
+        d = block["data"]
+        doc = d.get("doc")
+        elements = doc["elements"] if isinstance(doc, dict) and isinstance(doc.get("elements"), list) else []
+        said = [e for e in elements if isinstance(e, dict) and isinstance(e.get("alt"), str) and e["alt"].strip()]
+        title = next((e["alt"] for e in said if e.get("kind") == "title"), "")
+        alt = _inert(_alt(title[:300]) or self.t["board"])
+        pages = self.boards.get(block["id"], [])
+        if self.inline and pages:
+            size = sum(len(svg) for svg in pages)
+            pages = pages if size <= self.inline_left else []
+            self.inline_left -= len(pages) and size
+        if not pages:
+            lines = [f"- {_inert(' '.join(e['alt'].split())[:500])}" for e in said[:BOARD_LINES]]
+            return f"**{alt}**\n\n" + "\n".join(lines) + "\n" + self._limits(d)
+        if self.inline:
+            images = "".join(f"![{alt}](data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()})\n" for svg in pages)
+            return images + self._limits(d)
+        embeds = ""
+        for n, svg in enumerate(pages):
+            path = f"{self.root}/attachments/board-{block['id']}{f'-{n + 1}' if len(pages) > 1 else ''}.svg"
+            self.files[path] = svg.encode()
+            embeds += f"![[{path}]]\n"
+        return embeds + self._limits(d)
 
     def _reading_text(self, block: dict) -> str:
         d, t = block["data"], self.t
@@ -760,9 +803,10 @@ class Vault:
         self.files[f"{self.root}/{_name(self.t['map'])}.canvas"] = json.dumps({"nodes": nodes, "edges": edges}, ensure_ascii=False, indent=1).encode()
 
 
-def export(course_id: int, plots: dict[int, bytes] | None = None) -> bytes:
-    """The zip the learner downloads: unpack it into any vault. plots: PNGs by block id, rendered by the caller."""
-    vault = Vault(course_id)
+def export(course_id: int, plots: dict[int, bytes] | None = None, boards: dict[int, list[str]] | None = None) -> bytes:
+    """The zip the learner downloads: unpack it into any vault. plots: PNGs by block id, rendered by the caller;
+    boards: as for Vault."""
+    vault = Vault(course_id, boards=boards)
     for block_id, png in (plots or {}).items():
         vault.files[f"{vault.root}/attachments/plot-{block_id}.png"] = png
     files = vault.build()
@@ -777,3 +821,29 @@ def plot_blocks(course_id: int) -> list[int]:
     return [b["id"] for b in db.rows(
         "SELECT b.id FROM blocks b JOIN lessons l ON l.id = b.lesson_id WHERE l.course_id = ? AND b.kind = 'plot' ORDER BY b.id", course_id
     )]
+
+
+def board_blocks(course_id: int, lesson_id: int | None = None) -> list[int]:
+    return [b["id"] for b in db.rows(
+        "SELECT b.id FROM blocks b JOIN lessons l ON l.id = b.lesson_id WHERE l.course_id = ? AND b.kind = 'board' "
+        "AND (? IS NULL OR l.id = ?) ORDER BY b.id", course_id, lesson_id, lesson_id,
+    )]
+
+
+async def board_pages(block_ids: list[int], seconds: float = EXPORT_SECONDS, most: int = EXPORT_BOARDS) -> dict[int, list[str]]:
+    """Each board's pages as clean SVG, drawn by wise-board within the export's budget: the first `most` boards, while
+    `seconds` last. A board it cannot draw in full, one past the budget, or every board when it is not installed is
+    left out and exported as its text."""
+    if not block_ids or not wiseboard.available():
+        return {}
+    deadline, out = time.monotonic() + seconds, {}
+    for n, block_id in enumerate(block_ids):
+        if n >= most or time.monotonic() >= deadline:
+            log.warning("%d boards exported as their text: over the export's budget", len(block_ids) - n)
+            break
+        doc = (db.block(block_id) or {}).get("data", {}).get("doc")
+        try:
+            out[block_id] = [figures.clean(svg, limit=wiseboard.MAX_LINE) for svg in await wiseboard.svg_pages(doc, deadline)]
+        except (wiseboard.BoardError, ValueError) as e:
+            log.warning("board %s exported as its text: %s", block_id, e)
+    return out

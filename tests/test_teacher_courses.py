@@ -94,7 +94,7 @@ def test_handouts_give_the_teacher_the_solutions_and_the_students_the_tasks(monk
         assert secret not in student, secret
     assert "Count the bonds in water." in student and "`w/count.py`" in student and "data:image/svg+xml;base64," in student
     assert "**Solution**\n>" in teacher and "[!solution]" not in teacher and "Two bonds." in teacher
-    sent = lessons_routes.lesson_handout(lesson, "student")
+    sent = asyncio.run(lessons_routes.lesson_handout(lesson, "student"))
     assert sent.media_type.startswith("text/markdown") and sent.body.decode() == student
     assert lessons_routes.get_lesson(lesson)["course_id"] == course
 
