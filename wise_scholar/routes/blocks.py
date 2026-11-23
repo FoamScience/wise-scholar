@@ -141,22 +141,50 @@ def _board_line(block: dict, body: BoardQuestion, question: str) -> str:
     )
 
 
+def _ink_element(doc, ref: str) -> dict | None:
+    """The element of a stored ink document that `id` or `id.mark` points at."""
+    element_id, _, mark = ref.partition(".")
+    elements = doc.get("elements") if isinstance(doc, dict) else None
+    element = next((e for e in elements if isinstance(e, dict) and e.get("id") == element_id), None) if isinstance(elements, list) else None
+    marks = element.get("marks") if element else None
+    return element if element and (not mark or (isinstance(marks, dict) and mark in marks)) else None
+
+
+def _ink_board_line(block: dict, part: str, question: str) -> str:
+    alt = _ink_element(block["data"].get("doc"), part).get("alt")
+    written = f", written as {_untrusted(alt)!r}," if isinstance(alt, str) and alt.strip() else ""
+    return (
+        f"[board question] The learner points at {part!r} of board {block['id']}{written} "
+        f"and asks the question below. Answer on the board: one extend_board call on board {block['id']} with one to "
+        "three beats whose sentences carry the answer, pointing at that part (circle it, write beside it, an arrow to it); "
+        "erase only what the answer replaces. Then at most one chat sentence. When the answer has nothing to write, "
+        f"answer in two or three chat sentences instead.\n[learner] {_untrusted(question)}"
+    )
+
+
 @app.post("/api/blocks/{block_id}/ask", status_code=202)
 async def ask_about_part(block_id: int, body: BoardQuestion) -> dict:
-    """The learner points at a part of a figure and asks about it; the tutor answers by drawing on the figure."""
+    """The learner points at a part of a figure or a handwritten board and asks about it; the tutor answers by
+    drawing on it."""
     block = db.block(block_id)
-    if not block or block["kind"] != "figure":
-        raise HTTPException(404, "no such figure")
+    if not block or block["kind"] not in ("figure", "board"):
+        raise HTTPException(404, "no such figure or board")
     _require_answerable(block)
     core._require_idle(block["lesson_id"])
     question = body.question.strip()
     if not question:
         raise HTTPException(422, "message is empty")
-    if block["data"].get("frames") or body.part not in board.parts(block["data"]["svg"]):
+    if block["kind"] == "board":
+        if not _ink_element(block["data"].get("doc"), body.part):
+            raise HTTPException(404, "no such part")
+        line = _ink_board_line(block, body.part, question)
+    elif block["data"].get("frames") or body.part not in board.parts(block["data"]["svg"]):
         raise HTTPException(404, "no such part")
+    else:
+        line = _board_line(block, body, question)
     lesson = _lesson(block["lesson_id"])
     db.add_message(lesson["id"], "learner", question)
-    core._start_turn(lesson, _board_line(block, body, question))
+    core._start_turn(lesson, line)
     return {"figure": block_id}
 
 

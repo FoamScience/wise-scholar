@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 
-from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, remind, resources, sandbox, speech, tutor, vault, vocab, widgets
+from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, remind, resources, sandbox, speech, tutor, vault, vocab, widgets, wiseboard
 from .tools import course_plan as plan_tools, lesson_flow as flow_tools, quizzes as quiz_tools, side_turns as side_tools
 from .backends import BACKEND, MCP_SECRET, agy, api, claude, opencode
 from .playbooks import PLAYBOOKS, describe
@@ -86,6 +86,7 @@ async def lifespan(app: FastAPI):
             await vault.stop()
             await backend.stop()
             speech.worker.stop()
+            wiseboard.stop()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -363,6 +364,12 @@ def _tool_lines() -> list[str]:
         tools.append(
             "[tools] Crafted figures: add_crafted_figure draws a thing as itself in volume and shade, built or living, scripted "
             "against a kit (read craft_help first); replace_crafted_figure redraws an earlier figure that way in its place."
+        )
+    if wiseboard.available():
+        tools.append(
+            "[tools] Handwritten boards: add_board writes math and short text in marker on a whiteboard, beat by beat with a "
+            "sentence each, for a derivation, a proof or a worked calculation (read board_help first); extend_board writes "
+            "more on an earlier board, to continue it or to answer a question about it."
         )
     if not challenge.HINTS:
         tools.append(
