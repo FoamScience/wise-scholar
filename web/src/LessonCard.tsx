@@ -16,7 +16,7 @@ import type { Given } from './offline'
 import type { QuizData } from './Quiz'
 import { ReadingCard, VocabCheckCard } from './Language'
 import { PodcastCard } from './Podcast'
-import { challengeLabel, pendingPhotos } from './course'
+import { blockKey, challengeLabel, pendingPhotos } from './course'
 import { PlacementAreas } from './Areas'
 import { FileEditor } from './FileEditor'
 import { PhotoTray } from './Handwork'
@@ -705,7 +705,7 @@ function ShownCard(props: CardProps) {
       />
     ) : (
       <section key={b.id} id={`block-${b.id}`} className="block border-t border-border pt-6 first:border-t-0 first:pt-0">
-        <div className="mb-2 text-sm leading-snug font-medium text-ink-2">{lookup(`block.${b.kind}`, b.kind)}</div>
+        <div className="mb-2 text-sm leading-snug font-medium text-ink-2">{lookup(`block.${blockKey(b)}`, b.kind)}</div>
         <Markdown>{b.markdown}</Markdown>
       </section>
     )

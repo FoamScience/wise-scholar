@@ -5,6 +5,8 @@ import { transcribe } from './api'
 import type { Message } from './course'
 import { textDirection } from './text'
 import { Mic } from './Mic'
+import { plain } from './plain'
+import { usePlayer } from './player'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -12,17 +14,29 @@ import { cn } from 'cn'
 
 const BUBBLE = 'bubble max-w-[90%] rounded-lg px-4 py-3 wrap-anywhere [&>:first-child]:mt-0 [&>:last-child]:mb-0'
 
-/** A tutor or learner message in the chat sidebar. */
-function Remark({ message }: { message: Message }) {
+/** A role-play line as it is read aloud: plain text, without the quoted scene-setting in the learner's own language. */
+function spoken(markdown: string): string {
+  return plain(markdown.split('\n').filter((line) => !line.trimStart().startsWith('>')).join('\n'))
+}
+
+/** A tutor or learner message in the chat sidebar; a role-play can read the tutor's lines aloud. */
+function Remark({ message, player }: { message: Message; player: ReturnType<typeof usePlayer> | null }) {
+  const { t } = useTranslation()
   if (message.role === 'learner')
     return (
       <div id={`msg-${message.id}`} className={cn(BUBBLE, 'self-end whitespace-pre-wrap bg-primary text-primary-foreground')} dir={textDirection(message.text)}>
         {message.text}
       </div>
     )
+  const line = player ? spoken(message.text) : ''
   return (
     <div id={`msg-${message.id}`} className={cn(BUBBLE, 'self-start bg-muted')}>
       <Markdown>{message.text}</Markdown>
+      {player && line && (
+        <Button type="button" variant="ghost" size="sm" className="-ms-2 mt-1 text-ink-2" onClick={() => (player.current === line ? player.stop() : player.play([line]))}>
+          {player.current === line ? t('common.stop') : t('common.listen')}
+        </Button>
+      )}
     </div>
   )
 }
@@ -77,6 +91,8 @@ export function ChatPanel({ messagesRef, className, ...props }: {
   placeholder: string | undefined
   onKey: (e: KeyboardEvent<HTMLTextAreaElement>) => void
   speech: boolean
+  voice: string | null
+  lessonId: number
   canSend: boolean
   onSend: () => void
   onStop: () => void
@@ -85,6 +101,7 @@ export function ChatPanel({ messagesRef, className, ...props }: {
   messagesRef: RefObject<HTMLDivElement | null>
 }) {
   const { t } = useTranslation()
+  const player = usePlayer(props.voice ?? '', props.speech, props.lessonId)
   return (
     <aside
       className={cn(
@@ -110,8 +127,9 @@ export function ChatPanel({ messagesRef, className, ...props }: {
       </div>
       <div ref={messagesRef} className="flex grow flex-col gap-3 overflow-y-auto p-4">
         {props.messages.map((m) => (
-          <Remark key={m.id} message={m} />
+          <Remark key={m.id} message={m} player={props.voice ? player : null} />
         ))}
+        {props.voice && player.error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{player.error}</div>}
         {props.open && props.streaming && (
           <div className={cn(BUBBLE, 'self-start bg-muted')}>
             <Markdown>{props.streaming}</Markdown>

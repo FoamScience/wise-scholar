@@ -53,7 +53,7 @@ function saveSeen(lesson: number, message: number) {
   }
 }
 
-type Opening = { courseId: number; concept: number | null; start: 'episode' | 'writing' | null; foundLesson: number | null }
+type Opening = { courseId: number; concept: number | null; start: 'episode' | 'writing' | 'roleplay' | null; foundLesson: number | null }
 
 function askWarmup(courseId: number) {
   const here = location.hash

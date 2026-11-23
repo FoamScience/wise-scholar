@@ -6,7 +6,7 @@ import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { NetworkCard } from './Network'
 import { api, failure } from './api'
 import { parts, timeline } from './chapters'
-import { challengeLabel, lessonTitle, practiceTitle, sortItems } from './course'
+import { blockKey, challengeLabel, lessonTitle, practiceTitle, sortItems } from './course'
 import { PlacementAreas } from './Areas'
 import type { Area, Block, ChallengeData, Concept, CourseDetail, ExerciseData, ExerciseFile, Lesson, Message, QuestionData, SpeakingData } from './course'
 import { Correction } from './Diff'
@@ -203,7 +203,7 @@ function BookBlock(props: BlockProps) {
   const render = BOOK_BLOCKS[props.block.kind]
   if (render) return render(props)
   return (
-    <Card label={lookup(`block.${props.block.kind}`, props.block.kind)}>
+    <Card label={lookup(`block.${blockKey(props.block)}`, props.block.kind)}>
       <Markdown>{props.block.markdown}</Markdown>
     </Card>
   )

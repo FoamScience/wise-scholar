@@ -4,8 +4,9 @@ import i18n from './i18n'
 
 const SLOW_RATE = 0.8
 
-/** Plays sentences one after another through the local voice, or the browser voice when speech is off. */
-export function usePlayer(lang: string, local: boolean) {
+/** Plays sentences one after another through the local voice, or the browser voice when speech is off. A change of
+ * scope, such as another lesson, stops the playback and clears its error. */
+export function usePlayer(lang: string, local: boolean, scope?: number) {
   const [current, setCurrent] = useState<string | null>(null)
   const [slow, setSlow] = useState(false)
   const [error, setError] = useState('')
@@ -21,7 +22,13 @@ export function usePlayer(lang: string, local: boolean) {
     setCurrent(null)
   }
 
-  useEffect(() => stop, [])
+  useEffect(
+    () => () => {
+      stop()
+      setError('')
+    },
+    [scope],
+  )
 
   function setSlowRate(on: boolean) {
     slowRef.current = on
@@ -41,10 +48,14 @@ export function usePlayer(lang: string, local: boolean) {
         const res = await fetch(url(sentences[i])).catch(() => null)
         if (run.current !== mine) return
         if (!res?.ok) {
-          setError(res ? (await failure(res)).message : i18n.t('speaking.voiceSilent'))
+          const message = res ? (await failure(res)).message : i18n.t('speaking.voiceSilent')
+          if (run.current !== mine) return
+          setError(message)
           break
         }
-        const src = URL.createObjectURL(await res.blob())
+        const sound = await res.blob()
+        if (run.current !== mine) return
+        const src = URL.createObjectURL(sound)
         const clip = new Audio(src)
         clip.playbackRate = slowRef.current ? SLOW_RATE : 1
         audio.current = clip

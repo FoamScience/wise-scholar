@@ -656,6 +656,19 @@ async def writing_session(course_id: int) -> dict:
     return view
 
 
+@app.post("/api/courses/{course_id}/roleplay")
+async def roleplay_session(course_id: int) -> dict:
+    course = _course(course_id)
+    if not course["lang"]:
+        raise HTTPException(409, "role-plays are for language courses; the first reading sets the language")
+    n = sum(1 for lesson in course["lessons"] if lesson["phase"] == "roleplay") + 1
+    lesson_id = db.create_lesson(course_id, f"Role-play {n}", "roleplay")
+    view = _lesson_view(lesson_id)
+    hub.publish(course_id, {"type": "lesson.created", "lesson": view})
+    core._start_turn(_lesson(lesson_id), "[event] The learner opens a role-play. Set the scene and speak first, in character.")
+    return view
+
+
 @app.get("/api/courses/{course_id}/errors")
 def list_course_errors(course_id: int) -> list[dict]:
     course = db.course(course_id)

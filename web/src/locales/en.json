@@ -31,6 +31,7 @@
       "episode": "Episode {{n}}",
       "revisit": "Revisit {{n}}",
       "writingSession": "Writing session {{n}}",
+      "roleplay": "Role-play {{n}}",
       "nextUnit": "Next: {{title}}"
     },
     "recap": {
@@ -280,6 +281,7 @@
       "enlargeFigure": "Enlarge: {{alt}}",
       "plot": "Plot",
       "widget": "Try it",
+      "roleplayDone": "Role-play finished",
       "widgetReset": "Back to the start",
       "widgetPin": "Pin to compare",
       "widgetUnpin": "Unpin",
@@ -609,7 +611,8 @@
       "tier": "Tier {{tier}}, the {{words}} most common words: {{known}} of {{size}} in this tier known",
       "vocabulary": "Vocabulary: {{due}} due of {{total}}",
       "nextEpisode": "Next episode",
-      "writing": "Writing session"
+      "writing": "Writing session",
+      "roleplay": "Role-play"
     },
     "notebook": {
       "practiceMiss": "Missed in practice",

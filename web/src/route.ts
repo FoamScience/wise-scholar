@@ -1,5 +1,5 @@
 export type CourseRoute =
-  | { page: 'workspace'; courseId: number; concept: number | null; start: 'episode' | 'writing' | null; found: { lesson: number; at: string } | null }
+  | { page: 'workspace'; courseId: number; concept: number | null; start: 'episode' | 'writing' | 'roleplay' | null; found: { lesson: number; at: string } | null }
   | { page: 'search'; courseId: number; query: string; kind: string }
   | { page: 'recap'; courseId: number; preview: boolean }
   | { page: 'book'; courseId: number }
@@ -15,13 +15,13 @@ const PROFILE_PAGES = ['explore', 'errors', 'sitting', 'commands', 'usage', 'set
 
 /** The page of one course or lesson a hash names; a search hit opens the workspace at its card or chat message. */
 export function courseRoute(hash: string): CourseRoute | null {
-  const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing)|\?lesson=(\d+)&(card|chat)=(\d+))?$/)
+  const match = hash.match(/^#\/course\/(\d+)(?:\?concept=(\d+)|\?start=(episode|writing|roleplay)|\?lesson=(\d+)&(card|chat)=(\d+))?$/)
   if (match)
     return {
       page: 'workspace',
       courseId: Number(match[1]),
       concept: match[2] ? Number(match[2]) : null,
-      start: (match[3] as 'episode' | 'writing' | undefined) ?? null,
+      start: (match[3] as 'episode' | 'writing' | 'roleplay' | undefined) ?? null,
       found: match[4] ? { lesson: Number(match[4]), at: `${match[5] === 'chat' ? 'msg' : 'block'}-${match[6]}` } : null,
     }
   const found = hash.match(/^#\/course\/(\d+)\/search\?(.*)$/)

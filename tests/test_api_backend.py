@@ -70,13 +70,14 @@ class FakeTools:
     def __init__(self, fail: bool = False):
         self.calls: list[tuple[str, dict]] = []
         self.fail = fail
+        self.answer = "added"
 
     async def list_tools(self):
         return SimpleNamespace(tools=[SimpleNamespace(name="add_block", description="Add a block.", input_schema={"type": "object"})])
 
     async def call_tool(self, name: str, arguments: dict) -> CallToolResult:
         self.calls.append((name, arguments))
-        return CallToolResult(content=[TextContent(type="text", text="refused" if self.fail else "added")], is_error=self.fail)
+        return CallToolResult(content=[TextContent(type="text", text="refused" if self.fail else self.answer)], is_error=self.fail)
 
 
 @pytest.fixture
@@ -322,3 +323,18 @@ def test_a_reply_that_poses_a_card_ends_the_turn_without_asking_again(fake, monk
     monkeypatch.setattr(tutor.db, "lesson", lambda lesson_id: {"mode": "learner", "batch": 1})
     server, _ = fake(pose, reply({"type": "text", "text": "More."}, stop="end_turn"))
     assert turn(session_id="s3")[-1]["ok"] and len(server.requests) == 2
+
+
+def test_an_accepted_end_roleplay_ends_the_turn_and_a_refused_one_asks_again(fake, monkeypatch):
+    from wise_scholar import tutor
+
+    monkeypatch.setattr(tutor, "_turn_of", lambda token: {"kind": "lesson", "lesson_id": 1})
+    monkeypatch.setattr(tutor.db, "lesson", lambda lesson_id: {"mode": "learner", "batch": 0, "phase": "roleplay"})
+    end = reply({"type": "tool_use", "id": "t1", "name": "end_roleplay", "input": {}}, stop="tool_use")
+    server, tools = fake(end)
+    tools.answer = "ended with 1 review cards; write nothing more and end the turn"
+    assert turn()[-1]["ok"] and len(server.requests) == 1
+
+    server, tools = fake(end, reply({"type": "text", "text": "Retry."}, stop="end_turn"))
+    tools.answer = "error: mistake 1 has a blank said or correct"
+    assert turn(session_id="s2")[-1]["ok"] and len(server.requests) == 2

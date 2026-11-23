@@ -31,6 +31,7 @@
       "episode": "Épisode {{n}}",
       "revisit": "Révision {{n}} au tableau",
       "writingSession": "Séance d'écriture {{n}}",
+      "roleplay": "Jeu de rôle {{n}}",
       "nextUnit": "Suivant : {{title}}"
     },
     "recap": {
@@ -288,6 +289,7 @@
       "enlargeFigure": "Agrandir : {{alt}}",
       "plot": "Graphique",
       "widget": "À essayer",
+      "roleplayDone": "Jeu de rôle terminé",
       "widgetReset": "Revenir au départ",
       "widgetPin": "Épingler pour comparer",
       "widgetUnpin": "Désépingler",
@@ -627,7 +629,8 @@
       "tier": "Palier {{tier}}, les {{words}} mots les plus fréquents : {{known}} connus sur {{size}} dans ce palier",
       "vocabulary": "Vocabulaire : {{due}} à réviser sur {{total}}",
       "nextEpisode": "Épisode suivant",
-      "writing": "Séance d'écriture"
+      "writing": "Séance d'écriture",
+      "roleplay": "Jeu de rôle"
     },
     "notebook": {
       "practiceMiss": "Manqué à l'entraînement",
@@ -1164,6 +1167,7 @@
     "a course holds at most 20 files": "un cours contient au plus 20 fichiers",
     "files are limited to 50 MB": "les fichiers sont limités à 50 Mo",
     "episodes are for language courses; the first reading sets the language": "les épisodes sont réservés aux cours de langue ; la première lecture fixe la langue",
+    "role-plays are for language courses; the first reading sets the language": "les jeux de rôle sont réservés aux cours de langue ; la première lecture fixe la langue",
     "already in your vocabulary": "déjà dans votre vocabulaire",
     "this check is finished": "ce test est terminé",
     "already graded": "déjà corrigé",

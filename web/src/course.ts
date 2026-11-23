@@ -50,6 +50,11 @@ export function pendingPhotos(data: ChallengeData): Photo[] {
 }
 export type Scored = { word: string; score: number }
 export type SpeakingData = ChallengeData & { speaking: 'read' | 'shadow'; lang: string; scores: { words: Scored[]; heard: string | null; score: number }[] }
+/** The locale key under `block` that heads a block's card; a role-play's last card is no covered unit. */
+export function blockKey(block: Block): string {
+  return block.kind === 'done' && 'mistakes' in ((block.data ?? {}) as object) ? 'roleplayDone' : block.kind
+}
+
 export type Block = { id: number; lesson_id: number; kind: string; markdown: string; data: unknown; created: string; position: number }
 export type Area = { title: string; holds: string; lacks: string }
 export type Concept = { id: number; module: string; title: string; known: number; mastery: number | null; kind: 'concept' | 'practice'; due: number; needs: number[]; unwritten?: number }
@@ -143,6 +148,7 @@ export function lessonTitle(lesson: Lesson, t: TFunction): string {
   if (lesson.phase === 'placement') return n ? t('lesson.placementRetake', { n }) : t('lesson.placement')
   if (lesson.phase === 'story') return t('lesson.episode', { n })
   if (lesson.phase === 'writing') return t('lesson.writingSession', { n })
+  if (lesson.phase === 'roleplay') return t('lesson.roleplay', { n })
   if (lesson.phase === 'revisit') return t('lesson.revisit', { n })
   return lesson.title
 }

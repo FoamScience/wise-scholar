@@ -3,7 +3,7 @@ import tempfile
 
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
-from wise_scholar import db, figures  # noqa: E402
+from wise_scholar import db, figures, obsidian  # noqa: E402
 
 TEACHES = figures.Teaches(claim="Parts have a place.", notice="Where each part sits.")
 
@@ -63,6 +63,82 @@ def test_series_episodes_keep_memory_and_pass_a_stricter_gate():
     assert show["episodes"] == 1 and "Lena kauft Brot" in show["synopsis"]
     block = db.blocks(lesson)[-1]
     assert block["kind"] == "reading" and block["data"]["story"] == "Lena in Köln" and block["data"]["episode"] == 1
+
+
+def test_a_roleplay_ends_with_its_mistakes_as_review_cards_and_counts_as_output():
+    import asyncio
+
+    from wise_scholar.tools import language as language_tools
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Role')").lastrowid
+    course = db.create_course("German", who)["id"]
+    db.course_lang(course, "de")
+    story = db.create_lesson(course, "Episode 1", "story")
+    assert asyncio.run(language_tools.end_roleplay(story, [], "x")).startswith("error: only a role-play")
+    lesson = db.create_lesson(course, "Role-play 1", "roleplay")
+    db.add_message(lesson, "learner", "Ich möchte ein Kaffee.")
+    mistake = language_tools.Mistake(said="Ich  möchte\nein Kaffee.", correct="Ich möchte einen Kaffee.", explanation="Kaffee is masculine: einen in the accusative.")
+    Mistake = language_tools.Mistake
+    end = lambda *ms: asyncio.run(language_tools.end_roleplay(lesson, list(ms), "Good."))  # noqa: E731
+    assert end(*[mistake] * 9).startswith("error: at most 8 mistakes")
+    assert end(mistake, Mistake(said=" ", correct="x", explanation="")) == "error: mistake 2 has a blank said or correct"
+    assert end(Mistake(said="ein Kaffee", correct="ein  Kaffee", explanation="")) == "error: mistake 1: correct is the same as said"
+    assert end(Mistake(said="Ich habe Hunger.", correct="Ich bin hungrig.", explanation="")).startswith("error: mistake 1: 'Ich habe Hunger.' is not in the learner's messages")
+    assert db.errors(who, course) == []
+    assert asyncio.run(language_tools.end_roleplay(lesson, [mistake], "Good.")).startswith("ended with 1 review cards")
+    assert asyncio.run(language_tools.end_roleplay(lesson, [mistake], "Good.")).startswith("error: this role-play is already ended")
+    [error] = db.errors(who, course)
+    card = db.card(error["card_id"])
+    assert error["said"] == mistake.said and error["prompt"] == "Role-play 1"
+    assert card["answer_key"] == mistake.correct and card["scheduled"] == 1 and mistake.said in card["question"]
+    done = db.blocks(lesson)[-1]
+    assert done["kind"] == "done"
+    assert "Role-play finished" in obsidian.Vault(course)._done_text(done)
+    assert "Unit covered" in obsidian.Vault(course)._done_text({**done, "data": {}})
+    assert db.strand_counts(course)["output"] == 1
+
+
+def test_a_roleplay_turn_says_nothing_after_its_end_and_the_next_turn_is_kept(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app
+    from wise_scholar.tools import language as language_tools
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Closer')").lastrowid
+    course = db.create_course("German", who)["id"]
+    lesson = db.create_lesson(course, "Role-play 1", "roleplay")
+    usage = {"model": "m", "input": 1, "output": 2, "cache_read": 0, "cache_write": 0, "cost": 0.01}
+    published = []
+
+    async def closing(prompt, **kwargs):
+        yield {"type": "chat.delta", "text": "Tschüss!"}
+        yield {"type": "chat.break"}
+        assert (await language_tools.end_roleplay(lesson, [], "Good.")).startswith("ended with 0")
+        yield {"type": "chat.break"}
+        yield {"type": "chat.delta", "text": "Here is a recap."}
+        yield {"type": "chat.delta", "text": " More recap."}
+        yield {"type": "turn.done", "ok": True, "error": None, "usage": usage}
+
+    async def answering(prompt, **kwargs):
+        yield {"type": "chat.delta", "text": "Gern geschehen."}
+        yield {"type": "turn.done", "ok": True, "error": None, "usage": usage}
+
+    def run(backend_turn):
+        published.clear()
+        monkeypatch.setattr(app.backend, "run_turn", backend_turn)
+        app._turns[lesson] = None
+        asyncio.run(app._run_turn(db.lesson(lesson), "[learner] go"))
+        return [e["text"] for e in published if e["type"] == "chat.delta"]
+
+    monkeypatch.setattr(app.hub, "publish", lambda course_id, event: published.append(event))
+    assert run(closing) == ["Tschüss!", "\n\n"]
+    said = "SELECT text FROM messages WHERE lesson_id = ? AND role = 'tutor' ORDER BY id"
+    assert [m["text"] for m in db.rows(said, lesson)] == ["Tschüss!"]
+    assert [e["message"]["text"] for e in published if e["type"] == "turn.done"] == ["Tschüss!"]
+    assert db.row("SELECT COUNT(*) AS n, SUM(output) AS output FROM usage WHERE lesson_id = ?", lesson) == {"n": 1, "output": 2}
+
+    assert run(answering) == ["Gern geschehen."]
+    assert [m["text"] for m in db.rows(said, lesson)] == ["Tschüss!", "Gern geschehen."]
 
 
 def test_capstone_milestones_follow_the_module_and_complete_on_mark_solved():

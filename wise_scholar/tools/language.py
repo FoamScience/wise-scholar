@@ -1,12 +1,13 @@
 import asyncio
 from collections import Counter
+from datetime import datetime, timezone
 from typing import Literal
 
 import simplemma
 from pydantic import BaseModel
 
 from .. import challenge, db, lexicon, morphology, resources, sentences, speech, vocab
-from ..tutor import _patch_block, _show, _shuffled, log, mcp
+from ..tutor import _patch_block, _show, _shuffled, close_turn, log, mcp
 
 
 class Gloss(BaseModel):
@@ -168,6 +169,54 @@ async def pose_writing(
     block = db.add_block(lesson_id, "challenge", prompt, data)
     _show(lesson, block)
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
+
+
+ROLEPLAY_MISTAKES = 8
+
+
+class Mistake(BaseModel):
+    said: str
+    correct: str
+    explanation: str
+
+
+@mcp.tool()
+async def end_roleplay(lesson_id: int, mistakes: list[Mistake], summary: str) -> str:
+    """Close a role-play: each mistake goes into the learner's error notebook with a review card that asks for the
+    correction again.
+
+    mistakes: what the learner said that was wrong for their level, as they said it, the corrected form, and one
+    sentence on the rule. summary: two sentences to the learner on what went well and the one thing to keep
+    practising; it becomes the last card of the session. Call it once, then end the turn.
+    """
+    lesson = db.lesson(lesson_id)
+    if not lesson:
+        return f"error: no lesson with id {lesson_id}"
+    if lesson["phase"] != "roleplay":
+        return "error: only a role-play is ended this way"
+    if any(b["kind"] == "done" for b in db.blocks(lesson_id)):
+        return "error: this role-play is already ended"
+    if len(mistakes) > ROLEPLAY_MISTAKES:
+        return f"error: at most {ROLEPLAY_MISTAKES} mistakes, the most useful first; you passed {len(mistakes)}"
+    lines = [" ".join(r["text"].split()) for r in db.rows("SELECT text FROM messages WHERE lesson_id = ? AND role = 'learner'", lesson_id)]
+    for i, m in enumerate(mistakes, 1):
+        said, correct = " ".join(m.said.split()), " ".join(m.correct.split())
+        if not said or not correct:
+            return f"error: mistake {i} has a blank said or correct"
+        if said == correct:
+            return f"error: mistake {i}: correct is the same as said"
+        if not any(said in line for line in lines):
+            return f"error: mistake {i}: {m.said!r} is not in the learner's messages; quote what they wrote exactly"
+    due = datetime.now(timezone.utc).isoformat()
+    for m in mistakes:
+        card_id = db.add_card(
+            lesson["course_id"], lesson["concept_id"], f"Say this correctly:\n\n> {m.said}", "open", [], m.correct,
+            m.explanation, scheduled=True, due=due,
+        )
+        db.add_error(lesson["profile_id"], lesson["course_id"], "writing", lesson["title"], m.said, m.correct, m.explanation, card_id=card_id)
+    _show(lesson, db.add_block(lesson_id, "done", summary, {"mistakes": len(mistakes)}))
+    close_turn(lesson_id)
+    return f"ended with {len(mistakes)} review cards; write nothing more and end the turn"
 
 
 @mcp.tool()
