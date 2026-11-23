@@ -633,6 +633,8 @@ MIGRATIONS = [
     ALTER TABLE lessons ADD COLUMN prepared_offline INTEGER NOT NULL DEFAULT 0;
     UPDATE lessons SET prepared_offline = 1 WHERE batch = 1;
     """,
+    # gist_tries: how many times a gist turn was started for the finished lesson's board; a failed one goes again once
+    "ALTER TABLE lessons ADD COLUMN gist_tries INTEGER NOT NULL DEFAULT 0;",
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)

@@ -19,7 +19,7 @@ MCP_SECRET = os.environ.get("WISE_SCHOLAR_MCP_SECRET") or secrets.token_urlsafe(
 MCP_HEADERS = {"Authorization": f"Bearer {MCP_SECRET}"}
 TURN_HEADER = "X-Scholar-Turn"
 # Phases whose prompt stands alone, without the tutor rules of core.md.
-ALONE = ("graph", "cards", "cleanup", "explore", "recap", "contribute")
+ALONE = ("graph", "cards", "cleanup", "explore", "recap", "contribute", "gist")
 KINDS = ("interview", "placement", "lesson", "practice", "revisit", "story", "writing", "contribution", *ALONE)
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 
@@ -27,7 +27,7 @@ PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 # on cheaper ones. A model named in WISE_SCHOLAR_AGENT, or another backend's default, serves every kind.
 CLAUDE_MODELS = {
     "interview": "opus", "lesson": "opus", "practice": "opus", "revisit": "opus", "story": "opus", "writing": "opus", "contribution": "opus",
-    "placement": "sonnet", "graph": "sonnet", "cleanup": "sonnet", "explore": "sonnet", "recap": "sonnet", "contribute": "sonnet",
+    "placement": "sonnet", "graph": "sonnet", "cleanup": "sonnet", "explore": "sonnet", "recap": "sonnet", "contribute": "sonnet", "gist": "sonnet",
     "cards": "haiku",
 }
 API_MODELS = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}

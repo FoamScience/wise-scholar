@@ -2,6 +2,7 @@ import importlib
 import logging
 import os
 import random
+from contextvars import ContextVar
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -155,8 +156,11 @@ GRAPH_TOOLS = ("search_claims", "record_claims")
 CLEANUP_TOOLS = ("propose_edits",)
 EXPLORE_TOOLS = ("suggest_courses",)
 RECAP_TOOLS = ("write_recap",)
+# A gist turn writes a finished lesson's gist board with the lesson's own board tools.
+GIST_TOOLS = ("board_help", "add_board")
 CONTRIBUTE_TOOLS = ("find_repos", "find_issues", "look_at_repo", "outline_repo_file", "read_repo_lines", "search_repo_code", "suggest_contributions")
 _searched: set[int] = set()  # lessons whose running graph turn has searched the claims
+_calling: ContextVar[dict | None] = ContextVar("calling", default=None)
 
 
 # --- Binding tool calls to the turn they belong to ---------------------------------------------------------------
@@ -167,7 +171,8 @@ _searched: set[int] = set()  # lessons whose running graph turn has searched the
 # A graph turn reads a finished lesson for its claims, a cards turn makes long or missed review cards short and a
 # cleanup turn proposes edits to a version before it is published, an explore turn writes the learner's suggested next
 # courses, a recap turn writes the story of a finished course, a contribute turn searches GitHub for open-source work
-# that puts a finished course to use; each may call only its own tools, and a lesson turn may call none of them.
+# that puts a finished course to use, a gist turn writes a finished lesson's gist board; each may call only its own
+# tools, and a lesson turn may call none of them.
 turns: dict[int | tuple[str, int], dict] = {}  # lesson_id, or (kind, lesson_id) -> {"token", "calls", "lesson_id", "course_id", "kind"}
 _ID_ARGUMENTS = ("lesson_id", "course_id", "challenge_id", "quiz_id", "block_id")
 
@@ -219,6 +224,11 @@ def _kind(tool: str) -> str:
     )
 
 
+def _serves(tool: str, kind: str) -> bool:
+    """Whether a turn of this kind may call the tool."""
+    return _kind(tool) == kind or (kind == "gist" and tool in GIST_TOOLS)
+
+
 # What the interview and placement prompts use besides the tools every phase shares; lessons and practice see all.
 SHARED_TOOLS = (
     "add_animation", "add_block", "add_board", "add_crafted_figure", "add_diagram", "add_figure", "add_plot", "add_widget", "ask",
@@ -267,7 +277,7 @@ async def _list_tools(ctx, params) -> ListToolsResult:
         allowed = _phase_tools(turn)
         tools = [
             t for t in tools
-            if _kind(t.name) == turn["kind"] and (t.name in allowed if allowed is not None else t.name not in SETUP_TOOLS)
+            if _serves(t.name, turn["kind"]) and (t.name in allowed if allowed is not None else t.name not in SETUP_TOOLS)
         ]
     return ListToolsResult(tools=tools)
 
@@ -282,25 +292,32 @@ def _phase_tools(turn: dict) -> tuple[str, ...] | None:
     return PHASE_TOOLS.get(lesson["phase"]) if lesson else None
 
 
+def calling_turn() -> dict | None:
+    """The turn the running tool call was bound to; None outside a call or for an unnamed call with no turn."""
+    return _calling.get()
+
+
 def _owns(turn: dict, target: tuple[int | None, int | None]) -> bool:
     target_lesson, target_course = target
     return target_lesson == turn["lesson_id"] if target_lesson is not None else target_course == turn["course_id"]
 
 
-def _turn_with_token(token: str, kind: str, targets: list) -> dict:
+def _turn_with_token(token: str, tool: str, targets: list) -> dict:
     turn = _turn_of(token)
     if turn is None:
         raise ToolError("this turn is over; nothing more can be changed")
-    if turn["kind"] != kind:
+    if not _serves(tool, turn["kind"]):
         raise ToolError("that tool is not available in this turn")
     if not all(_owns(turn, target) for target in targets):
         raise ToolError("that id belongs to another lesson or course; use the ids of the [state] line")
     return turn
 
 
-def _turn_without_token(kind: str, targets: list) -> dict | None:
+def _turn_without_token(tool: str, targets: list) -> dict | None:
     # Without a token (opencode shares one connection) a call lands on a lesson whose turn is running.
-    running = [t for t in turns.values() if t["kind"] == kind and all(_owns(t, target) for target in targets)]
+    running = [t for t in turns.values() if _serves(tool, t["kind"]) and all(_owns(t, target) for target in targets)]
+    # A gist turn may run beside the lesson's own turn; an unnamed call to a tool both may call is the lesson's.
+    running.sort(key=lambda t: t["kind"] != _kind(tool))
     if targets and not running:
         raise ToolError("this lesson has no turn running; use the ids of the [state] line")
     return running[0] if running else None
@@ -315,14 +332,17 @@ def _count_call(turn: dict) -> None:
 def _guard(call_tool):
     async def guarded(name: str, arguments: dict, context, convert_result: bool = False):
         targets = _targets(arguments)
-        kind = _kind(name)
         if token := _token(context.request_context):
-            turn = _turn_with_token(token, kind, targets)
+            turn = _turn_with_token(token, name, targets)
         else:
-            turn = _turn_without_token(kind, targets)
+            turn = _turn_without_token(name, targets)
         if turn is not None:
             _count_call(turn)
-        return await call_tool(name, arguments, context, convert_result)
+        bound = _calling.set(turn)
+        try:
+            return await call_tool(name, arguments, context, convert_result)
+        finally:
+            _calling.reset(bound)
 
     return guarded
 

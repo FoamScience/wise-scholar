@@ -746,6 +746,8 @@ async def _extract_forever() -> None:
                 if await _extract(lesson):
                     db.mark_extracted(lesson_id)
                     hub.publish(lesson["course_id"], {"type": "claims.updated"})
+                    for due in _gists_due(lesson):
+                        _start_gist(due)
                 else:
                     _claims_failed.add(lesson_id)
         except Exception:
@@ -753,6 +755,87 @@ async def _extract_forever() -> None:
             _claims_failed.add(lesson_id)
         finally:
             _claims_waiting.discard(lesson_id)
+
+
+# --- Gist boards: once a unit lesson's claims are recorded, a turn of its own writes them on one handwritten board ----
+GIST_CLAIMS = 8
+GIST_COURSE_CLAIMS = 16
+GIST_CLAIM_CHARS = 300
+GIST_TRIES = 2
+_gists: dict[int, asyncio.Task] = {}
+
+
+def _gist_claims(lesson: dict, course_end: bool) -> list[str]:
+    """The lesson's claims in the order they were recorded; at the course's end the course's, the most linked first."""
+    if not course_end:
+        found = db.rows(
+            "SELECT c.text FROM claims c JOIN claim_sources s ON s.claim_id = c.id WHERE s.lesson_id = ? AND c.wrong = 0 "
+            "ORDER BY c.id LIMIT ?", lesson["id"], GIST_CLAIMS,
+        )
+    else:
+        found = db.rows(
+            "SELECT c.text FROM claims c WHERE c.wrong = 0 AND c.id IN (SELECT s.claim_id FROM claim_sources s "
+            "JOIN lessons l ON l.id = s.lesson_id WHERE l.course_id = ?) "
+            "ORDER BY (SELECT COUNT(*) FROM claim_edges e WHERE c.id IN (e.from_id, e.to_id)) DESC, c.id LIMIT ?",
+            lesson["course_id"], GIST_COURSE_CLAIMS,
+        )
+    return [r["text"] for r in found]
+
+
+def _gist_prompt(lesson: dict, claims: list[str], course_end: bool) -> str:
+    return "\n".join([
+        f"[state] lesson_id={lesson['id']} course={_untrusted(lesson['topic'])!r} lesson={_untrusted(lesson['title'])!r}",
+        f"[language] Write the board in {LOCALE_NAMES[lesson['locale']]}; math, code and identifiers stay as they are.",
+        *(["[course end] This lesson finished the course."] if course_end else []),
+        *(f"[claim] {_cut(' '.join(_untrusted(text).split()), GIST_CLAIM_CHARS)}" for text in claims),
+    ])
+
+
+def _has_gist(lesson_id: int) -> bool:
+    return any(b["kind"] == "board" and b["data"].get("gist") for b in db.blocks(lesson_id))
+
+
+async def _write_gist(lesson: dict) -> None:
+    """One quiet turn that writes a finished unit lesson's gist board from its claims; one that failed goes again once,
+    up to GIST_TRIES. Nothing without wise-board or without claims."""
+    lesson = db.lesson(lesson["id"])
+    if lesson["phase"] != "lesson" or lesson["gist_tries"] >= GIST_TRIES or not wiseboard.available() or _has_gist(lesson["id"]):
+        return
+    done = next((b["created"] for b in db.blocks(lesson["id"]) if b["kind"] == "done"), None)
+    course_end = done is not None and db.course_finished(lesson["course_id"]) == done
+    if not (claims := _gist_claims(lesson, course_end)):
+        return
+    db.conn.execute("UPDATE lessons SET gist_tries = gist_tries + 1 WHERE id = ?", (lesson["id"],))
+    ok = await _background_turn(lesson, _gist_prompt(lesson, claims, course_end), "gist", f"gist board of {lesson['title']}")
+    if not _has_gist(lesson["id"]):
+        log.warning(
+            "gist board of lesson %s was not written; the turn %s (try %s of %s)",
+            lesson["id"], "ended" if ok else "failed", lesson["gist_tries"] + 1, GIST_TRIES,
+        )
+
+
+def _gists_due(lesson: dict) -> list[dict]:
+    """The lesson whose claims were just recorded, and the course's lessons whose gist turn failed and may go again."""
+    again = db.rows(
+        "SELECT id FROM lessons WHERE course_id = ? AND id != ? AND phase = 'lesson' AND gist_tries BETWEEN 1 AND ?",
+        lesson["course_id"], lesson["id"], GIST_TRIES - 1,
+    )
+    return [lesson, *(db.lesson(r["id"]) for r in again)]
+
+
+def _start_gist(lesson: dict) -> None:
+    if lesson["id"] in _gists:
+        return
+
+    async def run() -> None:
+        try:
+            await _write_gist(lesson)
+        except Exception:
+            log.exception("gist board of lesson %s failed", lesson["id"])
+        finally:
+            _gists.pop(lesson["id"], None)
+
+    _gists[lesson["id"]] = asyncio.create_task(run())
 
 
 # --- Review cards: long cards are made short, and a card missed in review is broken into parts ----------------------

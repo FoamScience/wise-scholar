@@ -1,7 +1,7 @@
 import asyncio
 
 from .. import art, board, crafted, db, diagrams, figcheck, figures, plots, widgets, wiseboard
-from ..tutor import _show, mcp, pretest_blocker
+from ..tutor import _show, calling_turn, mcp, pretest_blocker
 
 
 def figure_blocker(lesson: dict, setup: bool) -> str | None:
@@ -314,6 +314,8 @@ async def craft_help() -> str:
 
 
 NO_BOARDS = "error: this server has no wise-board, so there are no handwritten boards; draw a figure and narrate_figure it"
+# A gist turn writes one board for its finished lesson, kept to one page.
+GIST_SCRIPT = 4 * 1024
 
 
 @mcp.tool()
@@ -343,12 +345,19 @@ async def add_board(lesson_id: int, script: str, teaches: figures.Teaches) -> st
         return f"refused: {problem}"
     if not wiseboard.available():
         return NO_BOARDS
+    gist = turn if (turn := calling_turn()) and turn["kind"] == "gist" else None
+    if gist and gist.get("board"):
+        return f"refused: the gist board is written as board {gist['board']}; end the turn"
+    if gist and len(script.encode()) > GIST_SCRIPT:
+        return f"error: a gist board's script stays under {GIST_SCRIPT} bytes; keep to the few claims that carry the lesson"
     try:
         spec = figures.teaching(teaches)
         doc, notes = await wiseboard.render(script)
     except (ValueError, wiseboard.BoardError) as e:
         return f"error: {e}"
-    block = db.add_block(lesson_id, "board", "", {"script": script, "doc": doc, "teaches": spec})
+    block = db.add_block(lesson_id, "board", "", {"script": script, "doc": doc, "teaches": spec} | ({"gist": True} if gist else {}))
+    if gist:
+        gist["board"] = block["id"]
     _show(lesson, block)
     return f"shown as board {block['id']}" + _board_notes(notes)
 
