@@ -17,3 +17,7 @@ Open <http://127.0.0.1:8321> and start a course. `WISE_SCHOLAR_AGENT=opencode ma
 
 - [docs/guide.md](docs/guide.md): backends and models, languages, PDF export, speech, art packs, diagrams, what the sandbox allows, every setting, how to develop.
 - [docs/science.md](docs/science.md): the research behind each teaching behaviour.
+
+## License
+
+Wise Scholar is licensed under the [GNU AGPL-3.0-only](LICENSE). The optional wise-board engine binary is not part of Wise Scholar: it is proprietary software under its own EULA, Wise Scholar runs it only as a subprocess, and everything works without it.
