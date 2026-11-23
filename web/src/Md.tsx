@@ -2,6 +2,7 @@ import { isValidElement } from 'react'
 import type { ComponentProps, ReactNode } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import Mermaid from './Mermaid'
+import { boardLink } from './ink'
 import { pinPlot } from './parts'
 import { inlineRemarkPlugins, rehypePlugins, remarkPlugins } from './markdown'
 
@@ -36,6 +37,14 @@ function Link(props: ComponentProps<'a'>) {
       <button type="button" className="term" onClick={() => pinPlot(Number(point[1]), Number(point[2]))}>
         {children}
       </button>
+    )
+  // `[the sum](#board-12-main.sum)` names an element (or a mark) of board block 12: see InkBoard.tsx.
+  const board = boardLink(href)
+  if (board)
+    return (
+      <span className="term" role="button" data-board={board.block} data-board-ref={board.ref} tabIndex={0}>
+        {children}
+      </span>
     )
   const part = href?.match(/^#part-([-\w]+)$/)?.[1]
   if (part)
