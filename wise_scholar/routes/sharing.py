@@ -412,7 +412,8 @@ async def course_book(course_id: int, theme: Literal["light", "dark"] = "light")
 
 @app.get("/api/courses/{course_id}/obsidian.zip")
 async def course_vault(course_id: int) -> Response:
-    """The course as a folder of linked Markdown notes for Obsidian; plots become PNGs when a browser is installed."""
+    """The course as a folder of linked Markdown notes for Obsidian; plots become PNGs when a browser is installed, boards
+    SVGs when wise-board is."""
     course = db.course(course_id)
     if not course:
         raise HTTPException(404, "no such course")
@@ -422,5 +423,6 @@ async def course_vault(course_id: int) -> Response:
             pictures = await book.plots(course_id, course["profile_id"], obsidian.plot_blocks(course_id))
         except Exception as e:  # the browser is optional here: specs stand in for pictures
             log.warning("plots left as specs in the Obsidian export: %s", e)
-    data = await asyncio.to_thread(obsidian.export, course_id, pictures)
+    boards = await obsidian.board_pages(obsidian.board_blocks(course_id))
+    data = await asyncio.to_thread(obsidian.export, course_id, pictures, boards)
     return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{course["slug"]}-obsidian.zip"'})

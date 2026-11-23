@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from fastapi.responses import Response
@@ -5,7 +6,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from .. import app as core
-from .. import book, challenge, db, handout, tutor
+from .. import book, challenge, db, handout, obsidian, tutor
 from ..tools import lesson_flow as flow_tools
 from .courses import warmup
 from ..app import QuizAnswer, _lesson, _record_answer, _turns, _unanswered_quiz, _untrusted, app, log
@@ -227,12 +228,13 @@ def get_lesson(lesson_id: int) -> dict:
 
 
 @app.get("/api/lessons/{lesson_id}/handout.md")
-def lesson_handout(lesson_id: int, version: Version = "student") -> Response:
+async def lesson_handout(lesson_id: int, version: Version = "student") -> Response:
     """A unit's lesson plan as Markdown: the teacher's copy, or the students' copy without solutions."""
     lesson = _lesson(lesson_id)
     if lesson["mode"] != "teacher" or lesson["concept_id"] is None:
         raise HTTPException(409, "hand-outs come from a unit of a prepared course")
-    text = handout.markdown(lesson_id, solutions=version == "teacher")
+    boards = await obsidian.board_pages(obsidian.board_blocks(lesson["course_id"], lesson_id))
+    text = await asyncio.to_thread(handout.markdown, lesson_id, solutions=version == "teacher", boards=boards)
     name = f"{lesson['slug']}-{lesson_id}-{version}.md"
     return Response(text, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
