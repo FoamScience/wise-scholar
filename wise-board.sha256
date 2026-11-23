@@ -1,0 +1,3 @@
+# sha256 of each wise-board-<version>-<target>.tar.gz for the version in wise-board.version, in sha256sum format.
+# Update it in the same commit as wise-board.version, from the release's SHA256SUMS checked against its attestation.
+# No wise-board release is published yet, so no digest is pinned and `make wise-board` refuses to install.
