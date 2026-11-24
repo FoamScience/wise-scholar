@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 from itertools import pairwise
 from pathlib import Path
 
+from . import challenge
+
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("WISE_SCHOLAR_DB", ROOT / "data" / "wise-scholar.db"))
 WORKSPACE = Path(os.environ.get("WISE_SCHOLAR_WORKSPACE", ROOT / "workspace"))
@@ -115,6 +117,43 @@ def _usage_per_turn(connection) -> None:
         last = chain[-1]
         if last["session_started"] and last["lesson_backend"] == last["backend"] == "claude":
             connection.executemany("UPDATE usage SET session = ? WHERE id = ?", [(last["session_id"], i) for i in current])
+
+
+def lock(data: dict) -> dict | None:
+    """Take the hints and solution a task came with out of its data, where they would close it and show at once; returns
+    them for the gate to give. The ladder is as long as the author's, but for the tasks that never have one. Also run by
+    the migration _lock_imported."""
+    hints, solution = data.get("hints"), data.get("solution")
+    data.update({"hints": [], "solution": None})
+    data.update({k: d for k, d in challenge.new().items() if k in ("max_hints", "reveal_after") and not isinstance(data.get(k), int)})
+    hints = [h for h in hints if isinstance(h, str) and h.strip()] if isinstance(hints, list) else []
+    solution = solution if isinstance(solution, str) and solution.strip() else None
+    if not hints and not solution:
+        return None
+    locked = {"hints": hints, "solution": solution, "max_hints": data["max_hints"]}
+    if data.get("pretest"):
+        data["reveal_after"] = 1
+    elif not data.get("transfer"):
+        data["max_hints"] = max(data["max_hints"], len(hints))
+    return locked
+
+
+def _lock_imported(connection) -> None:
+    """locked: the hints and solution the author of an imported task wrote, kept out of its data until the learner reaches
+    them. Tasks imported before this column held them in the open, which closed the task, so it has no work on it."""
+    if "locked" not in {r["name"] for r in connection.execute("PRAGMA table_info(blocks)").fetchall()}:
+        connection.execute("ALTER TABLE blocks ADD COLUMN locked TEXT")
+    for r in connection.execute(
+        "SELECT b.id, b.data FROM blocks b JOIN lessons l ON l.id = b.lesson_id JOIN courses c ON c.id = l.course_id "
+        "WHERE c.mode = 'replay' AND b.kind IN ('challenge', 'exercise') AND b.data IS NOT NULL"
+    ).fetchall():
+        data = json.loads(r["data"])
+        if not data.get("imported") or data.get("attempts") or data.get("gave_up") or data.get("solved"):
+            continue
+        if data.get("solution") is None and not data.get("hints"):
+            continue
+        locked = lock(data)
+        connection.execute("UPDATE blocks SET data = ?, locked = ? WHERE id = ?", (json.dumps(data), json.dumps(locked) if locked else None, r["id"]))
 
 
 CARD_COLUMNS = "id, course_id, concept_id, question, kind, options, answer_key, explanation, fsrs, due, confident_miss, scheduled, vocab, lemma, lang, translation, relearn_after"
@@ -637,6 +676,7 @@ MIGRATIONS = [
     "ALTER TABLE lessons ADD COLUMN gist_tries INTEGER NOT NULL DEFAULT 0;",
     # context: the sentence a saved word was met in; it stays in this database, in no bundle and no copy
     "ALTER TABLE cards ADD COLUMN context TEXT NOT NULL DEFAULT '';",
+    _lock_imported,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -1297,6 +1337,7 @@ def add_message(lesson_id: int, role: str, text: str) -> dict:
 def _block(b: dict | None) -> dict | None:
     if b:
         b["data"] = json.loads(b["data"]) if b["data"] else None
+        b.pop("locked", None)
     return b
 
 
@@ -1306,6 +1347,12 @@ def block(block_id: int) -> dict | None:
 
 def blocks(lesson_id: int) -> list[dict]:
     return [_block(b) for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson_id)]
+
+
+def locked(block_id: int) -> dict:
+    """The hints not yet given and the solution an imported task's author wrote; empty when there are none."""
+    b = row("SELECT locked FROM blocks WHERE id = ?", block_id)
+    return json.loads(b["locked"]) if b and b["locked"] else {}
 
 
 def set_block_markdown(block_id: int, markdown: str) -> dict:
@@ -1347,8 +1394,9 @@ def add_block(lesson_id: int, kind: str, markdown: str, data: dict | None = None
     return block(block_id)
 
 
-def set_block_data(block_id: int, data: dict) -> dict:
-    conn.execute("UPDATE blocks SET data = ? WHERE id = ?", (json.dumps(data), block_id))
+def set_block_data(block_id: int, data: dict, locked: dict | None = None) -> dict:
+    """locked: what stays locked once part of it moved into data, in the same write; None leaves it as it is."""
+    conn.execute("UPDATE blocks SET data = ?, locked = COALESCE(?, locked) WHERE id = ?", (json.dumps(data), json.dumps(locked) if locked else None, block_id))
     return block(block_id)
 
 

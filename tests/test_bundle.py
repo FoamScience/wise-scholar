@@ -294,6 +294,223 @@ def test_a_prepared_course_ships_the_hints_and_solution_its_teacher_wrote(places
     assert shipped(db.copy_course(a["course"], "Blade lofting prepared")["id"]) == (["Think of wires."], "Two wires.", [])
 
 
+def _prepared_course(title: str) -> int:
+    """A prepared course whose tasks carry hints and a solution, one of each kind, and the opening."""
+    author = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Locksmith {uuid.uuid4().hex[:6]}",)).lastrowid
+    course = db.create_course(title, author)["id"]
+    db.conn.execute("UPDATE courses SET mode = 'teacher' WHERE id = ?", (course,))
+    db.set_concepts(course, [{"title": "Blades", "concepts": ["Loft"], "known": []}])
+    lesson = db.create_lesson(course, "Loft", "lesson", db.concepts(course)[0]["id"])
+    written = lambda what: {"hints": [f"SECRET first on {what}", f"SECRET second on {what}"], "solution": f"SECRET answer on {what}"}  # noqa: E731
+    db.add_block(lesson, "challenge", "Guess.", {**challenge.new(max_hints=0), **written("guess"), "pretest": True})
+    db.add_block(lesson, "challenge", "Reason.", {**challenge.new(max_hints=0), **written("reason")})
+    db.add_block(lesson, "exercise", "Loft it.", {**challenge.new(max_hints=0), **written("loft"), "files": [], "run": "true", "last_run": None, "starter": {}})
+    db.add_block(lesson, "challenge", "Write.", {**challenge.new(reveal_after=2, max_hints=3), **written("write"), "writing": True, "marks": []})
+    db.add_block(lesson, "done", "You can loft.", {})
+    return course
+
+
+def _played(course: int, places) -> tuple[int, int]:
+    """The course published and installed for a new reader: the replay and its lesson."""
+    v = bundle.publish(course, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], **places)
+    reader = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Lockpick {uuid.uuid4().hex[:6]}",)).lastrowid
+    version_hash, manifest, assets = bundle.unpack((places["store"] / f"{v['hash']}.zip").read_bytes())
+    mine = bundle.install(reader, version_hash, manifest, assets, places["source_dir"])["id"]
+    return mine, db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", mine)["id"]
+
+
+def _all_the_learner_can_reach(course: int, lesson: int) -> str:
+    """The lesson as the browser gets it, the tutor's prompt and record of it, the vault and the next version."""
+    from wise_scholar import app, history, obsidian, search
+
+    view = app._lesson_view(lesson)
+    vault = obsidian.Vault(course).lesson_text({**db.lesson(lesson), "blocks": view["blocks"], "messages": []}, chat=True)
+    manifest, _, _ = bundle.build(course, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], source_dir=None)
+    return json.dumps([
+        view, [db.block(b["id"]) for b in view["blocks"]], app._turn_prompt(db.lesson(lesson), "[learner] help"), app._lesson_record(lesson),
+        history.digest([view]), [list(x) for x in search._wanted(db.course(course)).values()], manifest, vault,
+    ], default=str, ensure_ascii=False)
+
+
+def test_a_replayed_task_keeps_its_authors_solution_locked_until_the_reader_reaches_it(places, monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, hub
+    from wise_scholar.routes import blocks as blocks_routes
+    from wise_scholar.tools import practice as practice_tools
+
+    run, sent, lines = asyncio.run, [], []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: lines.append(line))
+    monkeypatch.setattr(hub, "publish", lambda course_id, event: sent.append(json.dumps(event, default=str)))
+    mine, replayed = _played(_prepared_course("Locked lofting"), places)
+    guess, reason, loft, write = app._lesson_view(replayed)["blocks"]
+    assert "SECRET" not in _all_the_learner_can_reach(mine, replayed)
+
+    # the opening is one try; any other task asks for the author's hints one at a time
+    with pytest.raises(app.HTTPException, match="no hint ladder"):
+        run(blocks_routes.request_hint(guess["id"]))
+    run(blocks_routes.attempt(reason["id"], blocks_routes.Answer(answer="two wires")))
+    assert "refused" in run(practice_tools.reveal(reason["id"], "the tutor's own"))
+    run(blocks_routes.request_hint(reason["id"]))
+    assert "SECRET first on reason" in run(practice_tools.give_hint(reason["id"], "the tutor's own"))
+    reached = _all_the_learner_can_reach(mine, replayed) + "".join(sent + lines)
+    assert "SECRET first on reason" in reached
+    assert "SECRET second" not in reached and "SECRET answer" not in reached
+    assert db.block(reason["id"])["data"]["hints"] == ["SECRET first on reason"]
+    run(blocks_routes.give_up(reason["id"]))
+    assert "SECRET answer on reason" in run(practice_tools.reveal(reason["id"], "the tutor's own"))
+
+    run(blocks_routes.give_up(guess["id"]))
+    run(practice_tools.reveal(guess["id"], "the tutor's own"))
+    run(blocks_routes.check_exercise(loft["id"], blocks_routes.ExerciseCheck(answer="done")))
+    run(practice_tools.mark_solved(loft["id"]))
+    run(blocks_routes.attempt(write["id"], blocks_routes.Answer(answer="a text")))
+    # a correction of the learner's own text stays the tutor's
+    run(practice_tools.give_hint(write["id"], "look at this word", ["text"]))
+    assert db.block(write["id"])["data"]["hints"] == ["look at this word"]
+    run(blocks_routes.give_up(write["id"]))
+    assert not any(b["kind"] == "done" for b in db.blocks(replayed))
+    run(practice_tools.reveal(write["id"], "A text."))
+    app._turn_over(db.lesson(replayed), "", {"ok": True}, 0.0, quiet=True)
+
+    assert db.blocks(replayed)[-1]["markdown"] == "You can loft."
+    shown = {b["markdown"]: b["data"]["solution"] for b in db.blocks(replayed) if b["kind"] in challenge.KINDS}
+    assert shown == {"Guess.": "SECRET answer on guess", "Reason.": "SECRET answer on reason", "Loft it.": None, "Write.": "SECRET answer on write"}
+    assert db.row("SELECT correct FROM errors WHERE course_id = ? AND kind = 'writing'", mine)["correct"] == "A text."
+    assert not any(x in "".join(sent + lines) for x in ("SECRET second", "answer on loft"))
+    # a fork ships neither what was shown nor what is still locked
+    manifest, _, _ = bundle.build(mine, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    assert "SECRET" not in json.dumps(manifest)
+    assert {b["markdown"]: b["data"]["max_hints"] for x in manifest["lessons"] for b in x["blocks"]} == {"Guess.": 0, "Reason.": 0, "Loft it.": 0, "Write.": 3}
+    plain = db.block(loft["id"])
+    assert (plain["data"]["max_hints"], bundle._block_data({**plain, "data": json.dumps(plain["data"])}, {})["max_hints"]) == (2, 0)
+
+
+def test_a_solution_shown_after_enough_attempts_finishes_the_unit(places, monkeypatch):
+    import asyncio
+
+    from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes
+    from wise_scholar.tools import practice as practice_tools
+
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: None)
+    _, replayed = _played(_prepared_course("Locked attempts"), places)
+    for b in db.blocks(replayed):
+        for n in range(1 if b["data"].get("pretest") else b["data"]["reveal_after"]):
+            if b["kind"] == "exercise":
+                asyncio.run(blocks_routes.check_exercise(b["id"], blocks_routes.ExerciseCheck(answer=f"try {n}")))
+            else:
+                asyncio.run(blocks_routes.attempt(b["id"], blocks_routes.Answer(answer=f"try {n}")))
+        assert not any(x["kind"] == "done" for x in db.blocks(replayed))
+        assert "SECRET answer" in asyncio.run(practice_tools.reveal(b["id"], ""))
+        app._turn_over(db.lesson(replayed), "", {"ok": True}, 0.0, quiet=True)
+    assert not any(b["data"]["gave_up"] or b["data"]["solved"] for b in db.blocks(replayed) if b["kind"] in challenge.KINDS)
+    assert db.blocks(replayed)[-1]["markdown"] == "You can loft."
+
+
+def test_an_author_hint_moves_out_of_the_lock_in_one_write(places):
+    import asyncio
+
+    from wise_scholar.tools import practice as practice_tools
+
+    _, replayed = _played(_prepared_course("Locked write"), places)
+    reason = db.blocks(replayed)[1]["id"]
+    writes = []
+    connection = db.conn._local.connection
+    connection.set_trace_callback(lambda sql: writes.append(sql) if sql.startswith("UPDATE blocks") else None)
+    try:
+        asyncio.run(practice_tools.give_hint(reason, "the tutor's own"))
+    finally:
+        connection.set_trace_callback(None)
+    assert len(writes) == 1
+    assert db.block(reason)["data"]["hints"] == ["SECRET first on reason"]
+    assert db.locked(reason)["hints"] == ["SECRET second on reason"]
+
+
+def test_a_tried_opening_lets_the_tutor_show_its_authors_solution(places, monkeypatch):
+    import asyncio
+
+    from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes
+    from wise_scholar.tools import practice as practice_tools
+
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: None)
+    _, replayed = _played(_prepared_course("Locked opening"), places)
+    guess = db.blocks(replayed)[0]["id"]
+    assert "refused" in asyncio.run(practice_tools.reveal(guess, ""))
+    asyncio.run(blocks_routes.attempt(guess, blocks_routes.Answer(answer="wires")))
+    assert "SECRET answer on guess" in asyncio.run(practice_tools.reveal(guess, ""))
+
+
+def test_an_upgrade_keeps_and_brings_locked_solutions(places):
+    course = _prepared_course("Locked upgrade")
+    mine, replayed = _played(course, places)
+    old = bundle.stored(places["store"], db.course(mine)["source_version"])
+    lesson = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", course)["id"]
+
+    def upgraded():
+        v = bundle.publish(course, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], **places)
+        version_hash, new, assets = bundle.unpack((places["store"] / f"{v['hash']}.zip").read_bytes())
+        plan = bundle.upgrade(mine, version_hash, new, assets, old, places["source_dir"])
+        blocks = db.blocks(db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", mine)["id"])
+        assert all(challenge.is_open(b["data"]) and b["data"]["hints"] == [] for b in blocks)
+        return len(plan["kept"]), {b["markdown"]: db.locked(b["id"])["solution"] for b in blocks}
+
+    kept, solutions = upgraded()
+    assert (kept, solutions["Reason."]) == (1, "SECRET answer on reason")
+    reason = next(b for b in db.blocks(lesson) if b["markdown"] == "Reason.")
+    db.set_block_data(reason["id"], {**reason["data"], "solution": "SECRET better answer"})
+    kept, solutions = upgraded()
+    assert (kept, solutions["Reason."]) == (0, "SECRET better answer")
+
+
+def test_replays_installed_before_the_lock_hold_their_untouched_solutions_behind_it(tmp_path):
+    import sqlite3
+
+    raw = sqlite3.connect(tmp_path / "old.db")
+    raw.row_factory = sqlite3.Row
+    for script in db.MIGRATIONS[: db.MIGRATIONS.index(db._lock_imported)]:
+        script(raw) if callable(script) else raw.executescript(script)
+    raw.execute("PRAGMA foreign_keys = OFF")
+    for course, mode in ((1, "replay"), (2, "teacher")):
+        raw.execute("INSERT INTO courses (id, topic, slug, profile_id, mode) VALUES (?, 't', ?, 1, ?)", (course, f"s{course}", mode))
+        raw.execute("INSERT INTO lessons (id, course_id, title, session_id, phase) VALUES (?, ?, 't', ?, 'lesson')", (course, course, f"s{course}"))
+    task = {**challenge.new(max_hints=0), "hints": ["one", "two"], "solution": "answer", "imported": True}
+    bare = {k: v for k, v in task.items() if k not in ("max_hints", "reveal_after")}
+    stored = {
+        "closed": (1, task), "opening": (1, {**task, "pretest": True}), "transfer": (1, {**task, "transfer": True}),
+        "hints only": (1, {**task, "solution": None}), "no list": (1, {**task, "hints": "text"}),
+        "odd list": (1, {**task, "hints": ["one", "", " \n", 7, None, {"a": 1}, "two"]}), "blank": (1, {**task, "hints": [" "], "solution": " "}),
+        "bare": (1, bare), "bare opening": (1, {**bare, "pretest": True}), "null": (1, {**task, "max_hints": None, "reveal_after": None}),
+        "revealed": (1, {**task, "gave_up": True}), "tried": (1, {**task, "solution": None, "attempts": ["x"]}),
+        "own": (1, {k: v for k, v in task.items() if k != "imported"}), "teacher": (2, task),
+    }
+    for name, (lesson, data) in stored.items():
+        raw.execute("INSERT INTO blocks (lesson_id, kind, markdown, data) VALUES (?, 'challenge', ?, ?)", (lesson, name, json.dumps(data)))
+    db._lock_imported(raw)
+    db._lock_imported(raw)  # a rerun after a crash before the version bump is harmless
+    got = {r["markdown"]: (json.loads(r["data"]), json.loads(r["locked"]) if r["locked"] else None) for r in raw.execute("SELECT * FROM blocks").fetchall()}
+    raw.close()
+    ladder = {"hints": ["one", "two"], "solution": "answer", "max_hints": 0}
+    opened = {**task, "hints": [], "solution": None}
+    default = challenge.new()["max_hints"]
+    assert got["closed"] == got["odd list"] == ({**opened, "max_hints": 2}, ladder)
+    assert got["opening"] == ({**opened, "pretest": True, "reveal_after": 1}, ladder)
+    assert got["transfer"] == ({**opened, "transfer": True}, ladder)
+    assert got["hints only"] == ({**opened, "max_hints": 2}, {**ladder, "solution": None})
+    assert got["no list"] == (opened, {**ladder, "hints": []})
+    assert got["blank"] == (opened, None)
+    assert got["bare"] == got["null"] == ({**opened, "max_hints": max(default, 2), "reveal_after": challenge.REVEAL_AFTER}, {**ladder, "max_hints": default})
+    assert got["bare opening"] == ({**opened, "max_hints": default, "reveal_after": 1, "pretest": True}, {**ladder, "max_hints": default})
+    untouched = ("revealed", "tried", "own", "teacher")
+    assert {k: got[k] for k in untouched} == {k: (stored[k][1], None) for k in untouched}
+    # what an import makes of the same task
+    for name in stored.keys() - set(untouched):
+        data = dict(stored[name][1])
+        assert db.lock(data) == got[name][1] and data == got[name][0]
+        assert challenge.reveal_blocker(data) and (challenge.hint_blocker(data) is None) == bool(data["max_hints"])
+
+
 def test_the_same_content_packs_to_the_same_bytes_and_a_fork_credits_its_origin(places):
     a = _authored(places)
     manifest, assets, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])

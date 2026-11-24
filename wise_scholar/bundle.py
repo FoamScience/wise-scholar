@@ -18,7 +18,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
-from . import course_files, crafted, db, figures, widgets, wiseboard
+from . import challenge, course_files, crafted, db, figures, widgets, wiseboard
 
 SCHEMA = 1
 LICENCES = ("CC-BY-SA-4.0", "CC-BY-4.0", "CC-BY-NC-SA-4.0", "all-rights-reserved")
@@ -172,6 +172,8 @@ def _block_data(block: dict, card_keys: dict[int, str], authored: bool = False) 
     raw = json.loads(block["data"])
     if raw.get("card_id") is not None:
         data["card"] = card_keys.get(int(raw["card_id"]))
+    if block["kind"] in challenge.KINDS and (locked := db.locked(block["id"])):
+        data["max_hints"] = locked["max_hints"]  # the locked hints stay here, and the length they gave the ladder
     return data
 
 
@@ -679,9 +681,11 @@ def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | No
             (course_id, lesson.title, lesson.phase, unit_ids.get(lesson.unit), str(uuid.uuid4()), lesson.key, lesson.summary),
         ).lastrowid
         for b in lesson.blocks:
+            data = _clean_block(b, card_ids)
+            locked = db.lock(data) if b.kind in challenge.KINDS else None
             block_id = db.conn.execute(
-                "INSERT INTO blocks (lesson_id, kind, markdown, data, key) VALUES (?, ?, ?, ?, ?)",
-                (lesson_id, b.kind, b.markdown, json.dumps(_clean_block(b, card_ids)), b.key),
+                "INSERT INTO blocks (lesson_id, kind, markdown, data, key, locked) VALUES (?, ?, ?, ?, ?, ?)",
+                (lesson_id, b.kind, b.markdown, json.dumps(data), b.key, json.dumps(locked) if locked else None),
             ).lastrowid
             db.conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (block_id, block_id))
 
