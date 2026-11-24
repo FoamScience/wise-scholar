@@ -32,9 +32,9 @@ def _show(lesson: dict, block: dict, event: str = "block.added") -> None:
     hub.publish(lesson["course_id"], {"type": event, "lesson_id": lesson["id"], "block": block})
 
 
-def _patch_block(challenge_id: int, change: dict) -> None:
+def _patch_block(challenge_id: int, change: dict, locked: dict | None = None) -> None:
     block = db.block(challenge_id)
-    block = db.set_block_data(challenge_id, {**block["data"], **change})
+    block = db.set_block_data(challenge_id, {**block["data"], **change}, locked)
     _show(db.lesson(block["lesson_id"]), block, "block.updated")
 
 

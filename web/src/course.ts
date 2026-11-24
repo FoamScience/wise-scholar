@@ -197,12 +197,13 @@ export function searchHref(courseId: number, query: string, kind: SearchKind | '
 const CHECKS = ['challenge', 'exercise', 'speaking']
 
 /** How many blocks of a replayed unit are shown: everything up to and including the first check not yet behind the
- * learner. A try-first task is behind them once tried, any other task once solved or given up, a quiz once graded. */
+ * learner. A try-first task is behind them once tried, any other task once solved, and either once given up or its
+ * solution shown; a quiz once graded. */
 export function replayShown(blocks: Block[]): number {
   const open = blocks.findIndex((b) => {
-    const d = (b.data ?? {}) as { correct?: boolean | null; attempts?: string[]; pretest?: boolean; solved?: boolean; gave_up?: boolean }
+    const d = (b.data ?? {}) as { correct?: boolean | null; attempts?: string[]; pretest?: boolean; solved?: boolean; gave_up?: boolean; solution?: string | null }
     if (b.kind === 'quiz') return d.correct === undefined || d.correct === null
-    if (CHECKS.includes(b.kind)) return d.pretest ? !d.attempts?.length : !(d.solved || d.gave_up)
+    if (CHECKS.includes(b.kind)) return !(d.gave_up || typeof d.solution === 'string' || (d.pretest ? d.attempts?.length : d.solved))
     return false
   })
   return open === -1 ? blocks.length : open + 1
