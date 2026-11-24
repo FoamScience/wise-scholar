@@ -162,11 +162,11 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _block_data(block: dict, card_keys: dict[int, str]) -> dict | None:
+def _block_data(block: dict, card_keys: dict[int, str], authored: bool = False) -> dict | None:
     """A block's material without the author's record; a quiz names its card by key, a figure keeps its drawing."""
     if not block["data"]:
         return None
-    data = db._fresh(json.loads(block["data"]))
+    data = db._fresh(json.loads(block["data"]), authored)
     for gone in ("crafted", "previous", "answer_id", "due", "card_id", "tried", "told"):
         data.pop(gone, None)
     raw = json.loads(block["data"])
@@ -260,13 +260,13 @@ def versions(course_id: int) -> list[dict]:
     ]
 
 
-def _lessons(course_id: int, written: set[int], unit_keys: dict[int, str], card_keys: dict[int, str], workspace: Path) -> tuple[list[dict], dict[str, str]]:
+def _lessons(course_id: int, written: set[int], unit_keys: dict[int, str], card_keys: dict[int, str], workspace: Path, authored: bool) -> tuple[list[dict], dict[str, str]]:
     """The written lessons with their blocks, and the starter files their exercises begin from."""
     lessons, files = [], {}
     for lesson in db.rows("SELECT * FROM lessons WHERE course_id = ? AND phase IN ('lesson', 'practice') ORDER BY id", course_id):
         if lesson["concept_id"] not in written and not (lesson["concept_id"] is None and lesson["id"] in finished_lessons(course_id)):
             continue
-        blocks, summary = _lesson_blocks(lesson["id"], card_keys, workspace, files)
+        blocks, summary = _lesson_blocks(lesson["id"], card_keys, workspace, files, authored)
         lessons.append({"key": lesson["key"], "unit": unit_keys.get(lesson["concept_id"]), "title": lesson["title"], "phase": lesson["phase"], "summary": summary, "blocks": blocks})
     return lessons, files
 
@@ -302,7 +302,7 @@ def _hash_units(manifest: dict) -> None:
         }))
 
 
-def _lesson_blocks(lesson_id: int, card_keys: dict[int, str], workspace: Path, files: dict[str, str]) -> tuple[list[dict], str]:
+def _lesson_blocks(lesson_id: int, card_keys: dict[int, str], workspace: Path, files: dict[str, str], authored: bool) -> tuple[list[dict], str]:
     """A lesson's blocks as manifest rows and its closing summary; its exercises' starter files go into files."""
     blocks, summary = [], ""
     for b in db.rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson_id):
@@ -310,7 +310,7 @@ def _lesson_blocks(lesson_id: int, card_keys: dict[int, str], workspace: Path, f
             summary = b["markdown"]
         if b["kind"] not in BLOCK_KINDS:
             continue
-        data = _block_data(b, card_keys)
+        data = _block_data(b, card_keys, authored)
         if b["kind"] == "exercise":
             starters, _ = _starters(b, workspace)
             files.update(starters)
@@ -340,7 +340,7 @@ def build(
     cards = [k for k in db.rows("SELECT * FROM cards WHERE course_id = ? AND parent_id IS NULL ORDER BY id", course_id)
              if (k["concept_id"] is None or k["concept_id"] in written) and k["id"] not in private]
     card_keys = {k["id"]: k["key"] for k in cards}
-    lessons, files = _lessons(course_id, written, unit_keys, card_keys, db.WORKSPACE / course["slug"])
+    lessons, files = _lessons(course_id, written, unit_keys, card_keys, db.WORKSPACE / course["slug"], course["mode"] == "teacher")
     unit_rows = [
         {"key": u["key"], "module": u["module"], "title": u["title"], "kind": u["kind"], "written": u["id"] in written,
          "needs": [unit_keys[n] for n in needs.get(u["id"], []) if n in unit_keys]}

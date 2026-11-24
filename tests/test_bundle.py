@@ -5,7 +5,7 @@ import zipfile
 
 import pytest
 
-from wise_scholar import bundle, course_files, db
+from wise_scholar import bundle, challenge, course_files, db
 
 SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'
 
@@ -213,6 +213,85 @@ def test_a_version_leaves_out_the_cards_made_from_the_learners_corrected_text(pl
     [copied] = db.rows("SELECT id FROM lessons WHERE course_id = ? AND phase = 'placement'", copy)
     [quiz] = db.blocks(copied["id"])
     assert db.card(quiz["data"]["card_id"])["course_id"] == copy
+
+
+def _worked_blocks(a):
+    """Every kind of answered card, with what the learner and the tutor's reply to them left on it."""
+    import asyncio
+
+    from wise_scholar import quiz
+    from wise_scholar.tools import practice as practice_tools, quizzes as quiz_tools
+
+    lesson = a["lesson"]
+    work = {"attempts": ["LEARNER typed"], "marks": ["LEARNER mark"], "photos": [{"name": "LEARNER.jpg", "attempt": 0}],
+            "transcripts": {"0": {"text": "LEARNER paper", "by": "tutor"}}}
+    ladder = challenge.new(reveal_after=2, max_hints=3)
+    key_points = db.add_card(a["course"], a["units"][1]["id"], "Explain lofting.", "open", [], "Key points.", "", scheduled=False)
+    posed = [
+        db.add_block(lesson, "challenge", "Write about lofting.", {**ladder, "writing": True, "structure": "passive", "words": [10, 50], **work}),
+        db.add_block(lesson, "challenge", "Explain lofting.", {**ladder, "writing": True, "spoken": True, "teachback": True, "card_id": key_points, **work}),
+        db.add_block(lesson, "exercise", "Loft a blade.", {**ladder, "files": [], "run": "true", "starter": {}, "helper": "Authored helper.", **work,
+                                                          "last_run": {"exit_code": 1, "output": "LEARNER output"}}),
+        db.add_block(lesson, "speaking", "Say lofting.", {**ladder, "speaking": "read", "lang": "en", **work,
+                                                          "scores": [{"words": [], "heard": "LEARNER heard", "score": 0.5}]}),
+    ]
+    for b in posed:
+        asyncio.run(practice_tools.give_hint(b["id"], "You wrote LEARNER typed."))
+        db.set_block_data(b["id"], {**db.block(b["id"])["data"], "gave_up": True, "solution": "LEARNER corrected"})
+    asked = asyncio.run(quiz_tools.pose_quiz(lesson, "Why loft?", "open", "To join.", "It joins."))
+    asked = db.block(int(asked.split()[3].rstrip(";")))
+    card = db.card(asked["data"]["card_id"])
+    db.set_block_data(asked["id"], {**asked["data"], "answer": "LEARNER answer", "confidence": 0.9, "unheard": "LEARNER line",
+                                    "answer_id": quiz.submit(card, "LEARNER answer", 0.9)})
+    asyncio.run(quiz_tools.grade_quiz(asked["id"], False, "You said LEARNER answer.", "LEARNER belief"))
+    sort = db.add_card(a["course"], a["units"][1]["id"], "Sort.", "sort", [{"text": "x", "category": "c"}], '["c"]', "", scheduled=False)
+    db.add_block(lesson, "quiz", "Sort.", {"card_id": sort, "kind": "sort", "options": [{"text": "x"}], "categories": ["c"],
+                                           "answer": "{}", "correct": False, "misplaced": ["x"], "due": "2031-01-01"})
+
+
+def test_a_version_and_a_copy_leave_out_what_the_learner_left_on_the_cards(places):
+    a = _authored(places)
+    _worked_blocks(a)
+    manifest, assets, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    raw = json.dumps(manifest, ensure_ascii=False)
+    assert "LEARNER" not in raw
+    blocks = {b["markdown"]: b["data"] for x in manifest["lessons"] for b in x["blocks"]}
+    written, taught, exercise = (blocks[m] for m in ("Write about lofting.", "Explain lofting.", "Loft a blade."))
+    for data in (written, taught, exercise):
+        assert (data["attempts"], data["hints"], data["solution"], data["gave_up"], data["max_hints"]) == ([], [], None, False, 3)
+        assert not {"photos", "transcripts", "marks"} & data.keys()
+    assert (written["structure"], written["words"], exercise["helper"], exercise["run"]) == ("passive", [10, 50], "Authored helper.", "true")
+    assert "Key points." in raw and "To join." in raw
+    for markdown in ("Why loft?", "Sort."):
+        assert blocks[markdown]["answer"] is None
+        assert not {"misplaced", "misconception", "due", "unheard", "feedback"} & blocks[markdown].keys()
+
+    version_hash, data = bundle.pack(manifest, assets)
+    reader = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Bundle reader {uuid.uuid4().hex[:6]}",)).lastrowid
+    _, m, assets = bundle.unpack(data)
+    played = bundle.install(reader, version_hash, m, assets, places["source_dir"])
+    installed = [b for x in db.rows("SELECT id FROM lessons WHERE course_id = ?", played["id"]) for b in db.blocks(x["id"])]
+    assert all(challenge.is_open(b["data"]) for b in installed if b["markdown"] in ("Write about lofting.", "Explain lofting.", "Loft a blade."))
+
+    copy = db.copy_course(a["course"], "Blade lofting worked")["id"]
+    copied = [b["data"] for x in db.rows("SELECT id FROM lessons WHERE course_id = ?", copy) for b in db.blocks(x["id"])]
+    assert "LEARNER" not in json.dumps(copied)
+
+
+def test_a_prepared_course_ships_the_hints_and_solution_its_teacher_wrote(places):
+    a = _authored(places)
+    data = {**challenge.new(), "hints": ["Think of wires."], "solution": "Two wires.", "attempts": ["LEARNER trial"]}
+    db.add_block(a["lesson"], "challenge", "What does a loft need?", data)
+
+    def shipped(course):
+        manifest, _, _ = bundle.build(course, notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+        [task] = [b["data"] for x in manifest["lessons"] for b in x["blocks"] if b["markdown"] == "What does a loft need?"]
+        return task["hints"], task["solution"], task["attempts"]
+
+    assert shipped(a["course"]) == ([], None, [])
+    db.conn.execute("UPDATE courses SET mode = 'teacher' WHERE id = ?", (a["course"],))
+    assert shipped(a["course"]) == (["Think of wires."], "Two wires.", [])
+    assert shipped(db.copy_course(a["course"], "Blade lofting prepared")["id"]) == (["Think of wires."], "Two wires.", [])
 
 
 def test_the_same_content_packs_to_the_same_bytes_and_a_fork_credits_its_origin(places):

@@ -731,14 +731,18 @@ def create_course(topic: str, profile_id: int) -> dict:
 
 # What a copied block leaves behind: the record of whoever worked on the original.
 _RECORD = ("attempts", "marks", "gave_up", "solved", "last_run", "files_kept", "answer", "answer_id", "confidence", "correct",
-           "confident_miss", "feedback", "unknown", "scores", "saved")
+           "confident_miss", "feedback", "unknown", "scores", "saved", "photos", "transcripts", "misplaced", "misconception",
+           "due", "unheard")
 
 
-def _fresh(data: dict) -> dict:
-    """A block's data without the record made on the original: the material stays, the work on it does not."""
+def _fresh(data: dict, authored: bool = False) -> dict:
+    """A block's data without the record made on the original: the material stays, the work on it does not. Hints and
+    a solution answer the learner's own attempts, so they stay only when authored, in a prepared course."""
     kept = {k: v for k, v in data.items() if k not in _RECORD}
     if "attempts" in data:
         kept.update({"attempts": [], "gave_up": False, "solved": False})
+    if not authored:
+        kept.update({k: empty for k, empty in (("hints", []), ("solution", None)) if k in data})
     if "answer" in data:
         kept["answer"] = None
     if "last_run" in data:
@@ -790,11 +794,11 @@ def _copy_cards(course_id: int, new_id: int, concept_map: dict[int, int]) -> dic
     return card_map
 
 
-def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int]) -> None:
+def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], authored: bool) -> None:
     for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", old_lesson):
         if b["kind"] in ("podcast", "network"):
             continue  # audio and consent belong to the original
-        data = _fresh(json.loads(b["data"])) if b["data"] else None
+        data = _fresh(json.loads(b["data"]), authored) if b["data"] else None
         if data and data.get("card_id") is not None:
             if data["card_id"] not in card_map:
                 continue  # a block on a card that stays behind
@@ -806,7 +810,7 @@ def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int]) -> N
         conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (copied, copied))
 
 
-def _copy_lessons(course_id: int, new_id: int, concept_map: dict[int, int], card_map: dict[int, int]) -> None:
+def _copy_lessons(course_id: int, new_id: int, concept_map: dict[int, int], card_map: dict[int, int], authored: bool) -> None:
     for lesson_row in rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", course_id):
         if lesson_row["concept_id"] and lesson_row["concept_id"] not in concept_map:
             continue
@@ -814,7 +818,7 @@ def _copy_lessons(course_id: int, new_id: int, concept_map: dict[int, int], card
             "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key) VALUES (?, ?, ?, ?, ?, ?)",
             (new_id, lesson_row["title"], lesson_row["phase"], concept_map.get(lesson_row["concept_id"]), str(uuid.uuid4()), lesson_row["key"]),
         ).lastrowid
-        _copy_blocks(lesson_row["id"], lesson_id, card_map)
+        _copy_blocks(lesson_row["id"], lesson_id, card_map, authored)
         conn.executemany(
             "INSERT INTO messages (lesson_id, role, text, created) VALUES (?, ?, ?, ?)",
             [(lesson_id, m["role"], m["text"], m["created"]) for m in rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_row["id"])],
@@ -858,7 +862,7 @@ def copy_course(course_id: int, topic: str) -> dict:
         concept_map = _copy_concepts(course_id, new_id)
         _copy_capstones(course_id, new_id, concept_map)
         card_map = _copy_cards(course_id, new_id, concept_map)
-        _copy_lessons(course_id, new_id, concept_map, card_map)
+        _copy_lessons(course_id, new_id, concept_map, card_map, old["mode"] == "teacher")
         conn.executemany(
             "INSERT INTO facts (course_id, text, profile_id) VALUES (?, ?, ?)",
             [(new_id, f["text"], f["profile_id"]) for f in rows("SELECT * FROM facts WHERE course_id = ?", course_id)],
