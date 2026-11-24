@@ -66,6 +66,7 @@ type DueCard = {
   options: string[] | SortItem[]
   categories?: string[]
   translation: string
+  context: string
   confident_miss: boolean
 }
 
@@ -622,6 +623,7 @@ export function Review({ profile, then }: { profile: number; then: string | null
           <span className="block h-full origin-left animate-[review-time_linear_forwards] bg-primary rtl:origin-right" style={{ animationDuration: `${REVIEW_BOX_MS}ms`, animationDelay: `-${Date.now() - started}ms` }} />
         </div>
         <Markdown>{card.question}</Markdown>
+        {card.context && <blockquote dir="auto" className="m-0 border-s-2 ps-3 text-muted-foreground">{card.context}</blockquote>}
         <Translation text={card.translation} />
         {card.kind === 'choice' ? (
           <ReviewChoice options={card.options as string[]} picked={picked} result={result} onPick={pick} onNext={next} />

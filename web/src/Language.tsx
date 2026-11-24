@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { usePlayer } from './player'
-import { splitBy, splitSentences } from './text'
+import { splitSentences } from './text'
+import { TapWord, WordPanel } from './Words'
+import type { Tapped } from './Words'
+import { refreshWords, splitWords, useWordStates } from './wordStates'
+import type { WordState } from './wordStates'
 import { Swap } from './Swap'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -20,6 +24,7 @@ export type ReadingData = {
   lang: string
   glossary: { word: string; meaning: string }[]
   added: string[]
+  saved?: string[]
   targets?: string[]
   known?: string[]
   story?: string
@@ -35,16 +40,20 @@ export function ReadingCard(props: {
   text: string
   data: unknown
   speech: boolean
-  onAdd: (word: string) => void
-  onKnown: (word: string) => void
+  courseId: number | null
+  onAdd: (word: string, sentence: string) => Promise<void>
+  onKnown: (word: string) => Promise<void>
 }) {
   const { t } = useTranslation()
   const d = props.data as ReadingData
-  const [word, setWord] = useState<string | null>(null)
+  const [open, setOpen] = useState<Tapped | null>(null)
   const [shown, setShown] = useState(false)
-  const gloss = d.glossary.find((g) => g.word === word)
+  const gloss = d.glossary.find((g) => g.word === open?.word)
   const paragraphs = props.text.split(/\n\s*\n/).map(splitSentences)
   const player = usePlayer(d.lang, props.speech)
+  const { courseId } = props
+  const states = useWordStates(courseId, [props.text], d.lang)
+  const refresh = () => (courseId === null ? undefined : refreshWords(courseId))
 
   return (
     <section id={`block-${props.id}`} className={`block ${cn(BLOCK, 'gap-0')}`}>
@@ -79,11 +88,14 @@ export function ReadingCard(props: {
             <GlossedSentence
               key={k}
               sentence={sentence}
-              words={d.glossary.map((g) => g.word)}
-              open={word}
+              text={props.text}
+              lang={d.lang}
+              glossary={d.glossary.map((g) => g.word)}
+              states={courseId === null ? null : states}
+              open={open}
               playing={sentence === player.current}
-              onOpen={(w) => {
-                setWord(w)
+              onOpen={(tapped) => {
+                setOpen(tapped)
                 setShown(false)
               }}
             />
@@ -91,31 +103,45 @@ export function ReadingCard(props: {
         </p>
       ))}
       {player.error && <div className="mt-3 rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{player.error}</div>}
-      {gloss && (
+      {open && !gloss && courseId !== null && <WordPanel key={open.word} courseId={courseId} lang={d.lang} tapped={open} onClose={() => setOpen(null)} />}
+      {open && gloss && (
         <GlossPanel
           gloss={gloss}
           lang={d.lang}
           shown={shown}
-          added={d.added.includes(gloss.word)}
+          added={d.added.includes(gloss.word) || (d.saved ?? []).includes(gloss.word)}
           known={(d.known ?? []).includes(gloss.word)}
           onShow={() => setShown(true)}
-          onAdd={() => props.onAdd(gloss.word)}
-          onKnown={() => props.onKnown(gloss.word)}
+          onAdd={() => void props.onAdd(gloss.word, open.sentence).then(refresh)}
+          onKnown={() => void props.onKnown(gloss.word).then(refresh)}
         />
       )}
     </section>
   )
 }
 
-/** A sentence of the reading with its glossary words as buttons that open their meaning. */
-function GlossedSentence(props: { sentence: string; words: string[]; open: string | null; playing: boolean; onOpen: (word: string) => void }) {
+/** A sentence of the reading: its glossary words, and with states all its words, are buttons that open their meaning. */
+function GlossedSentence(props: {
+  sentence: string
+  text: string
+  lang: string
+  glossary: string[]
+  states: Record<string, WordState> | null
+  open: Tapped | null
+  playing: boolean
+  onOpen: (tapped: Tapped) => void
+}) {
+  const { sentence, states } = props
+  const isOpen = (word: string) => word === props.open?.word && sentence === props.open.sentence
   return (
     <span className={props.playing ? 'rounded-sm bg-accent shadow-[0_0_0_2px_var(--accent)]' : undefined}>
-      {splitBy(props.sentence, props.words).map((piece, j) =>
-        piece.hit ? (
-          <button key={j} type="button" className={cn('cursor-pointer border-0 border-b-2 bg-transparent p-0', piece.text === props.open ? 'border-solid border-warm bg-warm-tint' : 'border-dotted border-muted-foreground')} onClick={() => props.onOpen(piece.text)}>
+      {splitWords(sentence, props.glossary, props.lang, props.text).map((piece, j) =>
+        piece.kind === 'gloss' ? (
+          <button key={j} type="button" className={cn('cursor-pointer border-0 border-b-2 bg-transparent p-0 font-medium', isOpen(piece.text) ? 'border-solid border-warm bg-warm-tint' : 'border-double border-warm')} onClick={() => props.onOpen({ word: piece.text, sentence })}>
             {piece.text}
           </button>
+        ) : piece.kind === 'word' && states ? (
+          <TapWord key={j} word={piece.text} sentence={sentence} state={states[piece.text]} open={isOpen(piece.text)} onTap={props.onOpen} />
         ) : (
           piece.text
         ),

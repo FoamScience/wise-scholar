@@ -651,7 +651,7 @@
     },
     "reading": {
       "story": "{{story}}، الحلقة {{n}}: للقراءة الممتعة",
-      "label": "للقراءة: اضغط على كلمة مميَّزة لترى معناها",
+      "label": "للقراءة: اضغط على أي كلمة لترى معناها",
       "slow": "ببطء",
       "localVoice": "صوت محلّي",
       "browserVoice": "صوت المتصفّح؛ شغّل make speech للحصول على صوت طبيعي",
@@ -662,6 +662,15 @@
       "addVocabulary": "أضف إلى المفردات",
       "known": "معروفة",
       "iKnow": "أعرفها"
+    },
+    "words": {
+      "new": "كلمة جديدة",
+      "seen": "مرّت بك من قبل",
+      "learning": "قيد التعلم",
+      "known": "معروفة",
+      "close": "إغلاق",
+      "meaning": "المعنى على بطاقتك",
+      "noEntry": "لا مدخل في القاموس؛ اكتب المعنى بنفسك."
     },
     "vocab": {
       "label": "اختبار المفردات: ضع علامة على الكلمات التي تستطيع ذكر معناها",
@@ -1234,6 +1243,8 @@
     "files are limited to 50 MB": "حجم الملف الأقصى 50 ميغابايت",
     "episodes are for language courses; the first reading sets the language": "الحلقات خاصة بدورات اللغات؛ القراءة الأولى تحدّد اللغة",
     "role-plays are for language courses; the first reading sets the language": "لعب الأدوار خاص بدورات اللغات؛ القراءة الأولى تحدّد اللغة",
+    "words are for language courses; the first reading sets the language": "الكلمات خاصة بدورات اللغات؛ القراءة الأولى تحدّد اللغة",
+    "write the word's meaning first": "اكتب معنى الكلمة أولًا",
     "already in your vocabulary": "موجودة في مفرداتك من قبل",
     "this check is finished": "انتهى هذا الاختبار",
     "already graded": "صُحّح من قبل",

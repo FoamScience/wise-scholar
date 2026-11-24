@@ -272,8 +272,8 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
 
   useLessonVisits(course, courseId, lessonId)
 
-  function post(path: string, body: unknown) {
-    api(path, body).catch((err: Error) => setError(err.message))
+  function post(path: string, body: unknown): Promise<void> {
+    return api<void>(path, body).catch((err: Error) => setError(err.message))
   }
 
   // "Stop for today" after a finished unit, only once this sitting has answers to sum up
@@ -393,6 +393,7 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
         speech={speech}
         voice={lesson.phase === 'roleplay' ? course.lang : null}
         lessonId={lesson.id}
+        courseId={course.id}
         canSend={online && !lesson.running && Boolean(course.started) && Boolean(draft.trim())}
         onSend={send}
         onStop={() => post(`/api/lessons/${lesson.id}/stop`, {})}
@@ -706,7 +707,7 @@ function LessonCards(props: {
   given: Record<number, Given>
   onGive: (blockId: number, answer: Given) => void
   features: { speech: boolean; commands: boolean; crafted: boolean; sketched: boolean }
-  post: (path: string, body: unknown) => void
+  post: (path: string, body: unknown) => Promise<void>
   onError: (message: string) => void
 }) {
   const { t } = useTranslation()
@@ -720,6 +721,7 @@ function LessonCards(props: {
         key={b.id}
         block={b}
         lesson={lesson}
+        course={course}
         authored={course.mode === 'teacher'}
         given={props.given[b.id]}
         onGive={(answer) => props.onGive(b.id, answer)}

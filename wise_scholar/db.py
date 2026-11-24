@@ -635,6 +635,8 @@ MIGRATIONS = [
     """,
     # gist_tries: how many times a gist turn was started for the finished lesson's board; a failed one goes again once
     "ALTER TABLE lessons ADD COLUMN gist_tries INTEGER NOT NULL DEFAULT 0;",
+    # context: the sentence a saved word was met in; it stays in this database, in no bundle and no copy
+    "ALTER TABLE cards ADD COLUMN context TEXT NOT NULL DEFAULT '';",
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)
@@ -729,7 +731,7 @@ def create_course(topic: str, profile_id: int) -> dict:
 
 # What a copied block leaves behind: the record of whoever worked on the original.
 _RECORD = ("attempts", "marks", "gave_up", "solved", "last_run", "files_kept", "answer", "answer_id", "confidence", "correct",
-           "confident_miss", "feedback", "unknown", "scores")
+           "confident_miss", "feedback", "unknown", "scores", "saved")
 
 
 def _fresh(data: dict) -> dict:
@@ -774,10 +776,10 @@ def _copy_capstones(course_id: int, new_id: int, concept_map: dict[int, int]) ->
 
 def _copy_cards(course_id: int, new_id: int, concept_map: dict[int, int]) -> dict[int, int]:
     card_map = {}
-    corrections = correction_cards(course_id)
+    private = private_cards(course_id)
     # a copy starts its reviews afresh from the lesson cards; the short parts made for reviews stay behind
     for k in rows("SELECT * FROM cards WHERE course_id = ? AND parent_id IS NULL ORDER BY id", course_id):
-        if k["id"] in corrections:
+        if k["id"] in private:
             continue
         card_map[k["id"]] = conn.execute(
             "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, key) "
@@ -1354,15 +1356,16 @@ def set_block(block_id: int, markdown: str, data: dict) -> dict:
 
 def add_card(course_id: int, concept_id: int | None, question: str, kind: str, options: list[str],
              answer_key: str, explanation: str, scheduled: bool, due: str | None = None, vocab: bool = False,
-             translation: str = "", misconceptions: dict[str, str] | None = None) -> int:
+             translation: str = "", misconceptions: dict[str, str] | None = None, context: str = "", origin: str | None = None) -> int:
     """due makes the card reviewable from that moment without a first answer; vocab marks a vocabulary card;
     translation is the question in the learner's own language when it is written in the one being learned;
-    misconceptions names, for a wrong option, the belief that leads to it."""
+    misconceptions names, for a wrong option, the belief that leads to it; context is the sentence a word was met in;
+    origin 'word' marks a word the learner saved from any text."""
     return conn.execute(
         "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, "
-        "vocab, due, translation, misconceptions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "vocab, due, translation, misconceptions, context, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (course_id, concept_id, question, kind, json.dumps(options), answer_key, explanation, int(scheduled),
-         int(vocab), due, translation, json.dumps(misconceptions or {})),
+         int(vocab), due, translation, json.dumps(misconceptions or {}), context, origin),
     ).lastrowid
 
 
@@ -1535,6 +1538,11 @@ def correction_cards(course_id: int) -> set[int]:
     )}
 
 
+def private_cards(course_id: int) -> set[int]:
+    """The cards that stay with the learner: their corrections, and the words they saved, which may come from a chat."""
+    return correction_cards(course_id) | {r["id"] for r in rows("SELECT id FROM cards WHERE course_id = ? AND origin = 'word'", course_id)}
+
+
 def update_error(error_id: int, note: str | None, pinned: bool | None, resolved: bool | None) -> dict | None:
     sets, args = [], []
     for col, val in (("note", note), ("pinned", pinned), ("resolved", resolved)):
@@ -1673,6 +1681,14 @@ def vocab_lemmas(profile_id: int, lang: str, states: tuple[str, ...] = ("known",
         r["lemma"]
         for r in rows(f"SELECT lemma FROM vocab_knowledge WHERE profile_id = ? AND lang = ? AND state IN ({marks})",
                       profile_id, lang, *states)
+    }
+
+
+def vocab_states(profile_id: int, lang: str) -> dict[str, str]:
+    """The state of each lemma the learner met: known, learning, or seen, which is only met in texts so far."""
+    return {
+        r["lemma"]: "seen" if r["state"] == "learning" and r["source"] == "reading" else r["state"]
+        for r in rows("SELECT lemma, state, source FROM vocab_knowledge WHERE profile_id = ? AND lang = ?", profile_id, lang)
     }
 
 

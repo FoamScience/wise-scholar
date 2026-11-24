@@ -108,6 +108,7 @@ def max_tier(lang: str) -> int:
     return max(1, len(lemma_list(lang)) // TIER)
 
 
+@lru_cache(maxsize=64)
 def supported(lang: str) -> bool:
     """Whether the language has a frequency list and a lemmatizer, which the reading gate and tiers need."""
     if lang not in available_languages():

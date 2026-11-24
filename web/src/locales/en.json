@@ -579,7 +579,7 @@
     },
     "reading": {
       "story": "{{story}}, episode {{n}}: read for pleasure",
-      "label": "Read: tap a marked word for its meaning",
+      "label": "Read: tap any word for its meaning",
       "slow": "slow",
       "localVoice": "Local voice",
       "browserVoice": "Browser voice; run make speech for a natural one",
@@ -590,6 +590,15 @@
       "addVocabulary": "Add to vocabulary",
       "known": "Known",
       "iKnow": "I know this"
+    },
+    "words": {
+      "new": "new word",
+      "seen": "met before",
+      "learning": "learning",
+      "known": "known",
+      "close": "Close",
+      "meaning": "Meaning on your card",
+      "noEntry": "No dictionary entry; write the meaning yourself."
     },
     "vocab": {
       "label": "Vocabulary check: tick the words whose meaning you could give",

@@ -15,13 +15,14 @@ import { QuizCard } from './Quiz'
 import type { Given } from './offline'
 import type { QuizData } from './Quiz'
 import { ReadingCard, VocabCheckCard } from './Language'
+import type { ReadingData } from './Language'
 import { PodcastCard } from './Podcast'
 import { blockKey, challengeLabel, pendingPhotos } from './course'
 import { PlacementAreas } from './Areas'
 import { FileEditor } from './FileEditor'
 import { PhotoTray } from './Handwork'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
-import type { Area, Block, ChallengeData, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
+import type { Area, Block, ChallengeData, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
 import { FigureCard } from './Figure'
 import { InkBoardCard } from './InkBoard'
 import { WidgetCard } from './Widget'
@@ -575,11 +576,12 @@ type Features = { speech: boolean; commands: boolean; crafted: boolean; sketched
 type CardProps = {
   block: Block
   lesson: Lesson
+  course: CourseDetail
   authored: boolean
   given: Given | undefined
   onGive: (answer: Given) => void
   features: Features
-  post: (path: string, body: unknown) => void
+  post: (path: string, body: unknown) => Promise<void>
   onError: (message: string) => void
 }
 
@@ -659,7 +661,8 @@ function AnswerCard(props: CardProps) {
         text={b.markdown}
         data={b.data}
         speech={features.speech}
-        onAdd={(word) => props.post(`/api/blocks/${b.id}/vocabulary`, { word })}
+        courseId={!props.authored && props.course.lang === (b.data as ReadingData).lang.split('-')[0].toLowerCase() ? props.course.id : null}
+        onAdd={(word, sentence) => props.post(`/api/blocks/${b.id}/vocabulary`, { word, sentence })}
         onKnown={(word) => props.post(`/api/blocks/${b.id}/known`, { word })}
       />
     ) : b.kind === 'vocab' ? (
