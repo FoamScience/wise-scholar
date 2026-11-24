@@ -18,6 +18,7 @@ def public(card: dict) -> dict:
         "kind": card["kind"],
         "options": shown_options(card),
         "translation": card.get("translation", ""),
+        "context": card.get("context", ""),
         **({"categories": json.loads(card["answer_key"])} if card["kind"] == "sort" else {}),
         "confident_miss": bool(card["confident_miss"]),
     }

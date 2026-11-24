@@ -597,7 +597,7 @@
     },
     "reading": {
       "story": "{{story}}, épisode {{n}} : à lire pour le plaisir",
-      "label": "À lire : touchez un mot marqué pour voir son sens",
+      "label": "À lire : touchez un mot pour voir son sens",
       "slow": "lent",
       "localVoice": "Voix locale",
       "browserVoice": "Voix du navigateur ; lancez make speech pour une voix naturelle",
@@ -608,6 +608,15 @@
       "addVocabulary": "Ajouter au vocabulaire",
       "known": "Connu",
       "iKnow": "Je le connais"
+    },
+    "words": {
+      "new": "mot nouveau",
+      "seen": "déjà rencontré",
+      "learning": "en cours",
+      "known": "connu",
+      "close": "Fermer",
+      "meaning": "Sens sur votre carte",
+      "noEntry": "Aucune entrée dans le dictionnaire ; écrivez le sens vous-même."
     },
     "vocab": {
       "label": "Test de vocabulaire : cochez les mots dont vous pourriez donner le sens",
@@ -1168,6 +1177,8 @@
     "files are limited to 50 MB": "les fichiers sont limités à 50 Mo",
     "episodes are for language courses; the first reading sets the language": "les épisodes sont réservés aux cours de langue ; la première lecture fixe la langue",
     "role-plays are for language courses; the first reading sets the language": "les jeux de rôle sont réservés aux cours de langue ; la première lecture fixe la langue",
+    "words are for language courses; the first reading sets the language": "les mots sont réservés aux cours de langue ; la première lecture fixe la langue",
+    "write the word's meaning first": "écrivez d'abord le sens du mot",
     "already in your vocabulary": "déjà dans votre vocabulaire",
     "this check is finished": "ce test est terminé",
     "already graded": "déjà corrigé",

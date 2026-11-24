@@ -1,10 +1,11 @@
-import { isValidElement } from 'react'
-import type { ComponentProps, ReactNode } from 'react'
+import { isValidElement, useMemo } from 'react'
+import type { ComponentProps, ComponentType, ReactNode } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import Mermaid from './Mermaid'
 import { boardLink } from './ink'
 import { pinPlot } from './parts'
 import { inlineRemarkPlugins, rehypePlugins, remarkPlugins } from './markdown'
+import { rehypeWords } from './wordStates'
 
 function Code(props: ComponentProps<'code'>) {
   const { className, children, node: _, ...rest } = props as ComponentProps<'code'> & { node?: unknown }
@@ -73,10 +74,18 @@ function Table(props: ComponentProps<'table'>) {
 const PROSE =
   'prose prose-ws max-w-none text-[length:inherit] leading-[inherit] prose-headings:font-heading prose-headings:font-semibold prose-h2:mt-6 prose-h2:mb-2 prose-h2:text-lg prose-h3:text-base prose-p:my-4 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-pre:rounded-md prose-table:my-2 prose-table:w-full [&_blockquote]:[quotes:none] [&_:where(blockquote,em,i):dir(rtl)]:not-italic'
 
-export default function Markdown({ children }: { children: string }) {
+const COMPONENTS = { code: Code, pre: Pre, a: Link, table: Table }
+type WordOf = ComponentType<{ word: string; sentence: string }>
+
+/** words draws each word of a text in lang, which makes it tappable. */
+export default function Markdown({ children, words }: { children: string; words?: { lang: string; as: WordOf } }) {
+  const lang = words?.lang
+  // words are wrapped before math is typeset, as direction is: math is still a code element then
+  const plugins = useMemo(() => (lang === undefined ? rehypePlugins : [[rehypeWords, { lang }] as [typeof rehypeWords, { lang: string }], ...rehypePlugins]), [lang])
+  const components = words ? ({ ...COMPONENTS, 'tap-word': words.as } as typeof COMPONENTS) : COMPONENTS
   return (
     <div className={PROSE}>
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={{ code: Code, pre: Pre, a: Link, table: Table }} urlTransform={imageOrSafe}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={plugins} components={components} urlTransform={imageOrSafe}>
         {children}
       </ReactMarkdown>
     </div>

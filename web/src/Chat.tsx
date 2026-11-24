@@ -1,3 +1,4 @@
+import { createContext, useContext, useState } from 'react'
 import type { KeyboardEvent, RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from './Md'
@@ -7,6 +8,10 @@ import { textDirection } from './text'
 import { Mic } from './Mic'
 import { plain } from './plain'
 import { usePlayer } from './player'
+import { TapWord, WordPanel } from './Words'
+import type { Tapped } from './Words'
+import { sentenceAt, splitWords, useWordStates } from './wordStates'
+import type { WordState } from './wordStates'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -19,24 +24,58 @@ function spoken(markdown: string): string {
   return plain(markdown.split('\n').filter((line) => !line.trimStart().startsWith('>')).join('\n'))
 }
 
-/** A tutor or learner message in the chat sidebar; a role-play can read the tutor's lines aloud. */
-function Remark({ message, player }: { message: Message; player: ReturnType<typeof usePlayer> | null }) {
+type Tapping = { states: Record<string, WordState>; open: Tapped | null; onTap: (tapped: Tapped) => void }
+const TapContext = createContext<Tapping | null>(null)
+
+/** A word of a role-play line. Its state comes through context, so Markdown keeps one component for every word. */
+function LineWord({ word, sentence }: { word: string; sentence: string }) {
+  const tapping = useContext(TapContext)
+  if (!tapping) return word
+  const open = tapping.open?.word === word && tapping.open.sentence === sentence
+  return <TapWord word={word} sentence={sentence} state={tapping.states[word]} open={open} onTap={tapping.onTap} />
+}
+
+/** A learner's line with each word tappable. */
+function LineWords({ text, lang }: { text: string; lang: string }) {
+  let at = 0
+  return splitWords(text, [], lang).map((piece, i) => {
+    const start = at
+    at += piece.text.length
+    return piece.kind === 'word' ? <LineWord key={i} word={piece.text} sentence={sentenceAt(text, start)} /> : piece.text
+  })
+}
+
+/** A tutor or learner message in the chat sidebar; a role-play can read the tutor's lines aloud, and its words open
+ * their meaning. */
+function Remark({ message, player, tapped, courseId, lang, onClose }: {
+  message: Message
+  player: ReturnType<typeof usePlayer> | null
+  tapped: Tapped | null
+  courseId: number
+  lang: string | null
+  onClose: () => void
+}) {
   const { t } = useTranslation()
+  const panel = tapped && lang && <WordPanel key={tapped.word} courseId={courseId} lang={lang} tapped={tapped} onClose={onClose} />
   if (message.role === 'learner')
     return (
-      <div id={`msg-${message.id}`} className={cn(BUBBLE, 'self-end whitespace-pre-wrap bg-primary text-primary-foreground')} dir={textDirection(message.text)}>
-        {message.text}
-      </div>
+      <>
+        <div id={`msg-${message.id}`} className={cn(BUBBLE, 'self-end whitespace-pre-wrap bg-primary text-primary-foreground', lang && '[&_button:not(.border-transparent)]:border-current')} dir={textDirection(message.text)}>
+          {lang ? <LineWords text={message.text} lang={lang} /> : message.text}
+        </div>
+        {panel}
+      </>
     )
   const line = player ? spoken(message.text) : ''
   return (
     <div id={`msg-${message.id}`} className={cn(BUBBLE, 'self-start bg-muted')}>
-      <Markdown>{message.text}</Markdown>
+      <Markdown words={lang ? { lang, as: LineWord } : undefined}>{message.text}</Markdown>
       {player && line && (
         <Button type="button" variant="ghost" size="sm" className="-ms-2 mt-1 text-ink-2" onClick={() => (player.current === line ? player.stop() : player.play([line]))}>
           {player.current === line ? t('common.stop') : t('common.listen')}
         </Button>
       )}
+      {panel}
     </div>
   )
 }
@@ -93,6 +132,7 @@ export function ChatPanel({ messagesRef, className, ...props }: {
   speech: boolean
   voice: string | null
   lessonId: number
+  courseId: number
   canSend: boolean
   onSend: () => void
   onStop: () => void
@@ -102,6 +142,8 @@ export function ChatPanel({ messagesRef, className, ...props }: {
 }) {
   const { t } = useTranslation()
   const player = usePlayer(props.voice ?? '', props.speech, props.lessonId)
+  const states = useWordStates(props.voice ? props.courseId : null, props.messages.map((m) => m.text), props.voice ?? '')
+  const [tapped, setTapped] = useState<(Tapped & { message: number }) | null>(null)
   return (
     <aside
       className={cn(
@@ -127,7 +169,9 @@ export function ChatPanel({ messagesRef, className, ...props }: {
       </div>
       <div ref={messagesRef} className="flex grow flex-col gap-3 overflow-y-auto p-4">
         {props.messages.map((m) => (
-          <Remark key={m.id} message={m} player={props.voice ? player : null} />
+          <TapContext.Provider key={m.id} value={{ states, open: tapped?.message === m.id ? tapped : null, onTap: (word) => setTapped({ ...word, message: m.id }) }}>
+            <Remark message={m} player={props.voice ? player : null} tapped={tapped?.message === m.id ? tapped : null} courseId={props.courseId} lang={props.voice} onClose={() => setTapped(null)} />
+          </TapContext.Provider>
         ))}
         {props.voice && player.error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{player.error}</div>}
         {props.open && props.streaming && (
