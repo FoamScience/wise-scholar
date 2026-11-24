@@ -19,7 +19,8 @@ def places(tmp_path, monkeypatch):
     for c in db.rows("SELECT id FROM courses WHERE profile_id > ?", last):
         db.delete_course(c["id"])
     db.conn.execute("DELETE FROM versions")
-    db.conn.execute("DELETE FROM facts WHERE profile_id > ?", (last,))
+    for table in ("facts", "vocab_knowledge", "vocab_tiers"):
+        db.conn.execute(f"DELETE FROM {table} WHERE profile_id > ?", (last,))
     db.conn.execute("DELETE FROM profiles WHERE id > ?", (last,))
 
 
@@ -276,6 +277,234 @@ def test_a_version_and_a_copy_leave_out_what_the_learner_left_on_the_cards(place
     copy = db.copy_course(a["course"], "Blade lofting worked")["id"]
     copied = [b["data"] for x in db.rows("SELECT id FROM lessons WHERE course_id = ?", copy) for b in db.blocks(x["id"])]
     assert "LEARNER" not in json.dumps(copied)
+
+
+def _measured_blocks(a, monkeypatch) -> dict[str, dict]:
+    """A vocabulary check, a reading, a widget and a goal question, each worked on as the learner does; what they held untouched."""
+    import asyncio
+
+    from wise_scholar import app, widgets
+    from wise_scholar.routes import blocks as blocks_routes
+    from wise_scholar.tools import language as language_tools, lesson_flow
+
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: None)
+    lesson = a["lesson"]
+    spec = {"controls": [{"name": "n", "label": "n", "min": 1, "max": 3, "step": 1, "value": 1}], "readouts": [{"label": "n", "expr": "n"}]}
+    asyncio.run(language_tools.pose_vocab_check(lesson, "de"))
+    asyncio.run(lesson_flow.ask(lesson, "What should it enable?", ["Lofting", "Welding"], non_goals=True))
+    db.add_block(lesson, "reading", "Das Brot.", {"title": "T", "lang": "de-DE", "added": [], "targets": [], "known": [],
+                                                   "glossary": [{"word": "Brot", "meaning": "bread"}]})
+    db.add_block(lesson, "widget", "Turn it.", {"spec": spec, "widget": widgets.resolve(spec), "alt": "n"})
+    vocab, question, reading, widget = posed = [b for b in db.blocks(lesson) if b["kind"] in ("vocab", "question", "reading", "widget")]
+
+    while (data := db.block(vocab["id"])["data"])["current"]:
+        known = data["current"]["words"] if len(data["rounds"]) < 2 else []
+        asyncio.run(blocks_routes.vocab_check(vocab["id"], blocks_routes.Known(known=known)))
+    asyncio.run(blocks_routes.know_word(reading["id"], blocks_routes.Word(word="Brot")))
+    asyncio.run(blocks_routes.try_widget(widget["id"], blocks_routes.WidgetSetting(at=[2])))
+    app._widget_tries(lesson)
+    asyncio.run(blocks_routes.answer_question(question["id"], blocks_routes.Answer(answer="Lofting", non_goals=["Welding"])))
+    worked = {b["kind"]: db.block(b["id"])["data"] for b in posed}
+    assert len(worked["vocab"]["rounds"]) > 2 and worked["vocab"]["tier"] and worked["vocab"]["current"] is None
+    assert (worked["reading"]["known"], worked["question"]["non_goals"]) == (["Brot"], ["Welding"])
+    assert (worked["widget"]["tried"], worked["widget"]["told"]) == ([[2]], 1)
+    return {b["kind"]: b["data"] for b in posed}
+
+
+def test_a_version_and_a_copy_hold_word_checks_readings_widgets_and_goals_as_they_were_posed(places, monkeypatch):
+    a = _authored(places)
+    posed = _measured_blocks(a, monkeypatch)
+    manifest, _, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    shipped = {b["kind"]: b["data"] for x in manifest["lessons"] for b in x["blocks"]}
+    assert {k: shipped[k] for k in ("vocab", "reading", "widget")} == {k: posed[k] for k in ("vocab", "reading", "widget")}
+
+    copy = db.copy_course(a["course"], "Blade lofting measured")["id"]
+    copied = {b["kind"]: b["data"] for x in db.rows("SELECT id FROM lessons WHERE course_id = ?", copy) for b in db.blocks(x["id"])}
+    assert {k: copied[k] for k in posed} == posed
+
+
+def _unfiltered(block, card_keys, authored=False):
+    """A block's data as a version carries it when nothing is left out."""
+    if not block["data"]:
+        return None
+    data = json.loads(block["data"])
+    card = data.pop("card_id", None)
+    return data if card is None else {**data, "card": card_keys[card]}
+
+
+def _installed(course: int) -> dict[str, dict]:
+    return {b["markdown"]: b for x in db.rows("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", course) for b in db.blocks(x["id"])}
+
+
+def test_a_bundle_published_with_the_record_installs_and_upgrades_without_it(places, monkeypatch):
+    a = _authored(places)
+    posed = _measured_blocks(a, monkeypatch)
+    _worked_blocks(a)
+    monkeypatch.setattr(bundle, "_block_data", _unfiltered)
+
+    def published():
+        v = bundle.publish(a["course"], notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], **places)
+        return bundle.unpack((places["store"] / f"{v['hash']}.zip").read_bytes())
+
+    version_hash, old, assets = published()
+    sent = json.dumps(old.model_dump(by_alias=True))
+    assert all(f'"{f}"' in sent for f in ("rounds", "tried", "photos", "transcripts", "correct", "starter", "previous")) and "LEARNER typed" in sent
+    reader = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Old bundle reader {uuid.uuid4().hex[:6]}",)).lastrowid
+    mine = bundle.install(reader, version_hash, old, assets, places["source_dir"])["id"]
+    got = _installed(mine)
+    assert "LEARNER" not in json.dumps([b["data"] for b in got.values()])
+    for markdown, kind in (("Which of these words do you know?", "vocab"), ("Das Brot.", "reading"), ("Turn it.", "widget")):
+        assert got[markdown]["data"] == {**posed[kind], "imported": True}
+    tasks = [b for b in got.values() if b["kind"] in challenge.KINDS]
+    assert len(tasks) == 5 and all(challenge.is_open(b["data"]) and b["data"]["attempts"] == [] for b in tasks)
+    assert db.locked(got["Write about lofting."]["id"])["hints"] == ["You wrote LEARNER typed."]
+    quizzes = [b["data"] for b in got.values() if b["kind"] == "quiz"]
+    assert len(quizzes) == 3 and all(d["answer"] is None and "correct" not in d and db.card(d["card_id"])["course_id"] == mine for d in quizzes)
+
+    # the reader's own work stays on a kept unit; the unit the author finished comes without the author's
+    write = got["Write about lofting."]
+    db.set_block_data(write["id"], {**write["data"], "attempts": ["the reader's own"]})
+    begun = db.row("SELECT id FROM lessons WHERE course_id = ? AND title = 'Fitting'", a["course"])["id"]
+    db.add_block(begun, "challenge", "Fit it.", {**challenge.new(), "attempts": ["LEARNER later"], "solved": True})
+    db.add_block(begun, "done", "", {})
+    version_hash, new, assets = published()
+    done = bundle.upgrade(mine, version_hash, new, assets, old, places["source_dir"])
+    assert (done["kept"], done["restarted"]) == ([a["units"][1]["key"]], [a["units"][0]["key"]])
+    got = _installed(mine)
+    assert got["Write about lofting."]["data"]["attempts"] == ["the reader's own"]
+    assert (got["Fit it."]["data"]["attempts"], got["Fit it."]["data"]["solved"]) == ([], False)
+
+
+def test_a_hostile_block_sets_no_record_of_the_reader():
+    def clean(kind, data):
+        return bundle._clean_block(bundle.Block(kind=kind, markdown="x", data=data, key="a" * 32), {"k": 7})
+
+    task = {"solved": True, "gave_up": True, "hints": ["h"], "solution": "s", "card_id": 1, "marks": ["m"], "unlisted": 1}
+    opened = {"attempts": [], "gave_up": False, "solved": False, "hints": ["h"], "solution": "s", "imported": True}
+    assert clean("challenge", task) == clean("challenge", {**task, "attempts": ["x"]}) == opened
+    quiz = {"card": "k", "kind": "open", "options": [], "answer": "x", "correct": True, "answer_id": 3, "card_id": 1}
+    assert clean("quiz", quiz) == {"kind": "open", "options": [], "answer": None, "card_id": 7, "imported": True}
+    for rounds in (["x"], "x", {"a": 1}, [{"tier": 1}]):
+        with pytest.raises(ValueError, match="vocabulary check"):
+            clean("vocab", {"lang": "de", "rounds": rounds, "current": None, "tier": 2})
+
+
+PARTS = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g data-part="one"><rect width="4" height="4"/></g>'
+         '<g data-part="two"><rect x="5" width="4" height="4"/></g></svg>')
+
+
+async def _pose_figures(lesson: int, teaches) -> list[str]:
+    """A figure by every tool that draws one, then redrawn, narrated and drawn on."""
+    from wise_scholar.board import BoardStep
+    from wise_scholar.tools import visuals
+
+    first, second = [await visuals.add_figure(lesson, PARTS, "Caption.", "alt", teaches) for _ in range(2)]
+    drawn, redrawn = (int(r.split()[-1]) for r in (first, second))
+    return [
+        first, second,
+        await visuals.narrate_figure(lesson, drawn, [BoardStep(say="One.", draw=["one"]), BoardStep(say="Two.", draw=["two"])]),
+        await visuals.annotate_figure(lesson, drawn, '<g data-part="three"><rect y="5" width="4" height="4"/></g>', [BoardStep(say="Three.", draw=["three"])]),
+        await visuals.replace_figure(lesson, redrawn, SVG, "Again.", "alt"),
+        await visuals.replace_crafted_figure(lesson, redrawn, "one", "Crafted.", "alt"),
+        await visuals.add_diagram(lesson, "sets", "Set A", "Caption.", "alt", teaches),
+        await visuals.add_animation(lesson, "sets", ["Set A", "Set B"], "Caption.", "alt", teaches),
+        await visuals.add_crafted_figure(lesson, "one", "Caption.", "alt", teaches),
+        await visuals.add_crafted_figure(lesson, "stages", "Caption.", "alt", teaches),
+    ]
+
+
+async def _pose_every_kind(lesson: int) -> list[str]:
+    """Each kind of block a version carries, posed with its tools in a prepared course; the tools' replies."""
+    from wise_scholar.figures import Teaches
+    from wise_scholar.tools import language, lesson_flow, practice, quizzes, visuals
+
+    teaches = Teaches(claim="Lofts join.", notice="The join.")
+    slider = {"controls": [{"name": "n", "label": "n", "min": 1, "max": 3, "step": 1, "value": 1}], "readouts": [{"label": "n", "expr": "n"}]}
+    line = {"x": {"label": "x"}, "y": {"label": "y"}, "marks": [{"type": "line", "fn": "x", "domain": [0, 1]}]}
+    sort = [quizzes.SortItem(text=f"item {n}", category="ab"[n % 2]) for n in range(6)]
+    replies = [await practice.pose_challenge(lesson, "Try.", form="case", helper="Help.")]
+    [solved] = db.blocks(lesson)
+    db.set_block_data(solved["id"], {**solved["data"], "solved": True})
+    return replies + [
+        await practice.pose_comparison(lesson, "Compare.", "left", "right", "When?"),
+        await lesson_flow.add_block(lesson, "prose", "Text."),
+        await lesson_flow.add_block(lesson, "example", "Worked."),
+        await lesson_flow.set_outline(lesson, ["One", "Two", "Three"], cards=40),
+        await quizzes.pose_quiz(lesson, "Which?", "choice", "a", "Because.", ["a", "b"], form="pick one", translation="Welche?", misconceptions={"b": "belief"}),
+        await quizzes.pose_sort(lesson, "Sort them.", ["a", "b"], sort, "Why."),
+        await practice.pose_exercise(lesson, "Run.", [practice.ExerciseFile(path="p/a.py", content="x")], "true",
+                                     completions=[course_files.Completion(label="sqrt", signature="sqrt(x)", doc="root")]),
+        await practice.pose_teachback(lesson, "Explain.", "Points."),
+        await language.pose_writing(lesson, "Write.", min_words=1, max_words=9, structure="weil"),
+        await language.pose_speaking(lesson, "answer", "Say it.", "de-DE"),
+        *await _pose_figures(lesson, teaches),
+        await visuals.add_plot(lesson, "Plot.", line, "alt", teaches),
+        await visuals.add_widget(lesson, "Widget.", slider, "alt", teaches),
+        await visuals.add_board(lesson, "script", teaches),
+        await language.add_reading(lesson, "Title", "Das ist ein Haus.", "de-DE", [], names=["Haus"]),
+        await language.pose_vocab_check(lesson, "de"),
+    ]
+
+
+async def _pose_in_other_lessons(course: int, source: int) -> tuple[list[str], list[int]]:
+    """What only a practice unit, a story or a gist turn poses; the replies and the lessons."""
+    from wise_scholar import tutor
+    from wise_scholar.figures import Teaches
+    from wise_scholar.tools import language, practice, visuals
+
+    unit = db.conn.execute("INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, 'Blades', 'Practice', 0, 99, 'practice')", (course,)).lastrowid
+    varied, story = db.create_lesson(course, "Practice", "practice", unit), db.create_lesson(course, "Story", "story")
+    replies = [
+        await practice.pose_challenge(varied, "Vary.", variant_of=source),
+        await language.start_series(course, "Series", ["Ada: a smith"], "A forge."),
+        await language.add_episode(story, "One", "Haus " * 400, "de-DE", "It began.", names=["Haus"]),
+    ]
+    tutor._calling.set({"kind": "gist"})
+    replies.append(await visuals.add_board(story, "script", Teaches(claim="Lofts join.", notice="The join.")))
+    board = int(replies[-1].split()[3].rstrip(";"))
+    return [*replies, await visuals.extend_board(board, "> more")], [varied, story]
+
+
+def _unclassified(lessons: list[int]) -> set[tuple[str, str]]:
+    # an exercise's starter files ship as the version's files, a quiz's card by its key, a figure as its drawing
+    kept_back = {*db._RECORD, "card_id", "starter", "crafted", "previous"}
+    return {(b["kind"], f) for x in lessons for b in db.blocks(x) for f in b["data"] or {} if f not in {*bundle.SHIPPED[b["kind"]], *kept_back}}
+
+
+def test_every_field_the_posing_tools_give_a_block_is_named_as_shipped_or_kept_back(places, monkeypatch):
+    import asyncio
+
+    from wise_scholar import crafted, diagrams, figcheck, speech, wiseboard
+    from wise_scholar.tools import practice
+
+    async def answer(value):
+        return value
+
+    monkeypatch.setattr(figcheck, "problems", lambda *_, **__: answer([]))
+    monkeypatch.setattr(speech, "available", lambda: True)
+    monkeypatch.setattr(wiseboard, "available", lambda: True)
+    monkeypatch.setattr(wiseboard, "render", lambda script, prior=None: answer(({"v": 1}, "ok")))
+    monkeypatch.setattr(crafted, "available", lambda: True)
+    monkeypatch.setattr(crafted, "render", lambda script, workspace: answer([SVG] if script == "one" else [SVG, SVG]))
+    monkeypatch.setattr(diagrams, "render", lambda domain, substance: SVG)
+    monkeypatch.setattr(diagrams, "animate", lambda domain, stages: (SVG, [SVG, SVG]))
+    course = _prepared_course("Every field")
+    lesson = db.create_lesson(course, "Every", "lesson", db.concepts(course)[0]["id"])
+    replies = asyncio.run(_pose_every_kind(lesson))
+    others, lessons = asyncio.run(_pose_in_other_lessons(course, db.blocks(lesson)[0]["id"]))
+    assert not [r for r in [*replies, *others] if r.startswith(("error", "refused", "rewrite"))]
+    assert {b["kind"] for b in db.blocks(lesson)} == set(bundle.BLOCK_KINDS)
+    assert _unclassified([lesson, *lessons]) == set()
+    given = {f for x in (lesson, *lessons) for b in db.blocks(x) for f in b["data"] or {}}
+    assert {"variant_of", "comparison", "frames", "diagram", "crafted", "previous", "board", "story", "gist"} <= given
+
+    # a field a tool starts to write fails the check until it is named, and stays out of a version meanwhile
+    new = challenge.new
+    monkeypatch.setattr(challenge, "new", lambda *args, **kwargs: {**new(*args, **kwargs), "mood": "keen"})
+    asyncio.run(practice.pose_challenge(lesson, "Another."))
+    assert _unclassified([lesson]) == {("challenge", "mood")}
+    manifest, _, _ = bundle.build(course, notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    assert "Another." in json.dumps(manifest) and "keen" not in json.dumps(manifest)
 
 
 def test_a_prepared_course_ships_the_hints_and_solution_its_teacher_wrote(places):

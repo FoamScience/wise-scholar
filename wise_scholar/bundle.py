@@ -22,7 +22,24 @@ from . import challenge, course_files, crafted, db, figures, widgets, wiseboard
 
 SCHEMA = 1
 LICENCES = ("CC-BY-SA-4.0", "CC-BY-4.0", "CC-BY-NC-SA-4.0", "all-rights-reserved")
-BLOCK_KINDS = ("prose", "example", "quiz", "challenge", "exercise", "figure", "plot", "widget", "outline", "reading", "vocab", "board")
+# The data fields a version carries of each kind of block; a field not listed is left out of a bundle and of an install.
+_TASK = (*challenge.new(), "pretest", "milestone", "transfer", "form", "helper", "imported")
+SHIPPED = {
+    "prose": ("imported",),
+    "example": ("imported",),
+    "quiz": ("card", "kind", "options", "categories", "answer", "pretest", "form", "translation", "number", "of", "answer_key",
+             "explanation", "misconceptions", "imported"),
+    "challenge": (*_TASK, "card", "variant_of", "comparison", "writing", "spoken", "teachback", "fluency", "words", "structure", "lang"),
+    "exercise": (*_TASK, "files", "run", "last_run", "completions"),
+    "figure": ("svg", "alt", "credits", "teaches", "diagram", "frames", "board", "restored", "imported"),
+    "plot": ("spec", "alt", "teaches", "imported"),
+    "widget": ("spec", "widget", "alt", "teaches", "imported"),
+    "outline": ("steps", "at", "added", "cards", "imported"),
+    "reading": ("title", "lang", "glossary", "added", "targets", "known", "story", "episode", "imported"),
+    "vocab": ("lang", "rounds", "current", "tier", "imported"),
+    "board": ("script", "doc", "teaches", "gist", "imported"),
+}
+BLOCK_KINDS = tuple(SHIPPED)
 LESSON_PHASES = ("lesson", "practice")
 # What a bundle may weigh, packed and unpacked; a source alone may be 50 MB and a course holds 200 MB of them.
 BUNDLE_LIMIT = 256 * 1024 * 1024
@@ -166,10 +183,8 @@ def _block_data(block: dict, card_keys: dict[int, str], authored: bool = False) 
     """A block's material without the author's record; a quiz names its card by key, a figure keeps its drawing."""
     if not block["data"]:
         return None
-    data = db._fresh(json.loads(block["data"]), authored)
-    for gone in ("crafted", "previous", "answer_id", "due", "card_id", "tried", "told"):
-        data.pop(gone, None)
     raw = json.loads(block["data"])
+    data = {k: v for k, v in db._fresh(raw, authored).items() if k in SHIPPED[block["kind"]]}
     if raw.get("card_id") is not None:
         data["card"] = card_keys.get(int(raw["card_id"]))
     if block["kind"] in challenge.KINDS and (locked := db.locked(block["id"])):
@@ -316,7 +331,6 @@ def _lesson_blocks(lesson_id: int, card_keys: dict[int, str], workspace: Path, f
         if b["kind"] == "exercise":
             starters, _ = _starters(b, workspace)
             files.update(starters)
-            data.pop("starter", None)
         blocks.append({"key": b["key"], "kind": b["kind"], "markdown": b["markdown"], "data": data})
     return blocks, summary
 
@@ -624,9 +638,20 @@ def _clean_board(data: dict) -> dict:
     return {"script": script, "doc": doc}
 
 
+def _unworked(block: Block) -> dict:
+    """The fields a version carries, as posed: a bundle may come with its author's work on the block, or a made-up one."""
+    data = {k: v for k, v in (block.data or {}).items() if k in SHIPPED[block.kind]}
+    if block.kind in challenge.KINDS:
+        data.setdefault("attempts", [])
+    try:
+        return db._fresh(data, authored=True)
+    except (LookupError, TypeError):
+        raise ValueError("a vocabulary check holds rounds in an unknown shape") from None
+
+
 def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
     """A block from someone else, made safe to show and to hand to the tutor."""
-    data = dict(block.data or {})
+    data = _unworked(block)
     teaches = data.pop("teaches", None)
     if block.kind == "figure":
         data = {"svg": figures.clean(str(data.get("svg", "")), limit=FIGURE_LIMIT), "alt": str(data.get("alt", ""))[:2000],

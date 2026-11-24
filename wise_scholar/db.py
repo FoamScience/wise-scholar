@@ -772,7 +772,7 @@ def create_course(topic: str, profile_id: int) -> dict:
 # What a copied block leaves behind: the record of whoever worked on the original.
 _RECORD = ("attempts", "marks", "gave_up", "solved", "last_run", "files_kept", "answer", "answer_id", "confidence", "correct",
            "confident_miss", "feedback", "unknown", "scores", "saved", "photos", "transcripts", "misplaced", "misconception",
-           "due", "unheard")
+           "due", "unheard", "tried", "told")
 
 
 def _fresh(data: dict, authored: bool = False) -> dict:
@@ -789,6 +789,10 @@ def _fresh(data: dict, authored: bool = False) -> dict:
         kept["last_run"] = None
     if "steps" in data:
         kept["at"] = 0
+    kept.update({k: [] for k in ("known", "non_goals") if k in data})
+    if data.get("rounds"):  # a vocabulary check starts over from the words it opened with
+        first = data["rounds"][0]
+        kept.update({"rounds": [], "current": {"tier": first["tier"], "words": first["words"]}, "tier": None})
     return kept
 
 
