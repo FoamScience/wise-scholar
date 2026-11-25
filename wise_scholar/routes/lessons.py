@@ -157,6 +157,8 @@ async def prepare_offline(lesson_id: int) -> None:
     lesson = _lesson(lesson_id)
     if lesson["mode"] == "teacher" or lesson["phase"] != "lesson" or lesson["concept_id"] is None:
         raise HTTPException(409, "only a unit of a learner's course is taken offline")
+    if core._replayed(lesson):
+        raise HTTPException(409, "an imported unit is worked through as its author wrote it, not taken offline")
     if lesson["batch"]:
         raise HTTPException(409, "this lesson is already prepared for offline")
     if any(b["kind"] == "done" for b in db.blocks(lesson_id)):
