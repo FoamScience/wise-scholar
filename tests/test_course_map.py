@@ -358,7 +358,8 @@ def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(
 @pytest.fixture
 def imported(monkeypatch, tmp_path):
     """Makes a replay of a course whose author finished the first concept unit, with one task in it, for another
-    profile, from the units (title and kind) of each version published; the replay is moved through all of them."""
+    profile, from the units (title and kind) of each version published; the replay is moved through all of them.
+    finished: the practice units the author finished too; before_upgrade: called with the replay before each move."""
     import asyncio
     import io
     import uuid
@@ -372,7 +373,7 @@ def imported(monkeypatch, tmp_path):
         monkeypatch.setattr(module, name, tmp_path / name.lower())
     last = db.row("SELECT COALESCE(MAX(id), 0) AS n FROM profiles")["n"]
 
-    def make(*maps: list[tuple[str, str]]) -> int:
+    def make(*maps: list[tuple[str, str]], finished: tuple[str, ...] = (), before_upgrade=lambda replay: None) -> int:
         author, reader = (
             db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"{who} {uuid.uuid4().hex[:6]}",)).lastrowid
             for who in ("Scope author", "Scope reader")
@@ -391,11 +392,14 @@ def imported(monkeypatch, tmp_path):
                 lesson = db.create_lesson(course, first, "lesson", ids[first])
                 db.add_block(lesson, "challenge", "Split 12 in the ratio 1 to 2.", challenge.new())
                 db.add_block(lesson, "done", "", {})
+                for title in finished:
+                    db.add_block(db.create_lesson(course, title, "practice", ids[title]), "done", "", {})
             version = sharing_routes.publish_version(course, sharing_routes.Publish())["hash"]
             if mine is None:
                 with open(sharing_routes.version_bundle(version).path, "rb") as f:
                     mine = asyncio.run(sharing_routes.import_course(reader, UploadFile(io.BytesIO(f.read()), filename="ratios.zip")))["id"]
             else:
+                before_upgrade(mine)
                 sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=version))
         assert (db.course(mine)["mode"], db.course(mine)["profile_id"]) == ("replay", reader)
         assert [c["position"] for c in db.concepts(mine)] == list(range(len(maps[-1])))
@@ -469,6 +473,160 @@ def test_an_upgrade_that_puts_a_unit_first_puts_it_in_the_practice_units_scope(i
 def test_a_practice_unit_that_opens_an_imported_course_covers_nothing_and_the_next_one_what_follows_it(imported):
     course = imported([("Warm-up", "practice"), ("Parts", "concept"), ("Wholes", "concept"), ("Practice 1", "practice")])
     assert _scopes(course) == {"Warm-up": [], "Practice 1": ["Parts", "Wholes"]}
+
+
+MARKED_MAP = [("Parts", "concept"), ("Wholes", "concept"), ("Practice 1", "practice"),
+              ("Scales", "concept"), ("Rates", "concept"), ("Mixing it up", "practice")]
+
+
+def _mark(course: int, known: list[str], unknown: list[str] = []) -> None:
+    import asyncio
+
+    from wise_scholar.tools import course_plan as plan_tools
+
+    assert asyncio.run(plan_tools.set_known(course, known, unknown)) == "updated"
+
+
+def _placed(course: int) -> list[dict]:
+    """The units of a map as its version gave them, with their lessons."""
+    return [{k: c[k] for k in ("id", "key", "title", "module", "kind", "position", "unwritten")} | {
+        "lessons": db.rows("SELECT id, title FROM lessons WHERE concept_id = ?", c["id"]),
+    } for c in db.concepts(course)]
+
+
+@pytest.mark.parametrize("mark", [
+    lambda c: _mark(c, []),
+    lambda c: _mark(c, ["Parts"]),
+    lambda c: _mark(c, ["Scales", "Rates"]),
+    lambda c: _mark(c, ["Parts", "Wholes", "Scales", "Rates"]),
+    lambda c: (_mark(c, ["Parts", "Scales"]), _mark(c, ["Rates"], ["Parts", "Scales"])),
+], ids=["none", "one", "a practice's", "all", "and back"])
+def test_marking_units_known_leaves_an_imported_courses_units_as_they_came(imported, mark):
+    course = imported(MARKED_MAP, finished=("Practice 1",))
+    before, scopes = _placed(course), _scopes(course)
+    assert [u["lessons"] != [] for u in before] == [True, False, True, False, False, False]
+    mark(course)
+    assert _placed(course) == before
+    assert _scopes(course) == scopes == {"Practice 1": ["Parts", "Wholes"], "Mixing it up": ["Scales", "Rates"]}
+
+
+def test_an_upgrade_after_a_mark_keeps_the_practice_units_and_the_readers_work_in_them(imported):
+    seen = {}
+
+    def mark(course: int) -> None:
+        unit = next(c for c in db.concepts(course) if c["title"] == "Mixing it up")
+        seen["lesson"] = db.create_lesson(course, unit["title"], "practice", unit["id"])
+        seen["block"] = db.add_block(seen["lesson"], "challenge", "Mix them.", {"attempts": ["2 to 3"]})["id"]
+        _mark(course, ["Parts", "Scales", "Rates"])
+        seen["before"] = _placed(course)
+
+    course = imported(MARKED_MAP, [*MARKED_MAP, ("Percent", "concept")], finished=("Practice 1",), before_upgrade=mark)
+    assert _placed(course)[:-1] == seen["before"]
+    assert db.block(seen["block"])["data"]["attempts"] == ["2 to 3"]
+    assert [(c["title"], c["known"]) for c in db.concepts(course)] == [
+        ("Parts", 1), ("Wholes", 0), ("Practice 1", 0), ("Scales", 1), ("Rates", 1), ("Mixing it up", 0), ("Percent", 0),
+    ]
+
+
+def test_an_upgrade_gives_back_the_practice_units_a_mark_took_before(imported):
+    """db.place_practice is what a mark did to an imported course: it dropped and moved its practice units."""
+    lost = []
+
+    def drop(course: int) -> None:
+        db.place_practice(course)
+        lost.extend(c["title"] for c in db.concepts(course))
+
+    course = imported(MARKED_MAP, [*MARKED_MAP, ("Percent", "concept")], finished=("Practice 1",), before_upgrade=drop)
+    assert lost == ["Parts", "Wholes", "Scales", "Practice 1", "Rates"]
+    assert [c["title"] for c in db.concepts(course)] == [*(title for title, _ in MARKED_MAP), "Percent"]
+    assert _scopes(course) == {"Practice 1": ["Parts", "Wholes"], "Mixing it up": ["Scales", "Rates"]}
+
+
+def _revised(course: int, modules: dict[str, list[str]], renamed: dict[str, str] = {}) -> list[tuple[str, str]]:
+    import asyncio
+
+    from wise_scholar.tools import course_plan as plan_tools
+
+    assert asyncio.run(plan_tools.revise_course_map(
+        course, [plan_tools.Module(title=m, concepts=units) for m, units in modules.items()],
+        [plan_tools.Renamed(old=old, new=new) for old, new in renamed.items()],
+    )).startswith("shown")
+    assert [c["position"] for c in db.concepts(course)] == list(range(1, len(db.concepts(course)) + 1))
+    return [(c["module"], c["title"]) for c in db.concepts(course)]
+
+
+def test_revising_an_imported_courses_map_keeps_each_practice_unit_after_the_units_it_covers(imported):
+    course = imported(MARKED_MAP, finished=("Practice 1",))
+    keys = {c["key"] for c in db.concepts(course) if c["kind"] == "practice"}
+    as_it_came = [("Parts", title) for title, _ in MARKED_MAP]
+    assert _revised(course, {"Parts": ["Parts", "Wholes", "Scales", "Rates"]}) == as_it_came
+    assert _revised(course, {"Parts": ["Scales", "Rates", "Wholes", "Parts"]}) == [
+        ("Parts", t) for t in ("Scales", "Rates", "Mixing it up", "Wholes", "Parts", "Practice 1")]
+    assert _revised(course, {"Parts": ["Parts", "Wholes"], "Change": ["Scales", "Rates of change", "Rates of flow"]}, {"Rates": "Rates of change"}) == [
+        ("Parts", "Parts"), ("Parts", "Wholes"), ("Parts", "Practice 1"),
+        ("Change", "Scales"), ("Change", "Rates of change"), ("Change", "Rates of flow"), ("Change", "Mixing it up")]
+    assert {c["key"] for c in db.concepts(course) if c["kind"] == "practice"} == keys
+
+
+def test_a_new_unit_in_the_next_module_is_not_covered_by_the_imported_practice_unit_before_it(imported):
+    course = imported(MARKED_MAP)
+    assert _revised(course, {"Parts": ["Parts", "Wholes"], "Change": ["Speeds", "Scales", "Rates"]}) == [
+        ("Parts", "Parts"), ("Parts", "Wholes"), ("Parts", "Practice 1"),
+        ("Change", "Speeds"), ("Change", "Scales"), ("Change", "Rates"), ("Change", "Mixing it up")]
+
+
+def test_a_revision_that_leaves_out_what_an_imported_practice_unit_covers_leaves_it_out_unless_it_was_written(imported):
+    course = imported([*MARKED_MAP, ("Percent", "concept"), ("Practice 3", "practice")], finished=("Practice 3",))
+    assert _revised(course, {"Parts": ["Parts", "Wholes"]}) == [("Parts", t) for t in ("Parts", "Wholes", "Practice 1", "Practice 3")]
+
+
+def test_an_imported_practice_unit_in_a_module_of_its_own_stays_in_it(imported):
+    course = imported(MARKED_MAP)
+    db.conn.execute("UPDATE concepts SET module = 'Review' WHERE course_id = ? AND title = 'Mixing it up'", (course,))
+    assert _revised(course, {"Parts": ["Parts", "Wholes"], "Change": ["Scales", "Rates"]})[2:] == [
+        ("Parts", "Practice 1"), ("Change", "Scales"), ("Change", "Rates"), ("Review", "Mixing it up")]
+
+
+def test_an_upgrade_after_a_revision_lays_the_new_version_out_and_keeps_the_practice_units(imported):
+    seen = {}
+
+    def revise(course: int) -> None:
+        unit = next(c for c in db.concepts(course) if c["title"] == "Mixing it up")
+        seen["lesson"] = db.create_lesson(course, unit["title"], "practice", unit["id"])
+        seen["block"] = db.add_block(seen["lesson"], "challenge", "Mix them.", {"attempts": ["2 to 3"]})["id"]
+        seen["before"] = _placed(course)
+        _revised(course, {"Change": ["Scales", "Rates of change", "Rates of flow"], "Parts": ["Wholes", "Parts"]}, {"Rates": "Rates of change"})
+
+    course = imported([*MARKED_MAP, ("Percent", "concept"), ("Wrap-up", "practice")], [*MARKED_MAP, ("Percent", "concept"), ("Wrap-up", "practice"), ("Powers", "concept")],
+                      finished=("Practice 1",), before_upgrade=revise)
+    # Percent and Wrap-up, which the revision left out, are back as new rows; the split-off unit is gone.
+    after = _placed(course)
+    assert after[:6] == seen["before"][:6]
+    assert [(u["key"], u["title"], u["kind"]) for u in after[6:8]] == [(u["key"], u["title"], u["kind"]) for u in seen["before"][6:]]
+    assert [u["title"] for u in after[8:]] == ["Powers"]
+    assert db.block(seen["block"])["data"]["attempts"] == ["2 to 3"]
+
+
+def test_an_ordinary_courses_marks_and_revisions_lay_its_practice_units_out_by_the_rule():
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Rule keeper')").lastrowid
+    course = db.create_course("Kept by the rule", who)["id"]
+    units = lambda: [(c["position"], c["module"], c["title"], c["known"]) for c in db.concepts(course)]  # noqa: E731
+    try:
+        db.set_concepts(course, [{"title": "M", "concepts": ["A", "B", "C", "D"], "known": []}, {"title": "N", "concepts": ["E", "F", "G"], "known": []}])
+        _, second = (c["id"] for c in db.concepts(course) if c["kind"] == "practice")
+        lesson = db.create_lesson(course, "Practice 2", "practice", second)
+        db.set_known(course, ["A", "B"], [])
+        assert units() == [(1, "M", "A", 1), (2, "M", "B", 1), (3, "M", "C", 0), (4, "M", "D", 0), (5, "N", "E", 0), (6, "N", "Practice 1", 0),
+                           (7, "N", "F", 0), (8, "N", "G", 0)]
+        assert [c["id"] for c in db.concepts(course) if c["kind"] == "practice"] == [second] and db.lesson(lesson)["title"] == "Practice 1"
+        db.set_known(course, [], ["A", "B"])
+        assert units() == [(1, "M", "A", 0), (2, "M", "B", 0), (3, "M", "C", 0), (4, "M", "Practice 1", 0), (5, "M", "D", 0), (6, "N", "E", 0),
+                           (7, "N", "F", 0), (8, "N", "Practice 2", 0), (9, "N", "G", 0)]
+        db.revise_concepts(course, [{"title": "N", "concepts": ["E", "F", "H"], "known": []}, {"title": "M", "concepts": ["A", "D"], "known": ["D"]}], {})
+        assert units() == [(1, "N", "E", 0), (2, "N", "F", 0), (3, "N", "H", 0), (4, "N", "Practice 1", 0), (5, "M", "A", 0), (6, "M", "D", 1)]
+        assert [c["id"] for c in db.concepts(course) if c["kind"] == "practice"] == [second]
+    finally:
+        db.delete_course(course)
 
 
 def test_a_course_made_by_its_map_has_the_scopes_it_had():
