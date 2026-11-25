@@ -1167,9 +1167,9 @@ def practice_scope(concept_id: int) -> list[dict]:
     """The concept units a practice unit covers: those between the previous practice unit and this one."""
     unit = row("SELECT * FROM concepts WHERE id = ?", concept_id)
     before = row(
-        "SELECT MAX(position) AS position FROM concepts WHERE course_id = ? AND kind = 'practice' AND position < ?",
+        "SELECT COALESCE(MAX(position), -1) AS position FROM concepts WHERE course_id = ? AND kind = 'practice' AND position < ?",
         unit["course_id"], unit["position"],
-    )["position"] or 0
+    )["position"]
     return rows(
         "SELECT * FROM concepts WHERE course_id = ? AND kind = 'concept' AND position > ? AND position < ? ORDER BY position",
         unit["course_id"], before, unit["position"],
