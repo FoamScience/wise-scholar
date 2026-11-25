@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import HTTPException, UploadFile
@@ -29,22 +30,37 @@ class Publish(BaseModel):
     sources: list[int] = []
 
 
+# A course's next version and its move to a version are worked out before they are written: two tabs publishing or
+# upgrading one course at once take turns, each checking again once it is its turn.
+_publishing: dict[int, threading.Lock] = {}
+_upgrading: dict[int, threading.Lock] = {}
+
+
 @app.post("/api/courses/{course_id}/versions")
 def publish_version(course_id: int, body: Publish) -> dict:
     """Freeze the course as its next version, a bundle anyone can import."""
     course = db.course(course_id)
     if not course:
         raise HTTPException(404, "no such course")
-    if (origin := bundle.preview(course_id)["forked_from"]) and not origin["forkable"]:
-        raise HTTPException(409, "the author of this course does not allow versions made from it")
-    if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
-        raise HTTPException(409, "wait for the tutor to finish before publishing")
-    if not bundle.publishable(course_id):
-        raise HTTPException(409, "no lesson of this course is finished or prepared for offline study yet, so there is nothing to publish")
-    if course_id in _checks:
-        raise HTTPException(409, "wait for the check of this course to finish before publishing")
-    return bundle.publish(course_id, notes=body.notes, licence=body.licence, forkable=body.forkable, sources=body.sources,
-                          source_dir=core.SOURCES, store=core.VERSIONS)
+    turn = _publishing.setdefault(course_id, threading.Lock())
+    # one that waited for another publish of the course, as a second click does, gives that one's version when it would
+    # be the same again
+    waited = not turn.acquire(blocking=False)
+    if waited:
+        turn.acquire()
+    try:
+        if (origin := bundle.preview(course_id)["forked_from"]) and not origin["forkable"]:
+            raise HTTPException(409, "the author of this course does not allow versions made from it")
+        if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
+            raise HTTPException(409, "wait for the tutor to finish before publishing")
+        if not bundle.publishable(course_id):
+            raise HTTPException(409, "no lesson of this course is finished or prepared for offline study yet, so there is nothing to publish")
+        if course_id in _checks:
+            raise HTTPException(409, "wait for the check of this course to finish before publishing")
+        return bundle.publish(course_id, notes=body.notes, licence=body.licence, forkable=body.forkable, sources=body.sources,
+                              source_dir=core.SOURCES, store=core.VERSIONS, again=waited)
+    finally:
+        turn.release()
 
 
 # --- Publish check: before a version goes out, the tutor reads it for what points at its author -------------------
@@ -238,17 +254,28 @@ class Upgrade(BaseModel):
 
 @app.post("/api/courses/{course_id}/upgrade")
 def upgrade_course(course_id: int, body: Upgrade) -> dict:
-    """Move a replayed course to the newer version it was offered: unchanged units keep the learner's progress."""
-    course = db.course(course_id)
-    if not course:
-        raise HTTPException(404, "no such course")
-    v = bundle.newer(course, core.VERSIONS)
-    if not v or v["hash"] != body.hash:
-        raise HTTPException(409, "that version is not the one this course can move to")
-    if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
-        raise HTTPException(409, "wait for the tutor to finish before upgrading")
-    _, new, assets = bundle.unpack((core.VERSIONS / f"{v['hash']}.zip").read_bytes())
-    done = bundle.upgrade(course_id, v["hash"], new, assets, bundle.stored(core.VERSIONS, course["source_version"]), core.SOURCES)
+    """Move a replayed course to the newer version it was offered: unchanged units keep the learner's progress. One that
+    waited for another upgrade of the course, as a second tab's does, gets the course as it is once that one moved it
+    to the same version, with nothing upgraded."""
+    turn = _upgrading.setdefault(course_id, threading.Lock())
+    waited = not turn.acquire(blocking=False)
+    if waited:
+        turn.acquire()
+    try:
+        course = db.course(course_id)
+        if not course:
+            raise HTTPException(404, "no such course")
+        if waited and course["source_version"] == body.hash:
+            return {**_course(course_id), "upgraded": None}
+        v = bundle.newer(course, core.VERSIONS)
+        if not v or v["hash"] != body.hash:
+            raise HTTPException(409, "that version is not the one this course can move to")
+        if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
+            raise HTTPException(409, "wait for the tutor to finish before upgrading")
+        _, new, assets = bundle.unpack((core.VERSIONS / f"{v['hash']}.zip").read_bytes())
+        done = bundle.upgrade(course_id, v["hash"], new, assets, bundle.stored(core.VERSIONS, course["source_version"]), core.SOURCES)
+    finally:
+        turn.release()
     hub.publish(course_id, {"type": "map.set", "concepts": db.concept_view(course_id)})
     return {**_course(course_id), "upgraded": done}
 

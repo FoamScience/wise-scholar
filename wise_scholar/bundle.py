@@ -535,11 +535,14 @@ def accepted_edits(course_id: int) -> list[dict]:
     return db.rows("SELECT * FROM publish_edits WHERE course_id = ? AND status = 'accepted' ORDER BY id", course_id)
 
 
-def publish(course_id: int, *, notes: str, licence: str, forkable: bool, sources: list[int], source_dir: Path, store: Path) -> dict:
+def publish(course_id: int, *, notes: str, licence: str, forkable: bool, sources: list[int], source_dir: Path, store: Path,
+            again: bool = False) -> dict:
     """Freeze the course as its next version, with the edits the author accepted: the bundle lands in store, named by
-    the version id."""
+    the version id. again: asked again at once, so the latest version is given back when this one would be the same."""
     manifest, assets, stale = build(course_id, notes=notes, licence=licence, forkable=forkable, sources=sources,
                                     source_dir=source_dir, edits=accepted_edits(course_id))
+    if again and (latest := _unchanged(course_id, manifest, store)):
+        return {"hash": latest["hash"], "number": latest["number"], "size": (store / f"{latest['hash']}.zip").stat().st_size, "stale": len(stale)}
     version_hash, data = pack(manifest, assets)
     store.mkdir(parents=True, exist_ok=True)
     (store / f"{version_hash}.zip").write_bytes(data)
@@ -551,6 +554,15 @@ def publish(course_id: int, *, notes: str, licence: str, forkable: bool, sources
          json.dumps(manifest["setup"]), sum(u["written"] for u in manifest["units"]), len(manifest["units"]), v["published"], v["lineage"]),
     )
     return {"hash": version_hash, "number": v["number"], "size": len(data), "stale": len(stale)}
+
+
+def _unchanged(course_id: int, manifest: dict, store: Path) -> dict | None:
+    """The course's latest version when the manifest would be it again under the next number."""
+    latest = db.row("SELECT hash, number, published FROM versions WHERE course_id = ? ORDER BY number DESC LIMIT 1", course_id)
+    if not latest or not (store / f"{latest['hash']}.zip").exists():
+        return None
+    again = {**manifest, "version": {**manifest["version"], "number": latest["number"], "published": latest["published"]}}
+    return latest if sha(canonical(again)) == latest["hash"] else None
 
 
 def pack(manifest: dict, assets: dict[str, bytes]) -> tuple[str, bytes]:
@@ -690,12 +702,10 @@ def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
 
 def record_version(version_hash: str, manifest: Manifest) -> None:
     """The versions row of a bundle from elsewhere, once."""
-    if db.row("SELECT 1 FROM versions WHERE hash = ?", version_hash):
-        return
     v, c = manifest.version, manifest.course
     db.conn.execute(
         "INSERT INTO versions (hash, course_id, number, topic, notes, licence, forkable, credits, setup, written, units, published, lineage) "
-        "VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(hash) DO NOTHING",
         (version_hash, v.number, c.topic, v.notes, v.licence, int(v.forkable), json.dumps([x.model_dump() for x in v.credits]),
          json.dumps(manifest.setup), sum(u.written for u in manifest.units), len(manifest.units), v.published, v.lineage),
     )
@@ -837,7 +847,7 @@ def install(profile_id: int, version_hash: str, manifest: Manifest, assets: dict
     """A new course of the profile in replay mode, made from the bundle, all or nothing for the rows; returns it."""
     c = manifest.course
     cover = figures.clean(c.cover) if c.cover else None
-    db.conn.execute("BEGIN")
+    db.conn.execute("BEGIN IMMEDIATE")
     try:
         record_version(version_hash, manifest)
         slug = db._free_slug(c.topic)
@@ -981,19 +991,20 @@ def _update_course(course: dict, version_hash: str, new: Manifest, old: Manifest
 def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, bytes], old: Manifest | None, source_dir: Path) -> dict:
     """Move a replayed course to a newer version: kept units keep their lessons, cards, answers and marks; changed units
     start again from the new version; new ones are added and removed ones go. All or nothing for the rows."""
-    course = db.course(course_id)
-    plan = changes(course_id, old, new)
-    concepts = {c["key"]: c for c in db.concepts(course_id)}
-    redo = {*plan["restarted"], *plan["added"]}
-    lesson_ids, card_ids = _dropped(course_id, concepts, plan, old)
-    done = _done_milestones(course_id, plan["kept"])
-    original_keys = {v["id"]: v["original_key"] for v in db.variants(course_id)}
-    kept_variants = {b["id"]: original_keys.get(b["id"]) for b in db.rows(
-        "SELECT b.id, b.lesson_id FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
-        "WHERE l.course_id = ? AND json_extract(b.data, '$.variant_of') IS NOT NULL", course_id,
-    ) if b["lesson_id"] not in lesson_ids}
-    db.conn.execute("BEGIN")
+    # IMMEDIATE: the plan is read from the course as it is when the rows are written
+    db.conn.execute("BEGIN IMMEDIATE")
     try:
+        course = db.course(course_id)
+        plan = changes(course_id, old, new)
+        concepts = {c["key"]: c for c in db.concepts(course_id)}
+        redo = {*plan["restarted"], *plan["added"]}
+        lesson_ids, card_ids = _dropped(course_id, concepts, plan, old)
+        done = _done_milestones(course_id, plan["kept"])
+        original_keys = {v["id"]: v["original_key"] for v in db.variants(course_id)}
+        kept_variants = {b["id"]: original_keys.get(b["id"]) for b in db.rows(
+            "SELECT b.id, b.lesson_id FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+            "WHERE l.course_id = ? AND json_extract(b.data, '$.variant_of') IS NOT NULL", course_id,
+        ) if b["lesson_id"] not in lesson_ids}
         record_version(version_hash, new)
         db.drop_content(lesson_ids, card_ids)
         db.conn.execute("DELETE FROM capstones WHERE course_id = ?", (course_id,))

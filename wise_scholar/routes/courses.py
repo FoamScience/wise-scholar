@@ -5,6 +5,7 @@ import math
 import re
 import shutil
 import socket
+import threading
 from datetime import datetime, timezone
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import Response
@@ -87,6 +88,11 @@ def list_courses(profile: int) -> list[dict]:
     )
 
 
+# A copy's name is picked from the names taken before its row is written: a double click makes two copies of a course,
+# one after the other.
+_copying: dict[int, threading.Lock] = {}
+
+
 @app.post("/api/courses/{course_id}/duplicate")
 def duplicate_course(course_id: int) -> dict:
     """A prepared course again, for the next class: plan, lessons, materials and exercise files, no record."""
@@ -95,9 +101,10 @@ def duplicate_course(course_id: int) -> dict:
         raise HTTPException(404, "no such course")
     if course["mode"] != "teacher":
         raise HTTPException(409, "only a prepared course can be duplicated")
-    if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
-        raise HTTPException(409, "the designer is still answering in this course")
-    copied = db.copy_course(course_id, _copy_name(course))
+    with _copying.setdefault(course_id, threading.Lock()):
+        if any(lesson["id"] in _turns for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course_id)):
+            raise HTTPException(409, "the designer is still answering in this course")
+        copied = db.copy_course(course_id, _copy_name(course))
     try:
         for old, new in copied.pop("sources").items():
             for path in (core.SOURCES / str(course_id)).glob(f"{old}-*"):
