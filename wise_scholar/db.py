@@ -1574,6 +1574,8 @@ def move_block(block_id: int, direction: int) -> list[dict]:
 
 
 def add_block(lesson_id: int, kind: str, markdown: str, data: dict | None = None) -> dict:
+    """A block added to a lesson that came with an import counts as its reader's work (begun_units): add one there
+    only for something the reader did."""
     block_id = conn.execute(
         "INSERT INTO blocks (lesson_id, kind, markdown, data) VALUES (?, ?, ?, ?)",
         (lesson_id, kind, markdown, json.dumps(data) if data else None),
@@ -2371,12 +2373,43 @@ def merge_claims(claim_id: int, into: int) -> None:
 
 
 # --- Recap: a finished course told back to the learner ---------------------------------------------------------------
-def _module_done(module: str, units: list[dict], finished: dict, begun: set[int], projects: list[dict]) -> bool:
+def _module_done(module: str, units: list[dict], finished: dict, placed: set[int], projects: list[dict]) -> bool:
     """Its units finished or placed out, or all its projects built."""
-    if all(u["id"] in finished or (u["known"] and u["id"] not in begun) for u in units if u["module"] == module):
+    if all(u["id"] in finished or u["id"] in placed for u in units if u["module"] == module):
         return True
     built = [k for k in projects if k["module"] == module]
     return bool(built) and all(k["done"] == len(k["milestones"]) for k in built)
+
+
+def _reader_did(data: dict | None) -> bool:
+    """Whether a block of a lesson that came with an import holds something its reader did: it was added after the
+    import (see add_block), or its data is no longer as _fresh leaves the material."""
+    if not data or not data.get("imported"):
+        return True
+    data = {k: v for k, v in data.items() if k != "files_kept"}  # written by the cleanup of an untouched course
+    return _fresh(data, authored=True) != data
+
+
+def begun_units(course_id: int) -> set[int]:
+    """The units the learner began: opened, or, for a written unit of a replay, whose lesson came with the import,
+    worked in: a message, or a block _reader_did."""
+    lessons = rows(
+        "SELECT l.id, l.concept_id, c.mode = 'replay' AND NOT k.unwritten AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.lesson_id = l.id) "
+        "AS untouched FROM lessons l JOIN concepts k ON k.id = l.concept_id JOIN courses c ON c.id = l.course_id WHERE l.course_id = ?",
+        course_id,
+    )
+    begun = {lesson["concept_id"] for lesson in lessons if not lesson["untouched"]}
+    imported = {lesson["id"]: lesson["concept_id"] for lesson in lessons if lesson["untouched"] and lesson["concept_id"] not in begun}
+    if imported:
+        found = rows(f"SELECT lesson_id, data FROM blocks WHERE lesson_id IN ({', '.join('?' * len(imported))})", *imported)
+        begun |= {imported[b["lesson_id"]] for b in found if _reader_did(json.loads(b["data"]) if b["data"] else None)}
+    return begun
+
+
+def placed_out(course_id: int, units: list[dict]) -> set[int]:
+    """The course's units marked known that the learner did not begin."""
+    known = {u["id"] for u in units if u["known"]}
+    return known - begun_units(course_id) if known else known
 
 
 def course_finished(course_id: int) -> str | None:
@@ -2390,9 +2423,9 @@ def course_finished(course_id: int) -> str | None:
         "SELECT l.concept_id, MIN(b.created) AS at FROM lessons l JOIN blocks b ON b.lesson_id = l.id "
         "WHERE l.course_id = ? AND l.concept_id IS NOT NULL AND b.kind = 'done' GROUP BY l.concept_id", course_id,
     )}
-    begun = {r["concept_id"] for r in rows("SELECT DISTINCT concept_id FROM lessons WHERE course_id = ? AND concept_id IS NOT NULL", course_id)}
+    placed = placed_out(course_id, units)
     projects = capstones(course_id)
-    if not all(_module_done(module, units, finished, begun, projects) for module in dict.fromkeys(u["module"] for u in units)):
+    if not all(_module_done(module, units, finished, placed, projects) for module in dict.fromkeys(u["module"] for u in units)):
         return None
     return max(finished.values(), default=None) or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
