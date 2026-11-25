@@ -170,8 +170,14 @@ export type ExerciseData = ChallengeData & {
   run: string
   last_run: { exit_code: number | null; output: string } | null
   completions?: Completion[]
+  starter?: Record<string, string>
 }
 export type ExerciseFile = { path: string; location: string; content: string | null; kept: boolean; editable: boolean; online: boolean }
+
+/** The starter code of an exercise's file; null where none was recorded, as for a file or an exercise without one. */
+export function starterOf(d: ExerciseData, path: string): string | null {
+  return d.starter && Object.hasOwn(d.starter, path) ? d.starter[path] : null
+}
 
 export type SortItem = { text: string; category?: string }
 

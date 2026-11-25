@@ -19,9 +19,12 @@ import type { QuizData } from './Quiz'
 import { ReadingCard, VocabCheckCard } from './Language'
 import type { ReadingData } from './Language'
 import { PodcastCard } from './Podcast'
-import { blockKey, challengeLabel, pendingPhotos } from './course'
+import { blockKey, challengeLabel, pendingPhotos, starterOf } from './course'
 import { PlacementAreas } from './Areas'
+import { FileDiff } from './FileDiff'
 import { FileEditor } from './FileEditor'
+import { LEGEND } from './editorSync'
+import type { DiffSummary } from './editorSync'
 import { PhotoTray } from './Handwork'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
 import type { Area, Block, ChallengeData, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
@@ -374,7 +377,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
       <Markdown>{props.block.markdown}</Markdown>
       <Helper data={d} />
 
-      <ExerciseFiles blockId={blockId} files={files} open={open} completions={d.completions ?? []} reads={reads} flushes={flushes} />
+      <ExerciseFiles blockId={blockId} files={files} open={open} data={d} reads={reads} flushes={flushes} />
 
       {open && (
         <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
@@ -415,7 +418,7 @@ function ExerciseFiles(props: {
   blockId: number
   files: ExerciseFile[]
   open: boolean
-  completions: NonNullable<ExerciseData['completions']>
+  data: ExerciseData
   reads: ReturnType<typeof useExerciseFiles>['reads']
   flushes: ReturnType<typeof useExerciseFiles>['flushes']
 }) {
@@ -431,7 +434,7 @@ function ExerciseFiles(props: {
           blockId={props.blockId}
           file={f}
           editable={props.open && f.editable}
-          completions={props.completions}
+          data={props.data}
           onSaving={() => props.reads.current++}
           register={(flush) => {
             flushes.current.set(f.path, flush)
@@ -509,16 +512,52 @@ function useExerciseFiles(blockId: number, open: boolean) {
   return { files, reads, flushes }
 }
 
+const PRESSED = 'aria-pressed:border-primary aria-pressed:bg-accent'
+
 function ExerciseFileView(props: {
   blockId: number
   file: ExerciseFile
   editable: boolean
-  completions: NonNullable<ExerciseData['completions']>
+  data: ExerciseData
   onSaving: () => void
   register: (flush: () => Promise<boolean>) => () => void
 }) {
   const { t } = useTranslation()
   const f = props.file
+  const starter = starterOf(props.data, f.path)
+  const [changes, setChanges] = useState(false)
+  const [failed, setFailed] = useState(false)
+  // what the shown diff holds, and of which view: the editor's, or the read-only file of this text
+  const [summary, setSummary] = useState<{ of: string | null; is: DiffSummary } | null>(null)
+  const [announced, setAnnounced] = useState('')
+  const toggled = useRef(false)
+  const against = changes ? starter : null
+  const of = props.editable ? null : f.content
+  const legend = changes && summary?.of === of ? t(LEGEND[summary.is]) : ''
+
+  function toggle() {
+    toggled.current = !changes
+    setChanges(!changes)
+    setSummary(null)
+    setFailed(false)
+    setAnnounced('')
+  }
+
+  function described(is: DiffSummary) {
+    setSummary({ of, is })
+    if (!toggled.current) return
+    toggled.current = false
+    setAnnounced(t(LEGEND[is]))
+  }
+
+  function broke() {
+    toggled.current = false
+    setChanges(false)
+    setSummary(null)
+    setFailed(true)
+    setAnnounced(t('exercise.diffFailed'))
+  }
+
   return (
     // closed at first: a card with several files stays short, and the run button stays in reach
     <details className="group overflow-hidden rounded-md border border-border">
@@ -536,15 +575,27 @@ function ExerciseFileView(props: {
           {t('exercise.copyPath')}
         </Button>
       </summary>
+      {f.content !== null && starter !== null && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-2">
+          <Button type="button" variant="outline" className={PRESSED} aria-pressed={changes} onClick={toggle}>
+            {t('exercise.changes')}
+          </Button>
+          <span className="text-sm text-muted-foreground" aria-hidden="true">{legend}</span>
+          <span className="sr-only" role="status">{announced}</span>
+        </div>
+      )}
       {f.content === null ? (
         <pre className="m-0 max-h-[420px] overflow-auto bg-code px-4 py-3 text-[0.93em] text-code-foreground">{t('exercise.missing')}</pre>
       ) : props.editable ? (
-        <FileEditor blockId={props.blockId} file={f} completions={props.completions} onSaving={props.onSaving} register={props.register} />
+        <FileEditor blockId={props.blockId} file={f} completions={props.data.completions ?? []} original={against} onDiff={described} onDiffFailed={broke} onSaving={props.onSaving} register={props.register} />
+      ) : against !== null ? (
+        <FileDiff path={f.path} from={against} to={f.content} onDiff={described} onFailed={broke} />
       ) : (
         <div className="[&_pre]:m-0! [&_pre]:max-h-[420px] [&_pre]:overflow-auto! [&_pre]:rounded-none!">
           <Markdown>{`\`\`\`\`${f.path.split('.').pop() ?? ''}\n${f.content}\n\`\`\`\``}</Markdown>
         </div>
       )}
+      {failed && <div className="bg-warm-tint px-4 py-1 text-sm" aria-hidden="true">{t('exercise.diffFailed')}</div>}
     </details>
   )
 }

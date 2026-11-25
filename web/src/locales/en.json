@@ -404,6 +404,12 @@
       "outputStopped": "Output: stopped",
       "outputExit": "Output: exit code {{code}}",
       "noOutput": "(no output)",
+      "changes": "Changes from the starter",
+      "changesLegend": "Struck through: the starter code. Marked at the edge: your changes.",
+      "changesAdded": "Marked at the edge: your changes.",
+      "changesRemoved": "Struck through: starter code you removed.",
+      "noChanges": "This file is the same as the starter code.",
+      "diffFailed": "The comparison could not be loaded.",
       "cleaned": "The course's files were cleaned up; these copies are read-only. Ask the tutor to pose the exercise again to work on it."
     },
     "card": {
