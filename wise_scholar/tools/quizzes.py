@@ -88,11 +88,14 @@ def _quiz_shown(
 
 
 def _revisit_item(lesson: dict, item: int) -> dict | str | None:
-    """The claim or mistake a revisit's check is on, from its outline; None outside a revisit, an error when unnamed."""
+    """The claim or mistake a revisit's check is on, from its outline; None outside a revisit and in a copied one,
+    whose outline stayed behind; an error when unnamed."""
     if lesson["phase"] != "revisit":
         return None
     outline = next((b for b in db.blocks(lesson["id"]) if b["kind"] == "outline"), None)
-    items = outline["data"].get("items", []) if outline else []
+    if not outline:
+        return None
+    items = outline["data"].get("items", [])
     if not 1 <= item <= len(items):
         return f"error: in a revisit every check names its item, 1 to {len(items)}, as item"
     if item - 1 > outline["data"]["at"]:

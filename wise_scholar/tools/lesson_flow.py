@@ -67,9 +67,7 @@ def _cards_error(lesson_id: int, cards: int, steps: int) -> str | None:
 
 
 def _write_outline(block: dict, data: dict) -> dict:
-    # the Markdown copy is what exports and the book show
-    markdown = "\n".join(f"{i}. {step}{' ✓' if i <= data['at'] else ''}" for i, step in enumerate(data["steps"], 1))
-    db.conn.execute("UPDATE blocks SET markdown = ? WHERE id = ?", (markdown, block["id"]))
+    db.conn.execute("UPDATE blocks SET markdown = ? WHERE id = ?", (db.outline_text(data["steps"], data["at"]), block["id"]))
     return db.set_block_data(block["id"], data)
 
 

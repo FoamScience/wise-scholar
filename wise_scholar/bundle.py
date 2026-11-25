@@ -192,6 +192,8 @@ def _block_data(block: dict, card_keys: dict[int, str], authored: bool = False) 
         data |= {"variant_of": v["original_key"] for v in db.variants(db.lesson(block["lesson_id"])["course_id"]) if v["id"] == block["id"]}
     if block["kind"] in challenge.KINDS and (locked := db.locked(block["id"])):
         data["max_hints"] = locked["max_hints"]  # the locked hints stay here, and the length they gave the ladder
+    if block["kind"] == "quiz":
+        data |= db.locked(block["id"])  # a fork ships an imported quiz as it came, answered or not
     return data
 
 
@@ -715,10 +717,14 @@ def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | No
         ).lastrowid
         for b in lesson.blocks:
             data = _clean_block(b, card_ids)
+            markdown = db.ticked_as_at(b.markdown, data) if b.kind == "outline" else b.markdown
             locked = db.lock(data) if b.kind in challenge.KINDS else None
+            if b.kind == "quiz":
+                data, came = db.keyless(data), data
+                locked = {k: v for k, v in came.items() if k not in data or data[k] != v}
             block_id = db.conn.execute(
                 "INSERT INTO blocks (lesson_id, kind, markdown, data, key, locked) VALUES (?, ?, ?, ?, ?, ?)",
-                (lesson_id, b.kind, b.markdown, json.dumps(data), b.key, json.dumps(locked) if locked else None),
+                (lesson_id, b.kind, markdown, json.dumps(data), b.key, json.dumps(locked) if locked else None),
             ).lastrowid
             db.conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (block_id, block_id))
             original = (b.data or {}).get("variant_of")

@@ -52,10 +52,7 @@ def prepared(lesson: dict) -> bool:
     return lesson["mode"] == "teacher"
 
 
-def keyed(lesson: dict) -> bool:
-    """Cards carry their key and explanation from the start: a teacher's material, or a lesson the learner takes
-    offline and answers without the tutor."""
-    return prepared(lesson) or bool(lesson["batch"])
+keyed = db.keyed
 
 
 def shown_twice_error(lesson_id: int, kind: str, question: str) -> str | None:
