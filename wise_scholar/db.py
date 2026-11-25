@@ -1214,10 +1214,15 @@ def set_needs(course_id: int, given: dict[str, list[str]], replace: bool, linked
         raise
 
 
+def _is_replay(course_id: int) -> bool:
+    return row("SELECT mode FROM courses WHERE id = ?", course_id)["mode"] == "replay"
+
+
 def set_known(course_id: int, known: list[str], unknown: list[str]) -> None:
     for flag, titles in ((1, known), (0, unknown)):
         conn.executemany("UPDATE concepts SET known = ? WHERE course_id = ? AND title = ? AND kind = 'concept'", [(flag, course_id, t) for t in titles])
-    place_practice(course_id)
+    if not _is_replay(course_id):
+        place_practice(course_id)
 
 
 def set_concepts(course_id: int, modules: list[dict]) -> None:
@@ -1280,6 +1285,43 @@ def place_practice(course_id: int) -> None:
     conn.executemany("UPDATE concepts SET position = ? WHERE id = ?", [(pos, cid) for pos, cid in enumerate(order, start=1)])
 
 
+def _practice_scopes(units: list[dict]) -> list[tuple[dict, list[dict]]]:
+    """Each practice unit of a map, with the concept units since the one before it."""
+    found, covered = [], []
+    for unit in units:
+        if unit["kind"] == "concept":
+            covered.append(unit)
+        else:
+            found.append((unit, covered))
+            covered = []
+    return found
+
+
+def _keep_practice(course_id: int, before: list[dict]) -> None:
+    """Put a replay's practice units, which came with its version, in its revised map: each after the last of the units
+    it covered in the map before and the new units that follow it in its module, in that unit's module if it shared
+    one. One without a lesson goes when the new map left out every unit it covered."""
+    studied = [c for c in concepts(course_id) if c["kind"] == "concept"]
+    place = {c["id"]: n for n, c in enumerate(studied)}
+    order = [((n, 0), c["id"]) for n, c in enumerate(studied)]
+    had = {c["id"] for c in before}
+    after = -1
+    for n, (unit, covered) in enumerate(_practice_scopes(before), start=1):
+        left = [c for c in covered if c["id"] in place]
+        if covered and not left and not row("SELECT 1 FROM lessons WHERE concept_id = ?", unit["id"]):
+            _drop_units({unit["title"]: unit}, {unit["title"]})
+            continue
+        if left:
+            last = max(left, key=lambda c: place[c["id"]])
+            after = place[last["id"]]
+            while after + 1 < len(studied) and studied[after + 1]["id"] not in had and studied[after + 1]["module"] == studied[after]["module"]:
+                after += 1
+            if last["module"] == unit["module"]:
+                conn.execute("UPDATE concepts SET module = ? WHERE id = ?", (studied[after]["module"], unit["id"]))
+        order.append(((after, n), unit["id"]))
+    conn.executemany("UPDATE concepts SET position = ? WHERE id = ?", [(pos, cid) for pos, (_, cid) in enumerate(sorted(order), start=1)])
+
+
 def practice_scope(concept_id: int) -> list[dict]:
     """The concept units a practice unit covers: those between the previous practice unit and this one."""
     unit = row("SELECT * FROM concepts WHERE id = ?", concept_id)
@@ -1316,12 +1358,16 @@ def revise_concepts(course_id: int, modules: list[dict], renamed: dict[str, str]
     # IMMEDIATE: this reads before it writes, and must not find the database changed under it in between.
     conn.execute("BEGIN IMMEDIATE")
     try:
+        before = concepts(course_id)
         _rename_units(course_id, renamed)
         existing = {c["title"]: c for c in concepts(course_id) if c["kind"] == "concept"}
         kept = _place_units(course_id, modules, existing)
         _drop_units(existing, existing.keys() - kept)
         removed = _rehome_capstones(course_id)
-        place_practice(course_id)
+        if _is_replay(course_id):
+            _keep_practice(course_id, before)
+        else:
+            place_practice(course_id)
         if hours:
             conn.execute("UPDATE courses SET hours = ? WHERE id = ?", (hours, course_id))
         conn.execute("COMMIT")
