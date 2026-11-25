@@ -838,7 +838,9 @@ def _copy_cards(course_id: int, new_id: int, concept_map: dict[int, int]) -> dic
     return card_map
 
 
-def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], authored: bool) -> None:
+def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], authored: bool) -> dict[int, int]:
+    """The map of old to new block ids. A variant's original is left out: _copy_lessons sets it once every block is copied."""
+    block_map = {}
     for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", old_lesson):
         if b["kind"] in ("podcast", "network"):
             continue  # audio and consent belong to the original
@@ -847,14 +849,19 @@ def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], auth
             if data["card_id"] not in card_map:
                 continue  # a block on a card that stays behind
             data = {**data, "card_id": card_map[data["card_id"]]}
+        if data:
+            data.pop("variant_of", None)
         copied = conn.execute(
             "INSERT INTO blocks (lesson_id, kind, markdown, data, created, key) VALUES (?, ?, ?, ?, ?, ?)",
             (lesson_id, b["kind"], b["markdown"], json.dumps(data) if data else None, b["created"], b["key"]),
         ).lastrowid
         conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (copied, copied))
+        block_map[b["id"]] = copied
+    return block_map
 
 
 def _copy_lessons(course_id: int, new_id: int, concept_map: dict[int, int], card_map: dict[int, int], authored: bool) -> None:
+    block_map = {}
     for lesson_row in rows("SELECT * FROM lessons WHERE course_id = ? ORDER BY id", course_id):
         if lesson_row["concept_id"] and lesson_row["concept_id"] not in concept_map:
             continue
@@ -862,11 +869,14 @@ def _copy_lessons(course_id: int, new_id: int, concept_map: dict[int, int], card
             "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key) VALUES (?, ?, ?, ?, ?, ?)",
             (new_id, lesson_row["title"], lesson_row["phase"], concept_map.get(lesson_row["concept_id"]), str(uuid.uuid4()), lesson_row["key"]),
         ).lastrowid
-        _copy_blocks(lesson_row["id"], lesson_id, card_map, authored)
+        block_map |= _copy_blocks(lesson_row["id"], lesson_id, card_map, authored)
         conn.executemany(
             "INSERT INTO messages (lesson_id, role, text, created) VALUES (?, ?, ?, ?)",
             [(lesson_id, m["role"], m["text"], m["created"]) for m in rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_row["id"])],
         )
+    for v in variants(course_id):
+        if v["id"] in block_map and v["original"] in block_map:
+            set_original(block_map[v["id"]], block_map[v["original"]])
 
 
 def _copy_sources(course_id: int, new_id: int) -> dict[int, int]:
@@ -1357,6 +1367,24 @@ def locked(block_id: int) -> dict:
     """The hints not yet given and the solution an imported task's author wrote; empty when there are none."""
     b = row("SELECT locked FROM blocks WHERE id = ?", block_id)
     return json.loads(b["locked"]) if b and b["locked"] else {}
+
+
+def variants(course_id: int) -> list[dict]:
+    """The course's variants whose original it holds too: a variant_of naming a block of another course is not followed."""
+    return rows(
+        "SELECT v.id, v.lesson_id, o.id AS original, o.key AS original_key, ol.concept_id AS original_concept FROM blocks v "
+        "JOIN lessons vl ON vl.id = v.lesson_id JOIN blocks o ON o.id = json_extract(v.data, '$.variant_of') "
+        "JOIN lessons ol ON ol.id = o.lesson_id AND ol.course_id = vl.course_id WHERE vl.course_id = ?",
+        course_id,
+    )
+
+
+def set_original(variant_id: int, block_id: int | None) -> None:
+    """Point a variant at the block it varies; None leaves it a task like any other."""
+    if block_id is None:
+        conn.execute("UPDATE blocks SET data = json_remove(data, '$.variant_of') WHERE id = ?", (variant_id,))
+    else:
+        conn.execute("UPDATE blocks SET data = json_set(data, '$.variant_of', ?) WHERE id = ?", (block_id, variant_id))
 
 
 def set_block_markdown(block_id: int, markdown: str) -> dict:

@@ -1157,3 +1157,257 @@ def test_an_upgrade_keeps_unchanged_units_restarts_changed_ones_and_is_offered_o
     assert done["upgrade"] is None
     assert db.course(course)["source_version"] == v2["hash"]
     assert_upgraded_units(course, mine, a, card, gone)
+
+
+def _varied_course(title: str) -> dict:
+    """A course whose practice unit varies a solved task of an earlier unit, all finished; the unit's card is due far off."""
+    import asyncio
+
+    from wise_scholar.tools import practice as practice_tools
+
+    author = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Variant author {uuid.uuid4().hex[:6]}",)).lastrowid
+    course = db.create_course(title, author)["id"]
+    db.set_concepts(course, [{"title": "Blades", "concepts": ["Fit", "Loft"], "known": []}])
+    loft = db.concepts(course)[1]["id"]
+    lesson = db.create_lesson(course, "Loft", "lesson", loft)
+    tasks = [db.add_block(lesson, "challenge", markdown, {**challenge.new(), "solved": True})["id"] for markdown in ("Loft two wires.", "Loft three wires.")]
+    card = db.add_card(course, loft, "Why loft?", "open", [], "To join.", "", scheduled=True, due="2099-01-01T00:00:00+00:00")
+    db.add_block(lesson, "done", "", {})
+    unit = db.conn.execute("INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, 'Blades', 'Practice 1', 0, 99, 'practice')", (course,)).lastrowid
+    practice = db.create_lesson(course, "Practice 1", "practice", unit)
+    assert asyncio.run(practice_tools.pose_challenge(practice, "Loft two other wires.", variant_of=tasks[0])).startswith("shown")
+    db.add_block(practice, "done", "", {})
+    return {"course": course, "lesson": lesson, "tasks": tasks, "practice": practice, "card": card}
+
+
+def _version(course: int, places) -> tuple:
+    v = bundle.publish(course, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], **places)
+    return bundle.unpack((places["store"] / f"{v['hash']}.zip").read_bytes())
+
+
+def _replay(version: tuple, places) -> int:
+    reader = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Variant reader {uuid.uuid4().hex[:6]}",)).lastrowid
+    version_hash, manifest, assets = version
+    return bundle.install(reader, version_hash, manifest, assets, places["source_dir"])["id"]
+
+
+def _by_text(course: int) -> dict[str, dict]:
+    return {b["markdown"]: b for x in db.rows("SELECT id FROM lessons WHERE course_id = ?", course) for b in db.blocks(x["id"])}
+
+
+def _far_off(course: int) -> int:
+    """The course's card, due in 2099 and scheduled."""
+    card = db.row("SELECT id FROM cards WHERE course_id = ?", course)["id"]
+    db.conn.execute("UPDATE cards SET due = '2099-01-01T00:00:00+00:00', scheduled = 1 WHERE id = ?", (card,))
+    return card
+
+
+def _missed(course: int) -> list[tuple]:
+    """The variant given up and revealed; the misses in the notebook then."""
+    import asyncio
+
+    from wise_scholar.tools import practice as practice_tools
+
+    variant = _by_text(course)["Loft two other wires."]
+    db.set_block_data(variant["id"], {**variant["data"], "attempts": ["no"], "gave_up": True})
+    assert asyncio.run(practice_tools.reveal(variant["id"], "Like this.")) == "shown"
+    assert db.block(variant["id"])["data"]["solution"] == "Like this."
+    return [(e["kind"], e["said"], e["correct"]) for e in db.errors(db.course(course)["profile_id"], course)]
+
+
+MISS = [("practice", "no", "Like this.")]
+
+
+def _left_as_the_old_code_did(course: int, original: int) -> None:
+    variant = _by_text(course)["Loft two other wires."]
+    db.set_block_data(variant["id"], {**variant["data"], "variant_of": original})
+
+
+@pytest.mark.parametrize("made", ["replay", "copy"])
+def test_a_variant_in_another_course_names_that_courses_own_task(places, made):
+    from wise_scholar.tools import practice as practice_tools
+
+    a = _varied_course(f"Varied {made}")
+    mine = _replay(_version(a["course"], places), places) if made == "replay" else db.copy_course(a["course"], "Varied again")["id"]
+    card, got = _far_off(mine), _by_text(mine)
+    assert _missed(mine) == MISS
+    assert (db.card(a["card"])["due"][:4], db.card(card)["due"] < "2099") == ("2099", True)
+    assert got["Loft two other wires."]["data"]["variant_of"] == got["Loft two wires."]["id"]
+    assert practice_tools.varied(mine) == {got["Loft two wires."]["id"]}
+
+
+@pytest.mark.parametrize("made", ["replay", "copy"])
+@pytest.mark.parametrize("gone", [False, True])
+def test_a_variant_left_naming_another_courses_task_never_reaches_it(places, made, gone):
+    from wise_scholar.tools import practice as practice_tools
+
+    a = _varied_course(f"Foreign {made} {gone}")
+    mine = _replay(_version(a["course"], places), places) if made == "replay" else db.copy_course(a["course"], "Foreign again")["id"]
+    _left_as_the_old_code_did(mine, a["tasks"][0])
+    if gone:
+        db.delete_course(a["course"])
+    card = _far_off(mine)
+    assert _missed(mine) == MISS
+    assert gone or db.card(a["card"])["due"][:4] == "2099"
+    assert db.card(card)["due"][:4] == "2099"
+    assert practice_tools.varied(mine) == set()
+
+
+def test_a_task_deleted_from_the_course_keeps_its_variants_reveal_and_miss(places):
+    a = _varied_course("Deleted original")
+    db.delete_block(a["tasks"][0])
+    assert _missed(a["course"]) == MISS
+    assert "variant_of" not in _by_text(db.copy_course(a["course"], "Deleted original again")["id"])["Loft two other wires."]["data"]
+    assert "variant_of" not in _by_text(_replay(_version(a["course"], places), places))["Loft two other wires."]["data"]
+
+
+@pytest.mark.parametrize("named", ["number", "unknown key", "odd"])
+def test_a_bundle_that_names_no_task_it_holds_installs_without_the_variant(places, named):
+    import asyncio
+
+    from wise_scholar.tools import practice as practice_tools
+
+    a = _varied_course(f"Old bundle {named}")
+    version_hash, manifest, assets = _version(a["course"], places)
+    first = db.row("SELECT MAX(id) AS n FROM blocks")["n"] + 1  # the ids the install will give, so the number is one of the reader's
+    variant = next(b for x in manifest.lessons for b in x.blocks if b.markdown == "Loft two other wires.")
+    variant.data["variant_of"] = {"number": first + 1, "unknown key": "f" * 32, "odd": {"a": 1}}[named]
+    mine = _replay((version_hash, manifest, assets), places)
+    got = _by_text(mine)
+    three = got["Loft three wires."]
+    assert three["id"] == first + 1
+    db.set_block_data(three["id"], {**three["data"], "solved": True})
+    practice = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'practice'", mine)["id"]
+    posed = asyncio.run(practice_tools.pose_challenge(practice, "Loft three others.", variant_of=three["id"]))
+    assert posed.startswith("shown"), posed
+    assert "variant_of" not in got["Loft two other wires."]["data"]
+
+
+def test_an_upgrade_points_variants_at_the_tasks_the_course_has_then(places):
+    a = _varied_course("Varied upgrade")
+    first = _version(a["course"], places)
+    mine = _replay(first, places)
+
+    def upgraded(old):
+        new = _version(a["course"], places)
+        plan = bundle.upgrade(mine, *new, old[1], places["source_dir"])
+        return new, [db.row("SELECT title FROM concepts WHERE key = ? AND course_id = ?", k, mine)["title"] for k in plan["kept"]]
+
+    def original():
+        got = _by_text(mine)
+        return got["Loft two other wires."]["data"].get("variant_of"), got.get("Loft two wires.", {}).get("id")
+
+    # the task's unit is taught again, the variant's kept
+    db.add_block(a["lesson"], "prose", "More on lofting.")
+    second, kept = upgraded(first)
+    assert kept == ["Fit", "Practice 1"] and original()[0] == original()[1] is not None
+    # the variant's unit is taught again, the task's kept
+    db.add_block(a["practice"], "prose", "More practice.")
+    third, kept = upgraded(second)
+    assert kept == ["Fit", "Loft"] and original()[0] == original()[1] is not None
+    # the task is gone
+    db.delete_block(a["tasks"][0])
+    upgraded(third)
+    assert original() == (None, None)
+
+
+def _twice_varied(title: str) -> dict:
+    """_varied_course with a second variant and a prose block: what a made-up bundle may name as an original."""
+    import asyncio
+
+    from wise_scholar.tools import practice as practice_tools
+
+    a = _varied_course(title)
+    db.add_block(a["lesson"], "prose", "On wires.")
+    assert asyncio.run(practice_tools.pose_challenge(a["practice"], "Loft three others.", variant_of=a["tasks"][1])).startswith("shown")
+    return a
+
+
+@pytest.mark.parametrize("named", ["itself", "prose", "milestone", "transfer", "a variant", "a variant after it", "a variant by number", "each other"])
+def test_a_variant_naming_what_no_practice_could_vary_installs_without_it(places, named):
+    from wise_scholar.tools import practice as practice_tools
+
+    a = _twice_varied(f"Made up {named}")
+    version_hash, manifest, assets = _version(a["course"], places)
+    blocks = {b.markdown: b for x in manifest.lessons for b in x.blocks}
+    first, second, two, three = (blocks[m] for m in ("Loft two other wires.", "Loft three others.", "Loft two wires.", "Loft three wires."))
+    second.data["variant_of"] = {"itself": second, "prose": blocks["On wires."], "milestone": three, "transfer": three}.get(named, first).key
+    if named in ("milestone", "transfer"):
+        three.data[named] = True
+    if named == "a variant by number":
+        first.data["variant_of"] = 7
+    if named == "each other":
+        first.data["variant_of"] = second.key
+    if named == "a variant after it":
+        practice = next(x for x in manifest.lessons if x.phase == "practice")
+        practice.blocks.reverse()
+    mine = _replay((version_hash, manifest, assets), places)
+    got = _by_text(mine)
+    assert "variant_of" not in got["Loft three others."]["data"]
+    kept = named not in ("a variant by number", "each other")
+    assert practice_tools.varied(mine) == ({got["Loft two wires."]["id"]} if kept else set())
+    assert ("variant_of" in got["Loft two other wires."]["data"]) is kept
+
+
+def test_an_upgrade_drops_a_kept_variant_whose_task_became_a_milestone(places):
+    a = _varied_course("Varied milestone")
+    first = _version(a["course"], places)
+    mine = _replay(first, places)
+    task = db.block(a["tasks"][0])
+    db.set_block_data(task["id"], {**task["data"], "milestone": True})
+    plan = bundle.upgrade(mine, *_version(a["course"], places), first[1], places["source_dir"])
+    assert len(plan["restarted"]) == 1 and len(plan["kept"]) == 2
+    assert "variant_of" not in _by_text(mine)["Loft two other wires."]["data"]
+
+
+@pytest.mark.parametrize("ahead", [1, 10**9])
+def test_an_upgrade_drops_a_kept_variants_number_that_names_no_block_of_the_course(places, ahead):
+    from wise_scholar.tools import practice as practice_tools
+
+    a = _varied_course(f"Stray number {ahead}")
+    first = _version(a["course"], places)
+    mine = _replay(first, places)
+    db.add_block(a["lesson"], "prose", "More on lofting.")
+    new = _version(a["course"], places)
+    stray = db.row("SELECT MAX(id) AS n FROM blocks")["n"] + ahead  # one ahead is the id the upgrade's first block takes
+    _left_as_the_old_code_did(mine, stray)
+    plan = bundle.upgrade(mine, *new, first[1], places["source_dir"])
+    assert len(plan["kept"]) == 2
+    assert ahead != 1 or db.block(stray)["markdown"] == "Loft two wires."
+    assert "variant_of" not in _by_text(mine)["Loft two other wires."]["data"]
+    assert practice_tools.varied(mine) == set()
+
+
+def test_an_upgrade_between_versions_that_name_a_variants_task_by_number_drops_it(places, monkeypatch):
+    a = _varied_course("Numbered versions")
+    now = bundle._block_data
+    with monkeypatch.context() as old:
+        old.setattr(bundle, "_block_data", lambda block, *args: now(block, *args) and {
+            **now(block, *args), **({"variant_of": a["tasks"][0]} if "variant_of" in json.loads(block["data"]) else {})})
+        first = _version(a["course"], places)
+        db.add_block(a["lesson"], "prose", "More on lofting.")
+        second = _version(a["course"], places)
+    mine = _replay(first, places)
+    _left_as_the_old_code_did(mine, a["tasks"][0])  # an install of then stored the number
+    assert len(bundle.upgrade(mine, *second, first[1], places["source_dir"])["kept"]) == 2
+    assert "variant_of" not in _by_text(mine)["Loft two other wires."]["data"]
+    # the first version with keys restarts the practice unit, which then names the course's own task
+    plan = bundle.upgrade(mine, *_version(a["course"], places), second[1], places["source_dir"])
+    assert len(plan["restarted"]) == 1
+    got = _by_text(mine)
+    assert got["Loft two other wires."]["data"]["variant_of"] == got["Loft two wires."]["id"]
+
+
+def test_a_version_names_a_varied_task_by_its_key_out_of_reach_of_edits(places):
+    a = _varied_course("Varied edits")
+    key = db.block(a["tasks"][0])["key"]
+    manifest, assets, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    variant = next(b for x in manifest["lessons"] for b in x["blocks"] if b["markdown"] == "Loft two other wires.")
+    assert variant["data"]["variant_of"] == key
+    assert key not in bundle.texts(manifest, assets)["block", variant["key"]]
+    assert bundle.apply_edit(manifest, assets, {"target": "block", "ref": variant["key"], "old": "o", "new": "0"})
+    assert (variant["markdown"], variant["data"]["variant_of"]) == ("L0ft tw0 0ther wires.", key)
+    copy = db.copy_course(a["course"], "Varied edits again")["id"]
+    again, _, _ = bundle.build(copy, notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    plain, _, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    assert [u["hash"] for u in again["units"]] == [u["hash"] for u in plain["units"]]
