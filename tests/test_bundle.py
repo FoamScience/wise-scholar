@@ -740,6 +740,283 @@ def test_replays_installed_before_the_lock_hold_their_untouched_solutions_behind
         assert challenge.reveal_blocker(data) and (challenge.hint_blocker(data) is None) == bool(data["max_hints"])
 
 
+def _checked_course(title: str) -> int:
+    """A prepared course with a check of each kind, posed with its tools, and an outline its designer ticked to the end."""
+    import asyncio
+
+    from wise_scholar.tools import lesson_flow, quizzes
+
+    author = db.conn.execute("INSERT INTO profiles (name, mode) VALUES (?, 'teacher')", (f"Key author {uuid.uuid4().hex[:6]}",)).lastrowid
+    course = db.create_course(title, author)["id"]
+    db.set_concepts(course, [{"title": "Blades", "concepts": ["Loft"], "known": []}])
+    lesson = db.create_lesson(course, "Loft", "lesson", db.concepts(course)[0]["id"])
+    items = [quizzes.SortItem(text=f"item {n}", category=("SECRET even", "SECRET odd")[n % 2]) for n in range(6)]
+    replies = [
+        asyncio.run(lesson_flow.set_outline(lesson, ["Predict", "Loft", "Check"], cards=9)),
+        asyncio.run(quizzes.pose_quiz(lesson, "Which call lofts?", "choice", "ThruSections", "SECRET why.", ["ThruSections", "MakePipe"],
+                                      misconceptions={"MakePipe": "SECRET belief"})),
+        asyncio.run(quizzes.pose_quiz(lesson, "Why sections?", "open", "SECRET model.", "SECRET because.")),
+        asyncio.run(quizzes.pose_sort(lesson, "Sort them.", ["SECRET even", "SECRET odd"], items, "SECRET tells apart.")),
+        asyncio.run(lesson_flow.step_done(lesson)),
+        asyncio.run(lesson_flow.finish_lesson(lesson, "You can loft.")),
+    ]
+    assert not [r for r in replies if r.startswith(("error", "refused"))]
+    return course
+
+
+def _imported(course: int, places, monkeypatch) -> tuple[int, int]:
+    """The course published and imported through the routes for a new reader: the replay and its lesson."""
+    import asyncio
+
+    from fastapi import UploadFile
+
+    from wise_scholar import app
+    from wise_scholar.routes import sharing as sharing_routes
+
+    monkeypatch.setattr(app, "SOURCES", places["source_dir"])
+    monkeypatch.setattr(app, "VERSIONS", places["store"])
+    v = sharing_routes.publish_version(course, sharing_routes.Publish())
+    reader = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Key reader {uuid.uuid4().hex[:6]}",)).lastrowid
+    data = (places["store"] / f"{v['hash']}.zip").read_bytes()
+    mine = asyncio.run(sharing_routes.import_course(reader, UploadFile(io.BytesIO(data), filename="x.zip")))["id"]
+    return mine, db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", mine)["id"]
+
+
+def _checks(blocks: list[dict]) -> dict[str, dict]:
+    return {b["markdown"]: b["data"] for b in blocks if b["kind"] == "quiz"}
+
+
+def _unit_lesson(course: int) -> int:
+    return db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", course)["id"]
+
+
+def _stored(lesson: int) -> list[dict]:
+    """The lesson's blocks as the database holds them, where db.blocks gives them as their reader gets them."""
+    return [db.block(r["id"]) for r in db.rows("SELECT id FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson)]
+
+
+def _gives_away(data: dict) -> bool:
+    return bool({"answer_key", "explanation", "misconceptions"} & data.keys()) or any("category" in o for o in data["options"] if isinstance(o, dict))
+
+
+def _as_installed_before(course: int, lesson: int) -> None:
+    """The replay's blocks as an install left them before keys and ticks stayed behind: as the bundle holds them."""
+    from wise_scholar import app
+
+    version = bundle.stored(app.VERSIONS, db.course(course)["source_version"])
+    shipped = {b.key: b for x in version.lessons for b in x.blocks}
+    for b in db.blocks(lesson):
+        if b["key"] in shipped:
+            came = {k: v for k, v in (shipped[b["key"]].data or {}).items() if k != "card"}
+            db.set_block(b["id"], shipped[b["key"]].markdown, {**(b["data"] or {}), **came})
+            db.conn.execute("UPDATE blocks SET locked = NULL WHERE id = ?", (b["id"],))
+
+
+@pytest.mark.parametrize("installed", ["now", "before"])
+def test_a_reader_gets_a_quizs_key_once_they_answered_it(places, monkeypatch, installed):
+    import asyncio
+
+    from wise_scholar import app, hub, obsidian
+    from wise_scholar.routes import blocks as blocks_routes, learner as learner_routes
+
+    sent, run = [], asyncio.run
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: None)
+    course = _checked_course(f"Keys {installed}")
+    mine, replayed = _imported(course, places, monkeypatch)
+    if installed == "before":
+        _as_installed_before(mine, replayed)
+    held = _checks(_stored(replayed)).values()
+    assert len(held) == 3 and all(_gives_away(d) == (installed == "before") for d in held)
+    monkeypatch.setattr(hub, "publish", lambda course_id, event: sent.append(event))
+
+    def notes() -> str:
+        return "".join(x.decode() for path, x in obsidian.Vault(mine).build().items() if "/Cards/" in path and "Sort" not in path)
+
+    views = (lambda: app._lesson_view(replayed), lambda: next(x for x in app._course(mine)["lessons"] if x["id"] == replayed),
+             lambda: run(learner_routes.open_concept(db.concepts(mine)[0]["id"])))
+    ids = {b["markdown"]: b["id"] for b in db.blocks(replayed)}
+    for view in views:
+        choice, opened, sort = _checks(view()["blocks"]).values()
+        assert not any(map(_gives_away, (choice, opened, sort)))
+        assert (sorted(choice["options"]), sort["options"][0].keys(), sort["categories"]) == (["MakePipe", "ThruSections"], {"text"}, ["SECRET even", "SECRET odd"])
+    assert "SECRET" not in notes()
+
+    answered = {"Which call lofts?": "MakePipe", "Why sections?": "no idea", "Sort them.": json.dumps({"item 0": "SECRET odd"})}
+    for markdown, answer in answered.items():
+        sent.clear()
+        run(blocks_routes.answer_quiz(ids[markdown], app.QuizAnswer(answer=answer, confidence=0.4)))
+        [data] = [e["block"]["data"] for e in sent if e["type"] == "block.updated" and e["block"]["id"] == ids[markdown]][-1:]
+        assert data["answer_key"] and "SECRET" in data["explanation"]
+        assert _checks(app._lesson_view(replayed)["blocks"])[markdown] == data
+        left = [m for m in list(answered)[list(answered).index(markdown) + 1:]]
+        assert not any("answer_key" in _checks(app._lesson_view(replayed)["blocks"])[m] for m in left)
+    assert run(blocks_routes.self_grade_quiz(ids["Why sections?"], app.SelfGrade(correct=False)))["data"]["answer_key"] == "SECRET model."
+    choice, opened, sort = _checks(app._lesson_view(replayed)["blocks"]).values()
+    assert (choice["correct"], choice["answer_key"], choice["misconception"], opened["correct"]) == (False, "ThruSections", "SECRET belief", False)
+    assert "item 0" in sort["misplaced"]
+    assert "SECRET model." in notes() and "SECRET why." in notes()
+
+
+def test_the_author_of_a_prepared_course_and_a_unit_taken_offline_hold_their_keys(places, monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, handout, hub
+    from wise_scholar.routes import blocks as blocks_routes, courses as courses_routes, lessons as lessons_routes
+    from wise_scholar.tools import quizzes
+
+    sent = []
+    monkeypatch.setattr(hub, "publish", lambda course_id, event: sent.append(event))
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False, then=None: None)
+    course = _checked_course("Keys kept")
+    again = courses_routes.duplicate_course(course)["id"]
+    for mine in (course, again):
+        lesson = next(x for x in app._course(mine)["lessons"] if x["phase"] == "lesson")
+        choice, opened, sort = _checks(lesson["blocks"]).values()
+        assert (choice["answer_key"], choice["explanation"], choice["misconceptions"]) == ("ThruSections", "SECRET why.", {"MakePipe": "SECRET belief"})
+        assert opened["answer_key"] == "SECRET model." and sort["options"][0]["category"].startswith("SECRET")
+        assert "SECRET model." in handout.markdown(lesson["id"], solutions=True)
+        block = next(b for b in lesson["blocks"] if b["markdown"] == "Why sections?")
+        edited = blocks_routes.edit_block(block["id"], blocks_routes.BlockEdit(explanation="Edited."))
+        assert (edited["data"]["answer_key"], edited["data"]["explanation"]) == ("SECRET model.", "Edited.")
+        assert sent[-1]["block"]["data"]["explanation"] == "Edited."
+
+    learner = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Key offline {uuid.uuid4().hex[:6]}",)).lastrowid
+    own = db.create_course("Keys offline", learner)["id"]
+    db.set_concepts(own, [{"title": "Blades", "concepts": ["Loft"], "known": []}])
+    lesson = db.create_lesson(own, "Loft", "lesson", db.concepts(own)[0]["id"])
+    db.conn.execute("UPDATE lessons SET batch = 1 WHERE id = ?", (lesson,))
+    asyncio.run(quizzes.pose_quiz(lesson, "Why loft?", "open", "SECRET join.", "SECRET it joins."))
+    assert sent[-1]["block"]["data"]["answer_key"] == _checks(app._lesson_view(lesson)["blocks"])["Why loft?"]["answer_key"] == "SECRET join."
+    # sent without an answer, the check waits for the tutor like any other
+    asyncio.run(lessons_routes.send_batch(lesson, lessons_routes.Batch(answers=[])))
+    assert "SECRET" not in json.dumps(app._lesson_view(lesson))
+    copied = _checks(_stored(_unit_lesson(db.copy_course(own, "Keys offline again")["id"])))
+    assert "SECRET" not in json.dumps(copied) and not _gives_away(copied["Why loft?"])
+
+
+@pytest.mark.parametrize("installed", ["now", "before"])
+def test_a_replays_tutor_gets_a_quizs_key_once_the_reader_answered_it(places, monkeypatch, installed):
+    import asyncio
+
+    from wise_scholar import app
+    from wise_scholar.routes import blocks as blocks_routes
+
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line, quiet=False: None)
+    mine, replayed = _imported(_checked_course(f"Tutor keys {installed}"), places, monkeypatch)
+    if installed == "before":
+        _as_installed_before(mine, replayed)
+    ids = {b["markdown"]: b["id"] for b in db.blocks(replayed)}
+    prompt = lambda: app._turn_prompt(db.lesson(replayed), "[learner] help")  # noqa: E731
+    assert "Which call lofts?" in prompt() and "| key:  |  | learner: not answered" in prompt() and "SECRET" not in prompt()
+    asyncio.run(blocks_routes.answer_quiz(ids["Which call lofts?"], app.QuizAnswer(answer="MakePipe", confidence=0.4)))
+    assert "| key: ThruSections | SECRET why. | learner: 'MakePipe'" in prompt()
+    assert not any(x in prompt() for x in ("SECRET model.", "SECRET because.", "SECRET tells apart.", "'category'"))
+
+
+def test_an_upgrade_brings_checks_without_their_keys_and_a_fork_ships_them_as_they_came(places, monkeypatch):
+    from wise_scholar.routes import sharing as sharing_routes
+
+    course = _checked_course("Keys upgraded")
+    mine, replayed = _imported(course, places, monkeypatch)
+    old = bundle.stored(places["store"], db.course(mine)["source_version"])
+
+    def forked():
+        manifest, _, _ = bundle.build(mine, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+        return manifest
+
+    db.conn.execute("UPDATE lessons SET prepared_offline = 1 WHERE id = ?", (replayed,))
+    shipped = {b.key: b.data for x in old.lessons for b in x.blocks if b.kind == "quiz"}
+    assert all("answer_key" in d for d in shipped.values())
+    assert {b["key"]: b["data"] for x in forked()["lessons"] for b in x["blocks"] if b["kind"] == "quiz"} == {k: {**d, "imported": True} for k, d in shipped.items()}
+    kept = forked()["units"][0]["hash"]
+    _as_installed_before(mine, replayed)
+    for b in db.blocks(replayed):
+        if b["kind"] == "outline":
+            db.set_block_markdown(b["id"], "1. Predict\n2. Loft\n3. Check")
+    assert forked()["units"][0]["hash"] == kept
+
+    db.add_block(db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", course)["id"], "prose", "One more thing.")
+    v = sharing_routes.publish_version(course, sharing_routes.Publish())
+    done = sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=v["hash"]))
+    assert len(done["upgraded"]["restarted"]) == 1
+    lesson = next(x for x in done["lessons"] if x["phase"] == "lesson")
+    assert len(_checks(lesson["blocks"])) == 3
+    for blocks in (lesson["blocks"], _stored(lesson["id"])):
+        assert not any(map(_gives_away, _checks(blocks).values()))
+
+
+def _outline(blocks: list[dict]) -> tuple[int, str]:
+    [block] = [b for b in blocks if b["kind"] == "outline"]
+    return block["data"]["at"], block["markdown"]
+
+
+PLAIN = "1. Predict\n2. Loft\n3. Check"
+
+
+def test_an_outline_starts_without_the_ticks_of_whoever_it_came_from(places, monkeypatch):
+    import asyncio
+
+    from wise_scholar import app, obsidian
+    from wise_scholar.routes import sharing as sharing_routes
+    from wise_scholar.tools import lesson_flow
+
+    course = _checked_course("Ticks")
+    author = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", course)["id"]
+    ticked = "1. Predict ✓\n2. Loft ✓\n3. Check ✓"
+    assert _outline(db.blocks(author)) == (3, ticked)
+    copy = db.copy_course(course, "Ticks again")["id"]
+    assert _outline(_stored(_unit_lesson(copy))) == (0, PLAIN)
+    mine, replayed = _imported(course, places, monkeypatch)
+    assert _outline(_stored(replayed)) == (0, PLAIN)
+
+    db.add_block(author, "prose", "One more thing.")
+    v = sharing_routes.publish_version(course, sharing_routes.Publish())
+    sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=v["hash"]))
+    replayed = _unit_lesson(mine)
+    assert _outline(_stored(replayed)) == (0, PLAIN)
+
+    # one installed before still holds the author's ticks, and shows none until the reader's own
+    _as_installed_before(mine, replayed)
+    assert _outline(_stored(replayed)) == (0, ticked)
+    assert _outline(app._lesson_view(replayed)["blocks"]) == (0, PLAIN)
+    vault = obsidian.Vault(mine)
+    assert PLAIN in "\n".join(x for lesson in vault.lessons for x in vault.lesson_text(lesson))
+    asyncio.run(lesson_flow.step_done(replayed))
+    assert _outline(db.blocks(replayed)) == _outline(app._lesson_view(replayed)["blocks"]) == (1, "1. Predict ✓\n2. Loft\n3. Check")
+
+
+@pytest.mark.parametrize("data, markdown", [
+    ({"steps": ["a", "b"]}, "The teacher's own plan ✓"), ({"steps": "ab"}, "1. a ✓"), ({}, "1. a ✓"),
+    ({"steps": ["a", "b"]}, "1. a\n2. b ✓"), ({"steps": [{"x": 1}, None]}, "1. a ✓"),
+])
+def test_outline_text_that_is_not_its_steps_stays_as_it_was_written(places, data, markdown):
+    course = _checked_course("Written plan")
+    author = db.row("SELECT id FROM lessons WHERE course_id = ? AND phase = 'lesson'", course)["id"]
+    [block] = [b for b in db.blocks(author) if b["kind"] == "outline"]
+    db.set_block(block["id"], markdown, data)
+    mine = _replay(_version(course, places), places)
+    for other in (mine, db.copy_course(course, "Written plan again")["id"]):
+        for blocks in (_stored(_unit_lesson(other)), db.blocks(_unit_lesson(other))):
+            assert [b["markdown"] for b in blocks if b["kind"] == "outline"] == [markdown]
+
+
+def test_a_step_that_ends_in_the_tick_keeps_its_own(places):
+    course = _checked_course("Ticked step")
+    author = _unit_lesson(course)
+    [block] = [b for b in db.blocks(author) if b["kind"] == "outline"]
+    steps = ["a ✓", "b ✓", "c"]
+    db.set_block(block["id"], db.outline_text(steps, 2), {"steps": steps, "at": 2})
+    ticked, plain = "1. a ✓ ✓\n2. b ✓ ✓\n3. c", "1. a ✓\n2. b ✓\n3. c"
+    assert _outline(_stored(author)) == _outline(db.blocks(author)) == (2, ticked)
+    mine = _replay(_version(course, places), places)
+    for other in (mine, db.copy_course(course, "Ticked step again")["id"]):
+        assert _outline(_stored(_unit_lesson(other))) == (0, plain)
+    # one installed before, whose reader is now at the second step
+    [got] = [b for b in _stored(_unit_lesson(mine)) if b["kind"] == "outline"]
+    db.set_block(got["id"], ticked, {**got["data"], "at": 1})
+    assert _outline(db.blocks(_unit_lesson(mine))) == (1, "1. a ✓ ✓\n2. b ✓\n3. c")
+
+
 def test_the_same_content_packs_to_the_same_bytes_and_a_fork_credits_its_origin(places):
     a = _authored(places)
     manifest, assets, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])

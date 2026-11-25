@@ -279,6 +279,41 @@ def error_id(course: int) -> int:
     return db.row("SELECT id FROM errors WHERE course_id = ?", course)["id"]
 
 
+def test_a_copy_leaves_the_revisits_outline_and_its_open_revisit_still_goes_on(monkeypatch):
+    from wise_scholar.tools import lesson_flow, quizzes
+
+    monkeypatch.setattr(app, "_start_turn", lambda *a, **k: None)
+    who = _learner()
+    course, units = _course(who, [{"title": "Flow", "concepts": ["Head"], "known": []}])
+    _finish(course, units["Head"], "2026-10-05 10:00:00")
+    _missed(who, course, units["Head"], "2026-10-05 09:00:00")
+    asyncio.run(sharing_routes.revisit(course))
+
+    copy = db.copy_course(course, "Flow again")["id"]
+    [revisit] = [x["id"] for x in db.rows("SELECT id FROM lessons WHERE course_id = ? AND phase = 'revisit'", copy)]
+    assert "Which head?" not in str(db.blocks(revisit)) and '"items"' not in str(db.rows("SELECT data FROM blocks WHERE lesson_id = ?", revisit))
+    assert app._lesson_view(revisit)["blocks"] == []
+    assert "outline=" not in app._turn_prompt(db.lesson(revisit), "[learner] go on")
+    # the tutor cannot give it another one
+    assert asyncio.run(lesson_flow.set_outline(revisit, ["a", "b", "c"], cards=9)) == "error: only a unit lesson has an outline"
+    assert asyncio.run(quizzes.pose_quiz(revisit, "Which head now?", "choice", "a", "", ["a", "b"], item=1)).startswith("shown as quiz")
+    [check] = db.blocks(revisit)
+    assert not {"revisit_error", "revisit_claim"} & check["data"].keys()
+    asyncio.run(blocks_routes.answer_quiz(check["id"], app.QuizAnswer(answer="a", confidence=0.9)))
+    assert not db.row("SELECT resolved FROM errors WHERE id = ?", error_id(course))["resolved"]
+    assert asyncio.run(lesson_flow.finish_lesson(revisit, "Head holds now.")) == "finished; end the turn"
+
+
+def test_a_check_in_a_revisit_whose_outline_names_no_items_is_refused():
+    from wise_scholar.tools import quizzes
+
+    course, _ = _course(_learner(), [{"title": "Flow", "concepts": ["Head"], "known": []}])
+    revisit = db.create_lesson(course, "Revisit 1", "revisit")
+    db.add_block(revisit, "outline", "1. Head", {"steps": ["Head"], "at": 0, "added": None, "cards": 3})
+    posed = asyncio.run(quizzes.pose_quiz(revisit, "Which head now?", "choice", "a", "", ["a", "b"], item=1))
+    assert posed == "error: in a revisit every check names its item, 1 to 0, as item"
+
+
 def test_a_revisit_check_on_a_claim_is_evidence_for_it(monkeypatch):
     from wise_scholar.tools import quizzes
 

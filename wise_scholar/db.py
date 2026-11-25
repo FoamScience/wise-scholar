@@ -796,6 +796,32 @@ def _fresh(data: dict, authored: bool = False) -> dict:
     return kept
 
 
+def keyless(data: dict) -> dict:
+    """A quiz's data without what gives its answer away: the key, the explanation, the beliefs behind the wrong options
+    and, in a sort, where each item goes."""
+    shown = {k: v for k, v in data.items() if k not in ("answer_key", "explanation", "misconceptions")}
+    if isinstance(data.get("options"), list):
+        shown["options"] = [{k: v for k, v in o.items() if k != "category"} if isinstance(o, dict) else o for o in data["options"]]
+    return shown
+
+
+TICK = " ✓"
+
+
+def outline_text(steps: list, at: int) -> str:
+    """The Markdown copy of an outline, which exports and the book show, its steps ticked up to at."""
+    return "\n".join(f"{i}. {step}{TICK if i <= at else ''}" for i, step in enumerate(steps, 1))
+
+
+def ticked_as_at(markdown: str, data: dict) -> str:
+    """An outline's text ticked as far as its data says; text that is not its steps', as a teacher may write, stays."""
+    steps, at = data.get("steps"), data.get("at")
+    if not isinstance(steps, list) or not isinstance(at, int):
+        return markdown
+    ticks = (len(markdown) - len(outline_text(steps, 0))) // len(TICK)
+    return outline_text(steps, at) if markdown == outline_text(steps, ticks) else markdown
+
+
 def _copy_concepts(course_id: int, new_id: int) -> dict[int, int]:
     concept_map = {}
     for c in concepts(course_id):
@@ -845,6 +871,12 @@ def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], auth
         if b["kind"] in ("podcast", "network"):
             continue  # audio and consent belong to the original
         data = _fresh(json.loads(b["data"]), authored) if b["data"] else None
+        if b["kind"] == "outline" and data:
+            if "items" in data:
+                continue  # a revisit's outline is the learner's open mistakes and shaky claims
+            b["markdown"] = ticked_as_at(b["markdown"], data)
+        if b["kind"] == "quiz" and data and not authored:
+            data = keyless(data)
         if data and data.get("card_id") is not None:
             if data["card_id"] not in card_map:
                 continue  # a block on a card that stays behind
@@ -1359,12 +1391,32 @@ def block(block_id: int) -> dict | None:
     return _block(row("SELECT * FROM blocks WHERE id = ?", block_id))
 
 
+def keyed(lesson: dict) -> bool:
+    """Cards carry their key and explanation from the start: a teacher's material, or a lesson the learner takes
+    offline and answers without the tutor."""
+    return lesson["mode"] == "teacher" or bool(lesson["batch"])
+
+
+def _shown(b: dict, with_key: bool) -> dict:
+    data = b["data"] or {}
+    if b["kind"] == "quiz" and data.get("answer") is None and not with_key:
+        b["data"] = keyless(data)
+    if b["kind"] == "outline":
+        b["markdown"] = ticked_as_at(b["markdown"], data)
+    return b
+
+
 def blocks(lesson_id: int) -> list[dict]:
-    return [_block(b) for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson_id)]
+    """The lesson's blocks as its reader gets them: a quiz without its key until it is answered, an outline without the
+    ticks of whoever it was imported or copied from."""
+    found = [_block(b) for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson_id)]
+    with_key = bool(found) and keyed(lesson(lesson_id))
+    return [_shown(b, with_key) for b in found]
 
 
 def locked(block_id: int) -> dict:
-    """The hints not yet given and the solution an imported task's author wrote; empty when there are none."""
+    """The hints not yet given and the solution an imported task's author wrote, or the key an imported quiz came with;
+    empty when there are none."""
     b = row("SELECT locked FROM blocks WHERE id = ?", block_id)
     return json.loads(b["locked"]) if b and b["locked"] else {}
 
