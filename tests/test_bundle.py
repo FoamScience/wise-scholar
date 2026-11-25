@@ -2339,3 +2339,337 @@ def test_a_version_names_a_varied_task_by_its_key_out_of_reach_of_edits(places):
     again, _, _ = bundle.build(copy, notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
     plain, _, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
     assert [u["hash"] for u in again["units"]] == [u["hash"] for u in plain["units"]]
+
+
+GLOSSARY = [{"word": "Brot", "meaning": "bread"}, {"word": "Markt", "meaning": "market"}, {"word": "voll", "meaning": "full"}]
+POSED = {"title": "Der Markt", "lang": "de-DE", "glossary": GLOSSARY, "added": [], "targets": [], "known": []}
+TEXT = "Sie kauft Brot. Der Markt ist voll."
+
+
+def _save(block: int, word: str, sentence: str = "") -> dict:
+    import asyncio
+
+    from wise_scholar.routes import blocks as blocks_routes
+
+    return asyncio.run(blocks_routes.add_vocabulary(block, blocks_routes.Word(word=word, sentence=sentence)))["data"]
+
+
+def _read_course(title: str, mode: str = "learner", posed: dict = POSED, text: str = TEXT, more: dict[str, dict] | None = None) -> int:
+    """Finished units with a reading each: Read, Plain and those in more; the author saved the first glossary word of Read's."""
+    import asyncio
+
+    from wise_scholar.tools import lesson_flow
+
+    author = db.conn.execute("INSERT INTO profiles (name, mode) VALUES (?, ?)", (f"Word author {uuid.uuid4().hex[:6]}", mode)).lastrowid
+    course = db.create_course(title, author)["id"]
+    db.course_lang(course, posed["lang"].split("-")[0])
+    readings = {"Read": posed, "Plain": posed, **(more or {})}
+    db.set_concepts(course, [{"title": "Shopping", "concepts": list(readings), "known": []}])
+    for c in [c for c in db.concepts(course) if c["kind"] == "concept"]:
+        lesson = db.create_lesson(course, c["title"], "lesson", c["id"])
+        block = db.add_block(lesson, "reading", text, readings[c["title"]])["id"]
+        if c["title"] == "Read":
+            word = posed["glossary"][0]["word"]
+            assert _save(block, word, text)["added"] == [word]
+        assert asyncio.run(lesson_flow.finish_lesson(lesson, "You can shop.")) == "finished; end the turn"
+    return course
+
+
+def _reading_row(course: int, title: str = "Read") -> tuple[int, dict]:
+    [row] = db.rows("SELECT b.id, b.data FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+                    "WHERE l.course_id = ? AND l.title = ? AND b.kind = 'reading'", course, title)
+    return row["id"], json.loads(row["data"])
+
+
+def _word_cards(course: int) -> list[tuple]:
+    """Each vocabulary card's lemma, whether it is due, and the sentence it keeps."""
+    return [(c["lemma"], c["due"] is not None, c["context"]) for c in
+            db.rows("SELECT lemma, due, context FROM cards WHERE course_id = ? AND vocab = 1 ORDER BY id", course)]
+
+
+def _due(course: int) -> list[str]:
+    from datetime import datetime, timezone
+
+    profile = db.course(course)["profile_id"]
+    return [c["lemma"] for c in db.due_cards(profile, datetime.now(timezone.utc).isoformat()) if c["course_id"] == course]
+
+
+def _words_met(course: int) -> list[tuple]:
+    return [(r["lemma"], r["state"], r["source"]) for r in
+            db.rows("SELECT lemma, state, source FROM vocab_knowledge WHERE profile_id = ?", db.course(course)["profile_id"])]
+
+
+def _added_shipped(m) -> None:
+    """Versions are built, installed and copied as they were while the words saved from a reading were part of them."""
+    fresh = db._fresh
+    m.setattr(db, "_fresh", lambda data, authored=False: {**fresh(data, authored), **({"added": data["added"]} if "glossary" in data and "added" in data else {})})
+
+
+@pytest.mark.parametrize("mode", ["learner", "teacher"])
+def test_a_reader_saves_the_word_the_author_saved(places, monkeypatch, mode):
+    from fastapi import HTTPException
+
+    course = _read_course(f"Words {mode}", mode)
+    mine, _ = _imported(course, places, monkeypatch)
+    shipped = [b["data"] for x in json.loads(_file(db.course(mine)["source_version"], places))["lessons"] for b in x["blocks"]]
+    assert shipped == [POSED, POSED]
+    block, data = _reading_row(mine)
+    assert data == {**POSED, "imported": True}
+    assert (_word_cards(mine), _due(mine), _words_met(mine)) == ([("brot", False, "")], [], [])
+
+    saved = _save(block, "Brot", "Sie kauft Brot.")
+    assert (saved["added"], saved["saved"]) == ([], ["Brot"])
+    assert (_word_cards(mine), _due(mine), _words_met(mine)) == ([("brot", True, "Sie kauft Brot.")], ["brot"], [("brot", "learning", "glossary")])
+    with pytest.raises(HTTPException) as again:
+        _save(block, "Brot")
+    assert again.value.status_code == 409
+
+
+def test_a_card_already_scheduled_stays_as_it_is(places, monkeypatch):
+    mine, _ = _imported(_read_course("Words scheduled"), places, monkeypatch)
+    first, second = _reading_row(mine)[0], _reading_row(mine, "Plain")[0]
+    _save(first, "Brot", "Sie kauft Brot.")
+    db.conn.execute("UPDATE cards SET due = '2999-01-01T00:00:00+00:00', fsrs = '{}' WHERE course_id = ?", (mine,))
+    before = db.rows("SELECT * FROM cards WHERE course_id = ?", mine)
+    _save(second, "Brot", "Der Markt ist voll.")
+    assert db.rows("SELECT * FROM cards WHERE course_id = ?", mine) == before
+
+
+def test_a_reader_saves_a_tapped_word_whose_card_came_with_the_course(places, monkeypatch):
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from wise_scholar.routes import blocks as blocks_routes
+
+    mine, _ = _imported(_read_course("Words tapped"), places, monkeypatch)
+    found = blocks_routes.look_up(mine, "Brot")
+    assert (found["saved"], found["state"]) == (False, "new")
+    word = blocks_routes.SavedWord(word="Brote", meaning="loaves", sentence="Zwei\nBrote.")
+    asyncio.run(blocks_routes.save_word(mine, word))
+    assert (_word_cards(mine), _due(mine), _words_met(mine)) == ([("brot", True, "Zwei Brote.")], ["brot"], [("brot", "learning", "learner")])
+    [card] = db.rows("SELECT answer_key FROM cards WHERE course_id = ? AND vocab = 1", mine)
+    assert card["answer_key"] == "bread"
+    found = blocks_routes.look_up(mine, "Brot")
+    assert (found["saved"], found["state"]) == (True, "learning")
+    with pytest.raises(HTTPException) as again:
+        asyncio.run(blocks_routes.save_word(mine, word))
+    assert again.value.status_code == 409
+
+
+def _publish(course: int, places, monkeypatch) -> str:
+    from wise_scholar import app
+    from wise_scholar.routes import sharing as sharing_routes
+
+    monkeypatch.setattr(app, "SOURCES", places["source_dir"])
+    monkeypatch.setattr(app, "VERSIONS", places["store"])
+    return sharing_routes.publish_version(course, sharing_routes.Publish())["hash"]
+
+
+def _import(version_hash: str, places) -> int:
+    import asyncio
+
+    from fastapi import UploadFile
+
+    from wise_scholar.routes import sharing as sharing_routes
+
+    reader = db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"Word reader {uuid.uuid4().hex[:6]}",)).lastrowid
+    data = (places["store"] / f"{version_hash}.zip").read_bytes()
+    return asyncio.run(sharing_routes.import_course(reader, UploadFile(io.BytesIO(data), filename="x.zip")))["id"]
+
+
+def test_an_old_bundle_installs_and_upgrades_without_the_author_s_saved_words(places, monkeypatch):
+    from wise_scholar.routes import sharing as sharing_routes
+
+    course = _read_course("Words before")
+    with monkeypatch.context() as m:
+        _added_shipped(m)
+        v1 = _publish(course, places, monkeypatch)
+        db.add_block(_unit_lesson(course), "prose", "One more thing.")
+        v2 = _publish(course, places, monkeypatch)
+    assert all(_added_in(v, places) == [["Brot"], []] for v in (v1, v2))
+    mine = _import(v1, places)
+    assert _reading_row(mine)[1] == {**POSED, "imported": True}
+    done = sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=v2))["upgraded"]
+    assert len(done["restarted"]) == len(done["kept"]) == 1
+    assert _reading_row(mine)[1] == {**POSED, "imported": True}
+
+
+def _added_in(version_hash: str, places) -> list[list]:
+    return [b["data"]["added"] for x in json.loads(_file(version_hash, places))["lessons"] for b in x["blocks"] if b["kind"] == "reading"]
+
+
+def test_only_the_unit_whose_reading_took_a_word_restarts_once(places, monkeypatch):
+    from wise_scholar.routes import sharing as sharing_routes
+
+    course = _read_course("Words restarted")
+    with monkeypatch.context() as m:
+        _added_shipped(m)
+        mine = _import(_publish(course, places, monkeypatch), places)
+    for kept in (["Plain"], ["Plain", "Read"]):
+        done = sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=_publish(course, places, monkeypatch)))["upgraded"]
+        titles = {c["key"]: c["title"] for c in db.concepts(mine)}
+        assert sorted(titles[k] for k in done["kept"]) == kept
+        assert _reading_row(mine)[1]["added"] == []
+
+
+@pytest.mark.parametrize("mode", ["learner", "teacher"])
+def test_a_copy_starts_without_the_words_saved_in_the_original(places, mode):
+    course = _read_course(f"Words copied {mode}", mode)
+    copy = db.copy_course(course, f"Words copied {mode} (2)")["id"]
+    block, data = _reading_row(copy)
+    assert data == POSED and _reading_row(course)[1]["added"] == ["Brot"]
+    assert _word_cards(copy) == [("brot", False, "")]
+    _save(block, "Brot")
+    assert (_word_cards(copy), _due(copy)) == ([("brot", True, "")], ["brot"])
+
+
+def _added_seen(course: int) -> list[str]:
+    from wise_scholar import app
+
+    [block] = [b for b in app._lesson_view(_unit_lesson(course))["blocks"] if b["kind"] == "reading"]
+    return block["data"]["added"]
+
+
+def test_a_reader_saves_the_author_s_word_in_a_course_installed_before(places, monkeypatch):
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from wise_scholar.routes import blocks as blocks_routes
+
+    course = _read_course("Words installed")
+    _save(_reading_row(course)[0], "Markt")
+    with monkeypatch.context() as m:
+        _added_shipped(m)
+        mine = _import(_publish(course, places, monkeypatch), places)
+    block, data = _reading_row(mine)
+    assert data["added"] == ["Brot", "Markt"] and _added_seen(mine) == []
+
+    known = asyncio.run(blocks_routes.know_word(block, blocks_routes.Word(word="Markt")))["data"]
+    assert (known["added"], known["known"]) == ([], ["Markt"])
+    db.set_block_data(block, data)
+    assert _save(block, "voll")["added"] == ["voll"]
+    db.set_block_data(block, data)
+    saved = _save(block, "Brot")
+    assert (saved["added"], saved["saved"]) == ([], ["Brot"])
+    assert _word_cards(mine) == [("brot", True, ""), ("markt", False, ""), ("voll", True, "")]
+    assert ("brot", "learning", "glossary") in _words_met(mine)
+    with pytest.raises(HTTPException) as again:
+        _save(block, "Brot")
+    assert again.value.status_code == 409
+
+
+def test_a_word_is_left_in_the_vocabulary_when_its_card_came_up_or_it_has_none(places, monkeypatch):
+    from fastapi import HTTPException
+
+    course = _read_course("Words uncertain")
+    _save(_reading_row(course)[0], "Markt")
+    with monkeypatch.context() as m:
+        _added_shipped(m)
+        mine = _import(_publish(course, places, monkeypatch), places)
+    db.pull_forward(db.row("SELECT id FROM concepts WHERE course_id = ? AND title = 'Read'", mine)["id"], "2026-01-01T00:00:00+00:00")
+    db.conn.execute("DELETE FROM cards WHERE course_id = ? AND lemma = 'markt'", (mine,))
+    assert _added_seen(mine) == ["Brot", "Markt"] and _due(mine) == ["brot"]
+    for word in ("Brot", "Markt"):
+        with pytest.raises(HTTPException) as refused:
+            _save(_reading_row(mine)[0], word)
+        assert refused.value.status_code == 409
+
+
+def test_the_author_keeps_the_words_they_saved(places):
+    from fastapi import HTTPException
+
+    course = _read_course("Words kept")
+    assert _added_seen(course) == ["Brot"]
+    with pytest.raises(HTTPException) as again:
+        _save(_reading_row(course)[0], "Brot")
+    assert again.value.status_code == 409
+
+
+def test_a_word_with_one_card_scheduled_of_two_is_saved(places, monkeypatch):
+    from wise_scholar.routes import blocks as blocks_routes
+
+    course = _read_course("Words twice")
+    plain = db.row("SELECT id FROM concepts WHERE course_id = ? AND title = 'Plain'", course)["id"]
+    card = db.add_card(course, plain, "What does **Brote** mean?", "open", [], "loaves", "", scheduled=True, vocab=True)
+    db.conn.execute("UPDATE cards SET lemma = 'brot', lang = 'de' WHERE id = ?", (card,))
+    mine, _ = _imported(course, places, monkeypatch)
+    db.pull_forward(db.row("SELECT id FROM concepts WHERE course_id = ? AND title = 'Plain'", mine)["id"], "2026-01-01T00:00:00+00:00")
+    assert _word_cards(mine) == [("brot", False, ""), ("brot", True, "")]
+    assert blocks_routes.look_up(mine, "Brot")["saved"]
+    _save(_reading_row(mine)[0], "Brot")
+    assert _word_cards(mine) == [("brot", False, ""), ("brot", True, "")]
+
+
+@pytest.mark.parametrize("held", [
+    {}, {"lang": None, "added": ["Brot"]}, {"lang": 3, "added": ["Brot"]}, {"added": ["Brot"]}, {"lang": "de", "added": "Brot"}, {"lang": "de", "added": 3},
+    {"lang": "de", "added": {"Brot": 1}}, {"lang": "de", "added": [3, None, ["Brot"], "", " "]}, {"lang": "", "added": ["Brot"]},
+])
+def test_a_reading_of_an_unknown_shape_still_opens(places, monkeypatch, held):
+    mine, replayed = _imported(_read_course("Words shapeless"), places, monkeypatch)
+    db.set_block_data(_reading_row(mine)[0], {"title": "T", **held})
+    assert [b["data"] for b in db.blocks(replayed)] == [{"title": "T", **held}]
+
+
+def test_a_reading_without_the_field_gets_none(places, monkeypatch):
+    import asyncio
+
+    from wise_scholar.routes import blocks as blocks_routes
+
+    mine, _ = _imported(_read_course("Words fieldless"), places, monkeypatch)
+    block, data = _reading_row(mine)
+    bare = {k: v for k, v in data.items() if k != "added"}
+    db.set_block_data(block, bare)
+    assert asyncio.run(blocks_routes.know_word(block, blocks_routes.Word(word="Markt")))["data"] == {**bare, "known": ["Markt"]}
+    assert _save(block, "Brot") == {**bare, "known": ["Markt"], "saved": ["Brot"]}
+
+
+def test_a_reading_that_took_no_word_keeps_its_unit_hash(places, monkeypatch):
+    import asyncio
+
+    from wise_scholar.routes import blocks as blocks_routes
+
+    course = _read_course("Words hashed", more={"Known": POSED, "Bare": {k: v for k, v in POSED.items() if k != "added"}})
+
+    def hashes() -> dict[str, str]:
+        manifest, _, _ = bundle.build(course, notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+        return {u["title"]: u["hash"] for u in manifest["units"] if u["kind"] == "concept"}
+
+    with monkeypatch.context() as m:
+        _added_shipped(m)
+        before = hashes()
+    for title in ("Known", "Bare"):
+        asyncio.run(blocks_routes.know_word(_reading_row(course, title)[0], blocks_routes.Word(word="Markt")))
+    after = hashes()
+    assert {t for t in before if before[t] != after[t]} == {"Read"} and set(after) == {"Read", "Plain", "Known", "Bare"}
+
+
+def test_a_word_whose_card_came_up_unsaved_is_recorded_once(places, monkeypatch):
+    mine, _ = _imported(_read_course("Words pulled"), places, monkeypatch)
+    db.pull_forward(db.row("SELECT id FROM concepts WHERE course_id = ? AND title = 'Read'", mine)["id"], "2026-01-01T00:00:00+00:00")
+    before = db.rows("SELECT * FROM cards WHERE course_id = ?", mine)
+    _save(_reading_row(mine)[0], "Brot")
+    assert _words_met(mine) == [("brot", "learning", "glossary")] and db.rows("SELECT * FROM cards WHERE course_id = ?", mine) == before
+    db.set_vocab(db.course(mine)["profile_id"], "de", "brot", "known", "review")
+    _save(_reading_row(mine, "Plain")[0], "Brot")
+    assert _words_met(mine) == [("brot", "known", "review")]
+
+
+def test_a_reader_saves_the_author_s_word_in_a_language_without_a_lemmatizer(places, monkeypatch):
+    from wise_scholar import vocab
+
+    word = "图书馆"
+    assert not vocab.supported("zh") and vocab.word_key(word, "zh") == word
+    posed = {**POSED, "title": "T", "lang": "zh-CN", "glossary": [{"word": word, "meaning": "library"}]}
+    course = _read_course("Words unspaced", posed=posed, text="我去图书馆。")
+    with monkeypatch.context() as m:
+        _added_shipped(m)
+        mine = _import(_publish(course, places, monkeypatch), places)
+    block, data = _reading_row(mine)
+    assert data["added"] == [word] and _added_seen(mine) == [] and _added_seen(course) == [word]
+    assert _word_cards(mine) == [(word, False, "")]
+    db.add_exposures(db.course(mine)["profile_id"], "zh", {word: 1}, promote_at=5)  # met in a text, which is not saved
+    saved = _save(block, word, "我去图书馆。")
+    assert (saved["added"], saved["saved"]) == ([], [word])
+    assert (_word_cards(mine), _due(mine), _words_met(mine)) == ([(word, True, "我去图书馆。")], [word], [(word, "learning", "glossary")])
