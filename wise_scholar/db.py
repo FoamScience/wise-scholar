@@ -1653,6 +1653,15 @@ def card(card_id: int) -> dict | None:
     return _card(row("SELECT * FROM cards WHERE id = ?", card_id))
 
 
+def hidden_card(course_id: int, key) -> int | None:
+    """The course's card of a teach-back, by the key an imported one names it with; a card reviewed or of another kind is
+    not followed."""
+    if not isinstance(key, str):
+        return None
+    found = row("SELECT id FROM cards WHERE course_id = ? AND key = ? AND kind = 'open' AND scheduled = 0", course_id, key)
+    return found and found["id"]
+
+
 def scheduled_cards(course_id: int) -> list[dict]:
     """The course's cards that come back in reviews, vocabulary cards aside."""
     return [_card(c) for c in rows(

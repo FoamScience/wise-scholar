@@ -720,6 +720,10 @@ def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | No
         ).lastrowid
         for b in lesson.blocks:
             data = _clean_block(b, card_ids)
+            if data.get("teachback"):
+                data["card_id"] = db.hidden_card(course_id, data.pop("card", None))
+                if data["card_id"] is None:
+                    raise ValueError("a teach-back names a card the bundle does not hold as its hidden card")
             markdown = db.ticked_as_at(b.markdown, data) if b.kind == "outline" else b.markdown
             locked = db.lock(data) if b.kind in challenge.KINDS else None
             if b.kind == "quiz":

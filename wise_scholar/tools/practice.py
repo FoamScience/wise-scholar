@@ -355,9 +355,10 @@ async def pose_teachback(lesson_id: int, prompt: str, key_points: str) -> str:
     return f"shown as challenge {block['id']}; end the turn and wait for the learner"
 
 
-def _grade_teachback(data: dict, correct: bool) -> None:
-    """A teach-back's outcome becomes a graded answer on its hidden card, so it counts toward mastery."""
-    if card_id := data.get("card_id"):
+def _grade_teachback(course_id: int, data: dict, correct: bool) -> None:
+    """A teach-back's outcome becomes a graded answer on its hidden card, so it counts toward mastery. One imported
+    before it got its card names it by key."""
+    if card_id := data.get("card_id") or (data.get("teachback") and db.hidden_card(course_id, data.get("card"))):
         answer_id = quiz.submit(db.card(card_id), challenge.said(data), 0.5)
         quiz.grade(answer_id, correct)
 
@@ -383,7 +384,7 @@ async def reveal(challenge_id: int, solution: str, files: list[ExerciseFile] = [
     shown = challenge.solution_files(data, locked.get("solution_files") if authored else {f.path: f.content for f in files})
     _patch_block(challenge_id, {"solution": written or solution} | ({"solution_files": shown} if shown else {}))
     if not prepared(lesson):
-        _grade_teachback(data, False)
+        _grade_teachback(lesson["course_id"], data, False)
     if data.get("writing") and data["attempts"] and not data.get("fluency"):
         # the author's text is a model, not the correction of what this learner wrote
         _note_writing_error(challenge_id, data, solution.strip() or written)
@@ -425,9 +426,9 @@ async def mark_solved(challenge_id: int) -> str:
     if not data["attempts"]:
         return "refused: the learner has not submitted an attempt on the card"
     _patch_block(challenge_id, {"solved": True})
-    _grade_teachback(data, True)
+    lesson = db.lesson(db.block(challenge_id)["lesson_id"])
+    _grade_teachback(lesson["course_id"], data, True)
     if data.get("milestone"):
-        lesson = db.lesson(db.block(challenge_id)["lesson_id"])
         if m := db.milestone_for(lesson["concept_id"]) if lesson["concept_id"] else None:
             db.finish_milestone(m["id"])
             hub.publish(lesson["course_id"], {"type": "capstone.set", "capstone": db.capstones(lesson["course_id"], m["capstone_id"])[0]})
