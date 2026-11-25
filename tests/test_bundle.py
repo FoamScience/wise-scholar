@@ -1233,9 +1233,9 @@ def _lesson_titled(course: int, title: str) -> int:
     return db.row("SELECT id FROM lessons WHERE course_id = ? AND title = ? AND phase = 'lesson'", course, title)["id"]
 
 
-def _shipped_figure(version_hash: str, places, title: str = "Asked") -> dict:
+def _shipped_figure(version_hash: str, places, title: str = "Asked", kind: str = "figure") -> dict:
     sent = json.loads(_file(version_hash, places))
-    return next(b["data"] for x in sent["lessons"] if x["title"] == title for b in x["blocks"] if b["kind"] == "figure")
+    return next(b["data"] for x in sent["lessons"] if x["title"] == title for b in x["blocks"] if b["kind"] == kind)
 
 
 def _ships_answers(m) -> None:
@@ -1430,6 +1430,247 @@ def test_an_answer_in_a_prepared_course_is_its_authors_material(places, tmp_path
     asyncio.run(visuals.replace_figure(lesson, figure, SVG, "Redrawn", "a square"))
     again = db.copy_course(course, "Prepared (3)")["id"]
     assert _figure(_lesson_titled(again, "Asked"))["data"]["previous"] == kept | {"caption": "The tilt"}
+
+
+# Draws as `wise-board serve --stdio` does, an element for each `eq` line and a beat for each `>` line, on the prior board
+# when there is one; refuses a script that places an element by one the board does not have.
+INK = """\
+import json, re, sys
+for line in sys.stdin:
+    call = json.loads(line)
+    doc, text = json.loads(call["params"].get("prior") or '{"schema": 2, "pages": 1, "elements": [], "beats": []}'), "ok"
+    for said in call["params"]["script"].splitlines():
+        if said.startswith("> "):
+            doc["beats"].append({"say": said[2:]})
+        elif drawn := re.fullmatch(r"eq (\\w+)(?: below (\\w+))?: (.*)", said):
+            if drawn[2] and drawn[2] not in [e["id"] for e in doc["elements"]]:
+                text = f'no element "{drawn[2]}"'
+            doc["elements"].append({"id": drawn[1], "kind": "eq", "alt": drawn[3]})
+    print(json.dumps({"jsonrpc": "2.0", "id": call["id"], "result": {"ok": text == "ok", "text": text, "doc": json.dumps(doc)}}), flush=True)
+"""
+WRITTEN = 'board "Legs"\n> The theorem.\neq e: a^2+b^2=c^2\n'
+REPLY, AGAIN = "> SECRET: you doubled c.\neq why below e: SECRET not 2c\n", "> SECRET: look again.\neq look below why: SECRET c\n"
+MORE, BUILT_ON = "> Solve it.\neq s below e: c=5\n", "> So it holds.\neq so below why: c is not 10\n"
+
+
+@pytest.fixture
+def ink(tmp_path, monkeypatch):
+    import sys
+
+    from wise_scholar import tutor, wiseboard
+
+    binary = tmp_path / "wise-board"
+    binary.write_text(f"#!{sys.executable}\n{INK}")
+    binary.chmod(0o755)
+    monkeypatch.setenv(wiseboard.ENV, str(binary))
+    monkeypatch.setattr(tutor, "_needs_opening", lambda lesson: False)
+    yield
+    wiseboard.stop()
+
+
+def _written_course(title: str, mode: str = "learner") -> tuple[int, int, int]:
+    """Two finished units with a handwritten board each: the course and the boards, not yet answered on."""
+    import asyncio
+
+    from wise_scholar import figures
+    from wise_scholar.tools import lesson_flow, visuals
+
+    author = db.conn.execute("INSERT INTO profiles (name, mode) VALUES (?, ?)", (f"Ink author {uuid.uuid4().hex[:6]}", mode)).lastrowid
+    course = db.create_course(title, author)["id"]
+    db.conn.execute("UPDATE courses SET started = 1 WHERE id = ?", (course,))
+    db.set_concepts(course, [{"title": "Triangles", "concepts": ["Asked", "Quiet"], "known": []}])
+    lessons = [db.create_lesson(course, c["title"], "lesson", c["id"]) for c in db.concepts(course)]
+    for lesson in lessons:
+        assert asyncio.run(visuals.add_board(lesson, WRITTEN, figures.Teaches(claim="The squares add up.", notice="The legs."))).startswith("shown")
+        assert not asyncio.run(lesson_flow.finish_lesson(lesson, "Done.")).startswith(("error", "refused"))
+    return course, *(_board(lesson)["id"] for lesson in lessons)
+
+
+def _board(lesson: int) -> dict:
+    return next(b for b in _stored(lesson) if b["kind"] == "board")
+
+
+def _turn(monkeypatch, lesson: int, path: str, body: dict, *calls: tuple[int, str], end: str = "well") -> list[str]:
+    """The replies to the extend_board calls a tutor makes, as a backend makes them, in the lesson's turn this POST starts."""
+    import asyncio
+    from types import SimpleNamespace
+
+    import httpx
+
+    from wise_scholar import app, backends, tutor
+
+    replies, running = [], asyncio.Event()
+
+    async def run_turn(prompt, *, token, **kwargs):
+        running.set()
+        context = SimpleNamespace(request_context=SimpleNamespace(request=SimpleNamespace(headers={backends.TURN_HEADER: token})))
+        for board, script in calls:
+            replies.append(await tutor.mcp._tool_manager.call_tool("extend_board", {"block_id": board, "script": script}, context))
+        if end == "stopped":
+            await asyncio.sleep(60)
+        if end == "raised":
+            raise RuntimeError("the agent broke")
+        yield {"type": "turn.done", "ok": end == "well", "error": None if end == "well" else end}
+
+    async def post() -> None:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app.app), base_url="http://127.0.0.1") as client:
+            assert (await client.post(path, json=body)).status_code == 202
+            turn = app._turns[lesson]
+            if end == "stopped":
+                await running.wait()
+                assert (await client.post(f"/api/lessons/{lesson}/stop")).status_code == 204
+            await turn
+
+    monkeypatch.setattr(app.backend, "run_turn", run_turn)
+    asyncio.run(asyncio.wait_for(post(), 30))
+    assert lesson not in app._turns and lesson not in tutor.turns
+    return replies
+
+
+def _ask(monkeypatch, board: int, *calls: tuple[int, str], part: str = "e", end: str = "well") -> list[str]:
+    lesson = db.block(board)["lesson_id"]
+    return _turn(monkeypatch, lesson, f"/api/blocks/{board}/ask", {"part": part, "question": "Is c doubled?"}, *calls, end=end)
+
+
+def _go_on(monkeypatch, board: int, *calls: tuple[int, str]) -> list[str]:
+    lesson = db.block(board)["lesson_id"]
+    return _turn(monkeypatch, lesson, f"/api/lessons/{lesson}/turns", {"text": "Go on."}, *calls)
+
+
+def test_a_version_an_install_a_copy_and_an_upgrade_hold_a_board_without_its_answers(places, ink, monkeypatch):
+    from wise_scholar import obsidian
+    from wise_scholar.routes import sharing as sharing_routes
+
+    course, board, _ = _written_course("Asked on a board")
+    before, hashes = db.block(board)["data"], _unit_hashes(course, places)
+    assert _ask(monkeypatch, board, (board, REPLY)) == [f"board {board} extended; it plays now"]
+    _ask(monkeypatch, board, (board, AGAIN), part="why")
+    answered = db.block(board)["data"]
+    assert answered["script"] == WRITTEN + REPLY + AGAIN and [e["id"] for e in answered["doc"]["elements"]] == ["e", "why", "look"]
+
+    mine, replayed = _imported(course, places, monkeypatch)
+    version = db.course(mine)["source_version"]
+    assert _shipped_figure(version, places, kind="board") == before
+    assert "SECRET" not in _file(version, places) and _unit_hashes(course, places) == hashes
+    came = _board(replayed)["data"]
+    assert came == before | {"imported": True} and "SECRET" not in _rows_text(mine)
+
+    copy = db.copy_course(course, "Asked on a board (2)")["id"]
+    assert _board(_lesson_titled(copy, "Asked"))["data"] == before and "SECRET" not in _rows_text(copy)
+
+    # the owner keeps their board as it was answered
+    assert db.block(board)["data"] == answered == before | {k: answered[k] for k in ("script", "doc")} | {"unanswered": {k: before[k] for k in ("script", "doc")}}
+    assert "SECRET not 2c" in "".join(text.decode() for path, text in obsidian.Vault(course).build().items() if path.endswith(".md"))
+
+    # the reader asks in turn, and a fork of their course leaves that out too
+    theirs = _board(replayed)["id"]
+    _ask(monkeypatch, theirs, (theirs, REPLY))
+    db.conn.execute("UPDATE lessons SET prepared_offline = 1 WHERE course_id = ? AND concept_id IS NOT NULL", (mine,))
+    fork = bundle.publish(mine, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], **places)
+    assert "SECRET" in _rows_text(mine) and _shipped_figure(fork["hash"], places, kind="board") == came
+
+    # an upgrade to a version where the board was answered in between restarts nothing
+    v = sharing_routes.publish_version(course, sharing_routes.Publish())
+    done = sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=v["hash"]))["upgraded"]
+    assert (done["restarted"], done["added"], done["removed"]) == ([], [], [])
+
+
+def test_what_a_board_goes_on_with_after_an_answer_ships_unless_it_builds_on_the_answer(places, ink, monkeypatch):
+    from wise_scholar import wiseboard
+
+    course, board, _ = _written_course("Continued after")
+    before = db.block(board)["data"]
+    _ask(monkeypatch, board, (board, REPLY))
+    extended = [f"board {board} extended; it plays now"]
+    assert _go_on(monkeypatch, board, (board, MORE)) == extended
+    kept = db.block(board)["data"]["unanswered"]
+    assert kept["script"] == WRITTEN + MORE and kept["doc"]["beats"] == [{"say": "The theorem."}, {"say": "Solve it."}]
+    assert [e["id"] for e in kept["doc"]["elements"]] == ["e", "s"]
+
+    # what is left of a continuation that names the answer's parts would not be drawn: the board is kept as it was
+    assert _go_on(monkeypatch, board, (board, BUILT_ON)) == extended
+    data = db.block(board)["data"]
+    assert data["script"] == WRITTEN + REPLY + MORE + BUILT_ON and data["unanswered"] == kept
+    copy = db.copy_course(course, "Continued after (2)")["id"]
+    assert _board(_lesson_titled(copy, "Asked"))["data"] == before | kept
+
+    # a wise-board that could not draw it just now is called again, so nothing is written before it can
+    render = wiseboard.render
+
+    async def busy(script, prior=None):
+        if prior == kept["doc"]:
+            raise wiseboard.Busy("wise-board is busy")
+        return await render(script, prior)
+
+    with monkeypatch.context() as m:
+        m.setattr(wiseboard, "render", busy)
+        assert _go_on(monkeypatch, board, (board, "> Last.\n")) == ["error: wise-board is busy"]
+    assert db.block(board)["data"] == data
+
+
+def test_a_board_that_grew_while_its_kept_board_was_drawn_is_not_written_over(places, ink, monkeypatch):
+    from wise_scholar import wiseboard
+    from wise_scholar.tools import visuals
+
+    _, board, _ = _written_course("Grew meanwhile")
+    _ask(monkeypatch, board, (board, REPLY))
+    kept, render, other, landed = db.block(board)["data"]["unanswered"], wiseboard.render, "> Or b.\neq other below e: b=4\n", []
+
+    async def grown_meanwhile(script, prior=None):
+        if script == MORE and prior == kept["doc"]:
+            landed.append(await visuals.extend_board(board, other))
+        return await render(script, prior)
+
+    monkeypatch.setattr(wiseboard, "render", grown_meanwhile)
+    assert _go_on(monkeypatch, board, (board, MORE)) == [f"error: board {board} grew while this was drawn; extend it again from what it shows now"]
+    assert landed == [f"board {board} extended; it plays now"]
+    data = db.block(board)["data"]
+    assert data["script"] == WRITTEN + REPLY + other and [e["id"] for e in data["doc"]["elements"]] == ["e", "why", "other"]
+    assert data["unanswered"]["script"] == WRITTEN + other and [e["id"] for e in data["unanswered"]["doc"]["elements"]] == ["e", "other"]
+
+
+@pytest.mark.parametrize("end", ["well", "failed", "raised", "stopped"])
+def test_a_question_whose_turn_wrote_no_answer_leaves_no_mark_on_its_board(places, ink, monkeypatch, end):
+    course, board, _ = _written_course(f"Unmarked {end}")
+    before = db.block(board)["data"]
+    assert _ask(monkeypatch, board, end=end) == [] and db.block(board)["data"] == before
+    _go_on(monkeypatch, board, (board, MORE))
+    data = db.block(board)["data"]
+    assert data["script"] == WRITTEN + MORE and "unanswered" not in data
+    assert _board(_lesson_titled(db.copy_course(course, f"Unmarked {end} (2)")["id"], "Asked"))["data"] == data
+
+
+def test_only_the_board_asked_about_is_answered(places, ink, monkeypatch):
+    course, board, other = _written_course("Other board")
+    lesson = db.block(board)["lesson_id"]
+    db.conn.execute("UPDATE blocks SET lesson_id = ? WHERE id = ?", (lesson, other))
+    _ask(monkeypatch, board, (other, MORE), (board, REPLY))
+    assert "unanswered" in db.block(board)["data"] and "unanswered" not in db.block(other)["data"]
+
+
+@pytest.mark.parametrize("mode", ["learner", "teacher"])
+def test_boards_never_answered_ship_and_copy_as_they_are(places, ink, monkeypatch, mode):
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from wise_scholar.routes import blocks as blocks_routes
+
+    course, board, quiet = _written_course(f"Quiet board {mode}", mode)
+    _go_on(monkeypatch, quiet, (quiet, MORE))
+    if mode == "learner":
+        _ask(monkeypatch, board, (board, REPLY))
+    else:
+        with pytest.raises(HTTPException, match="take no answers"):
+            asyncio.run(blocks_routes.ask_about_part(board, blocks_routes.BoardQuestion(part="e", question="Is c doubled?")))
+    hashes = _unit_hashes(course, places)
+    with monkeypatch.context() as m:
+        _ships_answers(m)
+        assert [t for t, h in _unit_hashes(course, places).items() if h != hashes[t]] == (["Asked"] if mode == "learner" else [])
+    data = db.block(quiet)["data"]
+    assert data["script"] == WRITTEN + MORE and "unanswered" not in data
+    copy = db.copy_course(course, f"Quiet board {mode} (2)")["id"]
+    assert _board(_lesson_titled(copy, "Quiet"))["data"] == data
 
 
 def test_the_same_content_packs_to_the_same_bytes_and_a_fork_credits_its_origin(places):

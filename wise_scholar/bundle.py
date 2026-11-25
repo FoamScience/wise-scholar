@@ -185,7 +185,7 @@ def _block_data(block: dict, card_keys: dict[int, str], authored: bool = False) 
     if not block["data"]:
         return None
     raw = json.loads(block["data"])
-    if block["kind"] == "figure":
+    if block["kind"] in ("figure", "board"):
         raw = board.without_answers(raw, authored)
     data = {k: v for k, v in db._fresh(raw, authored).items() if k in SHIPPED[block["kind"]]}
     if raw.get("card_id") is not None:

@@ -879,7 +879,7 @@ def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], auth
             b["markdown"] = ticked_as_at(b["markdown"], data)
         if b["kind"] == "quiz" and data and not authored:
             data = keyless(data)
-        if b["kind"] == "figure" and data:
+        if b["kind"] in ("figure", "board") and data:
             data = board.without_answers(data, authored)
         if data and data.get("card_id") is not None:
             if data["card_id"] not in card_map:

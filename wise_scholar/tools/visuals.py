@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import suppress
 
 from .. import art, board, crafted, db, diagrams, figcheck, figures, plots, widgets, wiseboard
 from ..tutor import _show, calling_turn, mcp, pretest_blocker
@@ -380,20 +381,31 @@ async def extend_board(block_id: int, script: str) -> str:
     if not wiseboard.available():
         return NO_BOARDS
     before = block["data"]["script"]
-    grown = f"{before.rstrip()}\n{script.strip()}\n"
+    grown = _grown(before, script)
     if len(grown.encode()) > wiseboard.MAX_SCRIPT:
         return f"error: board {block_id} would have a script over {wiseboard.MAX_SCRIPT} bytes; start a new board with add_board"
+    turn, kept = calling_turn(), block["data"].get("unanswered")
     try:
         doc, notes = await wiseboard.render(script, prior=block["data"]["doc"])
+        if turn and turn.get("asked") == block_id:
+            kept = kept or {"script": before, "doc": block["data"]["doc"]}
+        elif kept:
+            # Beats that name a part of an answer are refused there, and what is kept stays as it was.
+            with suppress(wiseboard.Refused):
+                kept = {"script": _grown(kept["script"], script), "doc": (await wiseboard.render(script, prior=kept["doc"]))[0]}
     except wiseboard.BoardError as e:
         return f"error: {e}"
     # Another extend may have landed while this one was drawn; this one was drawn on what the board was before it.
     block = db.block(block_id)
     if not block or block["data"].get("script") != before:
         return f"error: board {block_id} grew while this was drawn; extend it again from what it shows now"
-    block = db.set_block_data(block_id, block["data"] | {"script": grown, "doc": doc})
+    block = db.set_block_data(block_id, block["data"] | {"script": grown, "doc": doc} | ({"unanswered": kept} if kept else {}))
     _show(db.lesson(block["lesson_id"]), block, "block.updated")
     return f"board {block_id} extended; it plays now" + _board_notes(notes)
+
+
+def _grown(script: str, more: str) -> str:
+    return f"{script.rstrip()}\n{more.strip()}\n"
 
 
 def _board_notes(notes: str) -> str:

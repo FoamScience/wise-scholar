@@ -170,13 +170,15 @@ _calling: ContextVar[dict | None] = ContextVar("calling", default=None)
 # courses, a recap turn writes the story of a finished course, a contribute turn searches GitHub for open-source work
 # that puts a finished course to use, a gist turn writes a finished lesson's gist board; each may call only its own
 # tools, and a lesson turn may call none of them.
-turns: dict[int | tuple[str, int], dict] = {}  # lesson_id, or (kind, lesson_id) -> {"token", "calls", "lesson_id", "course_id", "kind"}
+# lesson_id, or (kind, lesson_id) -> {"token", "calls", "lesson_id", "course_id", "kind", "asked"}; asked: the block a
+# question on which started the turn, None in any other turn
+turns: dict[int | tuple[str, int], dict] = {}
 _ID_ARGUMENTS = ("lesson_id", "course_id", "challenge_id", "quiz_id", "block_id")
 
 
 def turn_started(lesson: dict, token: str, kind: str = "lesson") -> None:
     turns[lesson["id"] if kind == "lesson" else (kind, lesson["id"])] = {
-        "token": token, "calls": 0, "lesson_id": lesson["id"], "course_id": lesson["course_id"], "kind": kind,
+        "token": token, "calls": 0, "lesson_id": lesson["id"], "course_id": lesson["course_id"], "kind": kind, "asked": lesson.get("asked"),
     }
     if kind == "graph":
         _searched.discard(lesson["id"])

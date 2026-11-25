@@ -199,7 +199,7 @@ async def ask_about_part(block_id: int, body: BoardQuestion) -> dict:
         line = _board_line(block, body, question)
     lesson = _lesson(block["lesson_id"])
     db.add_message(lesson["id"], "learner", question)
-    core._start_turn(lesson, line)
+    core._start_turn(lesson | {"asked": block_id}, line)
     return {"figure": block_id}
 
 
