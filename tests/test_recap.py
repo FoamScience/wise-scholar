@@ -1,4 +1,6 @@
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 import pytest
@@ -59,6 +61,64 @@ def test_a_course_is_finished_once_every_module_is_done_and_growing_takes_the_fi
     _finish(course, db.row("SELECT id FROM concepts WHERE course_id = ? AND title = 'Casing'", course)["id"], "2026-10-20 10:00:00")
     state = db.sync_recap(course)
     assert (state["finished"], state["seen"]) == ("2026-10-20 10:00:00", 0)
+
+
+def test_two_requests_that_open_a_just_finished_course_at_once_share_one_recap(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    course, units = _course(_learner(), PUMPS)
+    _finish(course, units["Head"], "2026-10-05 10:00:00")
+    _finish(course, units["Blades"], "2026-10-12 10:00:00")
+    read, both_read, mine = db.recap, threading.Barrier(2, timeout=20), threading.local()
+
+    def recap_once_both_read(course_id):
+        found = read(course_id)
+        if not getattr(mine, "met", False):
+            mine.met = True
+            both_read.wait()
+        return found
+
+    monkeypatch.setattr(db, "recap", recap_once_both_read)
+
+    def open_course(_):
+        client = TestClient(app.app, base_url="http://127.0.0.1:8321", raise_server_exceptions=False)
+        return client.get(f"/api/courses/{course}")
+
+    with ThreadPoolExecutor(2) as pool:
+        answers = list(pool.map(open_course, range(2)))
+    assert [a.status_code for a in answers] == [200, 200]
+    assert [a.json()["recap"] for a in answers] == [{"finished": "2026-10-12 10:00:00", "seen": False}] * 2
+    assert len(db.rows("SELECT * FROM recaps WHERE course_id = ?", course)) == 1
+
+
+@pytest.mark.parametrize("grown", [False, True], ids=["first finish", "finished again"])
+def test_a_caller_that_read_before_another_wrote_the_recap_keeps_what_the_other_wrote(monkeypatch, grown):
+    course, units = _course(_learner(), PUMPS)
+    _finish(course, units["Head"], "2026-10-05 10:00:00")
+    _finish(course, units["Blades"], "2026-10-12 10:00:00")
+    if grown:
+        db.sync_recap(course)
+        db.conn.execute("INSERT INTO concepts (course_id, module, title, position) VALUES (?, 'Design', 'Casing', 9)", (course,))
+        assert db.sync_recap(course)["finished"] is None
+        _finish(course, db.row("SELECT id FROM concepts WHERE course_id = ? AND title = 'Casing'", course)["id"], "2026-10-20 10:00:00")
+    read, ahead = db.recap, []
+
+    def other():
+        db.sync_recap(course)
+        db.set_recap(course, seen=1, narrative={"intro": "x"}, positions={"7": [1, 2]})
+
+    def recap_before_the_other_wrote(course_id):
+        found = read(course_id)
+        if not ahead:
+            ahead.append(True)
+            with ThreadPoolExecutor(1) as pool:
+                pool.submit(other).result(timeout=20)
+        return found
+
+    monkeypatch.setattr(db, "recap", recap_before_the_other_wrote)
+    state = db.sync_recap(course)
+    assert state["finished"] == ("2026-10-20 10:00:00" if grown else "2026-10-12 10:00:00")
+    assert (state["seen"], state["narrative"], state["positions"]) == (1, {"intro": "x"}, {"7": [1, 2]})
 
 
 def test_a_module_whose_projects_are_all_built_counts_as_done():
