@@ -134,7 +134,7 @@ async def pose_comparison(lesson_id: int, problem: str, left: str, right: str, q
     if max(len(left), len(right)) > COMPARISON_CHARS:
         return f"error: each solution is at most {COMPARISON_CHARS} characters"
     blocks = db.blocks(lesson_id)
-    if any(b["data"].get("comparison") for b in blocks):
+    if any(b["kind"] == "challenge" and b["data"].get("comparison") for b in blocks):
         return "error: this lesson already has its comparison"
     if not any(b["kind"] == "challenge" and b["data"].get("solved") for b in blocks):
         return "error: a comparison follows a challenge the learner solved in this lesson"
