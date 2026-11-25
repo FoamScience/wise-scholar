@@ -4,6 +4,7 @@ import { api } from './api'
 import type { Completion, ExerciseFile } from './course'
 import type { Editor } from './editor'
 import { sameText, toDisk } from './editorSync'
+import type { DiffSummary } from './editorSync'
 import { Button } from '@/components/ui/button'
 import { cn } from 'cn'
 
@@ -15,11 +16,14 @@ export function FileEditor(props: {
   blockId: number
   file: ExerciseFile
   completions: Completion[]
+  original: string | null
+  onDiff: (summary: DiffSummary) => void
+  onDiffFailed: () => void
   onSaving: () => void
   register: (flush: () => Promise<boolean>) => () => void
 }) {
   const { t } = useTranslation()
-  const { blockId, file } = props
+  const { blockId, file, original } = props
   const path = file.path
   const content = file.content ?? ''
   const host = useRef<HTMLDivElement>(null)
@@ -33,6 +37,7 @@ export function FileEditor(props: {
   const [status, setStatus] = useState<'' | 'saving' | 'saved'>('')
   const [failed, setFailed] = useState('')
   const [loaded, setLoaded] = useState(false)
+  const [unloadable, setUnloadable] = useState(false)
 
   useEffect(() => {
     latest.current = props
@@ -87,13 +92,14 @@ export function FileEditor(props: {
         label: path,
         completions: latest.current.completions,
         readOnly: latest.current.file.online,
+        onDiff: (summary) => latest.current.onDiff(summary),
         onChange: () => {
           clearTimeout(timer.current)
           timer.current = setTimeout(flush, SAVE_AFTER_MS)
         },
       })
       setLoaded(true)
-    }, () => {})
+    }, () => !gone && setUnloadable(true))
     const unregister = latest.current.register(flush)
     return () => {
       gone = true
@@ -130,10 +136,15 @@ export function FileEditor(props: {
     editor.current?.setReadOnly(file.online)
   }, [file.online])
 
+  useEffect(() => {
+    if (loaded) editor.current?.setDiff(original).catch(() => latest.current.onDiffFailed())
+    else if (unloadable && original !== null) latest.current.onDiffFailed()
+  }, [loaded, unloadable, original])
+
   return (
     <>
       {!loaded && <pre className="m-0 max-h-[420px] overflow-auto rounded-none">{content}</pre>}
-      <div ref={host} className="code-editor" />
+      <div ref={host} className="code-editor" dir="ltr" />
       {(status || failed) && (
         <div className={cn('px-4 py-1 text-sm text-muted-foreground', failed && 'rounded-md bg-warm-tint')} role="status">
           {failed || (status === 'saving' ? t('exercise.saving') : t('exercise.saved'))}

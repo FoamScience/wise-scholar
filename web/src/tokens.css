@@ -20,6 +20,7 @@
   --mix-light: #ffffff; --mix-dark: #000000;
   --code-bg: #101a23; --code-ink: #e6edf3; --code-keyword: #ff7b72; --code-string: #a5d6ff; --code-number: #79c0ff;
   --code-comment: #8b949e; --code-name: #d2a8ff; --code-type: #ffa657; --code-failed: #ffc9a3;
+  --code-added: #7ee2a8; --code-removed: #ff9a8f;
 
   --font-display: 'Instrument Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;
   --font-body: 'Instrument Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;

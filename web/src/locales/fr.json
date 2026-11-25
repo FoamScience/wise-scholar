@@ -417,6 +417,12 @@
       "outputStopped": "Sortie : arrêté",
       "outputExit": "Sortie : code de retour {{code}}",
       "noOutput": "(aucune sortie)",
+      "changes": "Différences avec le code de départ",
+      "changesLegend": "Barré : le code de départ. Marqué au bord : vos modifications.",
+      "changesAdded": "Marqué au bord : vos modifications.",
+      "changesRemoved": "Barré : le code de départ que vous avez retiré.",
+      "noChanges": "Ce fichier est identique au code de départ.",
+      "diffFailed": "La comparaison n'a pas pu être chargée.",
       "cleaned": "Les fichiers du cours ont été nettoyés ; ces copies sont en lecture seule. Demandez au tuteur de reposer l'exercice pour y travailler."
     },
     "card": {
