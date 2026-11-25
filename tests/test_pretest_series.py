@@ -218,6 +218,32 @@ def test_a_long_pretest_is_refused_and_a_short_one_shown(hints):
     db.conn.execute("UPDATE courses SET lang = NULL WHERE id = ?", (course,))
 
 
+def test_a_comparison_is_posed_in_a_lesson_that_holds_prose_an_example_and_its_closing_card():
+    import asyncio
+
+    from wise_scholar.tools import lesson_flow as flow_tools, practice as practice_tools
+
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Weighing')").lastrowid
+    course = db.create_course("Sums", who)["id"]
+    db.set_concepts(course, [{"title": "Basics", "concepts": ["Series"], "known": ["Series"]}])
+    lesson = db.create_lesson(course, "Series", "lesson", db.concepts(course)[0]["id"])
+    compare = ("Sum 1..n", "n*(n+1)//2", "sum(range(n+1))", "When is each the better choice?")
+    assert asyncio.run(flow_tools.add_block(lesson, "prose", "A sum adds terms.")) == "shown"
+    assert asyncio.run(flow_tools.add_block(lesson, "example", "1 + 2 + 3 = 6")) == "shown"
+    assert asyncio.run(practice_tools.pose_comparison(lesson, *compare)) == "error: a comparison follows a challenge the learner solved in this lesson"
+    assert asyncio.run(practice_tools.pose_challenge(lesson, "Sum 1..10")).startswith("shown")
+    task = db.blocks(lesson)[-1]
+    db.set_block_data(task["id"], {**task["data"], "attempts": ["55"]})
+    assert asyncio.run(practice_tools.mark_solved(task["id"])).startswith("marked")
+    assert asyncio.run(practice_tools.pose_comparison(lesson, *compare)).startswith("shown as challenge")
+    assert asyncio.run(practice_tools.pose_comparison(lesson, *compare)) == "error: this lesson already has its comparison"
+
+    again = db.create_lesson(course, "Series", "lesson", db.concepts(course)[0]["id"])
+    assert asyncio.run(flow_tools.finish_lesson(again, "You can sum.")) == "finished; end the turn"
+    assert db.blocks(again)[-1]["kind"] == "done" and db.blocks(again)[-1]["data"] is None
+    assert asyncio.run(practice_tools.pose_comparison(again, *compare)) == "error: a comparison follows a challenge the learner solved in this lesson"
+
+
 def test_a_pretest_challenge_takes_one_try_and_then_shows_its_answer(monkeypatch):
     import asyncio
 
