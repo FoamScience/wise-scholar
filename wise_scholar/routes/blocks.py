@@ -1,7 +1,5 @@
 import asyncio
 import json
-import simplemma
-import unicodedata
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pathlib import Path
@@ -318,6 +316,11 @@ def _met_in(block: dict, sentence: str) -> str:
     return sentence if sentence in " ".join(block["markdown"].split()) else ""
 
 
+def _own_added(block: dict) -> dict:
+    """The change that leaves a reading's saved words to its learner's own; none when it has no such field."""
+    return {"added": db.own_words(block)} if "added" in block["data"] else {}
+
+
 @app.post("/api/blocks/{block_id}/vocabulary")
 async def add_vocabulary(block_id: int, body: Word) -> dict:
     block = db.block(block_id)
@@ -326,15 +329,20 @@ async def add_vocabulary(block_id: int, body: Word) -> dict:
     gloss = next((g for g in block["data"]["glossary"] if g["word"] == body.word), None)
     if not gloss:
         raise HTTPException(404, "that word is not in the glossary")
-    saved = block["data"].get("saved", [])
-    if body.word in block["data"]["added"] or body.word in saved:
+    saved, own = block["data"].get("saved", []), _own_added(block)
+    added = own.get("added", [])
+    if body.word in added or body.word in saved:
         raise HTTPException(409, "already in your vocabulary")
     lesson = _lesson(block["lesson_id"])
     lang = block["data"]["lang"].split("-")[0].lower()
-    lemma = _lemma(gloss["word"], lang)
-    if _has_card(lesson["course_id"], lang, lemma):
-        # the card made elsewhere stays as it is; saved, unlike added, stays out of bundles and copies, as that card may
-        return _update_block(block, {"saved": [*saved, body.word]})[1]
+    lemma = vocab.word_key(gloss["word"], lang)
+    if card := db.word_card(lesson["course_id"], lang, lemma):
+        # a card already scheduled stays as it is, and so does the profile's record of its word
+        if not card["due"] or lemma not in db.vocab_states(lesson["profile_id"], lang):
+            db.set_vocab(lesson["profile_id"], lang, lemma, "learning", "glossary")
+        if not card["due"]:
+            db.take_word(card["id"], _now(), _met_in(block, body.sentence))
+        return _update_block(block, {"saved": [*saved, body.word], **own})[1]
     question, source = WORD_CARD[lesson["locale"]]
     card = db.add_card(
         lesson["course_id"], lesson["concept_id"], question.format(gloss["word"]), "open", [],
@@ -342,7 +350,7 @@ async def add_vocabulary(block_id: int, body: Word) -> dict:
     )
     db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, lang, card))
     db.set_vocab(lesson["profile_id"], lang, lemma, "learning", "glossary")
-    _, block = _update_block(block, {"added": [*block["data"]["added"], body.word]})
+    _, block = _update_block(block, {"added": [*added, body.word]})
     return block
 
 
@@ -353,10 +361,10 @@ async def know_word(block_id: int, body: Word) -> dict:
         raise HTTPException(404, "no such reading")
     lesson = _lesson(block["lesson_id"])
     lang = block["data"]["lang"].split("-")[0].lower()
-    db.set_vocab(lesson["profile_id"], lang, _lemma(body.word, lang), "known", "learner")
+    db.set_vocab(lesson["profile_id"], lang, vocab.word_key(body.word, lang), "known", "learner")
     language_tools.advance_tier(lesson["profile_id"], lang, db.vocab_tier(lesson["profile_id"], lang, vocab.starting_tier(lesson["level"], lang)))
     known = block["data"].get("known", [])
-    _, block = _update_block(block, {"known": known if body.word in known else [*known, body.word]})
+    _, block = _update_block(block, {"known": known if body.word in known else [*known, body.word], **_own_added(block)})
     return block
 
 
@@ -367,12 +375,6 @@ def _word_course(course_id: int) -> dict:
     if not course["lang"]:
         raise HTTPException(409, "words are for language courses; the first reading sets the language")
     return course
-
-
-def _lemma(word: str, lang: str) -> str:
-    """The key a word's state is kept under, as readings record it; the word itself without a lemmatizer."""
-    word = unicodedata.normalize("NFC", word.strip())
-    return (simplemma.lemmatize(word, lang=lang) if vocab.supported(lang) else word).lower()
 
 
 def _states(course: dict, words: list[str]) -> dict[str, str]:
@@ -389,7 +391,7 @@ def _states(course: dict, words: list[str]) -> dict[str, str]:
         rank = vocab.rank(lemma, lang) if limit else None
         return met.get(lemma) or ("known" if rank is not None and rank < limit else "new")
 
-    return {w: state(_lemma(w, lang)) for w in words}
+    return {w: state(vocab.word_key(w, lang)) for w in words}
 
 
 @app.post("/api/courses/{course_id}/words/states")
@@ -399,35 +401,36 @@ def word_states(course_id: int, body: Words) -> dict[str, str]:
 
 @app.get("/api/courses/{course_id}/words")
 def look_up(course_id: int, word: str) -> dict:
-    """A tapped word: its state, whether it has a card, and its entries in the course's lexicon."""
+    """A tapped word: its state, whether it has a scheduled card, and its entries in the course's lexicon."""
     course = _word_course(course_id)
     folder = resources.course_resource(course_id, "lexicon", course["lang"])
     entries = lexicon.lookup(folder, word.strip()) if folder and (folder / lexicon.DB).exists() else []
+    card = db.word_card(course_id, course["lang"], vocab.word_key(word, course["lang"]))
     return {
-        "state": _states(course, [word])[word], "saved": _has_card(course_id, course["lang"], _lemma(word, course["lang"])),
+        "state": _states(course, [word])[word], "saved": bool(card and card["due"]),
         "entries": [{k: e[k] for k in ("head", "pos", "ipa", "glosses", "form_of")} for e in entries[:lexicon.ENTRIES]],
     }
-
-
-def _has_card(course_id: int, lang: str, lemma: str) -> bool:
-    return bool(db.row("SELECT 1 FROM cards WHERE course_id = ? AND lang = ? AND lemma = ? AND vocab = 1", course_id, lang, lemma))
 
 
 @app.post("/api/courses/{course_id}/words", status_code=201)
 async def save_word(course_id: int, body: SavedWord) -> None:
     course = _word_course(course_id)
-    word, meaning, lemma = body.word.strip(), body.meaning.strip(), _lemma(body.word, course["lang"])
+    word, meaning, lemma = body.word.strip(), body.meaning.strip(), vocab.word_key(body.word, course["lang"])
     if not word or not meaning:
         raise HTTPException(422, "write the word's meaning first")
-    if _has_card(course_id, course["lang"], lemma):
+    card, context = db.word_card(course_id, course["lang"], lemma), " ".join(body.sentence.split())
+    if card and card["due"]:
         raise HTTPException(409, "already in your vocabulary")
-    question, _ = WORD_CARD[db.profile(course["profile_id"])["locale"]]
-    # no unit and origin 'word': a saved word is the learner's own, not the unit's material
-    card = db.add_card(
-        course_id, None, question.format(word), "open", [], meaning, "", scheduled=True, due=_now(), vocab=True,
-        context=" ".join(body.sentence.split()), origin="word",
-    )
-    db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, course["lang"], card))
+    if card:  # the course's own, which keeps the author's meaning: it may ship in a version of this course
+        db.take_word(card["id"], _now(), context)
+    else:
+        question, _ = WORD_CARD[db.profile(course["profile_id"])["locale"]]
+        # no unit and origin 'word': a saved word is the learner's own, not the unit's material
+        card_id = db.add_card(
+            course_id, None, question.format(word), "open", [], meaning, "", scheduled=True, due=_now(), vocab=True,
+            context=context, origin="word",
+        )
+        db.conn.execute("UPDATE cards SET lemma = ?, lang = ? WHERE id = ?", (lemma, course["lang"], card_id))
     db.set_vocab(course["profile_id"], course["lang"], lemma, "learning", "learner")
 
 
@@ -435,7 +438,7 @@ async def save_word(course_id: int, body: SavedWord) -> None:
 async def mark_known(course_id: int, body: TappedWord) -> None:
     course = _word_course(course_id)
     lang, profile = course["lang"], course["profile_id"]
-    db.set_vocab(profile, lang, _lemma(body.word, lang), "known", "learner")
+    db.set_vocab(profile, lang, vocab.word_key(body.word, lang), "known", "learner")
     if vocab.supported(lang):
         language_tools.advance_tier(profile, lang, db.vocab_tier(profile, lang, vocab.starting_tier(course["level"], lang)))
 

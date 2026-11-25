@@ -1,6 +1,7 @@
 """Frequency tiers and the reading gate: what a learner's text may contain, and whether a draft fits."""
 import random
 import re
+import unicodedata
 from collections import Counter
 from functools import lru_cache
 
@@ -118,6 +119,12 @@ def supported(lang: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def word_key(word: str, lang: str) -> str:
+    """The key a word's state is kept under, as readings record it; the word itself without a lemmatizer."""
+    word = unicodedata.normalize("NFC", word.strip())
+    return (simplemma.lemmatize(word, lang=lang) if supported(lang) else word).lower()
 
 
 def lemmatize(text: str, lang: str) -> list[str]:

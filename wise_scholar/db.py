@@ -806,9 +806,9 @@ def _fresh(data: dict, authored: bool = False) -> dict:
         kept["answer"] = None
     if "last_run" in data:
         kept["last_run"] = None
+    kept.update({k: [] for k in ("added", "known", "non_goals") if k in data})
     if "steps" in data:
         kept.update({"at": 0, "added": None})  # the added step stays in steps; the reason for it is about the learner
-    kept.update({k: [] for k in ("known", "non_goals") if k in data})
     if data.get("rounds"):  # a vocabulary check starts over from the words it opened with
         first = data["rounds"][0]
         kept.update({"rounds": [], "current": {"tier": first["tier"], "words": first["words"]}, "tier": None})
@@ -1430,12 +1430,43 @@ def _shown(b: dict, with_key: bool) -> dict:
         b["data"] = keyless(data)
     if b["kind"] == "outline":
         b["markdown"] = ticked_as_at(b["markdown"], data)
+    if b["kind"] == "reading" and data.get("added"):
+        data["added"] = own_words(b)
     return b
+
+
+def own_words(reading: dict) -> list[str]:
+    """The words its learner saved from a reading. An old install or copy also lists those its author saved, whose cards
+    were never scheduled here."""
+    from . import vocab  # its word lists are slow to load
+
+    lang, added = reading["data"].get("lang"), reading["data"]["added"]
+    if not isinstance(lang, str) or not isinstance(added, list):
+        return added  # an install checks no shapes
+    course, lang = row("SELECT course_id FROM lessons WHERE id = ?", reading["lesson_id"])["course_id"], lang.split("-")[0].lower()
+
+    def waits(word) -> bool:
+        card = word_card(course, lang, vocab.word_key(word, lang)) if isinstance(word, str) and word.strip() else None
+        return bool(card) and not card["due"]
+
+    return [w for w in added if not waits(w)]
+
+
+def word_card(course_id: int, lang: str, lemma: str) -> dict | None:
+    """The course's vocabulary card of a word, a scheduled one first. One that came with a course or a copy has no due
+    until its learner saves the word."""
+    return row("SELECT id, due FROM cards WHERE course_id = ? AND lang = ? AND lemma = ? AND vocab = 1 ORDER BY due IS NULL, id",
+               course_id, lang, lemma)
+
+
+def take_word(card_id: int, due: str, context: str) -> None:
+    """Schedule a vocabulary card that came with the course for the learner who saves its word."""
+    conn.execute("UPDATE cards SET due = ?, context = ? WHERE id = ?", (due, context, card_id))
 
 
 def blocks(lesson_id: int) -> list[dict]:
     """The lesson's blocks as its reader gets them: a quiz without its key until it is answered, an outline without the
-    ticks of whoever it was imported or copied from."""
+    ticks and a reading without the saved words of whoever it was imported or copied from."""
     found = [_block(b) for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", lesson_id)]
     with_key = bool(found) and keyed(lesson(lesson_id))
     return [_shown(b, with_key) for b in found]
