@@ -883,8 +883,9 @@ def _copy_cards(course_id: int, new_id: int, concept_map: dict[int, int]) -> dic
     return card_map
 
 
-def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], authored: bool) -> dict[int, int]:
-    """The map of old to new block ids. A variant's original is left out: _copy_lessons sets it once every block is copied."""
+def _copy_blocks(old_lesson: int, lesson_id: int, concept_map: dict[int, int], card_map: dict[int, int], authored: bool) -> dict[int, int]:
+    """The map of old to new block ids. A variant's original is left out: _copy_lessons sets it once every block is copied.
+    So is what a revisit's check is on: the mistakes and claims stay with the learner."""
     from . import board  # it draws with art, which reads this module
 
     block_map = {}
@@ -905,7 +906,10 @@ def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], auth
                 continue  # a block on a card that stays behind
             data = {**data, "card_id": card_map[data["card_id"]]}
         if data:
-            data.pop("variant_of", None)
+            for field in ("variant_of", "revisit_error", "revisit_claim"):
+                data.pop(field, None)
+            if b["kind"] == "quiz" and (unit := data.pop("unit", None)) in concept_map:
+                data["unit"] = concept_map[unit]
         copied = conn.execute(
             "INSERT INTO blocks (lesson_id, kind, markdown, data, created, key) VALUES (?, ?, ?, ?, ?, ?)",
             (lesson_id, b["kind"], b["markdown"], json.dumps(data) if data else None, b["created"], b["key"]),
@@ -924,7 +928,7 @@ def _copy_lessons(course_id: int, new_id: int, concept_map: dict[int, int], card
             "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key) VALUES (?, ?, ?, ?, ?, ?)",
             (new_id, lesson_row["title"], lesson_row["phase"], concept_map.get(lesson_row["concept_id"]), str(uuid.uuid4()), lesson_row["key"]),
         ).lastrowid
-        block_map |= _copy_blocks(lesson_row["id"], lesson_id, card_map, authored)
+        block_map |= _copy_blocks(lesson_row["id"], lesson_id, concept_map, card_map, authored)
         conn.executemany(
             "INSERT INTO messages (lesson_id, role, text, created) VALUES (?, ?, ?, ?)",
             [(lesson_id, m["role"], m["text"], m["created"]) for m in rows("SELECT * FROM messages WHERE lesson_id = ? ORDER BY id", lesson_row["id"])],
