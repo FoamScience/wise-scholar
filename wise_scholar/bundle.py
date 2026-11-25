@@ -180,13 +180,16 @@ def sha(data: bytes) -> str:
 
 
 def _block_data(block: dict, card_keys: dict[int, str], authored: bool = False) -> dict | None:
-    """A block's material without the author's record; a quiz names its card by key, a figure keeps its drawing."""
+    """A block's material without the author's record; a quiz names its card and a variant its original by key, a figure
+    keeps its drawing."""
     if not block["data"]:
         return None
     raw = json.loads(block["data"])
     data = {k: v for k, v in db._fresh(raw, authored).items() if k in SHIPPED[block["kind"]]}
     if raw.get("card_id") is not None:
         data["card"] = card_keys.get(int(raw["card_id"]))
+    if data.pop("variant_of", None) is not None:
+        data |= {"variant_of": v["original_key"] for v in db.variants(db.lesson(block["lesson_id"])["course_id"]) if v["id"] == block["id"]}
     if block["kind"] in challenge.KINDS and (locked := db.locked(block["id"])):
         data["max_hints"] = locked["max_hints"]  # the locked hints stay here, and the length they gave the ladder
     return data
@@ -402,7 +405,7 @@ def _capstone_rows(course_id: int, unit_keys: dict[int, str]) -> list[dict]:
 # --- Edits: exact replacements the author accepted for the version, never made in the course itself -----------------
 EDIT_TARGETS = ("block", "card", "file", "course", "summary")
 COURSE_FIELDS = ("topic", "details", "cover_alt")
-_NOT_TEXT = ("svg", "card")  # a figure's drawing and a quiz's card key are not read or edited as text
+_NOT_TEXT = ("svg", "card", "variant_of")  # a figure's drawing and the keys of a quiz's card and a variant's original are not read or edited as text
 BOARD_INK = ("doc", "script")  # nor a board's script and ink
 
 
@@ -650,8 +653,10 @@ def _unworked(block: Block) -> dict:
 
 
 def _clean_block(block: Block, card_ids: dict[str, int]) -> dict | None:
-    """A block from someone else, made safe to show and to hand to the tutor."""
+    """A block from someone else, made safe to show and to hand to the tutor. A variant's original is left out: _add_content
+    sets it once every block is in the course."""
     data = _unworked(block)
+    data.pop("variant_of", None)
     teaches = data.pop("teaches", None)
     if block.kind == "figure":
         data = {"svg": figures.clean(str(data.get("svg", "")), limit=FIGURE_LIMIT), "alt": str(data.get("alt", ""))[:2000],
@@ -686,8 +691,11 @@ def record_version(version_hash: str, manifest: Manifest) -> None:
     )
 
 
-def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | None, unit_ids: dict[str, int]) -> None:
-    """The cards and lessons of the given units (None stands for those of no unit; units None for all of them)."""
+def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | None, unit_ids: dict[str, int],
+                 variants: dict[int, str | None] | None = None) -> None:
+    """The cards and lessons of the given units (None stands for those of no unit; units None for all of them). variants:
+    the variants the course keeps, with the key of each one's original, None for one it does not hold."""
+    variants = dict(variants or {})
     card_ids = {r["key"]: r["id"] for r in db.rows("SELECT id, key FROM cards WHERE course_id = ?", course_id)}
     for k in manifest.cards:
         if units is not None and k.unit not in units:
@@ -713,6 +721,20 @@ def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | No
                 (lesson_id, b.kind, b.markdown, json.dumps(data), b.key, json.dumps(locked) if locked else None),
             ).lastrowid
             db.conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (block_id, block_id))
+            original = (b.data or {}).get("variant_of")
+            if b.kind == "challenge" and isinstance(original, str):  # a number is ignored: it is the author's block id
+                variants[block_id] = original
+    _point_variants(course_id, manifest, variants)
+
+
+def _point_variants(course_id: int, manifest: Manifest, variants: dict[int, str | None]) -> None:
+    """Point each variant at the course's block of its key, when a practice unit could vary that block. What the manifest
+    says of a block settles that before any variant is pointed, so the order of the blocks does not matter."""
+    refused = {b.key for x in manifest.lessons for b in x.blocks if not challenge.variable(b.kind, b.data or {})}
+    held = db.rows("SELECT b.id, b.key, b.kind, b.data FROM blocks b JOIN lessons l ON l.id = b.lesson_id WHERE l.course_id = ?", course_id)
+    originals = {r["key"]: r["id"] for r in held if r["key"] not in refused and challenge.variable(r["kind"], json.loads(r["data"] or "{}"))}
+    for variant, key in variants.items():
+        db.set_original(variant, originals.get(key))
 
 
 def _add_capstones(course_id: int, manifest: Manifest, unit_ids: dict[str, int], done: set[str] = frozenset()) -> None:
@@ -905,6 +927,11 @@ def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, 
     redo = {*plan["restarted"], *plan["added"]}
     lesson_ids, card_ids = _dropped(course_id, concepts, plan, old)
     done = _done_milestones(course_id, plan["kept"])
+    original_keys = {v["id"]: v["original_key"] for v in db.variants(course_id)}
+    kept_variants = {b["id"]: original_keys.get(b["id"]) for b in db.rows(
+        "SELECT b.id, b.lesson_id FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+        "WHERE l.course_id = ? AND json_extract(b.data, '$.variant_of') IS NOT NULL", course_id,
+    ) if b["lesson_id"] not in lesson_ids}
     db.conn.execute("BEGIN")
     try:
         record_version(version_hash, new)
@@ -914,7 +941,7 @@ def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, 
         unit_ids = _put_units(course_id, new, concepts, redo)
         _replace_needs(course_id, new, unit_ids)
         _add_capstones(course_id, new, unit_ids, done)
-        _add_content(course_id, new, redo | (set() if plan["loose"] else {None}), unit_ids)
+        _add_content(course_id, new, redo | (set() if plan["loose"] else {None}), unit_ids, kept_variants)
         _update_course(course, version_hash, new, old)
         source_files = _add_sources(course_id, new, assets, source_dir, {s["name"] for s in db.sources(course_id)})
         db.conn.execute("COMMIT")

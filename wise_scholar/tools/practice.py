@@ -83,17 +83,12 @@ async def pose_challenge(
 def variable(block: dict) -> bool:
     """A task a practice unit may vary: solved, and not itself a milestone, a transfer task or a variant."""
     d = block["data"] or {}
-    return block["kind"] in ("challenge", "exercise") and bool(d.get("solved")) and not (d.get("milestone") or d.get("transfer") or d.get("variant_of"))
+    return bool(d.get("solved")) and challenge.variable(block["kind"], d)
 
 
 def varied(course_id: int) -> set[int]:
     """The ids of the tasks that already have a variant in the course."""
-    return {
-        r["source"] for r in db.rows(
-            "SELECT json_extract(b.data, '$.variant_of') AS source FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
-            "WHERE l.course_id = ? AND json_extract(b.data, '$.variant_of') IS NOT NULL", course_id
-        )
-    }
+    return {v["original"] for v in db.variants(course_id)}
 
 
 def _variant_error(lesson: dict, variant_of: int) -> str | None:
@@ -389,13 +384,13 @@ async def reveal(challenge_id: int, solution: str) -> str:
 
 
 def _note_practice_miss(challenge_id: int, data: dict, solution: str) -> None:
-    """A variant revealed unsolved: the unit it came from is not held yet, so its cards come back now and the
-    miss goes into the notebook."""
+    """A variant revealed unsolved: the unit it came from is not held yet, so its cards come back now, when the course
+    still holds the original, and the miss goes into the notebook."""
     block = db.block(challenge_id)
     lesson = db.lesson(block["lesson_id"])
-    origin = db.lesson(db.block(data["variant_of"])["lesson_id"])
-    if origin["concept_id"]:
-        db.pull_forward(origin["concept_id"], _now())
+    concept = next((v["original_concept"] for v in db.variants(lesson["course_id"]) if v["id"] == challenge_id), None)
+    if concept:
+        db.pull_forward(concept, _now())
     db.add_error(lesson["profile_id"], lesson["course_id"], "practice", block["markdown"], challenge.said(data), solution)
 
 

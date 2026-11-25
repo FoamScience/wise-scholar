@@ -21,6 +21,11 @@ def new(reveal_after: int = REVEAL_AFTER, max_hints: int | None = None) -> dict:
     }
 
 
+def variable(kind: str, data: dict) -> bool:
+    """A task a practice unit may vary once it is solved: not itself a milestone, a transfer task or a variant."""
+    return kind in ("challenge", "exercise") and not (data.get("milestone") or data.get("transfer") or data.get("variant_of"))
+
+
 def is_open(data: dict) -> bool:
     return not data["solved"] and data["solution"] is None
 
