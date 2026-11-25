@@ -866,6 +866,8 @@ def _copy_cards(course_id: int, new_id: int, concept_map: dict[int, int]) -> dic
 
 def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], authored: bool) -> dict[int, int]:
     """The map of old to new block ids. A variant's original is left out: _copy_lessons sets it once every block is copied."""
+    from . import board  # it draws with art, which reads this module
+
     block_map = {}
     for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", old_lesson):
         if b["kind"] in ("podcast", "network"):
@@ -877,6 +879,8 @@ def _copy_blocks(old_lesson: int, lesson_id: int, card_map: dict[int, int], auth
             b["markdown"] = ticked_as_at(b["markdown"], data)
         if b["kind"] == "quiz" and data and not authored:
             data = keyless(data)
+        if b["kind"] == "figure" and data:
+            data = board.without_answers(data, authored)
         if data and data.get("card_id") is not None:
             if data["card_id"] not in card_map:
                 continue  # a block on a card that stays behind

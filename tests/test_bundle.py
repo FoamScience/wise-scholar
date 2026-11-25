@@ -466,8 +466,8 @@ async def _pose_in_other_lessons(course: int, source: int) -> tuple[list[str], l
 
 
 def _unclassified(lessons: list[int]) -> set[tuple[str, str]]:
-    # an exercise's starter files ship as the version's files, a quiz's card by its key, a figure as its drawing
-    kept_back = {*db._RECORD, "card_id", "starter", "crafted", "previous"}
+    # an exercise's starter files ship as the version's files, a quiz's card by its key, a figure as its drawing, without its answers
+    kept_back = {*db._RECORD, "card_id", "starter", "crafted", "previous", "unanswered"}
     return {(b["kind"], f) for x in lessons for b in db.blocks(x) for f in b["data"] or {} if f not in {*bundle.SHIPPED[b["kind"]], *kept_back}}
 
 
@@ -1142,6 +1142,294 @@ def test_a_copy_leaves_out_why_a_step_was_added(places, mode):
     [row] = _outline_rows(copy, "Grown")
     assert (row["markdown"], json.loads(row["data"])) == (GROWN, FRESH)
     assert REASON not in _rows_text(copy) and REASON in _rows_text(course)
+
+
+FIGURE = (
+    '<svg viewBox="0 0 300 150"><defs><marker id="a2-tip"><path d="M0 0L4 2L0 4z"/></marker></defs>'
+    '<g data-part="sun"><circle cx="40" cy="75" r="20"/></g><g data-part="orbit"><ellipse cx="170" cy="75" rx="110" ry="40"/>'
+    '<g data-part="earth"><circle cx="280" cy="75" r="8" marker-end="url(#a2-tip)"/></g></g>'
+    '<g data-part="guess"><use href="art:bioicons/cc-0/Cell_types/Me/cell" width="20" height="10"/></g>\n</svg>'
+)
+CELL, LEAF = ({"name": name, "author": "Me", "licence": "CC0", "pack": "Bioicons", "url": "https://bioicons.com"} for name in ("cell", "leaf"))
+
+
+def _step(say: str, draw=(), erase=()):
+    from wise_scholar import board
+
+    return board.BoardStep(say=say, draw=list(draw), erase=list(erase))
+
+
+def _answers(n: int) -> tuple[str, list]:
+    """The drawing and the steps of a figure's nth answer; the first opens by only erasing, the second brings its own icon."""
+    if n == 0:
+        return ('\n loose SECRET <defs><marker id="tip"><path d="M0 0L4 2L0 4z"/></marker></defs>\n'
+                '<g data-part="why"><line x1="200" y1="120" x2="272" y2="80" marker-end="url(#tip)"/>'
+                '<g data-part="label"><text x="150" y="140" font-size="14">SECRET tilt</text></g></g> loose SECRET\n',
+                [_step("SECRET: you guessed the distance.", erase=["guess"]), _step("SECRET: it tilts.", ["why"])])
+    return ('<g data-part="leaf"><use href="art:bioicons/cc-0/Cell_types/Me/leaf" width="20" height="10"/>'
+            '<use href="art:bioicons/cc-0/Cell_types/Me/cell" width="20" height="10"/></g><defs><text>SECRET</text></defs>',
+            [_step("SECRET: look again.", ["leaf"], ["label"])])
+
+
+def _answer(lesson: int, figure: int, *which: int) -> None:
+    import asyncio
+
+    from wise_scholar.tools import visuals
+
+    for n in which:
+        assert asyncio.run(visuals.annotate_figure(lesson, figure, *_answers(n))) == f"drawn on figure {figure}; it plays now"
+
+
+NARRATED = [("The Sun.", ["sun"], []), ("A guess.", ["guess"], []), ("The orbit.", ["orbit"], [])]
+
+
+def _narrate(lesson: int, figure: int, steps=NARRATED) -> None:
+    import asyncio
+
+    from wise_scholar.tools import visuals
+
+    assert asyncio.run(visuals.narrate_figure(lesson, figure, [_step(*s) for s in steps])).startswith(f"figure {figure} plays")
+
+
+def _drawn_course(title: str, tmp_path, monkeypatch, mode: str = "learner") -> tuple[int, int, int]:
+    """Three finished units: two with a figure that plays as a board, the last one's gone back to, and one without: the
+    course, the first one's lesson and its figure, not yet answered on."""
+    import asyncio
+
+    from wise_scholar import art, figcheck, figures, tutor
+    from wise_scholar.routes import blocks as blocks_routes
+    from wise_scholar.tools import lesson_flow, visuals
+
+    icons = tmp_path / "art" / "bioicons" / "cc-0" / "Cell_types" / "Me"
+    icons.mkdir(parents=True)
+    for name in ("cell", "leaf"):
+        (icons / f"{name}.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 1"><path d="M0 0h1"/></svg>')
+    (icons.parents[2] / "manifest.json").write_text(json.dumps([
+        {"id": f"bioicons/cc-0/Cell_types/Me/{n}", "name": n, "category": "Cell types", "author": "Me", "licence": "CC0", "ratio": 2.0} for n in ("cell", "leaf")]))
+    monkeypatch.setattr(art, "ART", tmp_path / "art")
+    art._manifests.clear()
+    monkeypatch.setattr(figcheck, "available", lambda: False)
+    monkeypatch.setattr(tutor, "_needs_opening", lambda lesson: False)
+    teaches = figures.Teaches(claim="Seasons come from the tilt.", notice="Which side leans.")
+    author = db.conn.execute("INSERT INTO profiles (name, mode) VALUES (?, ?)", (f"Draw author {uuid.uuid4().hex[:6]}", mode)).lastrowid
+    course = db.create_course(title, author)["id"]
+    db.set_concepts(course, [{"title": "Seasons", "concepts": ["Asked", "Quiet", "Wordy"], "known": []}])
+    lessons = [db.create_lesson(course, c["title"], "lesson", c["id"]) for c in db.concepts(course)]
+    for lesson in lessons[:2]:
+        assert asyncio.run(visuals.add_figure(lesson, FIGURE, "The tilt", "Earth on its orbit", teaches)).startswith("shown")
+        _narrate(lesson, _figure(lesson)["id"])
+    asyncio.run(visuals.replace_figure(lessons[1], _figure(lessons[1])["id"], FIGURE, "Again", "Earth"))
+    blocks_routes.restore_figure(_figure(lessons[1])["id"])
+    db.add_block(lessons[2], "prose", "No figure here.")
+    assert not [r for r in (asyncio.run(lesson_flow.finish_lesson(x, "Done.")) for x in lessons) if r.startswith(("error", "refused"))]
+    return course, lessons[0], _figure(lessons[0])["id"]
+
+
+def _figure(lesson: int) -> dict:
+    return next(b for b in _stored(lesson) if b["kind"] == "figure")
+
+
+def _lesson_titled(course: int, title: str) -> int:
+    return db.row("SELECT id FROM lessons WHERE course_id = ? AND title = ? AND phase = 'lesson'", course, title)["id"]
+
+
+def _shipped_figure(version_hash: str, places, title: str = "Asked") -> dict:
+    sent = json.loads(_file(version_hash, places))
+    return next(b["data"] for x in sent["lessons"] if x["title"] == title for b in x["blocks"] if b["kind"] == "figure")
+
+
+def _ships_answers(m) -> None:
+    """Versions are built as they were while answers were part of a figure."""
+    from wise_scholar import board
+
+    m.setattr(board, "without_answers", lambda data, authored=False: data)
+
+
+def _unkept(figure: int) -> dict:
+    """The figure as it was answered before the figure it was before was kept."""
+    return db.set_block_data(figure, {k: v for k, v in db.block(figure)["data"].items() if k != "unanswered"})["data"]
+
+
+def _unit_hashes(course: int, places) -> dict[str, str]:
+    manifest, _, _ = bundle.build(course, notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])
+    return {u["title"]: u["hash"] for u in manifest["units"]}
+
+
+def test_a_version_an_install_a_copy_and_an_upgrade_hold_a_figure_without_its_answers(places, tmp_path, monkeypatch):
+    from wise_scholar.routes import sharing as sharing_routes
+
+    course, lesson, figure = _drawn_course("Answered", tmp_path, monkeypatch)
+    before, hashes = db.block(figure)["data"], _unit_hashes(course, places)
+    _answer(lesson, figure, 0, 1)
+    answered = db.block(figure)["data"]
+    assert "SECRET" in answered["svg"] and len(answered["board"]["steps"]) == 6 and answered["credits"] == [CELL, LEAF]
+    assert answered["unanswered"] == {k: before[k] for k in ("svg", "credits", "board")}
+
+    mine, replayed = _imported(course, places, monkeypatch)
+    sent = _shipped_figure(db.course(mine)["source_version"], places)
+    assert sent == {k: v for k, v in before.items() if k in bundle.SHIPPED["figure"]}
+    assert "SECRET" not in _file(db.course(mine)["source_version"], places) and _unit_hashes(course, places) == hashes
+    assert _figure(replayed)["data"]["svg"] == before["svg"] and _figure(replayed)["data"]["credits"] == [CELL]
+    assert "SECRET" not in _rows_text(mine)
+
+    copy = db.copy_course(course, "Answered (2)")["id"]
+    assert _figure(_lesson_titled(copy, "Asked"))["data"] == before
+    assert "SECRET" not in _rows_text(copy) and db.block(figure)["data"] == answered
+
+    # the reader asks in turn, and a fork of their course leaves that out too
+    came = _figure(replayed)["data"]
+    _answer(replayed, _figure(replayed)["id"], 0)
+    db.conn.execute("UPDATE lessons SET prepared_offline = 1 WHERE course_id = ? AND concept_id IS NOT NULL", (mine,))
+    fork = bundle.publish(mine, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], **places)
+    assert _shipped_figure(fork["hash"], places) == {k: v for k, v in came.items() if k in bundle.SHIPPED["figure"]}
+
+    # an upgrade to a version where the figure was answered in between restarts nothing
+    v = sharing_routes.publish_version(course, sharing_routes.Publish())
+    done = sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=v["hash"]))["upgraded"]
+    assert (done["restarted"], done["added"], done["removed"]) == ([], [], [])
+
+
+@pytest.mark.parametrize("mode", ["learner", "teacher"])
+def test_figures_never_answered_ship_and_copy_as_they_are(places, tmp_path, monkeypatch, mode):
+    course, lesson, figure = _drawn_course(f"Quiet {mode}", tmp_path, monkeypatch, mode)
+    _answer(lesson, figure, 0)
+    db.add_block(_lesson_titled(course, "Wordy"), "example", "Another kind.", {"previous": "its own", "board": "its own"})
+    hashes = _unit_hashes(course, places)
+    with monkeypatch.context() as m:
+        _ships_answers(m)
+        assert [t for t, h in _unit_hashes(course, places).items() if h != hashes[t]] == ["Asked"]
+    copy = db.copy_course(course, f"Quiet {mode} (2)")["id"]
+    quiet = _figure(_lesson_titled(course, "Quiet"))["data"]
+    assert quiet["restored"] and quiet["board"] and "unanswered" not in quiet
+    assert _figure(_lesson_titled(copy, "Quiet"))["data"] == quiet
+
+
+def test_an_old_bundle_installs_as_it_came_and_its_unit_restarts_once_without_the_answer(places, tmp_path, monkeypatch):
+    from wise_scholar.routes import sharing as sharing_routes
+
+    course, lesson, figure = _drawn_course("Answered before", tmp_path, monkeypatch)
+    before = db.block(figure)["data"]
+    _answer(lesson, figure, 0)
+    with monkeypatch.context() as m:
+        _ships_answers(m)
+        mine, replayed = _imported(course, places, monkeypatch)
+    assert _figure(replayed)["data"]["svg"] == db.block(figure)["data"]["svg"]
+    for restarted in (["Asked"], []):
+        v = sharing_routes.publish_version(course, sharing_routes.Publish())
+        done = sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=v["hash"]))["upgraded"]
+        titles = {c["key"]: c["title"] for c in db.concepts(mine)}
+        assert [titles[k] for k in done["restarted"]] == restarted
+        assert _figure(_lesson_titled(mine, "Asked"))["data"]["svg"] == before["svg"] and "SECRET" not in _rows_text(mine)
+
+
+NOTE = '<g data-part="note"><text x="10" y="20" font-size="14">SECRET note</text></g>'
+
+
+def _note(lesson: int, figure: int) -> None:
+    import asyncio
+
+    from wise_scholar.tools import visuals
+
+    assert asyncio.run(visuals.annotate_figure(lesson, figure, NOTE, [_step("SECRET.", ["note"])])).startswith("drawn")
+
+
+def test_a_figure_answered_before_it_was_kept_loses_its_last_answer(places, tmp_path, monkeypatch):
+    from xml.etree import ElementTree as ET
+
+    from wise_scholar import board
+
+    course, lesson, figure = _drawn_course("Unkept", tmp_path, monkeypatch)
+    _answer(lesson, figure, 0)
+    once = {k: v for k, v in db.block(figure)["data"].items() if k != "unanswered"}
+    _note(lesson, figure)
+    twice = _unkept(figure)
+    ET.register_namespace("svg", "http://www.w3.org/2000/svg")  # a server that cleaned no drawing yet writes no prefixes either
+    left = board.without_answers(twice)
+    assert left == once | {"board": {"steps": once["board"]["steps"]}}  # the one before the last cannot be told
+    shipped = _shipped_figure(bundle.publish(course, notes="", licence="CC-BY-4.0", forkable=True, sources=[], **places)["hash"], places)
+    assert shipped["svg"] == once["svg"] and "answer" not in shipped["board"]
+
+    # answered or narrated again, what is kept is the figure without it
+    _answer(lesson, figure, 1)
+    assert db.block(figure)["data"]["unanswered"] == {k: left[k] for k in ("svg", "credits", "board")}
+    assert board.without_answers(db.block(figure)["data"]) == left
+    db.set_block_data(figure, twice)
+    _narrate(lesson, figure, [("The Sun.", ["sun"], []), ("SECRET.", ["note"], [])])
+    assert board.without_answers(db.block(figure)["data"]) == left | {"board": {"steps": [{"say": "The Sun.", "draw": ["sun"], "erase": []}]}}
+
+    # its first answer leaves no board behind, and its defs and credits stay
+    db.set_block_data(figure, {k: v for k, v in once.items() if k != "board"} | {"board": {"steps": [{"say": "x", "draw": ["why"], "erase": []}], "answer": 0}})
+    left = board.without_answers(db.block(figure)["data"])
+    assert "board" not in left and f'id="f{figure}-a3-tip"' in left["svg"] and "SECRET tilt" not in left["svg"] and left["credits"] == once["credits"]
+
+
+def test_a_figure_that_was_only_its_answer_stays(places):
+    from wise_scholar import board
+
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 9"><defs><path id="p" d="M0 0h1" /></defs><g data-part="why"><rect /></g></svg>'
+    data = {"svg": svg, "credits": [], "board": {"steps": [{"say": "x", "draw": ["why"], "erase": []}], "answer": 0}}
+    assert board.without_answers(data) == data
+
+
+def test_narration_written_after_an_answer_keeps_what_the_figure_had(places, tmp_path, monkeypatch):
+    from wise_scholar import board
+
+    course, lesson, figure = _drawn_course("Narrated after", tmp_path, monkeypatch)
+    before = db.block(figure)["data"]
+    _answer(lesson, figure, 0)
+    _narrate(lesson, figure, [("The Sun.", ["sun"], []), ("SECRET why.", ["why"], []), ("The orbit.", ["orbit"], ["label"]),
+                              ("SECRET is wiped.", [], ["why"]), ("A guess.", ["guess"], [])])
+    told = [{"say": say, "draw": [part], "erase": []} for say, part in (("The Sun.", "sun"), ("The orbit.", "orbit"), ("A guess.", "guess"))]
+    assert board.without_answers(db.block(figure)["data"]) == before | {"board": {"steps": told}}
+    _note(lesson, figure)
+    assert board.without_answers(db.block(figure)["data"]) == before | {"board": {"steps": told}}
+    _narrate(lesson, figure, [("SECRET why.", ["why"], []), ("SECRET note.", ["note"], [])])
+    assert board.without_answers(db.block(figure)["data"]) == {k: v for k, v in before.items() if k != "board"}
+
+
+def test_a_drawing_gone_back_to_keeps_what_it_was_before_its_answers_and_a_copy_leaves_them_out_of_the_one_it_replaced(places, tmp_path, monkeypatch):
+    import asyncio
+
+    from wise_scholar.routes import blocks as blocks_routes
+    from wise_scholar.tools import visuals
+
+    course, lesson, figure = _drawn_course("Redrawn", tmp_path, monkeypatch)
+    before = db.block(figure)["data"]
+    _answer(lesson, figure, 0, 1)
+    asyncio.run(visuals.replace_figure(lesson, figure, SVG, "Redrawn", "a square"))
+    assert "SECRET" in json.dumps(db.block(figure)["data"]["previous"]) and "unanswered" not in db.block(figure)["data"]
+    hashes = _unit_hashes(course, places)
+    with monkeypatch.context() as m:
+        _ships_answers(m)
+        assert _unit_hashes(course, places) == hashes
+    copy = db.copy_course(course, "Redrawn (2)")["id"]
+    copied = _figure(_lesson_titled(copy, "Asked"))["data"]
+    assert copied["previous"] == before | {"caption": "The tilt"} and "SECRET" not in _rows_text(copy)
+
+    blocks_routes.restore_figure(figure)
+    mine, replayed = _imported(course, places, monkeypatch)
+    assert "SECRET" not in _file(db.course(mine)["source_version"], places) and "SECRET" not in _rows_text(mine)
+    assert _figure(replayed)["data"]["svg"] == before["svg"]
+
+
+def test_an_answer_in_a_prepared_course_is_its_authors_material(places, tmp_path, monkeypatch):
+    import asyncio
+
+    from wise_scholar.tools import visuals
+
+    course, lesson, figure = _drawn_course("Prepared", tmp_path, monkeypatch, mode="teacher")
+    _answer(lesson, figure, 0)
+    drawn = db.block(figure)["data"]
+    kept = {k: v for k, v in drawn.items() if k != "unanswered"} | {"board": {"steps": drawn["board"]["steps"]}}
+    copy = db.copy_course(course, "Prepared (2)")["id"]
+    assert _figure(_lesson_titled(copy, "Asked"))["data"] == kept
+    mine, replayed = _imported(course, places, monkeypatch)
+    assert _shipped_figure(db.course(mine)["source_version"], places) == {k: v for k, v in kept.items() if k in bundle.SHIPPED["figure"]}
+    assert _figure(replayed)["data"]["svg"] == drawn["svg"] and _figure(replayed)["data"]["credits"] == drawn["credits"]
+
+    asyncio.run(visuals.replace_figure(lesson, figure, SVG, "Redrawn", "a square"))
+    again = db.copy_course(course, "Prepared (3)")["id"]
+    assert _figure(_lesson_titled(again, "Asked"))["data"]["previous"] == kept | {"caption": "The tilt"}
 
 
 def test_the_same_content_packs_to_the_same_bytes_and_a_fork_credits_its_origin(places):
