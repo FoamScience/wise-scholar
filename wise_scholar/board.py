@@ -86,3 +86,43 @@ def merge(svg: str, fragment: str, prefix: str) -> tuple[str, list[str], list[di
     inner = figures.prefix_ids(wrapped, prefix).split(">", 1)[1].rpartition("</svg>")[0]
     head, _, _ = svg.rpartition("</svg>")
     return f"{head}{inner}</svg>", new, credits
+
+
+FIGURE = ("svg", "credits", "board")
+
+
+def unanswered(data: dict) -> dict | None:
+    """The drawing, credits and board a figure had before answers were drawn on it, None when none were. A figure
+    answered before this was kept tells its last answer alone, by the steps that draw it."""
+    if "unanswered" in data:
+        return data["unanswered"]
+    board = data.get("board", {})
+    if "answer" not in board:
+        return None
+    before, answer = board["steps"][: board["answer"]], board["steps"][board["answer"] :]
+    drawn = {p for s in answer for p in s["draw"]}
+    root = safe.fromstring(data["svg"])
+    root[:] = [child for child in root if child.get("data-part") not in drawn]
+    if not any(figures._split(e.tag)[1] in art.DRAWN for child in root if child.tag != f"{{{figures.SVG_NS}}}defs" for e in child.iter()):
+        return None
+    ET.register_namespace("", figures.SVG_NS)
+    return {"svg": ET.tostring(root, encoding="unicode"), "credits": data["credits"]} | ({"board": {"steps": before}} if before else {})
+
+
+def narrated(kept: dict, steps: list[dict]) -> dict:
+    """What a figure was before its answers, narrated anew by the steps that draw what it had."""
+    known = parts(kept["svg"])
+    steps = [s | {"erase": [p for p in s["erase"] if p in known]} for s in steps if known.keys() >= set(s["draw"])]
+    steps = [s for s in steps if s["draw"] or s["erase"]]
+    return {k: v for k, v in kept.items() if k != "board"} | ({"board": {"steps": steps}} if steps else {})
+
+
+def without_answers(data: dict, authored: bool = False) -> dict:
+    """A figure's data, and that of the drawing it replaced, without the answers drawn for the learner. In a prepared
+    course (authored) they were drawn for its author and stay, as any part of the figure."""
+    if "previous" in data:
+        data = data | {"previous": without_answers(data["previous"], authored)}
+    if authored:
+        return {k: v for k, v in data.items() if k != "unanswered"} | ({"board": {"steps": data["board"]["steps"]}} if "board" in data else {})
+    kept = unanswered(data)
+    return {k: v for k, v in data.items() if k not in (*FIGURE, "unanswered")} | kept if kept else data

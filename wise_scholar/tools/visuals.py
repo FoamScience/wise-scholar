@@ -101,7 +101,10 @@ async def narrate_figure(lesson_id: int, block_id: int, steps: list[board.BoardS
         return f"error: a board has {board.MIN_STEPS} to {board.MAX_STEPS} steps"
     if problem := board.steps_error(block["data"]["svg"], steps):
         return f"error: {problem}"
-    block = db.set_block_data(block_id, {**block["data"], "board": {"steps": [_step(s) for s in steps]}})
+    told = [_step(s) for s in steps]
+    kept = board.unanswered(block["data"])
+    data = block["data"] | {"board": {"steps": told}} | ({"unanswered": board.narrated(kept, told)} if kept else {})
+    block = db.set_block_data(block_id, data)
     _show(db.lesson(lesson_id), block, "block.updated")
     return f"figure {block_id} plays as a board in {len(steps)} steps"
 
@@ -143,6 +146,7 @@ async def annotate_figure(lesson_id: int, block_id: int, svg: str, steps: list[b
         "svg": drawing,
         "credits": [*block["data"].get("credits", []), *(c for c in credits if c not in block["data"].get("credits", []))],
         "board": {"steps": [*earlier, *(_step(s) for s in steps)], "answer": len(earlier)},
+        "unanswered": board.unanswered(block["data"]) or {k: block["data"][k] for k in board.FIGURE if k in block["data"]},
     }
     block = db.set_block_data(block_id, data)
     _show(db.lesson(lesson_id), block, "block.updated")
