@@ -1,5 +1,6 @@
 """Reading and writing course workspace files from the server, which runs outside the sandbox."""
 
+import hashlib
 import os
 import stat
 from pathlib import Path
@@ -74,6 +75,11 @@ def editable_text(workspace: Path, path: str) -> str | None:
         return raw.decode()
     except UnicodeDecodeError:
         return None
+
+
+def digest(text: str | None) -> str | None:
+    """A file's text as the ws command compares it with its own copy, without fetching it."""
+    return None if text is None else hashlib.sha256(text.encode()).hexdigest()
 
 
 def write_text(workspace: Path, path: str, content: str) -> bool:

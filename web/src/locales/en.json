@@ -693,6 +693,15 @@
       "planned_one": "{{count}} hour of teaching planned",
       "planned_other": "{{count}} hours of teaching planned"
     },
+    "workLocally": {
+      "title": "Work in your own editor",
+      "install": "ws.py runs on any computer with Python 3.10 or later and needs nothing else. In a terminal:",
+      "after": "watch sends each file you save to this card and brings in the tutor's changes; when a file changed on both sides, it leaves a .conflict file beside yours to merge. When you are done, this runs the exercise and asks the tutor to check it:",
+      "noPassword": "No password: anyone who can open this page can use these commands.",
+      "copy": "Copy the commands",
+      "copied": "Commands copied",
+      "download": "Download ws.py"
+    },
     "network": {
       "label": "The tutor asks to use the internet",
       "explain": "Runs once, in the sandbox, for up to two minutes. It can reach public internet sites over HTTP and HTTPS; it cannot reach this computer or private network addresses, and it can write only in this course's own folders. It runs the files of the workspace as they are now.",

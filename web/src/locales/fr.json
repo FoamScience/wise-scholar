@@ -713,6 +713,15 @@
       "planned_many": "{{count}} d'heures d'enseignement prévues",
       "planned_other": "{{count}} heures d'enseignement prévues"
     },
+    "workLocally": {
+      "title": "Travailler dans votre propre éditeur",
+      "install": "ws.py fonctionne sur tout ordinateur doté de Python 3.10 ou plus récent, sans rien d'autre. Dans un terminal :",
+      "after": "watch envoie à cette carte chaque fichier que vous enregistrez et récupère les modifications du tuteur ; quand un fichier a changé des deux côtés, il dépose à côté du vôtre un fichier .conflict à fusionner. Une fois terminé, cette commande exécute l'exercice et demande au tuteur de le vérifier :",
+      "noPassword": "Pas de mot de passe : toute personne qui peut ouvrir cette page peut utiliser ces commandes.",
+      "copy": "Copier les commandes",
+      "copied": "Commandes copiées",
+      "download": "Télécharger ws.py"
+    },
     "network": {
       "label": "Le tuteur demande à utiliser Internet",
       "explain": "S'exécute une fois, dans le bac à sable, pendant deux minutes au plus. La commande peut joindre les sites publics d'Internet en HTTP et HTTPS ; elle ne peut joindre ni cet ordinateur ni les adresses de réseau privé, et ne peut écrire que dans les dossiers de ce cours. Elle exécute les fichiers de l'espace de travail tels qu'ils sont maintenant.",
