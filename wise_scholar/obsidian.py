@@ -160,6 +160,7 @@ class Vault:
         self.inline, self.solutions, self.boards = inline, solutions, boards or {}
         self.inline_left = INLINE_BOARDS
         self.course = db.course(course_id)
+        self.authored = self.course["mode"] == "teacher"
         self.profile = db.profile(self.course["profile_id"])
         self.t = WORDS.get(self.profile["locale"], WORDS["en"])
         self.root = f"{FOLDER}/{_name(self.course['topic'])}"
@@ -180,6 +181,10 @@ class Vault:
             for lesson in self.lessons
             for block in lesson["blocks"]
             if block["kind"] in CARD_KINDS and block["data"].get("card_id")
+        }
+        self.answered = {
+            b["data"]["card_id"] for lesson in self.lessons for b in lesson["blocks"]
+            if b["kind"] == "quiz" and b["data"].get("card_id") and b["data"].get("answer") is not None
         }
         self._assign_names()
 
@@ -402,6 +407,7 @@ class Vault:
         return t["challenge"]
 
     def _sort_body(self, d: dict) -> list[str]:
+        """A sort's items and the learner's placements; unanswered, where each item goes only in a prepared course."""
         t = self.t
         out = [f"- {o['text']}" for o in d["options"]] + ["", "**" + " · ".join(d["categories"]) + "**", ""]
         if d.get("answer") is not None:
@@ -409,17 +415,17 @@ class Vault:
             out += [f"- {o['text']} → {placed.get(o['text'], '?')}{' ✗' if o['text'] in wrong else ''}" for o in d["options"]] + [""]
             if d.get("explanation"):
                 out.append(f"**{t['explanation']}**: {d['explanation']}")
-        elif self.solutions and not self.inline:
+        elif self.solutions and not self.inline and self.authored:
             out += [f"- {o['text']} → {o['category']}" for o in db.card(d["card_id"])["options"]] + [""]
         else:
             out.append(f"*{t['unanswered']}*")
         return out
 
     def _quiz_answer(self, d: dict) -> list[str]:
-        """The learner's answer and its result, or the key when it was not answered."""
+        """The learner's answer and its result; unanswered, the key only in a prepared course."""
         t = self.t
         if d.get("answer") is None:
-            if not d.get("answer_key"):
+            if not (self.authored and d.get("answer_key")):
                 return [f"*{t['unanswered']}*"]
             return [f"**{t['answer']}**: {d['answer_key']}"] + ([f"**{t['explanation']}**: {d['explanation']}"] if d.get("explanation") else [])
         shown = t["unknown"] if d.get("unknown") else d["answer"]
@@ -439,7 +445,8 @@ class Vault:
     def _quiz_body(self, d: dict) -> list[str]:
         out = []
         if d.get("options"):
-            mark = lambda o: "**" if self.solutions and o == d.get("answer_key") else ""  # noqa: E731
+            shown = self.solutions and (self.authored or d.get("answer") is not None)
+            mark = lambda o: "**" if shown and o == d.get("answer_key") else ""  # noqa: E731
             out += [f"- {mark(o)}{o}{mark(o)}" for o in d["options"]] + [""]
         return out + (self._quiz_answer(d) if self.solutions else [""])
 
@@ -666,9 +673,17 @@ class Vault:
             return t["right"] if d["correct"] else t["wrong"]
         return t["solved"] if d.get("solved") else t["gave_up"] if d.get("gave_up") else t["open"]
 
+    def _met(self, card: dict) -> bool:
+        """Whether the learner answered the card or saved its word from a reading; coming due does not show its key."""
+        return self.authored or bool(card["answered"]) or card["id"] in self.answered or bool(card["vocab"] and card["due"])
+
     def _flashcards(self, concept: dict) -> list[str]:
-        """The unit's scheduled quiz cards in the Spaced Repetition plugin's multi-line form; a copy, scheduling stays here."""
-        cards = [c for c in db.rows("SELECT question, answer_key, kind, options FROM cards WHERE concept_id = ? AND scheduled = 1 ORDER BY id", concept["id"]) if c["answer_key"].strip()]
+        """The unit's scheduled quiz cards the learner has met, in the Spaced Repetition plugin's multi-line form; a copy,
+        scheduling stays here."""
+        cards = [c for c in db.rows(
+            "SELECT id, question, answer_key, kind, options, vocab, due, EXISTS (SELECT 1 FROM answers a WHERE a.card_id = cards.id) AS answered "
+            "FROM cards WHERE concept_id = ? AND scheduled = 1 ORDER BY id", concept["id"],
+        ) if c["answer_key"].strip() and self._met(c)]
         if not cards:
             return []
         # The plugin ends a card at a blank line and reads a lone "?" as the separator: neither may appear inside a side.
