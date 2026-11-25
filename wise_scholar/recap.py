@@ -12,9 +12,9 @@ def week(when: str) -> str:
     return (day - timedelta(days=day.weekday())).isoformat()
 
 
-def _known_before(units: list[dict], lessons: list[dict]) -> list[dict]:
-    begun = {lesson["concept_id"] for lesson in lessons}
-    return [{"concept_id": u["id"], "title": u["title"], "module": u["module"]} for u in units if u["known"] and u["id"] not in begun]
+def _known_before(course_id: int, units: list[dict]) -> list[dict]:
+    placed = db.placed_out(course_id, units)
+    return [{"concept_id": u["id"], "title": u["title"], "module": u["module"]} for u in units if u["id"] in placed]
 
 
 def _edges(course: dict, claims: list[dict]) -> list[dict]:
@@ -134,7 +134,7 @@ def story(course_id: int, now: str) -> dict:
         "SELECT l.id, l.concept_id, (SELECT MIN(b.created) FROM blocks b WHERE b.lesson_id = l.id AND b.kind = 'done') AS finished "
         "FROM lessons l WHERE l.course_id = ? AND l.concept_id IS NOT NULL ORDER BY l.id", course_id,
     )
-    before = _known_before(units, lessons)
+    before = _known_before(course_id, units)
 
     steps = _steps(units, lessons)
     step_of = {s["concept_id"]: n for n, s in enumerate(steps)}
