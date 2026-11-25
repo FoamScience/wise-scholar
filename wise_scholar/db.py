@@ -845,8 +845,8 @@ def _copy_concepts(course_id: int, new_id: int) -> dict[int, int]:
     concept_map = {}
     for c in concepts(course_id):
         concept_map[c["id"]] = conn.execute(
-            "INSERT INTO concepts (course_id, module, title, known, position, kind, key) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (new_id, c["module"], c["title"], c["known"], c["position"], c["kind"], c["key"]),
+            "INSERT INTO concepts (course_id, module, title, known, position, kind, key, unwritten) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (new_id, c["module"], c["title"], c["known"], c["position"], c["kind"], c["key"], c["unwritten"]),
         ).lastrowid
     conn.executemany(
         "INSERT INTO concept_needs (concept_id, needs_id) VALUES (?, ?)",
@@ -875,10 +875,10 @@ def _copy_cards(course_id: int, new_id: int, concept_map: dict[int, int]) -> dic
         if k["id"] in private:
             continue
         card_map[k["id"]] = conn.execute(
-            "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, key) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, misconceptions, key) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (new_id, concept_map.get(k["concept_id"]), k["question"], k["kind"], k["options"], k["answer_key"], k["explanation"],
-             k["scheduled"], k["vocab"], k["lemma"], k["lang"], k["translation"], k["key"]),
+             k["scheduled"], k["vocab"], k["lemma"], k["lang"], k["translation"], k["misconceptions"], k["key"]),
         ).lastrowid
     return card_map
 
