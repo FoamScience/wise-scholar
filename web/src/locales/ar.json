@@ -1249,6 +1249,7 @@
     "a quiz is answered once": "يُجاب عن الاختبار مرة واحدة",
     "an open answer carries the learner's own grade": "الإجابة المفتوحة تحمل تقييم المتعلم لنفسه",
     "only a unit of a learner's course is taken offline": "لا تُحضَّر للعمل دون اتصال إلا وحدة من دورة متعلم",
+    "an imported unit is worked through as its author wrote it, not taken offline": "تُتابَع الوحدة المستوردة كما كتبها مؤلفها، ولا تُحضَّر للعمل دون اتصال",
     "this lesson is already prepared for offline": "هذا الدرس محضَّر للعمل دون اتصال من قبل",
     "this lesson is finished": "هذا الدرس منتهٍ",
     "this lesson is not prepared for offline": "هذا الدرس غير محضَّر للعمل دون اتصال",

@@ -1183,6 +1183,7 @@
     "a quiz is answered once": "on répond une seule fois à un quiz",
     "an open answer carries the learner's own grade": "une réponse ouverte porte la note que l'apprenant s'est donnée",
     "only a unit of a learner's course is taken offline": "seule une unité d'un cours d'apprenant se prépare hors ligne",
+    "an imported unit is worked through as its author wrote it, not taken offline": "une unité importée se suit telle que son auteur l'a écrite, sans être préparée hors ligne",
     "this lesson is already prepared for offline": "cette leçon est déjà prête hors ligne",
     "this lesson is finished": "cette leçon est terminée",
     "this lesson is not prepared for offline": "cette leçon n'est pas préparée hors ligne",
