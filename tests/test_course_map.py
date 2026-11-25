@@ -1,6 +1,8 @@
 import os
 import tempfile
 
+import pytest
+
 os.environ.setdefault("WISE_SCHOLAR_DB", os.path.join(tempfile.mkdtemp(), "test.db"))
 
 from wise_scholar import db  # noqa: E402
@@ -351,6 +353,133 @@ def test_a_practice_unit_follows_every_third_unit_and_varies_their_solved_tasks(
         db.delete_course(course)
         db.delete_course(other)
         db.conn.execute("DELETE FROM profiles WHERE id IN (?, ?)", (who, other_who))
+
+
+@pytest.fixture
+def imported(monkeypatch, tmp_path):
+    """Makes a replay of a course whose author finished the first concept unit, with one task in it, for another
+    profile, from the units (title and kind) of each version published; the replay is moved through all of them."""
+    import asyncio
+    import io
+    import uuid
+
+    from fastapi import UploadFile
+
+    from wise_scholar import app, challenge
+    from wise_scholar.routes import sharing as sharing_routes
+
+    for module, name in ((db, "WORKSPACE"), (app, "SOURCES"), (app, "VERSIONS")):
+        monkeypatch.setattr(module, name, tmp_path / name.lower())
+    last = db.row("SELECT COALESCE(MAX(id), 0) AS n FROM profiles")["n"]
+
+    def make(*maps: list[tuple[str, str]]) -> int:
+        author, reader = (
+            db.conn.execute("INSERT INTO profiles (name) VALUES (?)", (f"{who} {uuid.uuid4().hex[:6]}",)).lastrowid
+            for who in ("Scope author", "Scope reader")
+        )
+        course, mine, ids = db.create_course("Ratios", author)["id"], None, {}
+        for units in maps:
+            for n, (title, kind) in enumerate(units, start=1):
+                if title in ids:
+                    db.conn.execute("UPDATE concepts SET position = ? WHERE id = ?", (n, ids[title]))
+                else:
+                    ids[title] = db.conn.execute(
+                        "INSERT INTO concepts (course_id, module, title, known, position, kind) VALUES (?, 'Parts', ?, 0, ?, ?)", (course, title, n, kind),
+                    ).lastrowid
+            if mine is None:
+                first = next(title for title, kind in units if kind == "concept")
+                lesson = db.create_lesson(course, first, "lesson", ids[first])
+                db.add_block(lesson, "challenge", "Split 12 in the ratio 1 to 2.", challenge.new())
+                db.add_block(lesson, "done", "", {})
+            version = sharing_routes.publish_version(course, sharing_routes.Publish())["hash"]
+            if mine is None:
+                with open(sharing_routes.version_bundle(version).path, "rb") as f:
+                    mine = asyncio.run(sharing_routes.import_course(reader, UploadFile(io.BytesIO(f.read()), filename="ratios.zip")))["id"]
+            else:
+                sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=version))
+        assert (db.course(mine)["mode"], db.course(mine)["profile_id"]) == ("replay", reader)
+        assert [c["position"] for c in db.concepts(mine)] == list(range(len(maps[-1])))
+        return mine
+
+    yield make
+    for c in db.rows("SELECT id FROM courses WHERE profile_id > ?", last):
+        db.delete_course(c["id"])
+    db.conn.execute("DELETE FROM versions")
+    db.conn.execute("DELETE FROM profiles WHERE id > ?", (last,))
+
+
+def _solve_imported(course: int) -> dict:
+    """The replay's one task, tried by its reader and marked solved by the tutor."""
+    import asyncio
+
+    from wise_scholar.tools import practice as practice_tools
+
+    [task] = [b for lesson in db.rows("SELECT id FROM lessons WHERE course_id = ?", course) for b in db.blocks(lesson["id"]) if b["kind"] == "challenge"]
+    db.set_block_data(task["id"], {**task["data"], "attempts": ["4 and 8"]})
+    assert asyncio.run(practice_tools.mark_solved(task["id"])) == "marked"
+    return db.block(task["id"])
+
+
+def _scopes(course: int) -> dict[str, list[str]]:
+    return {c["title"]: [u["title"] for u in db.practice_scope(c["id"])] for c in db.concepts(course) if c["kind"] == "practice"}
+
+
+REPLAYED_MAP = [("Parts", "concept"), ("Wholes", "concept"), ("Practice 1", "practice"), ("Scales", "concept"), ("Practice 2", "practice")]
+
+
+def test_the_first_unit_of_an_imported_course_is_in_its_practice_units_scope(imported):
+    course = imported(REPLAYED_MAP)
+    assert _scopes(course) == {"Practice 1": ["Parts", "Wholes"], "Practice 2": ["Scales"]}
+
+
+def test_a_solved_task_of_an_imported_courses_first_unit_is_offered(monkeypatch, imported):
+    import asyncio
+
+    from wise_scholar import app
+    from wise_scholar.routes import learner as learner_routes
+
+    turns = []
+    monkeypatch.setattr(app, "_start_turn", lambda lesson, line: turns.append(line))
+    course = imported(REPLAYED_MAP)
+    task = _solve_imported(course)
+    unit = next(c for c in db.concepts(course) if c["title"] == "Practice 1")
+    practice = asyncio.run(learner_routes.open_concept(unit["id"]))
+    assert practice["phase"] == "practice"
+    assert f"- Parts, task {task['id']}: Split 12" in turns[-1]
+
+
+def test_a_variant_of_an_imported_courses_first_unit_is_posed(imported):
+    import asyncio
+
+    from wise_scholar.tools import practice as practice_tools
+
+    course = imported(REPLAYED_MAP)
+    task = _solve_imported(course)
+    unit = next(c for c in db.concepts(course) if c["title"] == "Practice 1")
+    practice = db.create_lesson(course, "Practice 1", "practice", unit["id"])
+    assert asyncio.run(practice_tools.pose_challenge(practice, "Split 20 in the ratio 1 to 4.", variant_of=task["id"])).startswith("shown")
+    assert db.blocks(practice)[-1]["data"]["variant_of"] == task["id"]
+
+
+def test_an_upgrade_that_puts_a_unit_first_puts_it_in_the_practice_units_scope(imported):
+    course = imported(REPLAYED_MAP, [("Pieces", "concept"), *REPLAYED_MAP])
+    assert _scopes(course) == {"Practice 1": ["Pieces", "Parts", "Wholes"], "Practice 2": ["Scales"]}
+
+
+def test_a_practice_unit_that_opens_an_imported_course_covers_nothing_and_the_next_one_what_follows_it(imported):
+    course = imported([("Warm-up", "practice"), ("Parts", "concept"), ("Wholes", "concept"), ("Practice 1", "practice")])
+    assert _scopes(course) == {"Warm-up": [], "Practice 1": ["Parts", "Wholes"]}
+
+
+def test_a_course_made_by_its_map_has_the_scopes_it_had():
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Scope mapper')").lastrowid
+    course = db.create_course("Made by its map", who)["id"]
+    try:
+        db.set_concepts(course, [{"title": "M", "concepts": ["A", "B", "C", "D", "E", "F"], "known": []}])
+        assert [c["position"] for c in db.concepts(course)] == [1, 2, 3, 4, 5, 6, 7, 8]
+        assert _scopes(course) == {"Practice 1": ["A", "B", "C"], "Practice 2": ["D", "E", "F"]}
+    finally:
+        db.delete_course(course)
 
 
 def test_the_course_map_counts_each_units_due_reviews():
