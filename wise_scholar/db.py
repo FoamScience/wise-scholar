@@ -2414,10 +2414,15 @@ def sync_recap(course_id: int) -> dict | None:
     None for a course never finished."""
     at = course_finished(course_id)
     current = recap(course_id)
-    if at and not current:
-        conn.execute("INSERT INTO recaps (course_id, finished) VALUES (?, ?)", (course_id, at))
-    elif current and bool(current["finished"]) != bool(at):
-        conn.execute("UPDATE recaps SET finished = ?, seen = 0 WHERE course_id = ?", (at, course_id))
+    if at and not (current and current["finished"]):
+        # another request may have written the finish since the read; the first one stands
+        conn.execute(
+            "INSERT INTO recaps (course_id, finished) VALUES (?, ?) "
+            "ON CONFLICT(course_id) DO UPDATE SET finished = excluded.finished, seen = 0 WHERE recaps.finished IS NULL",
+            (course_id, at),
+        )
+    elif not at and current and current["finished"]:
+        conn.execute("UPDATE recaps SET finished = NULL, seen = 0 WHERE course_id = ?", (course_id,))
     else:
         return current
     return recap(course_id)
