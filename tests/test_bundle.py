@@ -1017,6 +1017,133 @@ def test_a_step_that_ends_in_the_tick_keeps_its_own(places):
     assert _outline(db.blocks(_unit_lesson(mine))) == (1, "1. a ✓ ✓\n2. b ✓\n3. c")
 
 
+REASON = "You confused the two cases."
+GROWN = "1. Predict\n2. Tell the cases apart\n3. Loft\n4. Check"
+FRESH = {"steps": ["Predict", "Tell the cases apart", "Loft", "Check"], "at": 0, "added": None, "cards": 9}
+
+
+def _grown_course(title: str, mode: str = "learner") -> int:
+    """Two finished units with an outline each; the first took a step its tutor added, with a reason."""
+    import asyncio
+
+    from wise_scholar.tools import lesson_flow
+
+    author = db.conn.execute("INSERT INTO profiles (name, mode) VALUES (?, ?)", (f"Step author {uuid.uuid4().hex[:6]}", mode)).lastrowid
+    course = db.create_course(title, author)["id"]
+    db.set_concepts(course, [{"title": "Blades", "concepts": ["Grown", "Plain"], "known": []}])
+    grown, plain = (db.create_lesson(course, c["title"], "lesson", c["id"]) for c in db.concepts(course))
+    replies = [
+        asyncio.run(lesson_flow.set_outline(grown, ["Predict", "Loft", "Check"], cards=9)),
+        asyncio.run(lesson_flow.set_outline(grown, FRESH["steps"], REASON)),
+        asyncio.run(lesson_flow.set_outline(plain, ["Predict", "Loft", "Check"], cards=9)),
+        *(asyncio.run(lesson_flow.finish_lesson(lesson, "You can loft.")) for lesson in (grown, plain)),
+    ]
+    assert not [r for r in replies if r.startswith(("error", "refused"))]
+    [row] = _outline_rows(course, "Grown")
+    assert json.loads(row["data"])["added"] == {"step": "Tell the cases apart", "reason": REASON}
+    return course
+
+
+def _outline_rows(course: int, title: str) -> list[dict]:
+    return db.rows("SELECT b.markdown, b.data FROM blocks b JOIN lessons l ON l.id = b.lesson_id "
+                   "WHERE l.course_id = ? AND l.title = ? AND b.kind = 'outline'", course, title)
+
+
+def _rows_text(course: int) -> str:
+    return json.dumps(db.rows("SELECT b.* FROM blocks b JOIN lessons l ON l.id = b.lesson_id WHERE l.course_id = ?", course))
+
+
+def _file(version_hash: str, places) -> str:
+    with zipfile.ZipFile(places["store"] / f"{version_hash}.zip") as z:
+        return z.read("manifest.json").decode()
+
+
+def _shipped_before(m) -> None:
+    """Versions are built as they were while the reason of an added step was part of them."""
+    built = bundle._block_data
+
+    def with_reason(block, card_keys, authored=False):
+        data = built(block, card_keys, authored)
+        return {**data, "added": json.loads(block["data"])["added"]} if block["kind"] == "outline" else data
+
+    m.setattr(bundle, "_block_data", with_reason)
+
+
+@pytest.mark.parametrize("mode", ["learner", "teacher"])
+def test_a_version_leaves_out_why_a_step_was_added(places, monkeypatch, mode):
+    import asyncio
+
+    from wise_scholar import app
+    from wise_scholar.tools import lesson_flow
+
+    course = _grown_course(f"Grown {mode}", mode)
+    mine, replayed = _imported(course, places, monkeypatch)
+    sent = _file(db.course(mine)["source_version"], places)
+    [shipped] = [b for x in json.loads(sent)["lessons"] if x["title"] == "Grown" for b in x["blocks"] if b["kind"] == "outline"]
+    assert shipped["data"] == FRESH and "2. Tell the cases apart" in shipped["markdown"]
+    assert REASON not in sent
+    [row] = _outline_rows(mine, "Grown")
+    assert (row["markdown"], json.loads(row["data"])) == (GROWN, {**FRESH, "imported": True})
+    assert REASON not in _rows_text(mine) and REASON in _rows_text(course)
+    assert REASON not in json.dumps(app._lesson_view(replayed))
+
+    # the reader's own tutor may add its one step
+    steps = [*FRESH["steps"], "Once more"]
+    assert asyncio.run(lesson_flow.set_outline(replayed, steps, "You asked for it.")) == "step added: now step 1 of 5"
+    assert asyncio.run(lesson_flow.set_outline(replayed, [*steps, "And again"], "r")) == "refused: the outline already took its one added step"
+
+
+def test_an_old_bundle_installs_and_upgrades_without_why_a_step_was_added(places, monkeypatch):
+    from wise_scholar.routes import sharing as sharing_routes
+
+    course = _grown_course("Grown before")
+    with monkeypatch.context() as m:
+        _shipped_before(m)
+        mine, _ = _imported(course, places, monkeypatch)
+        assert REASON in _file(db.course(mine)["source_version"], places)
+        [row] = _outline_rows(mine, "Grown")
+        assert (row["markdown"], json.loads(row["data"])) == (GROWN, {**FRESH, "imported": True})
+
+        db.add_block(_unit_lesson(course), "prose", "One more thing.")
+        v = sharing_routes.publish_version(course, sharing_routes.Publish())
+        assert REASON in _file(v["hash"], places)
+    done = sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=v["hash"]))["upgraded"]
+    assert len(done["restarted"]) == len(done["kept"]) == 1
+    [row] = _outline_rows(mine, "Grown")
+    assert (row["markdown"], json.loads(row["data"])) == (GROWN, {**FRESH, "imported": True})
+    assert REASON not in _rows_text(mine)
+
+
+def test_only_the_unit_that_took_a_step_restarts_once_and_a_fork_leaves_the_reason_out(places, monkeypatch):
+    from wise_scholar.routes import sharing as sharing_routes
+
+    course = _grown_course("Grown restarted")
+    with monkeypatch.context() as m:
+        _shipped_before(m)
+        mine, replayed = _imported(course, places, monkeypatch)
+    _as_installed_before(mine, replayed)
+    assert REASON in _rows_text(mine)
+    db.conn.execute("UPDATE lessons SET prepared_offline = 1 WHERE course_id = ? AND concept_id IS NOT NULL", (mine,))
+    fork = bundle.publish(mine, notes="", licence="CC-BY-SA-4.0", forkable=True, sources=[], **places)
+    assert "Tell the cases apart" in _file(fork["hash"], places) and REASON not in _file(fork["hash"], places)
+
+    for kept in (["Plain"], ["Grown", "Plain"]):
+        v = sharing_routes.publish_version(course, sharing_routes.Publish())
+        done = sharing_routes.upgrade_course(mine, sharing_routes.Upgrade(hash=v["hash"]))["upgraded"]
+        titles = {c["key"]: c["title"] for c in db.concepts(mine)}
+        assert sorted(titles[k] for k in done["kept"]) == kept
+        assert REASON not in _rows_text(mine)
+
+
+@pytest.mark.parametrize("mode", ["learner", "teacher"])
+def test_a_copy_leaves_out_why_a_step_was_added(places, mode):
+    course = _grown_course(f"Grown copied {mode}", mode)
+    copy = db.copy_course(course, f"Grown copied {mode} (2)")["id"]
+    [row] = _outline_rows(copy, "Grown")
+    assert (row["markdown"], json.loads(row["data"])) == (GROWN, FRESH)
+    assert REASON not in _rows_text(copy) and REASON in _rows_text(course)
+
+
 def test_the_same_content_packs_to_the_same_bytes_and_a_fork_credits_its_origin(places):
     a = _authored(places)
     manifest, assets, _ = bundle.build(a["course"], notes="", licence="CC-BY-4.0", forkable=True, sources=[], source_dir=places["source_dir"])

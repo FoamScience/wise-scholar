@@ -788,7 +788,7 @@ def _fresh(data: dict, authored: bool = False) -> dict:
     if "last_run" in data:
         kept["last_run"] = None
     if "steps" in data:
-        kept["at"] = 0
+        kept.update({"at": 0, "added": None})  # the added step stays in steps; the reason for it is about the learner
     kept.update({k: [] for k in ("known", "non_goals") if k in data})
     if data.get("rounds"):  # a vocabulary check starts over from the words it opened with
         first = data["rounds"][0]
