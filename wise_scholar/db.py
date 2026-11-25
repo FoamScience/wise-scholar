@@ -777,13 +777,20 @@ def _free_slug(topic: str) -> str:
 
 
 def create_course(topic: str, profile_id: int) -> dict:
-    slug = _free_slug(topic)
-    # A course keeps the mode its profile had when it was made.
-    mode = (profile(profile_id) or {}).get("mode", "learner")
-    course_id = conn.execute(
-        "INSERT INTO courses (topic, slug, profile_id, started, mode) VALUES (?, ?, ?, 0, ?)", (topic, slug, profile_id, mode)
-    ).lastrowid
-    create_lesson(course_id, "Interview", "interview")
+    # IMMEDIATE, as wherever a free slug is taken: no other write lands between the read and the insert.
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        slug = _free_slug(topic)
+        # A course keeps the mode its profile had when it was made.
+        mode = (profile(profile_id) or {}).get("mode", "learner")
+        course_id = conn.execute(
+            "INSERT INTO courses (topic, slug, profile_id, started, mode) VALUES (?, ?, ?, 0, ?)", (topic, slug, profile_id, mode)
+        ).lastrowid
+        create_lesson(course_id, "Interview", "interview")
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
     return course(course_id)
 
 
@@ -956,7 +963,7 @@ def copy_course(course_id: int, topic: str) -> dict:
     """A new course with the same plan: scope, map, projects, lessons with their cards, blocks and chat, materials
     and course facts. Nothing of the record that measures a learner comes along: answers, reviews, mistakes, the
     command log; and every lesson gets a fresh agent session. Returns the new course with a map of old to new source ids."""
-    conn.execute("BEGIN")
+    conn.execute("BEGIN IMMEDIATE")
     try:
         old = course(course_id)
         if not old:
