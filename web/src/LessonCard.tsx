@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from 'cn'
 import Markdown, { AnswerText, InlineMarkdown } from './Md'
 import { api, failure, transcribe } from './api'
+import { WorkLocally } from './WorkLocally'
+import { workLocallyShown } from './workLocally'
 import { lookup, percent } from './i18n'
 import { QuizCard } from './Quiz'
 import type { Given } from './offline'
@@ -401,6 +403,7 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
 
       {d.last_run && <RunOutput run={d.last_run} />}
       {error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div>}
+      {workLocallyShown(open, kept, props.commands) && <WorkLocally blockId={blockId} />}
 
       <Ladder data={d} blockId={blockId} onError={props.onError} />
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}

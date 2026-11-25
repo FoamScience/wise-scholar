@@ -528,8 +528,53 @@ def _read_files(block: dict, workspace: Path) -> list[dict]:
 
 
 @app.get("/api/blocks/{block_id}/files")
-def exercise_files(block_id: int) -> list[dict]:
-    return _read_files(*_exercise(block_id))
+def exercise_files(block_id: int, hashes: bool = False) -> list[dict]:
+    """hashes: each file's sha256 in place of its text, for the ws command's poll."""
+    files = _read_files(*_exercise(block_id))
+    if hashes:
+        return [{**{k: v for k, v in f.items() if k != "content"}, "sha256": course_files.digest(f["content"])} for f in files]
+    return files
+
+
+@app.get("/api/ws.py")
+def ws_script() -> FileResponse:
+    """The ws command: one script with no dependencies, for working on exercises in the learner's own editor."""
+    return FileResponse(Path(__file__).resolve().parent.parent / "cli.py", media_type="text/x-python", filename="ws.py")
+
+
+@app.get("/api/courses/{course_id}/exercises")
+def course_exercises(course_id: int) -> list[dict]:
+    """The course's exercises as its page shows them, for the ws command: a replayed unit's only up to its first check
+    not yet behind the learner, and a prepared course's as closed, since nobody answers them."""
+    if not db.course(course_id):
+        raise HTTPException(404, "no such course")
+    exercises = []
+    for row in db.rows("SELECT id FROM lessons WHERE course_id = ? ORDER BY id", course_id):
+        lesson = db.lesson(row["id"])
+        try:
+            blocks = db.blocks(lesson["id"])
+            if core._replayed(lesson):
+                ahead = next((i for i, b in enumerate(blocks) if core._check_done(b) is False), None)
+                blocks = blocks if ahead is None else blocks[: ahead + 1]
+        except (ValueError, TypeError, AttributeError):
+            log.warning("lesson %s has a malformed block; its exercises are left out of the listing", lesson["id"])
+            continue
+        for b in blocks:
+            if b["kind"] != "exercise":
+                continue
+            try:
+                data = b["data"]
+                if not isinstance(data["files"], list):
+                    raise TypeError(data["files"])
+                files = [p for p in data["files"] if isinstance(p, str)]
+                summary = next((line.strip() for line in (b["markdown"] or "").splitlines() if line.strip()), "")
+                exercises.append({
+                    "id": b["id"], "lesson_id": lesson["id"], "unit": lesson["concept"], "summary": summary[:120], "files": files,
+                    "run": str(data["run"]), "open": lesson["mode"] != "teacher" and challenge.is_open(data),
+                })
+            except (KeyError, TypeError, AttributeError):
+                log.warning("exercise %s is malformed; it is left out of the listing", b["id"])
+    return exercises
 
 
 class SavedFile(BaseModel):
