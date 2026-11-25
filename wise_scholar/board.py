@@ -92,8 +92,9 @@ FIGURE = ("svg", "credits", "board")
 
 
 def unanswered(data: dict) -> dict | None:
-    """The drawing, credits and board a figure had before answers were drawn on it, None when none were. A figure
-    answered before this was kept tells its last answer alone, by the steps that draw it."""
+    """What a figure (its drawing, credits and board) or a handwritten board (its script and ink) was before answers were
+    drawn on it, None when none were. A figure answered before this was kept tells its last answer alone, by the steps
+    that draw it; a handwritten board tells none."""
     if "unanswered" in data:
         return data["unanswered"]
     board = data.get("board", {})
@@ -118,8 +119,8 @@ def narrated(kept: dict, steps: list[dict]) -> dict:
 
 
 def without_answers(data: dict, authored: bool = False) -> dict:
-    """A figure's data, and that of the drawing it replaced, without the answers drawn for the learner. In a prepared
-    course (authored) they were drawn for its author and stay, as any part of the figure."""
+    """A figure's or a handwritten board's data, and that of the drawing a figure replaced, without the answers drawn for
+    the learner. In a prepared course (authored) they were drawn for its author and stay, as any part of the figure."""
     if "previous" in data:
         data = data | {"previous": without_answers(data["previous"], authored)}
     if authored:
