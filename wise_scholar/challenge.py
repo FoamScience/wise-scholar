@@ -44,6 +44,14 @@ def reveal_blocker(data: dict, locked: bool = True) -> str | None:
     )
 
 
+def solution_files(data: dict, given) -> dict[str, str]:
+    """The solution's text of an exercise's files, for the exercise's own files only."""
+    files = data.get("files")
+    if not isinstance(given, dict) or not isinstance(files, list):
+        return {}
+    return {p: c for p, c in given.items() if p in files and isinstance(c, str)}
+
+
 def hint_blocker(data: dict) -> str | None:
     if not is_open(data):
         return "this challenge is already closed"

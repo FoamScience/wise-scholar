@@ -171,12 +171,18 @@ export type ExerciseData = ChallengeData & {
   last_run: { exit_code: number | null; output: string } | null
   completions?: Completion[]
   starter?: Record<string, string>
+  solution_files?: Record<string, string>
 }
 export type ExerciseFile = { path: string; location: string; content: string | null; kept: boolean; editable: boolean; online: boolean }
 
 /** The starter code of an exercise's file; null where none was recorded, as for a file or an exercise without one. */
 export function starterOf(d: ExerciseData, path: string): string | null {
   return d.starter && Object.hasOwn(d.starter, path) ? d.starter[path] : null
+}
+
+/** The solution's text of an exercise's file; the server sends it only once the solution is shown. */
+export function solutionOf(d: ExerciseData, path: string): string | null {
+  return d.solution !== null && d.solution_files && Object.hasOwn(d.solution_files, path) ? d.solution_files[path] : null
 }
 
 export type SortItem = { text: string; category?: string }

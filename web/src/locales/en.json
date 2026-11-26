@@ -410,6 +410,11 @@
       "changesRemoved": "Struck through: starter code you removed.",
       "noChanges": "This file is the same as the starter code.",
       "diffFailed": "The comparison could not be loaded.",
+      "solutionChanges": "Changes from the solution",
+      "solutionLegend": "Struck through: the solution's code. Marked at the edge: where yours differs.",
+      "solutionAdded": "Marked at the edge: code of yours the solution does not have.",
+      "solutionRemoved": "Struck through: solution code your file does not have.",
+      "sameAsSolution": "This file is the same as the solution.",
       "cleaned": "The course's files were cleaned up; these copies are read-only. Ask the tutor to pose the exercise again to work on it."
     },
     "card": {

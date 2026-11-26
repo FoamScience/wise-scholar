@@ -30,7 +30,7 @@ SHIPPED = {
     "quiz": ("card", "kind", "options", "categories", "answer", "pretest", "form", "translation", "number", "of", "answer_key",
              "explanation", "misconceptions", "imported"),
     "challenge": (*_TASK, "card", "variant_of", "comparison", "writing", "spoken", "teachback", "fluency", "words", "structure", "lang"),
-    "exercise": (*_TASK, "files", "run", "last_run", "completions"),
+    "exercise": (*_TASK, "files", "run", "last_run", "completions", "solution_files"),
     "figure": ("svg", "alt", "credits", "teaches", "diagram", "frames", "board", "restored", "imported"),
     "plot": ("spec", "alt", "teaches", "imported"),
     "widget": ("spec", "widget", "alt", "teaches", "imported"),

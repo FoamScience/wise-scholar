@@ -423,6 +423,11 @@
       "changesRemoved": "Barré : le code de départ que vous avez retiré.",
       "noChanges": "Ce fichier est identique au code de départ.",
       "diffFailed": "La comparaison n'a pas pu être chargée.",
+      "solutionChanges": "Différences avec la solution",
+      "solutionLegend": "Barré : le code de la solution. Marqué au bord : là où le vôtre diffère.",
+      "solutionAdded": "Marqué au bord : votre code absent de la solution.",
+      "solutionRemoved": "Barré : le code de la solution absent de votre fichier.",
+      "sameAsSolution": "Ce fichier est identique à la solution.",
       "cleaned": "Les fichiers du cours ont été nettoyés ; ces copies sont en lecture seule. Demandez au tuteur de reposer l'exercice pour y travailler."
     },
     "card": {
@@ -1218,6 +1223,7 @@
     "only a prepared course can be duplicated": "seul un cours préparé peut être dupliqué",
     "only the cards of a prepared course can be edited": "seules les cartes d'un cours préparé peuvent être modifiées",
     "a choice quiz needs 2 to 5 options, one of them exactly the key": "une question à choix a besoin de 2 à 5 options, dont une exactement égale à la clé",
+    "solution files need a written solution": "des fichiers de solution ont besoin d'une solution écrite",
     "the designer is still answering in this course": "le concepteur répond encore dans ce cours",
     "at most 6 photos go with one answer": "au plus 6 photos accompagnent une réponse",
     "a photo is limited to 25 MB": "une photo est limitée à 25 Mo",
