@@ -15,6 +15,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import unquote
 
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
@@ -49,6 +50,8 @@ ASSETS_LIMIT = 2000
 # A figure in a bundle: an animation of stages of up to 120,000 characters each, with room to spare.
 FIGURE_LIMIT = 1_440_000
 _ASSET = re.compile(r"assets/[0-9a-f]{64}")
+# `[the sum](#board-<block>-<part>)` in lesson text: a part of a handwritten board, by the board's block
+_BOARD_LINK = re.compile(r"\(#board-(\d+)-([^\s)]+)")
 
 KeyStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]
 HashStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
@@ -720,6 +723,7 @@ def _add_content(course_id: int, manifest: Manifest, assets: dict[str, bytes], u
             "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (course_id, lesson.title, lesson.phase, unit_ids.get(lesson.unit), str(uuid.uuid4()), lesson.key, lesson.summary),
         ).lastrowid
+        added = []
         for b in lesson.blocks:
             data = _clean_block(b, card_ids)
             if data.get("teachback"):
@@ -738,10 +742,38 @@ def _add_content(course_id: int, manifest: Manifest, assets: dict[str, bytes], u
                 (lesson_id, b.kind, markdown, json.dumps(data), b.key, json.dumps(locked) if locked else None),
             ).lastrowid
             db.conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (block_id, block_id))
+            added.append((block_id, b.kind, markdown, data))
             original = (b.data or {}).get("variant_of")
             if b.kind == "challenge" and isinstance(original, str):  # a number is ignored: it is the author's block id
                 variants[block_id] = original
+        _relink_boards(added)
     _point_variants(course_id, manifest, variants)
+
+
+def _named(ref: str) -> str | None:
+    """The element a board link's part names, when its author named it: an unnamed one (`#eq2`) may be another
+    element on the board that shipped, drawn without the answers."""
+    element = unquote(ref).split(".", 1)[0]
+    return element if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", element) else None
+
+
+def _relink_boards(blocks: list[tuple[int, str, str, dict]]) -> None:
+    """Point a lesson's links to named parts of its boards at the blocks the boards are now: the author's board is the
+    one board of the lesson holding every part the links to it name. A link that finds none, or more than one, stays."""
+    boards = {i: {e["id"] for e in data["doc"]["elements"]} for i, kind, _, data in blocks if kind == "board"}
+    named: dict[str, set[str]] = {}
+    for _, _, markdown, _ in blocks:
+        for block, ref in _BOARD_LINK.findall(markdown):
+            if name := _named(ref):
+                named.setdefault(block, set()).add(name)
+    found = {block: hits[0] for block, names in named.items() if len(hits := [i for i, ids in boards.items() if names <= ids]) == 1}
+
+    def point(m: re.Match) -> str:
+        return f"(#board-{found[m[1]]}-{m[2]}" if m[1] in found and _named(m[2]) else m[0]
+
+    for i, _, markdown, _ in blocks:
+        if (linked := _BOARD_LINK.sub(point, markdown)) != markdown:
+            db.conn.execute("UPDATE blocks SET markdown = ? WHERE id = ?", (linked, i))
 
 
 def _point_variants(course_id: int, manifest: Manifest, variants: dict[int, str | None]) -> None:
