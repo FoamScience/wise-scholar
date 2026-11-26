@@ -679,11 +679,20 @@ class Vault:
 
     def _flashcards(self, concept: dict) -> list[str]:
         """The unit's scheduled quiz cards the learner has met, in the Spaced Repetition plugin's multi-line form; a copy,
-        scheduling stays here."""
-        cards = [c for c in db.rows(
-            "SELECT id, question, answer_key, kind, options, vocab, due, EXISTS (SELECT 1 FROM answers a WHERE a.card_id = cards.id) AS answered "
+        scheduling stays here. A card split into parts gives way to them once one of its parts is here."""
+        scheduled = db.rows(
+            "SELECT id, parent_id, question, answer_key, kind, options, vocab, due, EXISTS (SELECT 1 FROM answers a WHERE a.card_id = cards.id) AS answered "
             "FROM cards WHERE concept_id = ? AND scheduled = 1 ORDER BY id", concept["id"],
-        ) if c["answer_key"].strip() and self._met(c)]
+        )
+        parent = {c["id"]: c["parent_id"] for c in scheduled}
+        met = [c for c in scheduled if c["answer_key"].strip() and self._met(c)]
+        split = set()
+        for c in met:
+            up = c["parent_id"]
+            while up and up not in split:
+                split.add(up)
+                up = parent.get(up)
+        cards = [c for c in met if c["id"] not in split]
         if not cards:
             return []
         # The plugin ends a card at a blank line and reads a lone "?" as the separator: neither may appear inside a side.
