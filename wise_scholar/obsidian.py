@@ -10,7 +10,7 @@ import time
 import zipfile
 from datetime import datetime, timezone
 
-from . import course_files, crafted, db, figures, quiz, widgets, wiseboard
+from . import course_files, db, figures, quiz, widgets, wiseboard
 
 log = logging.getLogger("wise_scholar.obsidian")
 
@@ -320,8 +320,6 @@ class Vault:
         credits = self._limits(d) + _credits(d.get("credits", []))
         # An animation is printed as its stages, one after the other.
         drawings = d["frames"] if len(d.get("frames", [])) > 1 else [d["svg"]]
-        if d.get("crafted"):
-            drawings = [crafted.standalone(svg) for svg in drawings]
         if self.inline:
             caption = " ".join(block["markdown"].split())
             alt = _alt(d.get("alt", ""))

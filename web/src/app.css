@@ -11,7 +11,6 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import './base.css' layer(base);
-@import '../../wise_scholar/kit/iso.css' layer(components);
 @import './styles/shell.css' layer(components);
 @import './styles/home.css' layer(components);
 @import './styles/workspace.css' layer(components);

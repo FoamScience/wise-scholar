@@ -235,7 +235,7 @@ function SetupCard(props: { steps: SetupStep[]; onDecide: (index: number, allow:
   )
 }
 
-export function Workspace({ profile, courseId, speech, commands, crafted, sketched, concept, start, found }: { profile: number; courseId: number; speech: boolean; commands: boolean; crafted: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | 'roleplay' | null; found: { lesson: number; at: string } | null }) {
+export function Workspace({ profile, courseId, speech, commands, sketched, concept, start, found }: { profile: number; courseId: number; speech: boolean; commands: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | 'roleplay' | null; found: { lesson: number; at: string } | null }) {
   const { t } = useTranslation()
   const foundLesson = found?.lesson ?? null
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({})
@@ -350,7 +350,7 @@ export function Workspace({ profile, courseId, speech, commands, crafted, sketch
           total={cardTotal}
           given={given}
           onGive={give}
-          features={{ speech, commands, crafted, sketched }}
+          features={{ speech, commands, sketched }}
           post={post}
           onError={setError}
         />
@@ -706,7 +706,7 @@ function LessonCards(props: {
   total: number | null | undefined
   given: Record<number, Given>
   onGive: (blockId: number, answer: Given) => void
-  features: { speech: boolean; commands: boolean; crafted: boolean; sketched: boolean }
+  features: { speech: boolean; commands: boolean; sketched: boolean }
   post: (path: string, body: unknown) => Promise<void>
   onError: (message: string) => void
 }) {

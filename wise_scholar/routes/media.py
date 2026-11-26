@@ -8,7 +8,7 @@ from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 
 from .. import app as core
-from .. import crafted, db, handwork, hub, speech
+from .. import db, handwork, hub, speech
 from ..app import CLIP_LIMIT, _add_photo, _handwork_block, _pending_photos, _profile, app, log
 
 
@@ -28,8 +28,7 @@ def figure_svg(block_id: int) -> Response:
     block = db.block(block_id)
     if not block or block["kind"] != "figure":
         raise HTTPException(404, "no such figure")
-    svg = block["data"]["svg"]
-    return Response(crafted.standalone(svg) if block["data"].get("crafted") else svg, media_type="image/svg+xml")
+    return Response(block["data"]["svg"], media_type="image/svg+xml")
 
 
 @app.get("/api/audio/podcasts/{name}")

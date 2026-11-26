@@ -156,6 +156,22 @@ def _lock_imported(connection) -> None:
         connection.execute("UPDATE blocks SET data = ?, locked = ? WHERE id = ?", (json.dumps(data), json.dumps(locked) if locked else None, r["id"]))
 
 
+def _retire_crafted(connection) -> None:
+    """Crafted figures are retired and the web app no longer styles them: one goes back to the drawing it replaced when
+    that was a plain one, else stays as it is drawn; a crafted drawing kept to go back to is dropped."""
+    for r in connection.execute("SELECT id, markdown, data FROM blocks WHERE kind = 'figure' AND data LIKE '%\"crafted\"%'").fetchall():
+        data, markdown = json.loads(r["data"]), r["markdown"]
+        previous = data.get("previous") or {}
+        if "crafted" in data and previous and "crafted" not in previous:
+            markdown, data = previous.pop("caption"), previous
+        else:
+            data.pop("crafted", None)
+            if "crafted" in previous:
+                data.pop("previous")
+                data.pop("restored", None)
+        connection.execute("UPDATE blocks SET markdown = ?, data = ? WHERE id = ?", (markdown, json.dumps(data), r["id"]))
+
+
 CARD_COLUMNS = "id, course_id, concept_id, question, kind, options, answer_key, explanation, fsrs, due, confident_miss, scheduled, vocab, lemma, lang, translation, relearn_after"
 MIGRATIONS = [
     """
@@ -677,6 +693,7 @@ MIGRATIONS = [
     # context: the sentence a saved word was met in; it stays in this database, in no bundle and no copy
     "ALTER TABLE cards ADD COLUMN context TEXT NOT NULL DEFAULT '';",
     _lock_imported,
+    _retire_crafted,
 ]
 
 DB_PATH.parent.mkdir(exist_ok=True)

@@ -11,7 +11,6 @@ FROM base AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
-COPY wise_scholar/kit/ /src/wise_scholar/kit/
 COPY web/ ./
 RUN npm run build
 

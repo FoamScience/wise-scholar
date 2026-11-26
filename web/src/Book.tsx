@@ -325,7 +325,7 @@ function FigureBlock({ block, sketched }: { block: Block; sketched: boolean }) {
           ))}
         </div>
       ) : (
-        <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram && !d.crafted} board={d.board?.steps} />
+        <Drawing className="figure-box" svg={d.svg} alt={d.alt} sketched={sketched && !d.diagram} board={d.board?.steps} />
       )}
       {d.board && <BoardSteps steps={d.board.steps} />}
       {block.markdown && <div className="text-sm text-muted-foreground"><InlineMarkdown>{block.markdown}</InlineMarkdown></div>}
