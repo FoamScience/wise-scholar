@@ -52,6 +52,8 @@ FIGURE_LIMIT = 1_440_000
 _ASSET = re.compile(r"assets/[0-9a-f]{64}")
 # `[the sum](#board-<block>-<part>)` in lesson text: a part of a handwritten board, by the board's block
 _BOARD_LINK = re.compile(r"\(#board-(\d+)-([^\s)]+)")
+# `[the peak](#plot-<block>-x=3.2)` in lesson text: the point of a plot nearest x, by the plot's block
+_PLOT_LINK = re.compile(r"(\(#plot-)(\d+)(-x=)", re.I)
 
 KeyStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]
 HashStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
@@ -746,7 +748,7 @@ def _add_content(course_id: int, manifest: Manifest, assets: dict[str, bytes], u
             original = (b.data or {}).get("variant_of")
             if b.kind == "challenge" and isinstance(original, str):  # a number is ignored: it is the author's block id
                 variants[block_id] = original
-        _relink_boards(added)
+        _relink(added)
     _point_variants(course_id, manifest, variants)
 
 
@@ -757,9 +759,11 @@ def _named(ref: str) -> str | None:
     return element if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", element) else None
 
 
-def _relink_boards(blocks: list[tuple[int, str, str, dict]]) -> None:
-    """Point a lesson's links to named parts of its boards at the blocks the boards are now: the author's board is the
-    one board of the lesson holding every part the links to it name. A link that finds none, or more than one, stays."""
+def _relink(blocks: list[tuple[int, str, str, dict]]) -> None:
+    """Point a lesson's links to named parts of its boards, and to points of its plots, at the blocks they are now. The
+    author's board is the one board of the lesson holding every part the links to it name; a link that finds none, or
+    more than one, stays. Plots have no named parts: when the plots the links name are as many as the lesson's, the
+    author's ids rise with the plots' order, so each goes to the plot of its rank; otherwise the plot links stay."""
     boards = {i: {e["id"] for e in data["doc"]["elements"]} for i, kind, _, data in blocks if kind == "board"}
     named: dict[str, set[str]] = {}
     for _, _, markdown, _ in blocks:
@@ -768,11 +772,18 @@ def _relink_boards(blocks: list[tuple[int, str, str, dict]]) -> None:
                 named.setdefault(block, set()).add(name)
     found = {block: hits[0] for block, names in named.items() if len(hits := [i for i, ids in boards.items() if names <= ids]) == 1}
 
+    plots = [i for i, kind, _, _ in blocks if kind == "plot"]
+    numbers = sorted({int(n) for _, _, markdown, _ in blocks for _, n, _ in _PLOT_LINK.findall(markdown)})
+    ranked = dict(zip(numbers, plots)) if len(numbers) == len(plots) else {}
+
     def point(m: re.Match) -> str:
         return f"(#board-{found[m[1]]}-{m[2]}" if m[1] in found and _named(m[2]) else m[0]
 
+    def pin(m: re.Match) -> str:
+        return f"{m[1]}{ranked[int(m[2])]}{m[3]}" if int(m[2]) in ranked else m[0]
+
     for i, _, markdown, _ in blocks:
-        if (linked := _BOARD_LINK.sub(point, markdown)) != markdown:
+        if (linked := _PLOT_LINK.sub(pin, _BOARD_LINK.sub(point, markdown))) != markdown:
             db.conn.execute("UPDATE blocks SET markdown = ? WHERE id = ?", (linked, i))
 
 
