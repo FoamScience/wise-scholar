@@ -16,6 +16,20 @@ export function diffSummary(chunks: readonly { fromA: number; toA: number; fromB
 
 /** The legend under a starter diff names only the marks it shows. */
 export const LEGEND = { same: 'exercise.noChanges', added: 'exercise.changesAdded', removed: 'exercise.changesRemoved', both: 'exercise.changesLegend' } as const
+export const SOLUTION_LEGEND = {
+  same: 'exercise.sameAsSolution', added: 'exercise.solutionAdded', removed: 'exercise.solutionRemoved', both: 'exercise.solutionLegend',
+} as const
+
+/** Which text a file is compared with, and what the shown diff holds: of which view, against which text. */
+export type Compared<B extends string> = { base: B | null; summary: { of: string | null; from: string; is: DiffSummary } | null }
+
+/** Pressing a comparison's toggle turns it on, switches to it from another, or turns it off. A switch between two
+ * equal texts keeps the diff's summary: the diff stays as it is, so none comes for it. */
+export function pressComparison<B extends string>(now: Compared<B>, pressed: B, texts: Record<B, string | null>, of: string | null): Compared<B> {
+  const base = now.base === pressed ? null : pressed
+  const s = now.summary
+  return { base, summary: now.base !== null && base !== null && s !== null && s.of === of && s.from === texts[base] ? s : null }
+}
 
 type EditorModule = { createEditor: (props: Parameters<typeof createEditor>[0]) => { setDiff: (original: string | null) => Promise<void>; destroy: () => void } }
 

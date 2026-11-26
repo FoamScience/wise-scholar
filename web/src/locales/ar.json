@@ -462,6 +462,11 @@
       "changesRemoved": "المشطوب: ما حذفته من الشيفرة الأولية.",
       "noChanges": "هذا الملف مطابق للشيفرة الأولية.",
       "diffFailed": "تعذّر تحميل المقارنة.",
+      "solutionChanges": "الفروق عن الحل",
+      "solutionLegend": "المشطوب: شيفرة الحل. المعلَّم عند الحافة: حيث تختلف شيفرتك.",
+      "solutionAdded": "المعلَّم عند الحافة: شيفرتك التي ليست في الحل.",
+      "solutionRemoved": "المشطوب: شيفرة الحل التي ليست في ملفك.",
+      "sameAsSolution": "هذا الملف مطابق للحل.",
       "cleaned": "نُظّفت ملفات الدورة؛ هذه النسخ للقراءة فقط. اطلب من المعلّم طرح التمرين من جديد للعمل عليه."
     },
     "card": {
@@ -1284,6 +1289,7 @@
     "only a prepared course can be duplicated": "لا يمكن نسخ إلا دورة مُعدّة",
     "only the cards of a prepared course can be edited": "لا يمكن تعديل إلا بطاقات الدورة المُعدّة",
     "a choice quiz needs 2 to 5 options, one of them exactly the key": "سؤال الاختيار يحتاج من 2 إلى 5 خيارات، أحدها مطابق للمفتاح تمامًا",
+    "solution files need a written solution": "ملفات الحل تحتاج إلى حل مكتوب",
     "the designer is still answering in this course": "ما زال المصمّم يجيب في هذه الدورة",
     "at most 6 photos go with one answer": "تُرفق 6 صور على الأكثر مع إجابة واحدة",
     "a photo is limited to 25 MB": "حجم الصورة محدود بـ 25 ميغابايت",

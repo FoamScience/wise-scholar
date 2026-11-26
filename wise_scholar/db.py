@@ -124,13 +124,14 @@ def lock(data: dict) -> dict | None:
     them for the gate to give. The ladder is as long as the author's, but for the tasks that never have one. Also run by
     the migration _lock_imported."""
     hints, solution = data.get("hints"), data.get("solution")
+    files = challenge.solution_files(data, data.pop("solution_files", None))
     data.update({"hints": [], "solution": None})
     data.update({k: d for k, d in challenge.new().items() if k in ("max_hints", "reveal_after") and not isinstance(data.get(k), int)})
     hints = [h for h in hints if isinstance(h, str) and h.strip()] if isinstance(hints, list) else []
     solution = solution if isinstance(solution, str) and solution.strip() else None
-    if not hints and not solution:
+    if not hints and not solution and not files:
         return None
-    locked = {"hints": hints, "solution": solution, "max_hints": data["max_hints"]}
+    locked = {"hints": hints, "solution": solution, "max_hints": data["max_hints"]} | ({"solution_files": files} if files else {})
     if data.get("pretest"):
         data["reveal_after"] = 1
     elif not data.get("transfer"):
@@ -800,6 +801,7 @@ def _fresh(data: dict, authored: bool = False) -> dict:
         kept.update({"attempts": [], "gave_up": False, "solved": False})
     if not authored:
         kept.update({k: empty for k, empty in (("hints", []), ("solution", None)) if k in data})
+        kept.pop("solution_files", None)
     if "answer" in data:
         kept["answer"] = None
     if "last_run" in data:

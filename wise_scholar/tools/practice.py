@@ -363,16 +363,25 @@ def _grade_teachback(data: dict, correct: bool) -> None:
 
 
 @mcp.tool()
-async def reveal(challenge_id: int, solution: str) -> str:
-    """Show the full solution of a challenge. The server refuses while the solution is locked."""
+async def reveal(challenge_id: int, solution: str, files: list[ExerciseFile] = []) -> str:
+    """Show the full solution of a challenge. The server refuses while the solution is locked.
+
+    files: for an exercise, its files as the solution has them; the learner can then compare their own files with these.
+    """
     data = _open_challenge(challenge_id)
     if isinstance(data, str):
         return data
     lesson = db.lesson(db.block(challenge_id)["lesson_id"])
     if problem := challenge.reveal_blocker(data, locked=not prepared(lesson)):
         return f"refused: {problem}"
-    written = db.locked(challenge_id).get("solution")
-    _patch_block(challenge_id, {"solution": written or solution})
+    if stray := [f.path for f in files if f.path not in data.get("files", [])]:
+        return f"error: {stray} are not files of this exercise"
+    locked = db.locked(challenge_id)
+    written = locked.get("solution")
+    # an author's solution is shown whole, with their files or none, never with the tutor's beside it
+    authored = written is not None or "solution_files" in locked
+    shown = challenge.solution_files(data, locked.get("solution_files") if authored else {f.path: f.content for f in files})
+    _patch_block(challenge_id, {"solution": written or solution} | ({"solution_files": shown} if shown else {}))
     if not prepared(lesson):
         _grade_teachback(data, False)
     if data.get("writing") and data["attempts"] and not data.get("fluency"):

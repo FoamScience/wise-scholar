@@ -19,12 +19,12 @@ import type { QuizData } from './Quiz'
 import { ReadingCard, VocabCheckCard } from './Language'
 import type { ReadingData } from './Language'
 import { PodcastCard } from './Podcast'
-import { blockKey, challengeLabel, pendingPhotos, starterOf } from './course'
+import { blockKey, challengeLabel, pendingPhotos, solutionOf, starterOf } from './course'
 import { PlacementAreas } from './Areas'
 import { FileDiff } from './FileDiff'
 import { FileEditor } from './FileEditor'
-import { LEGEND } from './editorSync'
-import type { DiffSummary } from './editorSync'
+import { LEGEND, SOLUTION_LEGEND, pressComparison } from './editorSync'
+import type { Compared, DiffSummary } from './editorSync'
 import { PhotoTray } from './Handwork'
 import { Comparison, Helper, HintList, Ladder } from './Ladder'
 import type { Area, Block, ChallengeData, CourseDetail, ExerciseData, ExerciseFile, Lesson, QuestionData, SpeakingData } from './course'
@@ -513,6 +513,8 @@ function useExerciseFiles(blockId: number, open: boolean) {
 }
 
 const PRESSED = 'aria-pressed:border-primary aria-pressed:bg-accent'
+const LEGENDS = { starter: LEGEND, solution: SOLUTION_LEGEND }
+type Base = keyof typeof LEGENDS
 
 function ExerciseFileView(props: {
   blockId: number
@@ -524,36 +526,37 @@ function ExerciseFileView(props: {
 }) {
   const { t } = useTranslation()
   const f = props.file
-  const starter = starterOf(props.data, f.path)
-  const [changes, setChanges] = useState(false)
+  // the solution's files reach a learner only once its solution is shown
+  const bases: Record<Base, string | null> = { starter: starterOf(props.data, f.path), solution: solutionOf(props.data, f.path) }
+  const [comparison, setComparison] = useState<Compared<Base>>({ base: null, summary: null })
+  const { base, summary } = comparison
   const [failed, setFailed] = useState(false)
-  // what the shown diff holds, and of which view: the editor's, or the read-only file of this text
-  const [summary, setSummary] = useState<{ of: string | null; is: DiffSummary } | null>(null)
   const [announced, setAnnounced] = useState('')
   const toggled = useRef(false)
-  const against = changes ? starter : null
+  const against = base === null ? null : bases[base]
+  // the view a summary is of: the editor's, or the read-only file of this text
   const of = props.editable ? null : f.content
-  const legend = changes && summary?.of === of ? t(LEGEND[summary.is]) : ''
+  const legend = base !== null && summary?.of === of && summary.from === against ? t(LEGENDS[base][summary.is]) : ''
 
-  function toggle() {
-    toggled.current = !changes
-    setChanges(!changes)
-    setSummary(null)
+  function toggle(pressed: Base) {
+    const next = pressComparison(comparison, pressed, bases, of)
+    toggled.current = next.base !== null && next.summary === null
+    setComparison(next)
     setFailed(false)
-    setAnnounced('')
+    setAnnounced(next.base !== null && next.summary ? t(LEGENDS[next.base][next.summary.is]) : '')
   }
 
   function described(is: DiffSummary) {
-    setSummary({ of, is })
+    if (base === null || against === null) return
+    setComparison({ base, summary: { of, from: against, is } })
     if (!toggled.current) return
     toggled.current = false
-    setAnnounced(t(LEGEND[is]))
+    setAnnounced(t(LEGENDS[base][is]))
   }
 
   function broke() {
     toggled.current = false
-    setChanges(false)
-    setSummary(null)
+    setComparison({ base: null, summary: null })
     setFailed(true)
     setAnnounced(t('exercise.diffFailed'))
   }
@@ -575,11 +578,18 @@ function ExerciseFileView(props: {
           {t('exercise.copyPath')}
         </Button>
       </summary>
-      {f.content !== null && starter !== null && (
+      {f.content !== null && (bases.starter !== null || bases.solution !== null) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-2">
-          <Button type="button" variant="outline" className={PRESSED} aria-pressed={changes} onClick={toggle}>
-            {t('exercise.changes')}
-          </Button>
+          {bases.starter !== null && (
+            <Button type="button" variant="outline" className={PRESSED} aria-pressed={base === 'starter'} onClick={() => toggle('starter')}>
+              {t('exercise.changes')}
+            </Button>
+          )}
+          {bases.solution !== null && (
+            <Button type="button" variant="outline" className={PRESSED} aria-pressed={base === 'solution'} onClick={() => toggle('solution')}>
+              {t('exercise.solutionChanges')}
+            </Button>
+          )}
           <span className="text-sm text-muted-foreground" aria-hidden="true">{legend}</span>
           <span className="sr-only" role="status">{announced}</span>
         </div>

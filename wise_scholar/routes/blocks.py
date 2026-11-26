@@ -6,7 +6,7 @@ from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Annotated, Literal
 
 from .. import app as core
 from .. import board, challenge, course_files, db, handwork, hub, lexicon, quiz, resources, sandbox, speech, tutor, vocab, widgets
@@ -42,6 +42,7 @@ class BlockEdit(BaseModel):
     """What a teacher may change on a card; fields that do not fit the block's kind are ignored."""
     markdown: str | None = Field(default=None, max_length=20000)
     solution: str | None = Field(default=None, max_length=20000)
+    solution_files: dict[str, Annotated[str, Field(max_length=course_files.READ_LIMIT)]] | None = Field(default=None, max_length=50)
     hints: list[str] | None = None
     run: str | None = Field(default=None, max_length=500)
     options: list[str] | None = None
@@ -741,6 +742,11 @@ def _edit_challenge(kind: str, data: dict, body: BlockEdit) -> None:
         data["solution"] = body.solution.strip() or None
     if body.hints is not None:
         data["hints"] = [h.strip() for h in body.hints if h.strip()]
+    if body.solution_files is not None and kind == "exercise":
+        data.pop("solution_files", None)
+        data |= {"solution_files": files} if (files := challenge.solution_files(data, body.solution_files)) else {}
+    if data.get("solution_files") and data.get("solution") is None:
+        raise HTTPException(422, "solution files need a written solution")
     if body.run is not None and kind == "exercise" and body.run.strip():
         data["run"] = body.run.strip()
 
