@@ -405,11 +405,8 @@ async def _pose_figures(lesson: int, teaches) -> list[str]:
         await visuals.narrate_figure(lesson, drawn, [BoardStep(say="One.", draw=["one"]), BoardStep(say="Two.", draw=["two"])]),
         await visuals.annotate_figure(lesson, drawn, '<g data-part="three"><rect y="5" width="4" height="4"/></g>', [BoardStep(say="Three.", draw=["three"])]),
         await visuals.replace_figure(lesson, redrawn, SVG, "Again.", "alt"),
-        await visuals.replace_crafted_figure(lesson, redrawn, "one", "Crafted.", "alt"),
         await visuals.add_diagram(lesson, "sets", "Set A", "Caption.", "alt", teaches),
         await visuals.add_animation(lesson, "sets", ["Set A", "Set B"], "Caption.", "alt", teaches),
-        await visuals.add_crafted_figure(lesson, "one", "Caption.", "alt", teaches),
-        await visuals.add_crafted_figure(lesson, "stages", "Caption.", "alt", teaches),
     ]
 
 
@@ -467,14 +464,14 @@ async def _pose_in_other_lessons(course: int, source: int) -> tuple[list[str], l
 
 def _unclassified(lessons: list[int]) -> set[tuple[str, str]]:
     # an exercise's starter files ship as the version's files, a quiz's card by its key, a figure as its drawing, without its answers
-    kept_back = {*db._RECORD, "card_id", "starter", "crafted", "previous", "unanswered"}
+    kept_back = {*db._RECORD, "card_id", "starter", "previous", "unanswered"}
     return {(b["kind"], f) for x in lessons for b in db.blocks(x) for f in b["data"] or {} if f not in {*bundle.SHIPPED[b["kind"]], *kept_back}}
 
 
 def test_every_field_the_posing_tools_give_a_block_is_named_as_shipped_or_kept_back(places, monkeypatch):
     import asyncio
 
-    from wise_scholar import crafted, diagrams, figcheck, speech, wiseboard
+    from wise_scholar import diagrams, figcheck, speech, wiseboard
     from wise_scholar.tools import practice
 
     async def answer(value):
@@ -484,8 +481,6 @@ def test_every_field_the_posing_tools_give_a_block_is_named_as_shipped_or_kept_b
     monkeypatch.setattr(speech, "available", lambda: True)
     monkeypatch.setattr(wiseboard, "available", lambda: True)
     monkeypatch.setattr(wiseboard, "render", lambda script, prior=None: answer(({"v": 1}, "ok")))
-    monkeypatch.setattr(crafted, "available", lambda: True)
-    monkeypatch.setattr(crafted, "render", lambda script, workspace: answer([SVG] if script == "one" else [SVG, SVG]))
     monkeypatch.setattr(diagrams, "render", lambda domain, substance: SVG)
     monkeypatch.setattr(diagrams, "animate", lambda domain, stages: (SVG, [SVG, SVG]))
     course = _prepared_course("Every field")
@@ -496,7 +491,7 @@ def test_every_field_the_posing_tools_give_a_block_is_named_as_shipped_or_kept_b
     assert {b["kind"] for b in db.blocks(lesson)} == set(bundle.BLOCK_KINDS)
     assert _unclassified([lesson, *lessons]) == set()
     given = {f for x in (lesson, *lessons) for b in db.blocks(x) for f in b["data"] or {}}
-    assert {"variant_of", "comparison", "frames", "diagram", "crafted", "previous", "board", "story", "gist"} <= given
+    assert {"variant_of", "comparison", "frames", "diagram", "previous", "board", "story", "gist"} <= given
 
     # a field a tool starts to write fails the check until it is named, and stays out of a version meanwhile
     new = challenge.new

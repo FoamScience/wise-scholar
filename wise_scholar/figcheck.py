@@ -77,11 +77,10 @@ def available() -> bool:
     return importlib.util.find_spec("playwright") is not None
 
 
-async def problems(drawings: list[str], small_text: bool = True, where: list[str] | None = None, fresh: list[str] | None = None) -> list[str]:
+async def problems(drawings: list[str], where: list[str] | None = None, fresh: list[str] | None = None) -> list[str]:
     """What is wrong with scrubbed drawings (a figure, or the stages of one) laid out at the lesson's width; empty when
-    nothing is, or nothing could look. small_text: whether labels under the readable size count. where: what each
-    drawing is, to name it in a problem; stages by number when not given. fresh: parts just drawn onto the figure,
-    whose labels may not sit on what was there."""
+    nothing is, or nothing could look. where: what each drawing is, to name it in a problem; stages by number when
+    not given. fresh: parts just drawn onto the figure, whose labels may not sit on what was there."""
     if not available():
         return []
     from playwright.async_api import async_playwright
@@ -102,7 +101,7 @@ async def problems(drawings: list[str], small_text: bool = True, where: list[str
                     f'<!doctype html><style>body {{ margin: 0; width: {WIDTH}px; font: 16px "Instrument Sans", "IBM Plex Sans Arabic", sans-serif }} svg {{ width: 100%; height: auto; display: block }}</style>{svg}'
                 )
                 stage = f"{where[n]}: " if where else f"stage {n + 1}: " if len(drawings) > 1 else ""
-                found += [stage + f for f in await tab.evaluate(MEASURE, [SMALLEST_PX if small_text else 0, EDGE_SLACK, OVERLAP])]
+                found += [stage + f for f in await tab.evaluate(MEASURE, [SMALLEST_PX, EDGE_SLACK, OVERLAP])]
                 if fresh:
                     found += await tab.evaluate(COVERS, [fresh, OVERLAP])
         finally:

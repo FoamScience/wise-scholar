@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from .. import app as core
-from .. import book, crafted, db, history, hub, quiz, remind, review, sandbox, settings, speech, tutor
+from .. import book, db, history, hub, quiz, remind, review, sandbox, settings, speech, tutor
 from ..tools import language as language_tools, practice as practice_tools, side_turns as side_tools
 from ..backends import AGENT
 from ..app import LOCALE_NAMES, SITTING_GAP, SelfGrade, _due, _hostname, _lesson, _lesson_view, _map_outline, _now, _profile, _untrusted, _warmed, app, log
@@ -157,7 +157,7 @@ def _practice_claims(concept_id: int, profile_id: int) -> str:
 
 @app.get("/api/meta")
 def meta() -> dict:
-    return {"agent": AGENT, "speech": speech.available(), "pdf": book.available(), "commands": sandbox.commands(), "crafted": crafted.available()}
+    return {"agent": AGENT, "speech": speech.available(), "pdf": book.available(), "commands": sandbox.commands()}
 
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}

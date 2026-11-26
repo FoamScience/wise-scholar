@@ -15,7 +15,6 @@ export type FigureData = {
   alt: string
   credits?: Credit[]
   diagram?: { domain: string; substance?: string; stages?: string[] }
-  crafted?: { script: string }
   frames?: string[]
   // answer: where the steps drawn in answer to the learner's last question begin
   board?: { steps: BoardStep[]; answer?: number }
@@ -109,48 +108,6 @@ function Stages({ box, count }: { box: React.RefObject<HTMLDivElement | null>; c
   )
 }
 
-/** "Redraw", then the learner's notes on what to change. */
-function Redraw(props: { disabled?: boolean; onRedraw: (notes: string) => void }) {
-  const { t } = useTranslation()
-  const [notes, setNotes] = useState<string | null>(null)
-  if (notes === null) {
-    return (
-      <Button variant="ghost" size="sm" className="-ms-3 self-start text-muted-foreground" disabled={props.disabled} onClick={() => setNotes('')}>
-        {t('block.redraw')}
-      </Button>
-    )
-  }
-  return (
-    <form
-      className="grid gap-2"
-      onSubmit={(e) => {
-        e.preventDefault()
-        props.onRedraw(notes)
-        setNotes(null)
-      }}
-    >
-      <Input
-        dir="auto"
-        maxLength={1000}
-        aria-label={t('block.redrawNotes')}
-        placeholder={t('block.redrawNotes')}
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        onKeyDown={(e) => e.key === 'Escape' && setNotes(null)}
-        autoFocus
-      />
-      <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={props.disabled}>
-          {t('block.redrawGo')}
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setNotes(null)}>
-          {t('common.cancel')}
-        </Button>
-      </div>
-    </form>
-  )
-}
-
 type Asked = (part: string, question: string, parts: PartBox[]) => void
 
 /** "Ask about a part", then a click on the part, then the question; the tutor answers by drawing on the figure. */
@@ -201,14 +158,14 @@ function AskPart(props: { picked: { id: string; label: string } | null; picking:
 }
 
 /** A tutor-drawn figure; click to see it large. Steps the tutor just drew in answer to a question play at once. */
-export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void; onRedraw?: (notes: string) => void; onAsk?: Asked }) {
+export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void; onAsk?: Asked }) {
   const { t } = useTranslation()
   const d = props.data as FigureData
   const [large, setLarge] = useState(false)
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<{ id: string; label: string } | null>(null)
   const box = useRef<HTMLDivElement>(null)
-  const sketched = props.sketched && !d.diagram && !d.crafted
+  const sketched = props.sketched && !d.diagram
   // steps added while the figure is on screen are an answer just drawn: they play once, from where it begins
   const count = d.board?.steps.length ?? 0
   const [seen, setSeen] = useState(count)
@@ -269,7 +226,6 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
       {props.caption && <div className="text-sm text-muted-foreground"><InlineMarkdown>{props.caption}</InlineMarkdown></div>}
       <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />
-      {props.onRedraw && <Redraw disabled={props.disabled} onRedraw={props.onRedraw} />}
       {d.previous && props.onRestore && (
         <Button variant="ghost" size="sm" className="-ms-3 self-start text-muted-foreground" disabled={props.disabled} onClick={props.onRestore}>
           {d.restored ? t('block.backToRedrawn') : t('block.restoreDrawing')}

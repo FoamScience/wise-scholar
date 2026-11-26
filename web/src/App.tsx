@@ -48,10 +48,10 @@ function useHash(): string {
   return hash
 }
 
-type Meta = { agent: string; speech: boolean; pdf: boolean; commands: boolean; crafted: boolean }
+type Meta = { agent: string; speech: boolean; pdf: boolean; commands: boolean }
 
 function useMeta(): Meta {
-  const [meta, setMeta] = useState<Meta>({ agent: '', speech: false, pdf: false, commands: true, crafted: false })
+  const [meta, setMeta] = useState<Meta>({ agent: '', speech: false, pdf: false, commands: true })
   useEffect(() => {
     api<Meta>('/api/meta').then(setMeta, () => {})
   }, [])
@@ -94,7 +94,6 @@ function coursePage(hash: string, current: Profile, meta: Meta) {
           courseId={route.courseId}
           speech={meta.speech}
           commands={meta.commands}
-          crafted={meta.crafted}
           sketched={current.sketch}
           concept={route.concept}
           start={route.start}

@@ -240,8 +240,8 @@ def _serves(tool: str, kind: str) -> bool:
 
 # What the interview and placement prompts use besides the tools every phase shares; lessons and practice see all.
 SHARED_TOOLS = (
-    "add_animation", "add_block", "add_board", "add_crafted_figure", "add_diagram", "add_figure", "add_plot", "add_widget", "ask",
-    "board_help", "craft_help", "extend_board", "find_art", "note_learner", "replace_crafted_figure", "revise_course_map", "view_handwork",
+    "add_animation", "add_block", "add_board", "add_diagram", "add_figure", "add_plot", "add_widget", "ask",
+    "board_help", "extend_board", "find_art", "note_learner", "revise_course_map", "view_handwork",
 )
 PHASE_TOOLS = {
     "interview": (*SHARED_TOOLS, "get_playbook", "list_playbooks", "offer_resources", "rank_mechanisms", "set_course_map", "set_cover", "set_pace", "set_prerequisites", "set_sitting"),

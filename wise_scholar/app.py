@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 
-from . import art, bundle, challenge, cleanup, crafted, db, diagrams, handwork, hub, quiz, remind, resources, sandbox, speech, tutor, vault, vocab, widgets, wiseboard
+from . import art, bundle, challenge, cleanup, db, diagrams, handwork, hub, quiz, remind, resources, sandbox, speech, tutor, vault, vocab, widgets, wiseboard
 from .tools import course_plan as plan_tools, lesson_flow as flow_tools, quizzes as quiz_tools, side_turns as side_tools
 from .backends import BACKEND, MCP_SECRET, agy, api, claude, opencode
 from .playbooks import PLAYBOOKS, describe
@@ -359,11 +359,6 @@ def _tool_lines() -> list[str]:
         tools.append(
             "[tools] Diagram domains for add_diagram (read diagram_help first): "
             + "; ".join(f"{d}: {diagrams.summary(d)}" for d in diagrams.domains())
-        )
-    if crafted.available():
-        tools.append(
-            "[tools] Crafted figures: add_crafted_figure draws a thing as itself in volume and shade, built or living, scripted "
-            "against a kit (read craft_help first); replace_crafted_figure redraws an earlier figure that way in its place."
         )
     if wiseboard.available():
         tools.append(

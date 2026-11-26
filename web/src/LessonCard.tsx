@@ -571,7 +571,7 @@ export function PlacementResult(props: { id?: number; level: string | null; text
   )
 }
 
-type Features = { speech: boolean; commands: boolean; crafted: boolean; sketched: boolean }
+type Features = { speech: boolean; commands: boolean; sketched: boolean }
 
 type CardProps = {
   block: Block
@@ -693,7 +693,7 @@ function ShownCard(props: CardProps) {
     ) : b.kind === 'widget' ? (
       <WidgetCard key={b.id} id={b.id} title={b.markdown} data={b.data} onTry={authored ? undefined : (at) => props.post(`/api/blocks/${b.id}/widget`, { at })} />
     ) : b.kind === 'figure' ? (
-      <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={features.sketched} disabled={lesson.running} onRestore={() => props.post(`/api/blocks/${b.id}/restore`, {})} onRedraw={features.crafted ? (notes) => props.post(`/api/blocks/${b.id}/redraw`, { notes }) : undefined} onAsk={authored || lesson.replay ? undefined : (part, question, parts) => props.post(`/api/blocks/${b.id}/ask`, { part, question, parts })} />
+      <FigureCard key={b.id} id={b.id} caption={b.markdown} data={b.data} sketched={features.sketched} disabled={lesson.running} onRestore={() => props.post(`/api/blocks/${b.id}/restore`, {})} onAsk={authored || lesson.replay ? undefined : (part, question, parts) => props.post(`/api/blocks/${b.id}/ask`, { part, question, parts })} />
     ) : b.kind === 'board' ? (
       <InkBoardCard key={b.id} id={b.id} caption={b.markdown} data={b.data} disabled={lesson.running} onAsk={authored || lesson.replay ? undefined : (part, question) => props.post(`/api/blocks/${b.id}/ask`, { part, question })} />
     ) : b.kind === 'placement' ? (

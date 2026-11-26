@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from .. import app as core
-from .. import board, challenge, course_files, crafted, db, handwork, hub, lexicon, quiz, resources, sandbox, speech, tutor, vocab, widgets
+from .. import board, challenge, course_files, db, handwork, hub, lexicon, quiz, resources, sandbox, speech, tutor, vocab, widgets
 from ..tools import language as language_tools, practice as practice_tools
 from ..app import CLIP_LIMIT, Decision, QuizAnswer, SelfGrade, _add_photo, _handwork_block, _lesson, _now, _pending_photos, _record_answer, _replay_progress, _replayed, _require_answerable, _turns, _unanswered_quiz, _untrusted, _update_block, app, log
 
@@ -17,10 +17,6 @@ from ..app import CLIP_LIMIT, Decision, QuizAnswer, SelfGrade, _add_photo, _hand
 # ponytail: on synthesized references right words score 0.97+ and wrong ones under 0.45; real accents are untested.
 WEAK_WORD = 0.5
 MISMATCH_SHARE = 0.5
-
-
-class Redraw(BaseModel):
-    notes: str = Field(default="", max_length=1000)
 
 
 class BoardPart(BaseModel):
@@ -113,30 +109,6 @@ def _challenge_state(block: dict) -> str:
 
 
 REPLAY_MISS = "React to this miss in two or three chat sentences: what the answer shows, and the right idea from the unit."
-
-
-@app.post("/api/blocks/{block_id}/redraw", status_code=202)
-async def redraw_figure(block_id: int, body: Redraw) -> dict:
-    """Asks the tutor to craft this figure again in its place, with what the learner wants changed."""
-    block = db.block(block_id)
-    if not block or block["kind"] != "figure":
-        raise HTTPException(404, "no such figure")
-    lesson = _lesson(block["lesson_id"])
-    core._require_idle(lesson["id"])
-    if not crafted.available():
-        raise HTTPException(409, "this server cannot craft figures")
-    line = (
-        f"[redraw] Craft figure {block_id} of this lesson again, in its place, with one replace_crafted_figure call: the same idea, "
-        "its caption kept or sharpened, alt text telling what the new drawing shows, now a crafted object as craft_help describes "
-        "(read it first); as an animation only when the idea itself unfolds in time, else one still figure. Then say in one "
-        "sentence what changed."
-    )
-    # The learner's wish is a learner message, in the chat and in the turn, never part of the app's own line.
-    if notes := body.notes.strip():
-        db.add_message(lesson["id"], "learner", notes)
-        line += f"\n[learner] {_untrusted(notes)}"
-    core._start_turn(lesson, line)
-    return {"figure": block_id}
 
 
 def _board_line(block: dict, body: BoardQuestion, question: str) -> str:

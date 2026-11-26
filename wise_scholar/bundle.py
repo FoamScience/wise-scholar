@@ -18,7 +18,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
-from . import board, challenge, course_files, crafted, db, figures, widgets, wiseboard
+from . import board, challenge, course_files, db, figures, widgets, wiseboard
 
 SCHEMA = 1
 LICENCES = ("CC-BY-SA-4.0", "CC-BY-4.0", "CC-BY-NC-SA-4.0", "all-rights-reserved")
@@ -46,7 +46,8 @@ BUNDLE_LIMIT = 256 * 1024 * 1024
 UNPACKED_LIMIT = 512 * 1024 * 1024
 MANIFEST_LIMIT = 32 * 1024 * 1024
 ASSETS_LIMIT = 2000
-FIGURE_LIMIT = crafted.MAX_SVG * 12
+# A figure in a bundle: an animation of stages of up to 120,000 characters each, with room to spare.
+FIGURE_LIMIT = 1_440_000
 _ASSET = re.compile(r"assets/[0-9a-f]{64}")
 
 KeyStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]

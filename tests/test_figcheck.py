@@ -35,7 +35,6 @@ def test_a_figure_a_reader_trips_over_is_described():
         'the label "tiny" is 6.0 px tall at 600 px wide; make it at least 9 px',
         'the labels "Ventricle" and "Atrium" overlap',
     ]
-    assert not any("tiny" in f for f in check('<svg viewBox="0 0 300 150"><rect width="1" height="1"/><text x="20" y="140" font-size="3">tiny</text></svg>', small_text=False))
 
 
 @looks

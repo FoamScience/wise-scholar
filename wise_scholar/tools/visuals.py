@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import suppress
 
-from .. import art, board, crafted, db, diagrams, figcheck, figures, plots, widgets, wiseboard
+from .. import art, board, db, diagrams, figcheck, figures, plots, widgets, wiseboard
 from ..tutor import _show, calling_turn, mcp, pretest_blocker
 
 
@@ -90,7 +90,7 @@ async def narrate_figure(lesson_id: int, block_id: int, steps: list[board.BoardS
     about what it draws. draw: the `data-part` ids the step draws; each part is drawn once. erase: parts on the board
     the step wipes (a first guess, a scaffold no longer needed). Parts no step draws stand from the start, so the
     frame (axes, an outline) needs no step. A part inside another part is drawn with it or after it. A figure
-    without parts is drawn again with replace_figure or replace_crafted_figure first."""
+    without parts is drawn again with replace_figure first."""
     block = db.block(block_id)
     if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
         return f"error: no figure with id {block_id} in this lesson"
@@ -231,91 +231,11 @@ async def add_animation(lesson_id: int, domain: str, stages: list[str], caption:
     return f"shown as figure {block['id']}, animated over {len(frames)} stages"
 
 
-@mcp.tool()
-async def add_crafted_figure(lesson_id: int, script: str, caption: str, alt: str, teaches: figures.Teaches, setup: bool = False) -> str:
-    """Show a crafted figure: a thing drawn as itself in volume and shade, from the kit's prisms, tubes, turned
-    bodies and soft bodies: an apparatus, a machine, a chromosome, a cell, an organ, a structure. Read craft_help
-    first. script: an ES module that imports the kit from "./kit/iso-kit.mjs" and exports as default the string
-    figureSvg returns, or an array of 2 to 6 such strings for an animation: the same object, one state per stage,
-    played as one animation and shown stage by stage in the book. The server runs it and shows the SVG; an error
-    carries Node's message. The figure is coloured by the site's theme, so it carries no colours of its own.
-    caption, alt, teaches and setup as for add_figure; for an animation, alt tells the whole sequence."""
-    lesson = db.lesson(lesson_id)
-    if not lesson:
-        return f"error: no lesson with id {lesson_id}"
-    if problem := figure_blocker(lesson, setup):
-        return f"refused: {problem}"
-    if not alt.strip():
-        return "error: alt text is required"
-    if not crafted.available():
-        return "error: this server cannot run Node, so there are no crafted figures; draw it with add_figure"
-    try:
-        spec = figures.teaching(teaches)
-        data = await _crafted_data(lesson, script, alt) | {"teaches": spec}
-    except ValueError as e:
-        return f"error: {e}"
-    if found := await _crafted_problems(data):
-        return f"error: {figcheck.report(found)}"
-    block = db.add_block(lesson_id, "figure", caption, {"svg": "", "alt": data["alt"]})
-    block = db.set_block_data(block["id"], _prefixed(block["id"], data))
-    _show(lesson, block)
-    stages = len(data.get("frames", []))
-    return f"shown as figure {block['id']}" + (f", animated over {stages} stages" if stages else "")
-
-
-@mcp.tool()
-async def replace_crafted_figure(lesson_id: int, block_id: int, script: str, caption: str, alt: str, teaches: figures.Teaches | None = None) -> str:
-    """Craft an existing figure of this lesson again in its place, whatever it was drawn with: same block, same
-    position in the lesson, and the drawing it replaces kept for the learner to go back to. Same rules as
-    add_crafted_figure; without teaches the figure keeps what it was for. Use it when asked to redraw figures as
-    crafted ones, or when a crafted figure of yours turned out wrong."""
-    block = db.block(block_id)
-    if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
-        return f"error: no figure with id {block_id} in this lesson"
-    if not alt.strip():
-        return "error: alt text is required"
-    if not crafted.available():
-        return "error: this server cannot run Node, so there are no crafted figures; draw it with replace_figure"
-    lesson = db.lesson(lesson_id)
-    try:
-        kept = _kept_teaches(block, teaches)
-        data = await _crafted_data(lesson, script, alt) | kept
-    except ValueError as e:
-        return f"error: {e}"
-    if found := await _crafted_problems(data):
-        return f"error: {figcheck.report(found)}"
-    previous = {k: v for k, v in block["data"].items() if k not in ("previous", "restored")} | {"caption": block["markdown"]}
-    block = db.set_block(block_id, caption, _prefixed(block_id, data) | {"previous": previous})
-    _show(lesson, block, "block.updated")
-    stages = len(data.get("frames", []))
-    return f"figure {block_id} redrawn" + (f", animated over {stages} stages" if stages else "")
-
-
-async def _crafted_data(lesson: dict, script: str, alt: str) -> dict:
-    """The block data of a crafted figure: one drawing, or the stages played as one animation with the frames kept."""
-    stages = await crafted.render(script, db.workspace(lesson["slug"]))
-    if len(stages) == 1:
-        return _figure_data(stages[0], alt, limit=crafted.MAX_SVG) | {"crafted": {"script": script}}
-    data = _figure_data(crafted.animate(stages), alt, limit=crafted.MAX_SVG * len(stages))
-    return data | {"crafted": {"script": script}, "frames": [figures.clean(s, limit=crafted.MAX_SVG) for s in stages]}
-
-
-async def _crafted_problems(data: dict) -> list[str]:
-    """A crafted figure's stages checked one by one; its engraved face labels are small on purpose."""
-    return await figcheck.problems(data.get("frames") or [data["svg"]], small_text=False)
-
-
 def _prefixed(block_id: int, data: dict) -> dict:
     """The data with the ids inside its drawings made unique to the block, so figures on one page stay apart."""
     prefix = f"f{block_id}-"
     frames = {"frames": [figures.prefix_ids(f, f"{prefix}{n}-") for n, f in enumerate(data["frames"])]} if "frames" in data else {}
     return {**data, "svg": figures.prefix_ids(data["svg"], prefix), **frames}
-
-
-@mcp.tool()
-async def craft_help() -> str:
-    """The kit's API, the craft rules and an example script, to read before add_crafted_figure."""
-    return crafted.help_text()
 
 
 NO_BOARDS = "error: this server has no wise-board, so there are no handwritten boards; draw a figure and narrate_figure it"
