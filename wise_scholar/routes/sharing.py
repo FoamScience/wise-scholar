@@ -223,28 +223,42 @@ async def import_course(profile: int, file: UploadFile) -> dict:
     checked whole before anything is written."""
     _profile(profile)
     data = await file.read(bundle.BUNDLE_LIMIT + 1)
+    return await asyncio.to_thread(_import, profile, data)
+
+
+# A profile's imports take turns, so a newer version arriving beside the one it supersedes is still offered on the course
+# that one makes.
+_importing: dict[int, threading.Lock] = {}
+
+
+def _import(profile: int, data: bytes) -> dict:
     try:
         version_hash, manifest, assets = bundle.unpack(data)
     except ValueError as e:
         log.warning("bundle not imported: %s", e)
         raise HTTPException(422, "that file is not a course bundle this app can read") from None
     core.VERSIONS.mkdir(parents=True, exist_ok=True)
-    if not (core.VERSIONS / f"{version_hash}.zip").exists():
-        (core.VERSIONS / f"{version_hash}.zip").write_bytes(data)
-    # A newer version of a course the profile already plays is offered on that course rather than added beside it.
-    if older := manifest.version.lineage and db.row(
-        "SELECT c.id, c.topic, c.slug, c.mode FROM courses c JOIN versions v ON v.hash = c.source_version "
-        "WHERE c.profile_id = ? AND c.mode = 'replay' AND v.lineage = ? AND v.number < ? ORDER BY v.number DESC LIMIT 1",
-        profile, manifest.version.lineage, manifest.version.number,
-    ):
-        bundle.record_version(version_hash, manifest)
-        db.conn.execute("UPDATE courses SET skipped_version = NULL WHERE id = ?", (older["id"],))
-        return {**older, "refused_files": [], "upgrade": manifest.version.number}
-    try:
-        course = bundle.install(profile, version_hash, manifest, assets, core.SOURCES)
-    except ValueError as e:
-        log.warning("bundle not imported: %s", e)
-        raise HTTPException(422, "that file is not a course bundle this app can read") from None
+    stored = core.VERSIONS / f"{version_hash}.zip"
+    if not stored.exists():
+        # whole or not at all, for a request reading the store while another import of the bundle writes it
+        part = stored.with_name(f"{stored.name}.{threading.get_ident()}.part")
+        part.write_bytes(data)
+        part.replace(stored)
+    with _importing.setdefault(profile, threading.Lock()):
+        # A newer version of a course the profile already plays is offered on that course rather than added beside it.
+        if older := manifest.version.lineage and db.row(
+            "SELECT c.id, c.topic, c.slug, c.mode FROM courses c JOIN versions v ON v.hash = c.source_version "
+            "WHERE c.profile_id = ? AND c.mode = 'replay' AND v.lineage = ? AND v.number < ? ORDER BY v.number DESC LIMIT 1",
+            profile, manifest.version.lineage, manifest.version.number,
+        ):
+            bundle.record_version(version_hash, manifest)
+            db.conn.execute("UPDATE courses SET skipped_version = NULL WHERE id = ?", (older["id"],))
+            return {**older, "refused_files": [], "upgrade": manifest.version.number}
+        try:
+            course = bundle.install(profile, version_hash, manifest, assets, core.SOURCES)
+        except ValueError as e:
+            log.warning("bundle not imported: %s", e)
+            raise HTTPException(422, "that file is not a course bundle this app can read") from None
     return {k: course[k] for k in ("id", "topic", "slug", "mode", "refused_files")}
 
 
