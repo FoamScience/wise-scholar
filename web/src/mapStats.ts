@@ -5,7 +5,7 @@ import { type ChallengeData, type Concept, type Lesson, outlineOf, unitDone } fr
 export function conceptStats(concept: Concept, lesson: Lesson | undefined, t: TFunction, prepared = false): string {
   if (prepared) return preparedStats(lesson, t)
   const due = concept.due ? t('map.reviewDue', { count: concept.due }) : ''
-  if (!lesson) return [concept.known ? t('map.placedOut') : t('map.notStarted'), due].filter(Boolean).join(', ')
+  if (!lesson || concept.placed_out) return [concept.placed_out ? t('map.placedOut') : t('map.notStarted'), due].filter(Boolean).join(', ')
   if (concept.kind === 'practice') return lesson.blocks.some((b) => b.kind === 'done') ? t('common.done') : t('map.started')
   const where = unitWhere(concept, lesson, t)
   const cs = lesson.blocks

@@ -6,7 +6,7 @@ import type { Block, Concept, CourseDetail, Lesson } from '../src/course.ts'
 import { conceptStats } from '../src/mapStats.ts'
 
 const block = (id: number, kind: string, data: unknown = null): Block => ({ id, lesson_id: 1, kind, markdown: '', data, created: '', position: id })
-const concept = (id: number, extra: Partial<Concept> = {}): Concept => ({ id, module: 'M', title: `U${id}`, known: 0, mastery: null, kind: 'concept', due: 0, needs: [], ...extra })
+const concept = (id: number, extra: Partial<Concept> = {}): Concept => ({ id, module: 'M', title: `U${id}`, known: 0, mastery: null, kind: 'concept', due: 0, needs: [], placed_out: false, ...extra })
 const lesson = (extra: Partial<Lesson> = {}): Lesson => ({ id: 1, title: '', phase: 'lesson', concept_id: 1, messages: [], blocks: [], running: false, ...extra })
 const course = (extra: Partial<CourseDetail> = {}) =>
   ({ ranking: [], concepts: [concept(1), concept(2, { known: 1 }), concept(3, { mastery: 1 }), concept(4)], mode: 'learner', ...extra }) as CourseDetail
@@ -46,7 +46,7 @@ test("a unit's line on the map says where it stands, its challenges and its revi
   await i18n.changeLanguage('en')
   const t = i18n.t
   assert.equal(conceptStats(concept(1, { due: 2 }), undefined, t), 'not started, 2 reviews due')
-  assert.equal(conceptStats(concept(1, { known: 1 }), undefined, t), 'placed out')
+  assert.equal(conceptStats(concept(1, { known: 1, placed_out: true }), undefined, t), 'placed out')
   assert.equal(conceptStats(concept(1), undefined, t, true), 'no plan yet')
   assert.equal(conceptStats(concept(1), lesson({ blocks: [block(1, 'done')] }), t, true), 'planned')
   const outline = block(1, 'outline', { steps: ['a', 'b', 'c'], at: 1, added: null })

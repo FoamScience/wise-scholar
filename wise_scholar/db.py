@@ -1164,7 +1164,10 @@ def concepts(course_id: int) -> list[dict]:
 
 def concept_view(course_id: int) -> list[dict]:
     """Concepts with their mastery: the share of right latest answers, or full for a concept placed out; a practice
-    unit is full once its lesson is finished. due counts the concept's review cards due now."""
+    unit is full once its lesson is finished. due counts the concept's review cards due now; placed_out is whether the
+    unit counts as done without its lesson finished (see placed_out)."""
+    units = concepts(course_id)
+    placed = placed_out(course_id, units)
     mastery = concept_mastery(course_id)
     due = {r["concept_id"]: r["n"] for r in rows(
         "SELECT concept_id, COUNT(*) AS n FROM cards WHERE course_id = ? AND due <= ? GROUP BY concept_id",
@@ -1176,8 +1179,8 @@ def concept_view(course_id: int) -> list[dict]:
     edges = needs(course_id)
     return [
         {**c, "mastery": (1.0 if c["id"] in finished else None) if c["kind"] == "practice" else mastery.get(c["id"], 1.0 if c["known"] else None),
-         "due": due.get(c["id"], 0), "needs": edges.get(c["id"], [])}
-        for c in concepts(course_id)
+         "due": due.get(c["id"], 0), "needs": edges.get(c["id"], []), "placed_out": c["id"] in placed}
+        for c in units
     ]
 
 
