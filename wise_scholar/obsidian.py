@@ -679,11 +679,24 @@ class Vault:
 
     def _flashcards(self, concept: dict) -> list[str]:
         """The unit's scheduled quiz cards the learner has met, in the Spaced Repetition plugin's multi-line form; a copy,
-        scheduling stays here. A card split into parts gives way to them once one of its parts is here."""
-        scheduled = db.rows(
-            "SELECT id, parent_id, question, answer_key, kind, options, vocab, due, EXISTS (SELECT 1 FROM answers a WHERE a.card_id = cards.id) AS answered "
-            "FROM cards WHERE concept_id = ? AND scheduled = 1 ORDER BY id", concept["id"],
+        scheduling stays here."""
+        return self._card_lines(self._shown(self._scheduled("concept_id = ?", concept["id"])))
+
+    def _word_flashcards(self) -> list[str]:
+        """The words saved outside a unit, as the course's flashcards; a word already in a unit's flashcards stays there."""
+        in_units = {c["lemma"] for u in self.concepts for c in self._shown(self._scheduled("concept_id = ?", u["id"])) if c["vocab"]}
+        words = self._shown(self._scheduled("course_id = ? AND concept_id IS NULL AND vocab = 1", self.course["id"]))
+        return self._card_lines([c for c in words if c["lemma"] not in in_units])
+
+    @staticmethod
+    def _scheduled(where: str, *args) -> list[dict]:
+        return db.rows(
+            "SELECT id, parent_id, question, answer_key, kind, options, vocab, lemma, due, EXISTS (SELECT 1 FROM answers a WHERE a.card_id = cards.id) AS answered "
+            f"FROM cards WHERE {where} AND scheduled = 1 ORDER BY id", *args,
         )
+
+    def _shown(self, scheduled: list[dict]) -> list[dict]:
+        """The cards the learner has met; a card split into parts gives way to them once one of its parts is shown."""
         parent = {c["id"]: c["parent_id"] for c in scheduled}
         met = [c for c in scheduled if c["answer_key"].strip() and self._met(c)]
         split = set()
@@ -692,7 +705,9 @@ class Vault:
             while up and up not in split:
                 split.add(up)
                 up = parent.get(up)
-        cards = [c for c in met if c["id"] not in split]
+        return [c for c in met if c["id"] not in split]
+
+    def _card_lines(self, cards: list[dict]) -> list[str]:
         if not cards:
             return []
         # The plugin ends a card at a blank line and reads a lone "?" as the separator: neither may appear inside a side.
@@ -778,7 +793,8 @@ class Vault:
             lines += [f"**{t['level']}**: {c['level']}"]
         opening = [l for l in self.lessons if l["phase"] in ("interview", "placement")]
         lines += [""] + [f"- {self.link(('lesson', l['id']))}" for l in opening]
-        self.put(("course",), props, "\n".join(lines + self._course_map() + self._course_lists()))
+        words = self._word_flashcards() if c["lang"] else []
+        self.put(("course",), props, "\n".join(lines + self._course_map() + self._course_lists() + words))
 
     def _course_map(self) -> list[str]:
         """The canvas, then each module with its units and how far each got."""
