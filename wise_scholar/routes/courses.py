@@ -132,7 +132,11 @@ def _placement_picks(course_id: int) -> list[dict]:
         card for unit in db.concepts(course_id)
         if unit["kind"] == "concept" and not unit["unwritten"] and not unit["known"] and unit["id"] not in finished
         if (card := db.row(
-            "SELECT * FROM cards WHERE concept_id = ? AND parent_id IS NULL AND retired = 0 ORDER BY kind = 'open', id LIMIT 1", unit["id"],
+            "SELECT * FROM cards k WHERE concept_id = ? AND parent_id IS NULL AND retired = 0 AND NOT EXISTS ("
+            # a teach-back's hidden card holds its key points; one installed before it got its card names it by key
+            "SELECT 1 FROM blocks b JOIN lessons l ON l.id = b.lesson_id WHERE l.course_id = k.course_id AND json_extract(b.data, '$.teachback') "
+            "AND (json_extract(b.data, '$.card_id') = k.id OR json_extract(b.data, '$.card') = k.key)"
+            ") ORDER BY kind = 'open', id LIMIT 1", unit["id"],
         ))
     ]
 
