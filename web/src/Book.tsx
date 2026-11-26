@@ -46,7 +46,7 @@ const fileHead = 'flex min-h-11 items-center justify-between gap-3 ps-4 pe-1 [ov
 type Files = Map<number, ExerciseFile[]>
 
 function conceptStatus(concept: Concept, started: boolean, t: TFunction): string {
-  if (concept.known) return t('map.placedOut')
+  if (concept.placed_out) return t('map.placedOut')
   if (!started) return t('map.notStarted')
   if (concept.kind === 'practice') return concept.mastery === null ? t('map.started') : t('common.done')
   return concept.mastery === null ? t('map.started') : t('map.mastery', { n: Math.round(concept.mastery * 3) })

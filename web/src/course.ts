@@ -57,7 +57,7 @@ export function blockKey(block: Block): string {
 
 export type Block = { id: number; lesson_id: number; kind: string; markdown: string; data: unknown; created: string; position: number }
 export type Area = { title: string; holds: string; lacks: string }
-export type Concept = { id: number; module: string; title: string; known: number; mastery: number | null; kind: 'concept' | 'practice'; due: number; needs: number[]; unwritten?: number }
+export type Concept = { id: number; module: string; title: string; known: number; mastery: number | null; kind: 'concept' | 'practice'; due: number; needs: number[]; placed_out: boolean; unwritten?: number }
 export type Lesson = {
   id: number
   title: string
@@ -230,9 +230,9 @@ export function moduleRuns(concepts: Concept[]): Concept[][] {
   return runs
 }
 
-/** A unit is done once its lesson is finished, or placed out with no lesson begun. */
+/** A unit is done once its lesson is finished, or placed out as the server counts it. */
 export function unitDone(concept: Concept, lesson: Lesson | undefined): boolean {
-  return lesson ? lesson.blocks.some((b) => b.kind === 'done') : Boolean(concept.known)
+  return concept.placed_out || Boolean(lesson?.blocks.some((b) => b.kind === 'done'))
 }
 
 /** What the lesson pane shows around the cards: the plan in an interview, the card count, the next unit once this
