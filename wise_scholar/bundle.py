@@ -696,11 +696,13 @@ def record_version(version_hash: str, manifest: Manifest) -> None:
     )
 
 
-def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | None, unit_ids: dict[str, int],
+def _add_content(course_id: int, manifest: Manifest, assets: dict[str, bytes], units: set[str | None] | None, unit_ids: dict[str, int],
                  variants: dict[int, str | None] | None = None) -> None:
     """The cards and lessons of the given units (None stands for those of no unit; units None for all of them). variants:
-    the variants the course keeps, with the key of each one's original, None for one it does not hold."""
+    the variants the course keeps, with the key of each one's original, None for one it does not hold. An exercise keeps
+    the version's files it starts from, for the learner's changes to be shown against."""
     variants = dict(variants or {})
+    starters = {f.path: assets[f.asset].decode(errors="replace") for f in manifest.files}
     card_ids = {r["key"]: r["id"] for r in db.rows("SELECT id, key FROM cards WHERE course_id = ?", course_id)}
     for k in manifest.cards:
         if units is not None and k.unit not in units:
@@ -724,6 +726,8 @@ def _add_content(course_id: int, manifest: Manifest, units: set[str | None] | No
                 data["card_id"] = db.hidden_card(course_id, data.pop("card", None))
                 if data["card_id"] is None:
                     raise ValueError("a teach-back names a card the bundle does not hold as its hidden card")
+            if b.kind == "exercise" and isinstance(data.get("files"), list):
+                data["starter"] = {p: starters[p] for p in data["files"] if isinstance(p, str) and p in starters}
             markdown = db.ticked_as_at(b.markdown, data) if b.kind == "outline" else b.markdown
             locked = db.lock(data) if b.kind in challenge.KINDS else None
             if b.kind == "quiz":
@@ -813,7 +817,7 @@ def install(profile_id: int, version_hash: str, manifest: Manifest, assets: dict
             [(unit_ids[u.key], unit_ids[n]) for u in manifest.units for n in u.needs],
         )
         _add_capstones(course_id, manifest, unit_ids)
-        _add_content(course_id, manifest, None, unit_ids)
+        _add_content(course_id, manifest, assets, None, unit_ids)
         source_files = _add_sources(course_id, manifest, assets, source_dir)
         db.conn.execute("COMMIT")
     except Exception:
@@ -954,7 +958,7 @@ def upgrade(course_id: int, version_hash: str, new: Manifest, assets: dict[str, 
         unit_ids = _put_units(course_id, new, concepts, redo)
         _replace_needs(course_id, new, unit_ids)
         _add_capstones(course_id, new, unit_ids, done)
-        _add_content(course_id, new, redo | (set() if plan["loose"] else {None}), unit_ids, kept_variants)
+        _add_content(course_id, new, assets, redo | (set() if plan["loose"] else {None}), unit_ids, kept_variants)
         _update_course(course, version_hash, new, old)
         source_files = _add_sources(course_id, new, assets, source_dir, {s["name"] for s in db.sources(course_id)})
         db.conn.execute("COMMIT")
