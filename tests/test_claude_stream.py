@@ -41,3 +41,16 @@ def test_a_result_reports_this_turns_tokens_and_the_sessions_running_cost():
         "model": "claude-opus-5-5, claude-haiku-5-5", "input": 2, "output": 30, "cache_read": 700, "cache_write": 400,
         "cost": 0.05, "session": "s1",
     }
+
+
+def test_a_call_to_a_tool_the_session_does_not_have_is_reported():
+    def result(text: str, is_error: bool = True) -> str:
+        return json.dumps({"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t", "is_error": is_error, "content": text},
+        ]}})
+
+    unknown = "<tool_use_error>Error: No such tool available: pose_quiz</tool_use_error>"
+    assert parse_event(result(unknown)) == {"type": "tool.unknown", "error": unknown}
+    assert parse_event(result("error: that card is already on screen")) is None
+    assert parse_event(result("Posed.", is_error=False)) is None
+    assert parse_event(json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}})) is None

@@ -9,6 +9,9 @@ from . import MCP_HEADERS, MCP_URL, PORT, TURN_HEADER, environment, model_for, s
 
 ROOT = Path(__file__).resolve().parents[2]
 MCP_PREFIX = "mcp__scholar__"
+# What Claude Code answers a call to a tool it does not have, such as one named without MCP_PREFIX; a session that has
+# such a call in its history tends to repeat it.
+UNKNOWN_TOOL = "No such tool available"
 
 CONFIGS = ROOT / "data" / "mcp"
 # Not the course workspace: a file a command plants there (CLAUDE.md, .claude/) must never be near the agent.
@@ -40,6 +43,11 @@ def parse_event(line: str) -> dict | None:
             return {"type": "chat.delta", "text": ev["delta"]["text"]}
         if ev["type"] == "content_block_start" and ev["content_block"]["type"] == "tool_use":
             return {"type": "activity", "tool": ev["content_block"]["name"].removeprefix(MCP_PREFIX).lower()}
+    if kind == "user" and isinstance(content := (e.get("message") or {}).get("content"), list):
+        for block in content:
+            text = block.get("content")
+            if block.get("type") == "tool_result" and block.get("is_error") and isinstance(text, str) and UNKNOWN_TOOL in text:
+                return {"type": "tool.unknown", "error": text}
     if kind == "result":
         ok = e.get("subtype") == "success" and not e.get("is_error")
         return {"type": "turn.done", "ok": ok, "error": None if ok else str(e.get("result") or e.get("subtype")), "usage": usage(e)}
@@ -130,6 +138,9 @@ async def run_turn(
                 # The lesson goes on in a fresh session, and the state header of every turn carries it over.
                 async for again in run_turn(prompt, session_id=str(uuid.uuid4()), resume=False, name=name, cwd=cwd, phase=phase, token=token):
                     yield again
+                return
+            if event["type"] == "tool.unknown":
+                yield {"type": "turn.done", "ok": False, "error": event["error"], "fresh": True}
                 return
             done = done or event["type"] == "turn.done"
             yield event

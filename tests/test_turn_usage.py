@@ -86,6 +86,35 @@ def test_a_lesson_idle_past_the_cache_hour_goes_on_in_a_fresh_session_from_its_r
     assert not app._resumes(db.lesson(lesson_id))
 
 
+def test_a_reply_calling_a_tool_the_backend_lacks_goes_again_once_in_a_fresh_session(monkeypatch):
+    import asyncio
+
+    from wise_scholar import app
+
+    calls = []
+
+    async def run_turn(prompt, **kwargs):
+        calls.append({"prompt": prompt, **kwargs})
+        yield {"type": "session.started", "session_id": kwargs["session_id"]}
+        yield {"type": "chat.delta", "text": f"try {len(calls)}"}
+        yield {"type": "turn.done", "ok": False, "error": "No such tool available: pose_quiz", "fresh": True}
+
+    monkeypatch.setattr(app.backend, "run_turn", run_turn)
+    who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Bare caller')").lastrowid
+    course = db.create_course("Inverse design", who)["id"]
+    lesson_id = db.create_lesson(course, "Placement", "placement")
+    db.add_message(lesson_id, "learner", "ready for the check")
+    db.conn.execute("UPDATE lessons SET session_started = 1, session_id = 'poisoned', backend = ? WHERE id = ?", (app.BACKEND, lesson_id))
+
+    app._turns[lesson_id] = None
+    asyncio.run(app._run_turn(db.lesson(lesson_id), "[learner] go", quiet=True))
+
+    first, again = calls
+    assert again["session_id"] not in (first["session_id"], "poisoned") and not again["resume"]
+    assert "ready for the check" in again["prompt"] and "[so far]" in again["prompt"]
+    assert db.lesson(lesson_id)["session_id"] == again["session_id"]
+
+
 def test_a_backend_that_raises_ends_the_turn_as_failed_instead_of_losing_it(monkeypatch):
     import asyncio
 
