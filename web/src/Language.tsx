@@ -35,6 +35,71 @@ type Strands = { input: number; output: number; language: number; fluency: numbe
 const CEFR = ['C2', 'C1', 'B2', 'B1', 'A2', 'A1']
 const STRANDS = ['input', 'output', 'language', 'fluency'] as const
 
+function ReadingHead(props: { data: ReadingData; speech: boolean; player: ReturnType<typeof usePlayer>; paragraphs: string[][] }) {
+  const { t } = useTranslation()
+  const { data: d, player } = props
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className={LABEL}>{d.story ? t('reading.story', { story: d.story, n: d.episode }) : t('reading.label')}</div>
+      <label className={cn(SMALL, 'me-3 ms-auto flex items-center gap-2')}>
+        <Checkbox checked={player.slow} onCheckedChange={player.setSlow} /> {t('reading.slow')}
+      </label>
+      <Button
+        type="button"
+        variant="outline"
+        title={props.speech ? t('reading.localVoice') : t('reading.browserVoice')}
+        onClick={() => (player.current ? player.stop() : player.play(props.paragraphs.flat()))}
+      >
+        {player.current ? t('common.stop') : t('common.listen')}
+      </Button>
+    </div>
+  )
+}
+
+function Targets({ data: d }: { data: ReadingData }) {
+  const { t } = useTranslation()
+  if (!d.targets || d.targets.length === 0) return null
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <span className={SMALL}>{t('reading.targets')}</span>
+      {d.targets.map((target) => (
+        <Badge key={target} className={CHIP} lang={d.lang} dir="auto">
+          {target}
+        </Badge>
+      ))}
+    </div>
+  )
+}
+
+/** Under the text: the tapped word's panel, or its glossary entry. */
+function ReadingPanel(props: {
+  data: ReadingData
+  open: Tapped | null
+  gloss: { word: string; meaning: string } | undefined
+  shown: boolean
+  courseId: number | null
+  onClose: () => void
+  onShow: () => void
+  onAdd: (word: string, sentence: string) => void
+  onKnown: (word: string) => void
+}) {
+  const { data: d, open, gloss, courseId } = props
+  if (!open) return null
+  if (!gloss) return courseId === null ? null : <WordPanel key={open.word} courseId={courseId} lang={d.lang} tapped={open} onClose={props.onClose} />
+  return (
+    <GlossPanel
+      gloss={gloss}
+      lang={d.lang}
+      shown={props.shown}
+      added={d.added.includes(gloss.word) || (d.saved ?? []).includes(gloss.word)}
+      known={(d.known ?? []).includes(gloss.word)}
+      onShow={props.onShow}
+      onAdd={() => props.onAdd(gloss.word, open.sentence)}
+      onKnown={() => props.onKnown(gloss.word)}
+    />
+  )
+}
+
 export function ReadingCard(props: {
   id: number
   text: string
@@ -44,7 +109,6 @@ export function ReadingCard(props: {
   onAdd: (word: string, sentence: string) => Promise<void>
   onKnown: (word: string) => Promise<void>
 }) {
-  const { t } = useTranslation()
   const d = props.data as ReadingData
   const [open, setOpen] = useState<Tapped | null>(null)
   const [shown, setShown] = useState(false)
@@ -57,31 +121,9 @@ export function ReadingCard(props: {
 
   return (
     <section id={`block-${props.id}`} className={`block ${cn(BLOCK, 'gap-0')}`}>
-      <div className="flex items-center justify-between gap-3">
-        <div className={LABEL}>{d.story ? t('reading.story', { story: d.story, n: d.episode }) : t('reading.label')}</div>
-        <label className={cn(SMALL, 'me-3 ms-auto flex items-center gap-2')}>
-          <Checkbox checked={player.slow} onCheckedChange={player.setSlow} /> {t('reading.slow')}
-        </label>
-        <Button
-          type="button"
-          variant="outline"
-          title={props.speech ? t('reading.localVoice') : t('reading.browserVoice')}
-          onClick={() => (player.current ? player.stop() : player.play(paragraphs.flat()))}
-        >
-          {player.current ? t('common.stop') : t('common.listen')}
-        </Button>
-      </div>
+      <ReadingHead data={d} speech={props.speech} player={player} paragraphs={paragraphs} />
       <h2 lang={d.lang} dir="auto" className="mt-3 mb-0 font-heading text-lg font-semibold">{d.title}</h2>
-      {d.targets && d.targets.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className={SMALL}>{t('reading.targets')}</span>
-          {d.targets.map((target) => (
-            <Badge key={target} className={CHIP} lang={d.lang} dir="auto">
-              {target}
-            </Badge>
-          ))}
-        </div>
-      )}
+      <Targets data={d} />
       {paragraphs.map((sentences, i) => (
         <p key={i} lang={d.lang} dir="auto" className="my-3 text-lg leading-[1.7]">
           {sentences.map((sentence, k) => (
@@ -103,19 +145,17 @@ export function ReadingCard(props: {
         </p>
       ))}
       {player.error && <div className="mt-3 rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{player.error}</div>}
-      {open && !gloss && courseId !== null && <WordPanel key={open.word} courseId={courseId} lang={d.lang} tapped={open} onClose={() => setOpen(null)} />}
-      {open && gloss && (
-        <GlossPanel
-          gloss={gloss}
-          lang={d.lang}
-          shown={shown}
-          added={d.added.includes(gloss.word) || (d.saved ?? []).includes(gloss.word)}
-          known={(d.known ?? []).includes(gloss.word)}
-          onShow={() => setShown(true)}
-          onAdd={() => void props.onAdd(gloss.word, open.sentence).then(refresh)}
-          onKnown={() => void props.onKnown(gloss.word).then(refresh)}
-        />
-      )}
+      <ReadingPanel
+        data={d}
+        open={open}
+        gloss={gloss}
+        shown={shown}
+        courseId={courseId}
+        onClose={() => setOpen(null)}
+        onShow={() => setShown(true)}
+        onAdd={(word, sentence) => void props.onAdd(word, sentence).then(refresh)}
+        onKnown={(word) => void props.onKnown(word).then(refresh)}
+      />
     </section>
   )
 }

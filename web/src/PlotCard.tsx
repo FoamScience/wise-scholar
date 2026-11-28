@@ -151,6 +151,54 @@ function axisTitle(text: string, axis: 'x' | 'y'): HTMLElement {
   return title
 }
 
+function buildMarks(Plot: typeof import('@observablehq/plot'), spec: PlotSpec, halo: Halo, measure: Measure, pin?: Row | null) {
+  const marks = spec.marks.map((m) => {
+    const { type, data = [], expr: _, ...options } = m
+    const opts = options as Record<string, unknown>
+    switch (type) {
+      case 'line':
+        return Plot.lineY(data, opts)
+      case 'dot':
+        return Plot.dot(data, opts)
+      case 'bar':
+        return Plot.barY(data, { ...opts, tip: true })
+      case 'area':
+        return Plot.areaY(data, opts)
+      case 'rule':
+        return rule(Plot, spec, opts, halo, measure)
+      case 'text':
+        return notes(Plot, spec, data, opts, halo, measure)
+      default:
+        return Plot.rect(data, opts)
+    }
+  })
+  const { rows, columns } = pointable(spec)
+  if (rows.length) {
+    const channels = Object.fromEntries(columns.map((c) => [c, { value: c, label: c === 'series' ? '' : c }]))
+    const named = (axis: 'x' | 'y') => ({ value: axis, label: spec[axis]?.label || axis })
+    marks.push(Plot.crosshair(rows, { x: 'x', y: 'y' }), Plot.tip(rows, Plot.pointer({ x: named('x'), y: named('y'), channels })))
+  }
+  if (pin) marks.push(Plot.ruleX([pin], { x: 'x', strokeDasharray: '4,3' }), Plot.dot([pin], { x: 'x', y: 'y', r: 5, fill: 'currentColor' }))
+  return marks
+}
+
+function plotOptions(spec: PlotSpec, width: number, height: number, marks: ReturnType<typeof buildMarks>) {
+  // the axis titles are written outside the SVG, by axisTitle
+  return {
+    width,
+    height,
+    marginLeft: MARGIN_LEFT,
+    marginRight: MARGIN_RIGHT,
+    marginTop: MARGIN_TOP,
+    marginBottom: MARGIN_BOTTOM,
+    style: { background: 'transparent', color: 'currentColor', fontFamily: 'inherit', fontSize: FONT_SIZE },
+    color: { range: palette(), legend: spec.marks.some((m) => 'stroke' in m || 'fill' in m), style: { fontFamily: 'inherit', fontSize: FONT_SIZE } } as ScaleOptions & Omit<LegendOptions, 'legend'>,
+    x: { grid: true, ...spec.x, label: null },
+    y: { grid: true, ...spec.y, label: null },
+    marks,
+  }
+}
+
 /** The drawing of a resolved spec, with the spec shown when Observable Plot cannot draw it. */
 export function PlotBox({ spec, alt, pin, onPin }: { spec: PlotSpec; alt: string; pin?: Row | null; onPin?: (row: Row) => void }) {
   const { t } = useTranslation()
@@ -173,47 +221,8 @@ export function PlotBox({ spec, alt, pin, onPin }: { spec: PlotSpec; alt: string
           width: (text: unknown) => ctx.measureText(String(text ?? '')).width / (width - MARGIN_LEFT - MARGIN_RIGHT),
           line: (1.3 * parseFloat(FONT_SIZE)) / (height - MARGIN_TOP - MARGIN_BOTTOM),
         }
-        const marks = spec.marks.map((m) => {
-          const { type, data = [], expr: _, ...options } = m
-          const opts = options as Record<string, unknown>
-          switch (type) {
-            case 'line':
-              return Plot.lineY(data, opts)
-            case 'dot':
-              return Plot.dot(data, opts)
-            case 'bar':
-              return Plot.barY(data, { ...opts, tip: true })
-            case 'area':
-              return Plot.areaY(data, opts)
-            case 'rule':
-              return rule(Plot, spec, opts, halo, measure)
-            case 'text':
-              return notes(Plot, spec, data, opts, halo, measure)
-            default:
-              return Plot.rect(data, opts)
-          }
-        })
-        const { rows, columns } = pointable(spec)
-        if (rows.length) {
-          const channels = Object.fromEntries(columns.map((c) => [c, { value: c, label: c === 'series' ? '' : c }]))
-          const named = (axis: 'x' | 'y') => ({ value: axis, label: spec[axis]?.label || axis })
-          marks.push(Plot.crosshair(rows, { x: 'x', y: 'y' }), Plot.tip(rows, Plot.pointer({ x: named('x'), y: named('y'), channels })))
-        }
-        if (pin) marks.push(Plot.ruleX([pin], { x: 'x', strokeDasharray: '4,3' }), Plot.dot([pin], { x: 'x', y: 'y', r: 5, fill: 'currentColor' }))
-        // the axis titles are written outside the SVG, by axisTitle
-        const plot = Plot.plot({
-          width,
-          height,
-          marginLeft: MARGIN_LEFT,
-          marginRight: MARGIN_RIGHT,
-          marginTop: MARGIN_TOP,
-          marginBottom: MARGIN_BOTTOM,
-          style: { background: 'transparent', color: 'currentColor', fontFamily: 'inherit', fontSize: FONT_SIZE },
-          color: { range: palette(), legend: spec.marks.some((m) => 'stroke' in m || 'fill' in m), style: { fontFamily: 'inherit', fontSize: FONT_SIZE } } as ScaleOptions & Omit<LegendOptions, 'legend'>,
-          x: { grid: true, ...spec.x, label: null },
-          y: { grid: true, ...spec.y, label: null },
-          marks,
-        }) as PlotElement
+        const marks = buildMarks(Plot, spec, halo, measure, pin)
+        const plot = Plot.plot(plotOptions(spec, width, height, marks)) as PlotElement
         box.current.replaceChildren(plot)
         drawn.current = plot
         const svg = (plot.tagName === 'svg' ? plot : plot.querySelector(':scope > svg')!) as SVGSVGElement
