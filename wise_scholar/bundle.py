@@ -711,6 +711,57 @@ def record_version(version_hash: str, manifest: Manifest) -> None:
     )
 
 
+def _add_card(course_id: int, k, unit_ids: dict[str, int]) -> int:
+    return db.conn.execute(
+        "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, "
+        "misconceptions, origin, key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported', ?)",
+        (course_id, unit_ids.get(k.unit), k.question, k.kind, json.dumps(k.options), k.answer_key, k.explanation,
+         int(k.scheduled), int(k.vocab), k.lemma, k.lang, k.translation, json.dumps({m.option: m.belief for m in k.misconceptions}), k.key),
+    ).lastrowid
+
+
+def _imported_data(course_id: int, b, card_ids: dict[str, int], starters: dict[str, str]) -> dict:
+    data = _clean_block(b, card_ids)
+    if data.get("teachback"):
+        data["card_id"] = db.hidden_card(course_id, data.pop("card", None))
+        if data["card_id"] is None:
+            raise ValueError("a teach-back names a card the bundle does not hold as its hidden card")
+    if b.kind == "exercise" and isinstance(data.get("files"), list):
+        data["starter"] = {p: starters[p] for p in data["files"] if isinstance(p, str) and p in starters}
+    return data
+
+
+def _add_block(lesson_id: int, course_id: int, b, card_ids: dict[str, int], starters: dict[str, str]) -> tuple[int, str, dict]:
+    data = _imported_data(course_id, b, card_ids, starters)
+    markdown = db.ticked_as_at(b.markdown, data) if b.kind == "outline" else b.markdown
+    locked = db.lock(data) if b.kind in challenge.KINDS else None
+    if b.kind == "quiz":
+        data, came = db.keyless(data), data
+        locked = {k: v for k, v in came.items() if k not in data or data[k] != v}
+    block_id = db.conn.execute(
+        "INSERT INTO blocks (lesson_id, kind, markdown, data, key, locked) VALUES (?, ?, ?, ?, ?, ?)",
+        (lesson_id, b.kind, markdown, json.dumps(data), b.key, json.dumps(locked) if locked else None),
+    ).lastrowid
+    db.conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (block_id, block_id))
+    return block_id, markdown, data
+
+
+def _add_lesson(course_id: int, lesson, unit_ids: dict[str, int], card_ids: dict[str, int], starters: dict[str, str],
+                variants: dict[int, str | None]) -> None:
+    lesson_id = db.conn.execute(
+        "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (course_id, lesson.title, lesson.phase, unit_ids.get(lesson.unit), str(uuid.uuid4()), lesson.key, lesson.summary),
+    ).lastrowid
+    added = []
+    for b in lesson.blocks:
+        block_id, markdown, data = _add_block(lesson_id, course_id, b, card_ids, starters)
+        added.append((block_id, b.kind, markdown, data))
+        original = (b.data or {}).get("variant_of")
+        if b.kind == "challenge" and isinstance(original, str):  # a number is ignored: it is the author's block id
+            variants[block_id] = original
+    _relink(added)
+
+
 def _add_content(course_id: int, manifest: Manifest, assets: dict[str, bytes], units: set[str | None] | None, unit_ids: dict[str, int],
                  variants: dict[int, str | None] | None = None) -> None:
     """The cards and lessons of the given units (None stands for those of no unit; units None for all of them). variants:
@@ -720,45 +771,11 @@ def _add_content(course_id: int, manifest: Manifest, assets: dict[str, bytes], u
     starters = {f.path: assets[f.asset].decode(errors="replace") for f in manifest.files}
     card_ids = {r["key"]: r["id"] for r in db.rows("SELECT id, key FROM cards WHERE course_id = ?", course_id)}
     for k in manifest.cards:
-        if units is not None and k.unit not in units:
-            continue
-        card_ids[k.key] = db.conn.execute(
-            "INSERT INTO cards (course_id, concept_id, question, kind, options, answer_key, explanation, scheduled, vocab, lemma, lang, translation, "
-            "misconceptions, origin, key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported', ?)",
-            (course_id, unit_ids.get(k.unit), k.question, k.kind, json.dumps(k.options), k.answer_key, k.explanation,
-             int(k.scheduled), int(k.vocab), k.lemma, k.lang, k.translation, json.dumps({m.option: m.belief for m in k.misconceptions}), k.key),
-        ).lastrowid
+        if units is None or k.unit in units:
+            card_ids[k.key] = _add_card(course_id, k, unit_ids)
     for lesson in manifest.lessons:
-        if units is not None and lesson.unit not in units:
-            continue
-        lesson_id = db.conn.execute(
-            "INSERT INTO lessons (course_id, title, phase, concept_id, session_id, key, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (course_id, lesson.title, lesson.phase, unit_ids.get(lesson.unit), str(uuid.uuid4()), lesson.key, lesson.summary),
-        ).lastrowid
-        added = []
-        for b in lesson.blocks:
-            data = _clean_block(b, card_ids)
-            if data.get("teachback"):
-                data["card_id"] = db.hidden_card(course_id, data.pop("card", None))
-                if data["card_id"] is None:
-                    raise ValueError("a teach-back names a card the bundle does not hold as its hidden card")
-            if b.kind == "exercise" and isinstance(data.get("files"), list):
-                data["starter"] = {p: starters[p] for p in data["files"] if isinstance(p, str) and p in starters}
-            markdown = db.ticked_as_at(b.markdown, data) if b.kind == "outline" else b.markdown
-            locked = db.lock(data) if b.kind in challenge.KINDS else None
-            if b.kind == "quiz":
-                data, came = db.keyless(data), data
-                locked = {k: v for k, v in came.items() if k not in data or data[k] != v}
-            block_id = db.conn.execute(
-                "INSERT INTO blocks (lesson_id, kind, markdown, data, key, locked) VALUES (?, ?, ?, ?, ?, ?)",
-                (lesson_id, b.kind, markdown, json.dumps(data), b.key, json.dumps(locked) if locked else None),
-            ).lastrowid
-            db.conn.execute("UPDATE blocks SET position = ? WHERE id = ?", (block_id, block_id))
-            added.append((block_id, b.kind, markdown, data))
-            original = (b.data or {}).get("variant_of")
-            if b.kind == "challenge" and isinstance(original, str):  # a number is ignored: it is the author's block id
-                variants[block_id] = original
-        _relink(added)
+        if units is None or lesson.unit in units:
+            _add_lesson(course_id, lesson, unit_ids, card_ids, starters, variants)
     _point_variants(course_id, manifest, variants)
 
 

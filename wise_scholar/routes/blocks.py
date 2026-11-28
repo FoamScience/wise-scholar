@@ -546,6 +546,36 @@ def ws_script() -> FileResponse:
     return FileResponse(Path(__file__).resolve().parent.parent / "cli.py", media_type="text/x-python", filename="ws.py")
 
 
+def _listed_blocks(lesson: dict) -> list[dict] | None:
+    """The blocks of a lesson the listing shows, None for one that is malformed."""
+    try:
+        blocks = db.blocks(lesson["id"])
+        if core._replayed(lesson):
+            ahead = next((i for i, b in enumerate(blocks) if core._check_done(b) is False), None)
+            blocks = blocks if ahead is None else blocks[: ahead + 1]
+        return blocks
+    except (ValueError, TypeError, AttributeError):
+        log.warning("lesson %s has a malformed block; its exercises are left out of the listing", lesson["id"])
+        return None
+
+
+def _listed_exercise(b: dict, lesson: dict) -> dict | None:
+    """An exercise as the listing shows it, None for one that is malformed."""
+    try:
+        data = b["data"]
+        if not isinstance(data["files"], list):
+            raise TypeError(data["files"])
+        files = [p for p in data["files"] if isinstance(p, str)]
+        summary = next((line.strip() for line in (b["markdown"] or "").splitlines() if line.strip()), "")
+        return {
+            "id": b["id"], "lesson_id": lesson["id"], "unit": lesson["concept"], "summary": summary[:120], "files": files,
+            "run": str(data["run"]), "open": lesson["mode"] != "teacher" and challenge.is_open(data),
+        }
+    except (KeyError, TypeError, AttributeError):
+        log.warning("exercise %s is malformed; it is left out of the listing", b["id"])
+        return None
+
+
 @app.get("/api/courses/{course_id}/exercises")
 def course_exercises(course_id: int) -> list[dict]:
     """The course's exercises as its page shows them, for the ws command: a replayed unit's only up to its first check
@@ -555,29 +585,11 @@ def course_exercises(course_id: int) -> list[dict]:
     exercises = []
     for row in db.rows("SELECT id FROM lessons WHERE course_id = ? ORDER BY id", course_id):
         lesson = db.lesson(row["id"])
-        try:
-            blocks = db.blocks(lesson["id"])
-            if core._replayed(lesson):
-                ahead = next((i for i, b in enumerate(blocks) if core._check_done(b) is False), None)
-                blocks = blocks if ahead is None else blocks[: ahead + 1]
-        except (ValueError, TypeError, AttributeError):
-            log.warning("lesson %s has a malformed block; its exercises are left out of the listing", lesson["id"])
+        blocks = _listed_blocks(lesson)
+        if blocks is None:
             continue
-        for b in blocks:
-            if b["kind"] != "exercise":
-                continue
-            try:
-                data = b["data"]
-                if not isinstance(data["files"], list):
-                    raise TypeError(data["files"])
-                files = [p for p in data["files"] if isinstance(p, str)]
-                summary = next((line.strip() for line in (b["markdown"] or "").splitlines() if line.strip()), "")
-                exercises.append({
-                    "id": b["id"], "lesson_id": lesson["id"], "unit": lesson["concept"], "summary": summary[:120], "files": files,
-                    "run": str(data["run"]), "open": lesson["mode"] != "teacher" and challenge.is_open(data),
-                })
-            except (KeyError, TypeError, AttributeError):
-                log.warning("exercise %s is malformed; it is left out of the listing", b["id"])
+        listed = (_listed_exercise(b, lesson) for b in blocks if b["kind"] == "exercise")
+        exercises += [e for e in listed if e]
     return exercises
 
 

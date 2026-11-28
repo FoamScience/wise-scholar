@@ -113,13 +113,11 @@ def test_an_animation_needs_two_to_six_stages():
         diagrams.animate("cells", STAGES * 3)
 
 
-@sidecar
-def test_stages_become_one_animated_figure_with_its_frames_kept_for_print():
+def _assert_animated(svg: str, frames: list[str]) -> None:
     import re
 
-    from wise_scholar import figures, obsidian
+    from wise_scholar import figures
 
-    svg, frames = diagrams.animate("cells", STAGES)
     assert len(frames) == 3 and all(f.startswith("<svg") and "<title>" not in f and "<animate" not in f for f in frames)
     assert svg.count("<animate ") >= 10 and 'data-stages="3"' in svg and 'data-seconds="9"' in svg and "<title>" not in svg
     assert 'attributeName="x"' in svg and 'keyTimes="0.000;0.100;0.333;0.433;0.667;0.767;1"' in svg
@@ -129,6 +127,14 @@ def test_stages_become_one_animated_figure_with_its_frames_kept_for_print():
     for values in re.findall(r'attributeName="x" values="([^"]+)"', svg):
         numbers = [float(v) for v in values.split(";")]
         assert all(abs(a - b) < 450 for a, b in zip(numbers, numbers[1:]))
+
+
+@sidecar
+def test_stages_become_one_animated_figure_with_its_frames_kept_for_print():
+    from wise_scholar import obsidian
+
+    svg, frames = diagrams.animate("cells", STAGES)
+    _assert_animated(svg, frames)
 
     who = db.conn.execute("INSERT INTO profiles (name) VALUES ('Anim')").lastrowid
     try:

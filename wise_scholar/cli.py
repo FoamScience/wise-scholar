@@ -220,51 +220,31 @@ def sync(server: str, folder: Path, state: dict, memory: Memory) -> bool:
         memory.error(path, _conflict(path))
         return False
 
-    def one(path: str, entry: dict) -> bool:
-        if "conflict" in entry:
-            if os.path.lexists(_local(folder, path + CONFLICT)):
-                memory.error(path, _conflict(path))
-                return False
-            keep(path, entry.pop("conflict"))
-        info = listed.get(path)
-        if info is None:
+    def restore(path: str, info: dict, base: str) -> bool:
+        text = base if info["sha256"] == _sha(base) else theirs(path)["content"]
+        if text is not None:
+            _write(_local(folder, path), text)
+            keep(path, text)
+            print(f"restored: {path}")
+        return True
+
+    def update(path: str, info: dict, base: str, target: Path, mine: bytes) -> bool:
+        memory.stats.pop(path, None)
+        memory.forget(path)
+        if info["sha256"] in (None, _sha(base)):
             return True
-        target = _local(folder, path)
-        base = entry["base"]
-        try:
-            before = _stamp(target)
-        except FileNotFoundError:
-            text = base if info["sha256"] == _sha(base) else theirs(path)["content"]
-            if text is not None:
-                _write(target, text)
-                keep(path, text)
-                print(f"restored: {path}")
+        server_file = theirs(path)
+        if not (server_file["editable"] or server_file["kept"]):
+            memory.error(f"{path} on the server", f"not updated: {path} on the server is now binary or larger than {READ_LIMIT // 1_000_000} MB")
             return True
-        mine = _read(target)
-        try:
-            after = _stamp(target)
-        except FileNotFoundError:
-            after = None
-        if mine is None or after is None:
-            return False
-        if mine == base.encode():
-            memory.stats.pop(path, None)
-            memory.forget(path)
-            if info["sha256"] in (None, _sha(base)):
-                return True
-            server_file = theirs(path)
-            if not (server_file["editable"] or server_file["kept"]):
-                memory.error(f"{path} on the server", f"not updated: {path} on the server is now binary or larger than {READ_LIMIT // 1_000_000} MB")
-                return True
-            if _read(target) != mine:
-                return conflicted(path, server_file["content"])
-            _write(target, server_file["content"])
-            keep(path, server_file["content"])
-            print(f"updated from the server: {path}")
-            return True
-        if before != after or (memory.wait_steady and memory.stats.get(path) != after):
-            memory.stats[path] = after
-            return False
+        if _read(target) != mine:
+            return conflicted(path, server_file["content"])
+        _write(target, server_file["content"])
+        keep(path, server_file["content"])
+        print(f"updated from the server: {path}")
+        return True
+
+    def send(path: str, info: dict, entry: dict, mine: bytes) -> bool:
         if len(mine) > READ_LIMIT:
             memory.error(path, f"not sent: {path} is larger than {READ_LIMIT // 1_000_000} MB")
             return False
@@ -279,12 +259,41 @@ def sync(server: str, folder: Path, state: dict, memory: Memory) -> bool:
         if info["sha256"] == _sha(text):
             keep(path, text)
             return True
-        reply = _call(server, "POST", f"/api/blocks/{exercise}/files", {"path": path, "content": text, "base": base})
+        reply = _call(server, "POST", f"/api/blocks/{exercise}/files", {"path": path, "content": text, "base": entry["base"]})
         if reply["saved"] or reply["content"] == text:
             keep(path, text)
             print(f"sent: {path}")
             return True
         return conflicted(path, reply["content"])
+
+    def one(path: str, entry: dict) -> bool:
+        if "conflict" in entry:
+            if os.path.lexists(_local(folder, path + CONFLICT)):
+                memory.error(path, _conflict(path))
+                return False
+            keep(path, entry.pop("conflict"))
+        info = listed.get(path)
+        if info is None:
+            return True
+        target = _local(folder, path)
+        base = entry["base"]
+        try:
+            before = _stamp(target)
+        except FileNotFoundError:
+            return restore(path, info, base)
+        mine = _read(target)
+        try:
+            after = _stamp(target)
+        except FileNotFoundError:
+            after = None
+        if mine is None or after is None:
+            return False
+        if mine == base.encode():
+            return update(path, info, base, target, mine)
+        if before != after or (memory.wait_steady and memory.stats.get(path) != after):
+            memory.stats[path] = after
+            return False
+        return send(path, info, entry, mine)
 
     synced = True
     for path, entry in state["files"].items():
