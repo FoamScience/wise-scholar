@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,32 +24,18 @@ export function InkBoard(props: { id: number; doc: unknown; disabled?: boolean; 
   const { t } = useTranslation()
   const host = useRef<HTMLDivElement>(null)
   const player = useRef<Player | null>(null)
-  const doc = useMemo(() => {
-    try {
-      return readInk(props.doc)
-    } catch (e) {
-      if (e instanceof InkError) return null
-      throw e
-    }
-  }, [props.doc])
+  const doc = useMemo(() => readOrNull(props.doc), [props.doc])
   const beats = doc?.beats.map((b) => b.say) ?? []
   const [at, setAt] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
   const [paused, setPaused] = useState(false)
-  const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined')
-  const [asking, setAsking] = useState<{ ref: string; question: string } | null>(null)
+  const [asking, setAsking] = useState<Asking | null>(null)
   const theme = useTheme()
+  const near = useNear(host)
   const ask = useRef(props.onAsk)
   useEffect(() => {
     ask.current = props.onAsk
   }, [props.onAsk])
-
-  useEffect(() => {
-    if (near || !host.current) return
-    const seen = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setNear(true), { rootMargin: NEAR })
-    seen.observe(host.current)
-    return () => seen.disconnect()
-  }, [near])
 
   useEffect(() => {
     if (!doc || !near) return
@@ -79,43 +66,7 @@ export function InkBoard(props: { id: number; doc: unknown; disabled?: boolean; 
 
   useEffect(() => player.current?.theme(shownTheme()), [theme])
 
-  // A term in the text lights up its part of the board while pointed at or focused, and brings the board into view.
-  useEffect(() => {
-    const ref = (e: Event) => {
-      const el = (e.target as Element | null)?.closest?.(LINKED)
-      return el && el.getAttribute('data-board') === String(props.id) ? el : null
-    }
-    const on = (e: Event) => {
-      const el = ref(e)
-      if (!el) return
-      el.classList.add('term-on')
-      player.current?.highlight(el.getAttribute('data-board-ref'))
-    }
-    const off = (e: Event) => {
-      const el = ref(e)
-      if (!el) return
-      el.classList.remove('term-on')
-      player.current?.highlight(null)
-    }
-    const go = (e: Event) => {
-      const el = ref(e)
-      if (!el) return
-      host.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      player.current?.highlight(el.getAttribute('data-board-ref'))
-    }
-    const key = (e: Event) => {
-      const k = (e as KeyboardEvent).key
-      if ((k === 'Enter' || k === ' ') && ref(e)) {
-        e.preventDefault()
-        go(e)
-      }
-    }
-    const events: [string, (e: Event) => void][] = [['pointerover', on], ['focusin', on], ['pointerout', off], ['focusout', off], ['click', go], ['keydown', key]]
-    for (const [k, f] of events) document.addEventListener(k, f)
-    return () => {
-      for (const [k, f] of events) document.removeEventListener(k, f)
-    }
-  }, [props.id])
+  useLinkedTerms(props.id, host, player)
 
   if (!doc) return <p className="m-0 text-sm text-muted-foreground">{t('board.unreadable')}</p>
 
@@ -181,30 +132,16 @@ export function InkBoard(props: { id: number; doc: unknown; disabled?: boolean; 
         {at !== null && <Button variant="ghost" size="sm" onClick={whole}>{t('board.wholeBoard')}</Button>}
       </div>
       {asking ? (
-        <form
-          className="grid gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (!asking.question.trim()) return
+        <AskForm
+          asking={asking}
+          disabled={props.disabled}
+          onChange={setAsking}
+          onSubmit={() => {
             props.onAsk!(asking.ref, asking.question)
             closeAsk()
           }}
-        >
-          <Input
-            dir="auto"
-            maxLength={1000}
-            aria-label={t('board.askThis')}
-            placeholder={t('board.askThis')}
-            value={asking.question}
-            onChange={(e) => setAsking({ ...asking, question: e.target.value })}
-            onKeyDown={(e) => e.key === 'Escape' && closeAsk()}
-            autoFocus
-          />
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={props.disabled || !asking.question.trim()}>{t('board.ask')}</Button>
-            <Button variant="outline" size="sm" onClick={closeAsk}>{t('common.cancel')}</Button>
-          </div>
-        </form>
+          onClose={closeAsk}
+        />
       ) : (
         props.onAsk && <p className="m-0 text-sm text-muted-foreground">{t('board.tapToAsk')}</p>
       )}
@@ -214,6 +151,98 @@ export function InkBoard(props: { id: number; doc: unknown; disabled?: boolean; 
         ))}
       </ul>
     </div>
+  )
+}
+
+function readOrNull(raw: unknown) {
+  try {
+    return readInk(raw)
+  } catch (e) {
+    if (e instanceof InkError) return null
+    throw e
+  }
+}
+
+/** Whether the element has come near the screen; stays true once it has. */
+function useNear(host: RefObject<HTMLElement | null>) {
+  const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined')
+  useEffect(() => {
+    if (near || !host.current) return
+    const seen = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setNear(true), { rootMargin: NEAR })
+    seen.observe(host.current)
+    return () => seen.disconnect()
+  }, [near, host])
+  return near
+}
+
+/** A term in the text lights up its part of the board while pointed at or focused, and brings the board into view. */
+function useLinkedTerms(id: number, host: RefObject<HTMLElement | null>, player: RefObject<Player | null>) {
+  useEffect(() => {
+    const ref = (e: Event) => {
+      const el = (e.target as Element | null)?.closest?.(LINKED)
+      return el && el.getAttribute('data-board') === String(id) ? el : null
+    }
+    const on = (e: Event) => {
+      const el = ref(e)
+      if (!el) return
+      el.classList.add('term-on')
+      player.current?.highlight(el.getAttribute('data-board-ref'))
+    }
+    const off = (e: Event) => {
+      const el = ref(e)
+      if (!el) return
+      el.classList.remove('term-on')
+      player.current?.highlight(null)
+    }
+    const go = (e: Event) => {
+      const el = ref(e)
+      if (!el) return
+      host.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      player.current?.highlight(el.getAttribute('data-board-ref'))
+    }
+    const key = (e: Event) => {
+      const k = (e as KeyboardEvent).key
+      if ((k === 'Enter' || k === ' ') && ref(e)) {
+        e.preventDefault()
+        go(e)
+      }
+    }
+    const events: [string, (e: Event) => void][] = [['pointerover', on], ['focusin', on], ['pointerout', off], ['focusout', off], ['click', go], ['keydown', key]]
+    for (const [k, f] of events) document.addEventListener(k, f)
+    return () => {
+      for (const [k, f] of events) document.removeEventListener(k, f)
+    }
+  }, [id, host, player])
+}
+
+type Asking = { ref: string; question: string }
+
+function AskForm(props: { asking: Asking; disabled?: boolean; onChange: (a: Asking) => void; onSubmit: () => void; onClose: () => void }) {
+  const { t } = useTranslation()
+  const { asking } = props
+  return (
+    <form
+      className="grid gap-2"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (asking.question.trim()) props.onSubmit()
+      }}
+    >
+      <Input
+        dir="auto"
+        maxLength={1000}
+        aria-label={t('board.askThis')}
+        placeholder={t('board.askThis')}
+        value={asking.question}
+        onChange={(e) => props.onChange({ ...asking, question: e.target.value })}
+        onKeyDown={(e) => e.key === 'Escape' && props.onClose()}
+        autoFocus
+      />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={props.disabled || !asking.question.trim()}>{t('board.ask')}</Button>
+        <Button variant="outline" size="sm" onClick={props.onClose}>{t('common.cancel')}</Button>
+      </div>
+    </form>
   )
 }
 
