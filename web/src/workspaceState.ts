@@ -81,6 +81,92 @@ function courseUpkeep(c: CourseDetail) {
   if (c.mode === 'learner') api(`/api/courses/${c.id}/claims`, {}).catch(() => {})
 }
 
+type Patch = (id: number, patch: (l: Lesson) => Lesson) => void
+type Stream = {
+  patchLesson: Patch
+  addLesson: (lesson: Lesson) => void
+  finishTurn: (ev: Extract<TutorEvent, { type: 'turn.done' }>) => void
+  setCourse: Dispatch<SetStateAction<CourseDetail | null>>
+  setSources: Dispatch<SetStateAction<Source[]>>
+  setStreaming: Dispatch<SetStateAction<string>>
+  setActivity: (activity: string) => void
+  setWriting: (writing: boolean) => void
+  setError: (message: string) => void
+  setLessonId: (id: number) => void
+}
+
+function refreshTotals(courseId: number, { setCourse }: Stream) {
+  api<CourseDetail>(`/api/courses/${courseId}`).then(
+    ({ concepts, strands, vocabulary, recap }) => setCourse((c) => c && { ...c, concepts, strands, vocabulary, recap }),
+    () => {},
+  )
+}
+
+function resync(courseId: number, { setCourse, setStreaming, setWriting, setActivity }: Stream) {
+  api<CourseDetail>(`/api/courses/${courseId}`).then(
+    (c) => {
+      setCourse(c)
+      setStreaming('')
+      setWriting(false)
+      setActivity(c.lessons.some((l) => l.running) ? 'thinking' : '')
+    },
+    () => {},
+  )
+}
+
+/** The changes an event brings to the lesson, the course and the sources. */
+function applyChanges(courseId: number, ev: TutorEvent, h: Stream) {
+  const toLesson = lessonChange(ev)
+  if (toLesson) h.patchLesson(...toLesson)
+  const toCourse = courseChange(ev)
+  if (toCourse) h.setCourse((c) => c && toCourse(c))
+  const toSources = sourcesChange(ev)
+  if (toSources) h.setSources(toSources)
+  if (ev.type === 'block.added' || ev.type === 'plan.ranked') h.setWriting(false)
+  if (ev.type === 'block.added' || ev.type === 'block.updated') refreshTotals(courseId, h)
+}
+
+/** What an event says about the turn in progress. */
+function applyTurn(ev: TutorEvent, h: Stream) {
+  if (ev.type === 'turn.started') {
+    h.patchLesson(ev.lesson_id, (l) => ({ ...l, running: true }))
+    clearTabMark()
+    h.setActivity('thinking')
+    h.setError('')
+  } else if (ev.type === 'chat.delta') {
+    h.setActivity('')
+    h.setStreaming((s) => s + ev.text)
+  } else if (ev.type === 'activity') {
+    h.setActivity(ev.tool)
+    h.setWriting(LESSON_AREA_TOOLS.includes(ev.tool))
+  } else if (ev.type === 'lesson.created') {
+    h.addLesson(ev.lesson)
+  } else if (ev.type === 'turn.done') {
+    h.finishTurn(ev)
+  }
+}
+
+function createLesson(path: string, h: Stream, then?: () => void) {
+  api<Lesson>(path, {}).then(
+    (created) => {
+      h.setCourse((cur) => cur && { ...cur, lessons: [...cur.lessons, created] })
+      h.setLessonId(created.id)
+      then?.()
+    },
+    (err: Error) => h.setError(err.message),
+  )
+}
+
+function openCourse(c: CourseDetail, { courseId, concept, start, foundLesson }: Opening, h: Stream) {
+  h.setCourse(c)
+  const wanted = wantedLesson(c, foundLesson, concept)
+  h.setLessonId(wanted ? wanted.id : c.lessons[c.lessons.length - 1].id)
+  if (start) createLesson(`/api/courses/${courseId}/${start}`, h, () => (location.hash = `#/course/${courseId}`))
+  if (!wanted && concept !== null) createLesson(`/api/concepts/${concept}/lesson`, h)
+  if (c.lessons.some((l) => l.running)) h.setActivity('thinking')
+  courseUpkeep(c)
+}
+
 /** The course, its sources, the shown lesson and the last error, loaded once and kept current by the course's event stream. */
 export function useCourseStream({ courseId, concept, start, foundLesson }: Opening) {
   const [error, setError] = useState('')
@@ -117,72 +203,20 @@ export function useCourseStream({ courseId, concept, start, foundLesson }: Openi
   }
 
   useEffect(() => {
-    const refreshTotals = () =>
-      api<CourseDetail>(`/api/courses/${courseId}`).then(
-        ({ concepts, strands, vocabulary, recap }) => setCourse((c) => c && { ...c, concepts, strands, vocabulary, recap }),
-        () => {},
-      )
-    const resync = () =>
-      api<CourseDetail>(`/api/courses/${courseId}`).then(
-        (c) => {
-          setCourse(c)
-          setStreaming('')
-          setWriting(false)
-          setActivity(c.lessons.some((l) => l.running) ? 'thinking' : '')
-        },
-        () => {},
-      )
-    const stop = followCourse(courseId, (ev: TutorEvent) => {
-      const toLesson = lessonChange(ev)
-      if (toLesson) patchLesson(...toLesson)
-      const toCourse = courseChange(ev)
-      if (toCourse) setCourse((c) => c && toCourse(c))
-      const toSources = sourcesChange(ev)
-      if (toSources) setSources(toSources)
-      if (ev.type === 'block.added' || ev.type === 'plan.ranked') setWriting(false)
-      if (ev.type === 'block.added' || ev.type === 'block.updated') refreshTotals()
-      if (ev.type === 'turn.started') {
-        patchLesson(ev.lesson_id, (l) => ({ ...l, running: true }))
-        clearTabMark()
-        setActivity('thinking')
-        setError('')
-      } else if (ev.type === 'chat.delta') {
-        setActivity('')
-        setStreaming((s) => s + ev.text)
-      } else if (ev.type === 'activity') {
-        setActivity(ev.tool)
-        setWriting(LESSON_AREA_TOOLS.includes(ev.tool))
-      } else if (ev.type === 'lesson.created') {
-        addLesson(ev.lesson)
-      } else if (ev.type === 'turn.done') {
-        finishTurn(ev)
-      }
-    }, resync)
+    const h: Stream = { patchLesson, addLesson, finishTurn, setCourse, setSources, setStreaming, setActivity, setWriting, setError, setLessonId }
+    const stop = followCourse(
+      courseId,
+      (ev: TutorEvent) => {
+        applyChanges(courseId, ev, h)
+        applyTurn(ev, h)
+      },
+      () => resync(courseId, h),
+    )
     // a sitting opens with a few due reviews before the lesson; a card looked up by search opens straight away
     if (!start && foundLesson === null && navigator.onLine) askWarmup(courseId)
     api<Source[]>(`/api/courses/${courseId}/sources`).then(setSources, () => {})
-
-    function create(path: string, then?: () => void) {
-      api<Lesson>(path, {}).then(
-        (created) => {
-          setCourse((cur) => cur && { ...cur, lessons: [...cur.lessons, created] })
-          setLessonId(created.id)
-          then?.()
-        },
-        (err: Error) => setError(err.message),
-      )
-    }
-
     api<CourseDetail>(`/api/courses/${courseId}`).then(
-      (c) => {
-        setCourse(c)
-        const wanted = wantedLesson(c, foundLesson, concept)
-        setLessonId(wanted ? wanted.id : c.lessons[c.lessons.length - 1].id)
-        if (start) create(`/api/courses/${courseId}/${start}`, () => (location.hash = `#/course/${courseId}`))
-        if (!wanted && concept !== null) create(`/api/concepts/${concept}/lesson`)
-        if (c.lessons.some((l) => l.running)) setActivity('thinking')
-        courseUpkeep(c)
-      },
+      (c) => openCourse(c, { courseId, concept, start, foundLesson }, h),
       (e) => setError(e.message),
     )
     return stop

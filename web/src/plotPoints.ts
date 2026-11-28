@@ -110,18 +110,29 @@ export function spot(spec: PlotSpec, value: number, width: number, height: numbe
   return spots.find(clear) ?? spots[0]
 }
 
+type Along = { x: ((v: number) => number) | null; y: ((v: number) => number) | null }
+
+const onRule = (spec: PlotSpec, along: Along, axis: 'x' | 'y', f: number) =>
+  spec.marks.some((m) => m.type === 'rule' && typeof m[axis] === 'number' && Math.abs(along[axis]!(m[axis] as number) - f) < ON_RULE)
+
+const where = (along: Along, axis: 'x' | 'y', v: unknown) => (typeof v === 'number' && along[axis] ? along[axis]!(v) : null)
+
+/** How a note at fraction f across the frame is anchored: off a rule it sits on, else inward where it would be cut off. */
+function across(f: number, width: number, onIt: boolean): Pick<Place, 'textAnchor' | 'dx'> | null {
+  if (onIt) return f + width > 1 && f > 0.5 ? { textAnchor: 'end', dx: -GAP } : { textAnchor: 'start', dx: GAP }
+  if (f - width / 2 < 0) return { textAnchor: 'start', dx: 0 }
+  if (f + width / 2 > 1) return { textAnchor: 'end', dx: 0 }
+  return null
+}
+
 /** Where a note at (x, y) is written: beside a vertical rule it would sit on rather than across it, above a horizontal
  * one, and drawn inward at the frame's sides so it is not cut off. width: the note's, as a fraction of the frame's. */
 export function place(spec: PlotSpec, x: unknown, y: unknown, width = 0): Place {
   const along = { x: fraction(spec, 'x'), y: fraction(spec, 'y') }
-  const onRule = (axis: 'x' | 'y', f: number) =>
-    spec.marks.some((m) => m.type === 'rule' && typeof m[axis] === 'number' && Math.abs(along[axis]!(m[axis] as number) - f) < ON_RULE)
   const placed: Place = { textAnchor: 'middle', dx: 0 }
-  const fx = typeof x === 'number' && along.x ? along.x(x) : null
-  if (fx !== null && onRule('x', fx)) Object.assign(placed, fx + width > 1 && fx > 0.5 ? { textAnchor: 'end', dx: -GAP } : { textAnchor: 'start', dx: GAP })
-  else if (fx !== null && fx - width / 2 < 0) placed.textAnchor = 'start'
-  else if (fx !== null && fx + width / 2 > 1) placed.textAnchor = 'end'
-  const fy = typeof y === 'number' && along.y ? along.y(y) : null
-  if (fy !== null && onRule('y', fy)) Object.assign(placed, { lineAnchor: 'bottom', dy: -GAP / 2 })
+  const fx = where(along, 'x', x)
+  if (fx !== null) Object.assign(placed, across(fx, width, onRule(spec, along, 'x', fx)))
+  const fy = where(along, 'y', y)
+  if (fy !== null && onRule(spec, along, 'y', fy)) Object.assign(placed, { lineAnchor: 'bottom', dy: -GAP / 2 })
   return placed
 }

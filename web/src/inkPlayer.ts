@@ -1,7 +1,7 @@
 // Replays an ink document (see ink.ts): each stroke's outline revealed along its timed centerline, eraser sweeps,
 // ghosts, a pen, and a camera that follows the pen on narrow screens. Canvas, with an SVG fallback.
 import { ANNOTATIONS, Settled, beatAt, duration, frameAt, hit, markAlt, onBoard, opening, plan, resolve, restAt } from './ink'
-import type { Box, Frame, InkDoc, Plan, Tip } from './ink'
+import type { Box, Frame, InkDoc, Pen, Plan, Tip } from './ink'
 
 export type ThemeName = 'light' | 'dark'
 type Look = { name: ThemeName; board: string; inks: Record<string, string>; pen: string; focus: string; chalk: boolean }
@@ -375,6 +375,46 @@ function svgRenderer(p: Plan): Renderer {
     m.replaceChildren(...children.map(([tag, attrs]) => el(tag as 'path', attrs)))
   }
 
+  function maskDrawing(drawing: Frame['drawing'][number]) {
+    strokePath(drawing.stroke).setAttribute('mask', `url(#${id}-reveal)`)
+    masked.add(drawing.stroke)
+    fill(reveal, runs(drawing.tips).map((r) => ['path', { d: polyline(r.points), fill: 'none', stroke: '#fff', 'stroke-width': r.width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }]))
+  }
+
+  function maskErasing(erasing: Frame['erasing'][number]) {
+    for (const i of erasing.strokes) {
+      strokePath(i).setAttribute('mask', `url(#${id}-sweep)`)
+      masked.add(i)
+    }
+    const path = erasing.path.length === 1 ? [erasing.path[0], erasing.path[0]] : erasing.path
+    fill(sweep, [
+      ['rect', { x: 0, y: 0, width: doc.page[0], height: doc.page[1], fill: '#fff' }],
+      ...(path.length ? [['path', { d: polyline(path), fill: 'none', stroke: '#000', 'stroke-width': 2 * erasing.r, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }] as [string, Record<string, string | number>]] : []),
+    ])
+  }
+
+  function showGhosts(shown: number[]) {
+    for (const [g, e] of ghostPaths) if (!shown.includes(g)) e.remove()
+    for (const g of shown) {
+      const e = ghostPaths.get(g) ?? el('path', { d: doc.ghosts[g].outline, opacity: doc.ghosts[g].opacity })
+      ghostPaths.set(g, e)
+      e.setAttribute('fill', look.inks.ink)
+      if (!e.isConnected) ghostLayer.appendChild(e)
+    }
+  }
+
+  function showFocus(mark: Box | null) {
+    focus.setAttribute('display', mark ? 'inline' : 'none')
+    if (!mark) return
+    for (const [k, v] of Object.entries({ x: mark[0] - 8, y: mark[1] - 8, width: mark[2] + 16, height: mark[3] + 16, fill: look.focus })) focus.setAttribute(k, String(v))
+  }
+
+  function showPen(at: Pen, cam: Camera) {
+    const s = doc.page[0] / (width * cam.z)
+    const g = el('g', { transform: `translate(${at.x} ${at.y - (at.down ? 0 : 6)}) scale(${s})`, fill: look.pen, opacity: 0.85 }, pen)
+    el('path', { d: at.eraser ? ERASER : PEN, transform: at.eraser ? '' : `rotate(${PEN_ANGLE})` }, g)
+  }
+
   return {
     node: svg,
     size(w, h) {
@@ -402,41 +442,12 @@ function svgRenderer(p: Plan): Renderer {
       }
       masked.clear()
       cache.next(p, f, look.name, reset, (i) => strokePath(i).removeAttribute('mask'))
-      const drawing = f.drawing[0]
-      if (drawing) {
-        strokePath(drawing.stroke).setAttribute('mask', `url(#${id}-reveal)`)
-        masked.add(drawing.stroke)
-        fill(reveal, runs(drawing.tips).map((r) => ['path', { d: polyline(r.points), fill: 'none', stroke: '#fff', 'stroke-width': r.width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }]))
-      }
-      const erasing = f.erasing[0]
-      if (erasing) {
-        for (const i of erasing.strokes) {
-          strokePath(i).setAttribute('mask', `url(#${id}-sweep)`)
-          masked.add(i)
-        }
-        const path = erasing.path.length === 1 ? [erasing.path[0], erasing.path[0]] : erasing.path
-        fill(sweep, [
-          ['rect', { x: 0, y: 0, width: doc.page[0], height: doc.page[1], fill: '#fff' }],
-          ...(path.length ? [['path', { d: polyline(path), fill: 'none', stroke: '#000', 'stroke-width': 2 * erasing.r, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }] as [string, Record<string, string | number>]] : []),
-        ])
-      }
-      for (const [g, e] of ghostPaths) if (!f.ghosts.includes(g)) e.remove()
-      for (const g of f.ghosts) {
-        const e = ghostPaths.get(g) ?? el('path', { d: doc.ghosts[g].outline, opacity: doc.ghosts[g].opacity })
-        ghostPaths.set(g, e)
-        e.setAttribute('fill', look.inks.ink)
-        if (!e.isConnected) ghostLayer.appendChild(e)
-      }
-      focus.setAttribute('display', mark ? 'inline' : 'none')
-      if (mark) {
-        for (const [k, v] of Object.entries({ x: mark[0] - 8, y: mark[1] - 8, width: mark[2] + 16, height: mark[3] + 16, fill: look.focus })) focus.setAttribute(k, String(v))
-      }
+      if (f.drawing[0]) maskDrawing(f.drawing[0])
+      if (f.erasing[0]) maskErasing(f.erasing[0])
+      showGhosts(f.ghosts)
+      showFocus(mark)
       pen.replaceChildren()
-      if (f.pen) {
-        const s = doc.page[0] / (width * cam.z)
-        const g = el('g', { transform: `translate(${f.pen.x} ${f.pen.y - (f.pen.down ? 0 : 6)}) scale(${s})`, fill: look.pen, opacity: 0.85 }, pen)
-        el('path', { d: f.pen.eraser ? ERASER : PEN, transform: f.pen.eraser ? '' : `rotate(${PEN_ANGLE})` }, g)
-      }
+      if (f.pen) showPen(f.pen, cam)
     },
   }
 }
@@ -463,6 +474,62 @@ export type Player = {
 }
 
 export type PlayerOptions = { theme?: ThemeName; renderer?: 'canvas' | 'svg'; reducedMotion?: boolean; label?: string }
+
+/** The camera a step of dt ms nearer the one wanted. */
+function eased(cam: Camera, want: Camera, dt: number): Camera {
+  const k = 1 - Math.exp(-dt / EASE_MS)
+  return { x: cam.x + (want.x - cam.x) * k, y: cam.y + (want.y - cam.y) * k, z: cam.z + (want.z - cam.z) * k }
+}
+
+type Points = [number, number][]
+
+const spread = (a: Points) => (a.length > 1 ? Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]) : 1)
+const middle = (a: Points) => [a.reduce((s, q) => s + q[0], 0) / a.length, a.reduce((s, q) => s + q[1], 0) / a.length]
+
+/** Whether the touches travelled or pinched far enough to be more than a tap. */
+function movedBy(from: Points, now: Points): boolean {
+  const [mx0, my0] = middle(from)
+  const [mx1, my1] = middle(now)
+  return Math.hypot(mx1 - mx0, my1 - my0) > TAP_PX || Math.abs(spread(now) - spread(from)) > TAP_PX
+}
+
+/** The camera a pinch or drag from `from` to `now` makes of the one it began on. */
+function pinched(start: Camera, from: Points, now: Points, rect: DOMRect, page: [number, number]): Camera {
+  const [mx0, my0] = middle(from)
+  const [mx1, my1] = middle(now)
+  const s0 = (rect.width / page[0]) * start.z
+  const z = Math.min(PINCH_MAX, Math.max(1, (start.z * spread(now)) / spread(from)))
+  const s1 = (rect.width / page[0]) * z
+  // the page point under the first midpoint stays under the fingers
+  const px = start.x + (mx0 - rect.left) / s0
+  const py = start.y + (my0 - rect.top) / s0
+  return clampCamera({ x: px - (mx1 - rect.left) / s1, y: py - (my1 - rect.top) / s1, z }, page)
+}
+
+type PartHooks = { focus: (ref: string) => void; blur: (ref: string) => void; click: (ref: string) => void }
+
+function partButtons(doc: InkDoc, parts: HTMLElement, hooks: PartHooks): { el: number; node: HTMLButtonElement }[] {
+  const [W, H] = doc.page
+  const buttons: { el: number; node: HTMLButtonElement }[] = []
+  doc.elements.forEach((e, i) => {
+    if (ANNOTATIONS.has(e.kind)) return
+    const add = (ref: string, b: Box, label: string) => {
+      const node = document.createElement('button')
+      node.type = 'button'
+      node.className = 'ink-part'
+      node.setAttribute('aria-label', label || ref)
+      node.style.cssText = `position:absolute;left:${(b[0] / W) * 100}%;top:${(b[1] / H) * 100}%;width:${(b[2] / W) * 100}%;height:${(b[3] / H) * 100}%;background:none;border:0;padding:0;pointer-events:none`
+      node.addEventListener('focus', () => hooks.focus(ref))
+      node.addEventListener('blur', () => hooks.blur(ref))
+      node.addEventListener('click', () => hooks.click(ref))
+      parts.appendChild(node)
+      buttons.push({ el: i, node })
+    }
+    add(e.id, e.box, e.alt)
+    for (const [m, b] of e.marks) add(`${e.id}.${m}`, b, markAlt(e.alt, m))
+  })
+  return buttons
+}
 
 /** Plays a document (see readInk) in `host`. */
 export function mount(host: HTMLElement, doc: InkDoc, opts: PlayerOptions = {}): Player {
@@ -506,23 +573,10 @@ export function mount(host: HTMLElement, doc: InkDoc, opts: PlayerOptions = {}):
   const parts = document.createElement('div')
   parts.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:0 0;pointer-events:none'
   box.appendChild(parts)
-  const buttons: { el: number; node: HTMLButtonElement }[] = []
-  doc.elements.forEach((e, i) => {
-    if (ANNOTATIONS.has(e.kind)) return
-    const add = (ref: string, b: Box, label: string) => {
-      const node = document.createElement('button')
-      node.type = 'button'
-      node.className = 'ink-part'
-      node.setAttribute('aria-label', label || ref)
-      node.style.cssText = `position:absolute;left:${(b[0] / W) * 100}%;top:${(b[1] / H) * 100}%;width:${(b[2] / W) * 100}%;height:${(b[3] / H) * 100}%;background:none;border:0;padding:0;pointer-events:none`
-      node.addEventListener('focus', () => player.highlight(ref))
-      node.addEventListener('blur', () => asked !== ref && player.highlight(null))
-      node.addEventListener('click', () => ask(ref))
-      parts.appendChild(node)
-      buttons.push({ el: i, node })
-    }
-    add(e.id, e.box, e.alt)
-    for (const [m, b] of e.marks) add(`${e.id}.${m}`, b, markAlt(e.alt, m))
+  const buttons = partButtons(doc, parts, {
+    focus: (ref) => player.highlight(ref),
+    blur: (ref) => asked !== ref && player.highlight(null),
+    click: ask,
   })
 
   function ask(ref: string) {
@@ -533,6 +587,24 @@ export function mount(host: HTMLElement, doc: InkDoc, opts: PlayerOptions = {}):
     if (!playing) render()
   }
 
+  function markBox(f: Frame, bi: number) {
+    const ref = marked ? resolve(p, marked, shown) : null
+    const focusRef = bi >= 0 && t < doc.beats[bi].end ? doc.beats[bi].focus : undefined
+    const focus = focusRef ? resolve(p, focusRef, shown) : null
+    return [ref, focus].find((x) => x && x.page === f.page)?.box ?? null
+  }
+
+  function paint(f: Frame, bi: number) {
+    r.draw({ frame: f, cam, look, mark: markBox(f, bi) })
+    box.style.touchAction = cam.z > 1.01 ? 'none' : 'pan-y'
+    parts.style.transform = `scale(${cam.z}) translate(${(-cam.x / W) * 100}%, ${(-cam.y / H) * 100}%)`
+    const key = `${f.page}/${f.finished}/${f.sweepsStarted}`
+    if (key !== partsKey) {
+      partsKey = key
+      for (const b of buttons) b.node.hidden = doc.elements[b.el].page !== f.page || !onBoard(p, b.el, shown)
+    }
+  }
+
   function render(dt = 0) {
     const bi = beatAt(p, t)
     // Reduced motion shows the board after the beat playing: show(n), with no reveal and no pen.
@@ -540,26 +612,9 @@ export function mount(host: HTMLElement, doc: InkDoc, opts: PlayerOptions = {}):
     const f = frameAt(p, shown)
     if (reduced) f.pen = null
     const want = aim(p, f, { narrow: width < NARROW, playing, reduced, user, marked, cam })
-    if (f.page !== page || !dt || reduced) cam = want
-    else {
-      const k = 1 - Math.exp(-dt / EASE_MS)
-      cam = { x: cam.x + (want.x - cam.x) * k, y: cam.y + (want.y - cam.y) * k, z: cam.z + (want.z - cam.z) * k }
-    }
+    cam = f.page !== page || !dt || reduced ? want : eased(cam, want, dt)
     page = f.page
-    if (!asleep) {
-      const ref = marked ? resolve(p, marked, shown) : null
-      const focusRef = bi >= 0 && t < doc.beats[bi].end ? doc.beats[bi].focus : undefined
-      const focus = focusRef ? resolve(p, focusRef, shown) : null
-      const mark = [ref, focus].find((x) => x && x.page === f.page)?.box ?? null
-      r.draw({ frame: f, cam, look, mark })
-      box.style.touchAction = cam.z > 1.01 ? 'none' : 'pan-y'
-      parts.style.transform = `scale(${cam.z}) translate(${(-cam.x / W) * 100}%, ${(-cam.y / H) * 100}%)`
-      const key = `${f.page}/${f.finished}/${f.sweepsStarted}`
-      if (key !== partsKey) {
-        partsKey = key
-        for (const b of buttons) b.node.hidden = doc.elements[b.el].page !== f.page || !onBoard(p, b.el, shown)
-      }
-    }
+    if (!asleep) paint(f, bi)
     if (bi !== beat) {
       beat = bi
       if (bi >= 0) emit('beat', bi)
@@ -612,22 +667,10 @@ export function mount(host: HTMLElement, doc: InkDoc, opts: PlayerOptions = {}):
     if (!down.has(e.pointerId) || !gesture) return
     down.set(e.pointerId, { x: e.clientX, y: e.clientY })
     const now = [...down.values()].map((q) => [q.x, q.y] as [number, number])
-    const from = gesture.points
-    if (now.length !== from.length) return
-    const dist = (a: [number, number][]) => (a.length > 1 ? Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]) : 1)
-    const mid = (a: [number, number][]) => [a.reduce((s, q) => s + q[0], 0) / a.length, a.reduce((s, q) => s + q[1], 0) / a.length]
-    const [mx0, my0] = mid(from)
-    const [mx1, my1] = mid(now)
-    if (Math.hypot(mx1 - mx0, my1 - my0) > TAP_PX || Math.abs(dist(now) - dist(from)) > TAP_PX) gesture.moved = true
+    if (now.length !== gesture.points.length) return
+    if (movedBy(gesture.points, now)) gesture.moved = true
     if (!gesture.moved || (now.length === 1 && gesture.cam.z <= 1.01)) return
-    const rect = box.getBoundingClientRect()
-    const s0 = (rect.width / W) * gesture.cam.z
-    const z = Math.min(PINCH_MAX, Math.max(1, (gesture.cam.z * dist(now)) / dist(from)))
-    const s1 = (rect.width / W) * z
-    // the page point under the first midpoint stays under the fingers
-    const px = gesture.cam.x + (mx0 - rect.left) / s0
-    const py = gesture.cam.y + (my0 - rect.top) / s0
-    user = clampCamera({ x: px - (mx1 - rect.left) / s1, y: py - (my1 - rect.top) / s1, z }, doc.page)
+    user = pinched(gesture.cam, gesture.points, now, box.getBoundingClientRect(), doc.page)
     if (!playing) render()
     e.preventDefault()
   })
