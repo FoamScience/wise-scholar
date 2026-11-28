@@ -110,24 +110,41 @@ function read(raw: Raw, schema: 1 | 2): InkDoc {
   if (!Number.isInteger(pages)) fail('pages is not a count')
   const onPage = (v: unknown, at: string) => index(v, pages, at)
 
-  const elements = list(raw.elements, 'elements').map((v, i): InkElement => {
-    const e = obj(v, `elements[${i}]`)
-    const marks = e.marks === undefined ? {} : obj(e.marks, `elements[${i}].marks`)
-    return {
-      id: str(e.id, `elements[${i}].id`),
-      kind: str(e.kind, `elements[${i}].kind`),
-      page: onPage(e.page, `elements[${i}].page`),
-      box: box(e.box, `elements[${i}].box`),
-      marks: new Map(Object.entries(marks).map(([k, m]) => [k, box(m, `elements[${i}].marks.${k}`)])),
-      ink: str(e.ink, `elements[${i}].ink`),
-      alt: str(e.alt, `elements[${i}].alt`),
-    }
-  })
+  const elements = list(raw.elements, 'elements').map((v, i) => readElement(obj(v, `elements[${i}]`), `elements[${i}]`, onPage))
+  const strokes = readStrokes(raw.strokes, elements.length)
+  const stroke = (v: unknown, at: string) => index(v, strokes.length, at)
+  const preamble = list(raw.preamble, 'preamble').map((x, k) => stroke(x, `preamble[${k}]`))
+  const preambleEnd = preamble.length ? Math.max(...preamble.map((i) => strokeEnd(strokes[i]))) : 0
+  const beats = readBeats(raw.beats, { strokes, stroke, onPage, schema, erased: new Set() }, preambleEnd)
 
-  const strokes = list(raw.strokes, 'strokes').map((v, i): InkStroke => {
-    const s = obj(v, `strokes[${i}]`)
+  let shown = 0
+  const ghosts = list(raw.ghosts, 'ghosts').map((v, i) => {
+    const g = readGhost(obj(v, `ghosts[${i}]`), i, beats, pages, schema)
+    if (g.t < shown) fail(`ghosts[${i}] appears before ghosts[${i - 1}]`)
+    shown = g.t
+    return g
+  })
+  return { schema, page, pages, elements, strokes, preamble, beats, ghosts }
+}
+
+function readElement(e: Raw, at: string, onPage: (v: unknown, at: string) => number): InkElement {
+  const marks = e.marks === undefined ? {} : obj(e.marks, `${at}.marks`)
+  return {
+    id: str(e.id, `${at}.id`),
+    kind: str(e.kind, `${at}.kind`),
+    page: onPage(e.page, `${at}.page`),
+    box: box(e.box, `${at}.box`),
+    marks: new Map(Object.entries(marks).map(([k, m]) => [k, box(m, `${at}.marks.${k}`)])),
+    ink: str(e.ink, `${at}.ink`),
+    alt: str(e.alt, `${at}.alt`),
+  }
+}
+
+function readStrokes(v: unknown, elementCount: number): InkStroke[] {
+  const strokes = list(v, 'strokes').map((w, i): InkStroke => {
+    const s = obj(w, `strokes[${i}]`)
     return {
-      el: index(s.el, elements.length, `strokes[${i}].el`),
+      el: index(s.el, elementCount, `strokes[${i}].el`),
       marks: s.marks === undefined ? [] : list(s.marks, `strokes[${i}].marks`).map((m, j) => str(m, `strokes[${i}].marks[${j}]`)),
       outline: outline(s.outline, `strokes[${i}].outline`),
       path: path(s.path, `strokes[${i}].path`, STROKE_POINT) as InkStroke['path'],
@@ -138,50 +155,37 @@ function read(raw: Raw, schema: 1 | 2): InkDoc {
   strokes.forEach((s, i) => {
     if (i > 0 && strokeStart(s) < strokeEnd(strokes[i - 1])) fail(`strokes[${i}] starts before strokes[${i - 1}] ends`)
   })
-  const stroke = (v: unknown, at: string) => index(v, strokes.length, at)
-  const preamble = list(raw.preamble, 'preamble').map((x, k) => stroke(x, `preamble[${k}]`))
-  const preambleEnd = preamble.length ? Math.max(...preamble.map((i) => strokeEnd(strokes[i]))) : 0
+  return strokes
+}
 
-  const erased = new Set<number>()
+// What reading the beats shares: the strokes they draw and erase, and the strokes erased so far.
+type BeatContext = {
+  strokes: InkStroke[]
+  stroke: (v: unknown, at: string) => number
+  onPage: (v: unknown, at: string) => number
+  schema: 1 | 2
+  erased: Set<number>
+}
+
+function readBeats(v: unknown, cx: BeatContext, preambleEnd: number): InkBeat[] {
   let clock = -1
-  const beats = list(raw.beats, 'beats').map((v, i): InkBeat => {
-    const b = obj(v, `beats[${i}]`)
+  return list(v, 'beats').map((w, i): InkBeat => {
+    const b = obj(w, `beats[${i}]`)
     const start = time(b.start, `beats[${i}].start`)
     const end = time(b.end, `beats[${i}].end`)
     if (end < start) fail(`beats[${i}] ends before it starts`)
     if (i === 0 && start !== preambleEnd) fail('beats[0] does not start where the preamble ends')
     if (i > 0 && start !== clock) fail(`beats[${i}] does not start where beats[${i - 1}] ends`)
     clock = end
-    const draw = list(b.draw, `beats[${i}].draw`).map((x, k) => stroke(x, `beats[${i}].draw[${k}]`))
+    const draw = list(b.draw, `beats[${i}].draw`).map((x, k) => cx.stroke(x, `beats[${i}].draw[${k}]`))
     draw.forEach((s, k) => {
-      if (strokeStart(strokes[s]) < start || strokeEnd(strokes[s]) > end) fail(`beats[${i}].draw[${k}] is drawn outside its beat`)
+      if (strokeStart(cx.strokes[s]) < start || strokeEnd(cx.strokes[s]) > end) fail(`beats[${i}].draw[${k}] is drawn outside its beat`)
       if (k > 0 && s <= draw[k - 1]) fail(`beats[${i}].draw is not in time order`)
     })
     let swept = start
-    const erase = list(b.erase, `beats[${i}].erase`).map((w, j): Sweep => {
-      const at = `beats[${i}].erase[${j}]`
-      const e = obj(w, at)
-      const t = time(e.t, `${at}.t`)
-      // schema 1 erases at an instant, with no eraser to show
-      const sweep: Sweep =
-        schema === 1
-          ? { start: t, t, r: 0, path: [], strokes: [] }
-          : {
-              start: time(e.start, `${at}.start`),
-              t,
-              r: num(e.r, `${at}.r`, Number.MIN_VALUE),
-              path: path(e.path, `${at}.path`, ERASER_POINT) as Sweep['path'],
-              strokes: [],
-            }
-      if (schema === 2 && (sweep.path[0][2] !== sweep.start || sweep.path.at(-1)![2] !== t)) fail(`${at}.path does not run from start to t`)
-      if (sweep.start < swept || t > end) fail(`${at} is outside its beat or before the previous sweep ends`)
-      swept = t
-      sweep.strokes = list(e.strokes, `${at}.strokes`).map((x, k) => stroke(x, `${at}.strokes[${k}]`))
-      for (const s of sweep.strokes) {
-        if (erased.has(s)) fail(`stroke ${s} is erased twice`)
-        if (strokeEnd(strokes[s]) > sweep.start) fail(`${at} erases stroke ${s} before it is written`)
-        erased.add(s)
-      }
+    const erase = list(b.erase, `beats[${i}].erase`).map((x, j): Sweep => {
+      const sweep = readSweep(obj(x, `beats[${i}].erase[${j}]`), `beats[${i}].erase[${j}]`, cx, swept, end)
+      swept = sweep.t
       return sweep
     })
     return {
@@ -191,18 +195,34 @@ function read(raw: Raw, schema: 1 | 2): InkDoc {
       draw,
       erase,
       focus: b.focus === undefined ? undefined : str(b.focus, `beats[${i}].focus`),
-      page: onPage(b.page, `beats[${i}].page`),
+      page: cx.onPage(b.page, `beats[${i}].page`),
     }
   })
+}
 
-  let shown = 0
-  const ghosts = list(raw.ghosts, 'ghosts').map((v, i) => {
-    const g = readGhost(obj(v, `ghosts[${i}]`), i, beats, pages, schema)
-    if (g.t < shown) fail(`ghosts[${i}] appears before ghosts[${i - 1}]`)
-    shown = g.t
-    return g
-  })
-  return { schema, page, pages, elements, strokes, preamble, beats, ghosts }
+/** One erase of a beat, after `swept` (where the previous sweep ended) and by `end` (where the beat ends). */
+function readSweep(e: Raw, at: string, cx: BeatContext, swept: number, end: number): Sweep {
+  const t = time(e.t, `${at}.t`)
+  // schema 1 erases at an instant, with no eraser to show
+  const sweep: Sweep =
+    cx.schema === 1
+      ? { start: t, t, r: 0, path: [], strokes: [] }
+      : {
+          start: time(e.start, `${at}.start`),
+          t,
+          r: num(e.r, `${at}.r`, Number.MIN_VALUE),
+          path: path(e.path, `${at}.path`, ERASER_POINT) as Sweep['path'],
+          strokes: [],
+        }
+  if (cx.schema === 2 && (sweep.path[0][2] !== sweep.start || sweep.path.at(-1)![2] !== t)) fail(`${at}.path does not run from start to t`)
+  if (sweep.start < swept || t > end) fail(`${at} is outside its beat or before the previous sweep ends`)
+  sweep.strokes = list(e.strokes, `${at}.strokes`).map((x, k) => cx.stroke(x, `${at}.strokes[${k}]`))
+  for (const s of sweep.strokes) {
+    if (cx.erased.has(s)) fail(`stroke ${s} is erased twice`)
+    if (strokeEnd(cx.strokes[s]) > sweep.start) fail(`${at} erases stroke ${s} before it is written`)
+    cx.erased.add(s)
+  }
+  return sweep
 }
 
 // Schema 1 reserved ghosts with no time or opacity: one appears with its beat's first erase, at mid opacity.
