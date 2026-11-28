@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/hero.svg" alt="Wise Scholar" width="880"></p>
+<p align="center"><img src="docs/promo.avif" alt="Wise Scholar: a self-hosted AI tutor that interviews you, then teaches" width="880"></p>
 
 A self-hosted AI tutor with a web interface. It interviews you, picks a teaching approach for the topic, and teaches through hints, exercises, confidence-rated quick checks and spaced reviews. The tutor runs through [Claude Code](https://claude.com/claude-code), [opencode](https://opencode.ai) or the [Antigravity CLI](https://antigravity.google) on your own machine.
 
