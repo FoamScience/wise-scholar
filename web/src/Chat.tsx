@@ -117,6 +117,64 @@ export function AskButton(props: { unread: number; working: string | null; onAsk
   )
 }
 
+function ChatHead(props: { running: boolean; doing: string; onClose: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex h-13 shrink-0 items-center justify-between border-b px-4">
+      <strong>{t('chat.tutor')}</strong>
+      <span className={cn('text-sm whitespace-nowrap', props.running ? 'font-medium text-primary' : 'text-muted-foreground')} role="status">
+        {props.running && props.doing}
+      </span>
+      <Button type="button" variant="ghost" className="text-ink-2" onClick={props.onClose}>
+        {t('chat.close')}
+      </Button>
+    </div>
+  )
+}
+
+function Composer(props: {
+  draft: string
+  onDraft: (update: (draft: string) => string) => void
+  placeholder: string | undefined
+  onKey: (e: KeyboardEvent<HTMLTextAreaElement>) => void
+  speech: boolean
+  running: boolean
+  canSend: boolean
+  onSend: () => void
+  onStop: () => void
+  onError: (message: string) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex shrink-0 flex-col gap-2 border-t px-4 pt-3 pb-4">
+      <label htmlFor="chat" className="text-sm text-muted-foreground">
+        {t('chat.message')}
+      </label>
+      <Textarea
+        id="chat"
+        className="resize-none py-3"
+        dir="auto"
+        rows={3}
+        value={props.draft}
+        placeholder={props.placeholder}
+        onChange={(e) => props.onDraft(() => e.target.value)}
+        onKeyDown={props.onKey}
+      />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {props.speech && <Mic onClip={(clip) => transcribe(clip).then((t) => props.onDraft((d) => (d ? `${d} ${t}` : t)))} onError={props.onError} />}
+        {props.running && (
+          <Button variant="outline" onClick={props.onStop}>
+            {t('common.stop')}
+          </Button>
+        )}
+        <Button onClick={props.onSend} disabled={!props.canSend}>
+          {t('common.send')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /** The chat with the tutor: its messages, the reply coming in, and the composer. */
 export function ChatPanel({ messagesRef, className, ...props }: {
   className: string
@@ -158,15 +216,7 @@ export function ChatPanel({ messagesRef, className, ...props }: {
         if (e.key === 'Escape') props.onClose()
       }}
     >
-      <div className="flex h-13 shrink-0 items-center justify-between border-b px-4">
-        <strong>{t('chat.tutor')}</strong>
-        <span className={cn('text-sm whitespace-nowrap', props.running ? 'font-medium text-primary' : 'text-muted-foreground')} role="status">
-          {props.running && props.doing}
-        </span>
-        <Button type="button" variant="ghost" className="text-ink-2" onClick={props.onClose}>
-          {t('chat.close')}
-        </Button>
-      </div>
+      <ChatHead running={props.running} doing={props.doing} onClose={props.onClose} />
       <div ref={messagesRef} className="flex grow flex-col gap-3 overflow-y-auto p-4">
         {props.messages.map((m) => (
           <TapContext.Provider key={m.id} value={{ states, open: tapped?.message === m.id ? tapped : null, onTap: (word) => setTapped({ ...word, message: m.id }) }}>
@@ -181,32 +231,18 @@ export function ChatPanel({ messagesRef, className, ...props }: {
           </div>
         )}
       </div>
-      <div className="flex shrink-0 flex-col gap-2 border-t px-4 pt-3 pb-4">
-        <label htmlFor="chat" className="text-sm text-muted-foreground">
-          {t('chat.message')}
-        </label>
-        <Textarea
-          id="chat"
-          className="resize-none py-3"
-          dir="auto"
-          rows={3}
-          value={props.draft}
-          placeholder={props.placeholder}
-          onChange={(e) => props.onDraft(() => e.target.value)}
-          onKeyDown={props.onKey}
-        />
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {props.speech && <Mic onClip={(clip) => transcribe(clip).then((t) => props.onDraft((d) => (d ? `${d} ${t}` : t)))} onError={props.onError} />}
-          {props.running && (
-            <Button variant="outline" onClick={props.onStop}>
-              {t('common.stop')}
-            </Button>
-          )}
-          <Button onClick={props.onSend} disabled={!props.canSend}>
-            {t('common.send')}
-          </Button>
-        </div>
-      </div>
+      <Composer
+        draft={props.draft}
+        onDraft={props.onDraft}
+        placeholder={props.placeholder}
+        onKey={props.onKey}
+        speech={props.speech}
+        running={props.running}
+        canSend={props.canSend}
+        onSend={props.onSend}
+        onStop={props.onStop}
+        onError={props.onError}
+      />
     </aside>
   )
 }

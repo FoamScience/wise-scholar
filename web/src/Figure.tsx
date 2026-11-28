@@ -157,24 +157,12 @@ function AskPart(props: { picked: { id: string; label: string } | null; picking:
   )
 }
 
-/** A tutor-drawn figure; click to see it large. Steps the tutor just drew in answer to a question play at once. */
-export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void; onAsk?: Asked }) {
-  const { t } = useTranslation()
-  const d = props.data as FigureData
-  const [large, setLarge] = useState(false)
+type Part = { id: string; label: string }
+
+/** Part picking on a drawing: while on, a click lands on the nearest `data-part` instead of the figure. */
+function usePartPicker(box: React.RefObject<HTMLDivElement | null>, onAsk?: Asked) {
   const [picking, setPicking] = useState(false)
-  const [picked, setPicked] = useState<{ id: string; label: string } | null>(null)
-  const box = useRef<HTMLDivElement>(null)
-  const sketched = props.sketched && !d.diagram
-  // steps added while the figure is on screen are an answer just drawn: they play once, from where it begins
-  const count = d.board?.steps.length ?? 0
-  const [seen, setSeen] = useState(count)
-  const [answered, setAnswered] = useState<number | undefined>()
-  if (count !== seen) {
-    setSeen(count)
-    setAnswered(count > seen ? d.board?.answer : undefined)
-  }
-  const askable = props.onAsk && !d.frames && d.svg.includes('data-part=')
+  const [picked, setPicked] = useState<Part | null>(null)
 
   function pick(e: React.MouseEvent) {
     if (!picking) return
@@ -191,9 +179,51 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
   function ask(question: string) {
     const svg = box.current?.querySelector('svg')
     if (!svg || !picked) return
-    props.onAsk!(picked.id, question, partBoxes(svg))
+    onAsk!(picked.id, question, partBoxes(svg))
     setPicked(null)
   }
+
+  function toggle(on: boolean) {
+    setPicking(on)
+    setPicked(null)
+  }
+
+  return { picking, picked, pick, ask, toggle }
+}
+
+/** Steps added while the figure is on screen are an answer just drawn: where they begin, or undefined. */
+function useAnswered(board: FigureData['board']) {
+  const count = board?.steps.length ?? 0
+  const [seen, setSeen] = useState(count)
+  const [answered, setAnswered] = useState<number | undefined>()
+  if (count !== seen) {
+    setSeen(count)
+    setAnswered(count > seen ? board?.answer : undefined)
+  }
+  return answered
+}
+
+function RestoreButton({ data, disabled, onRestore }: { data: FigureData; disabled?: boolean; onRestore?: () => void }) {
+  const { t } = useTranslation()
+  if (!data.previous || !onRestore) return null
+  return (
+    <Button variant="ghost" size="sm" className="-ms-3 self-start text-muted-foreground" disabled={disabled} onClick={onRestore}>
+      {data.restored ? t('block.backToRedrawn') : t('block.restoreDrawing')}
+    </Button>
+  )
+}
+
+/** A tutor-drawn figure; click to see it large. Steps the tutor just drew in answer to a question play at once. */
+export function FigureCard(props: { id: number; caption: string; data: unknown; sketched: boolean; disabled?: boolean; onRestore?: () => void; onAsk?: Asked }) {
+  const { t } = useTranslation()
+  const d = props.data as FigureData
+  const [large, setLarge] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const { picking, picked, pick, ask, toggle } = usePartPicker(box, props.onAsk)
+  const sketched = props.sketched && !d.diagram
+  // steps added while the figure is on screen are an answer just drawn: they play once, from where it begins
+  const answered = useAnswered(d.board)
+  const askable = props.onAsk && !d.frames && d.svg.includes('data-part=')
 
   return (
     <section id={`block-${props.id}`} className="block flex flex-col gap-2 border-t border-border pt-6 break-inside-avoid first:border-t-0 first:pt-0">
@@ -216,21 +246,14 @@ export function FigureCard(props: { id: number; caption: string; data: unknown; 
           picked={picked}
           picking={picking}
           disabled={props.disabled}
-          onPick={(on) => {
-            setPicking(on)
-            setPicked(null)
-          }}
+          onPick={toggle}
           onAsk={ask}
         />
       )}
       {props.caption && <div className="text-sm text-muted-foreground"><InlineMarkdown>{props.caption}</InlineMarkdown></div>}
       <Limits teaches={d.teaches} />
       <Credits credits={d.credits} />
-      {d.previous && props.onRestore && (
-        <Button variant="ghost" size="sm" className="-ms-3 self-start text-muted-foreground" disabled={props.disabled} onClick={props.onRestore}>
-          {d.restored ? t('block.backToRedrawn') : t('block.restoreDrawing')}
-        </Button>
-      )}
+      <RestoreButton data={d} disabled={props.disabled} onRestore={props.onRestore} />
     </section>
   )
 }

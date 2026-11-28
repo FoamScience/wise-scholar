@@ -358,6 +358,39 @@ function OneTryRow(props: { disabled: boolean; onAct: Act }) {
   )
 }
 
+function ExerciseHeader({ d }: { d: ExerciseData }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-center gap-3 text-sm leading-snug font-medium text-ink-2">
+      {d.milestone ? t('challenge.milestone') : t('exercise.label')}
+      {d.solved && <Badge className="rounded-sm bg-accent text-accent-foreground">{t('common.solved')}</Badge>}
+    </div>
+  )
+}
+
+function ExerciseActions(props: { data: ExerciseData; open: boolean; commands: boolean; kept: boolean; disabled: boolean; running: boolean; onRun: () => void; onCheck: () => void; onAct: Act }) {
+  const { data, open, disabled } = props
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <code dir="ltr" className="grow text-start">$ {data.run}</code>
+      {open && <HintButton data={data} disabled={disabled} onAct={props.onAct} />}
+      {props.commands && !props.kept && <RunButton running={props.running} onRun={props.onRun} />}
+      {open && <CheckButton disabled={disabled} onCheck={props.onCheck} />}
+    </div>
+  )
+}
+
+function ExerciseOutput(props: { data: ExerciseData; error: string; blockId: number; showLocal: boolean }) {
+  const { last_run } = props.data
+  return (
+    <>
+      {last_run && <RunOutput run={last_run} />}
+      {props.error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{props.error}</div>}
+      {props.showLocal && <WorkLocally blockId={props.blockId} />}
+    </>
+  )
+}
+
 function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolean; authored: boolean; onAct: Act; onError: (m: string) => void }) {
   const { t } = useTranslation()
   const d = props.block.data as ExerciseData
@@ -368,12 +401,16 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
   const { running, error, setError, allSaved, run } = useExerciseRun(blockId, flushes)
   const kept = files.length > 0 && files.every((f) => f.kept)
 
+  async function check() {
+    setError('')
+    if (!(await allSaved())) return
+    props.onAct('check', { answer: answer.trim() })
+    setAnswer('')
+  }
+
   return (
     <section id={`block-${props.block.id}`} className="block flex flex-col gap-3 border-t border-border pt-6 first:border-t-0 first:pt-0">
-      <div className="flex items-center gap-3 text-sm leading-snug font-medium text-ink-2">
-        {d.milestone ? t('challenge.milestone') : t('exercise.label')}
-        {d.solved && <Badge className="rounded-sm bg-accent text-accent-foreground">{t('common.solved')}</Badge>}
-      </div>
+      <ExerciseHeader d={d} />
       <Markdown>{props.block.markdown}</Markdown>
       <Helper data={d} />
 
@@ -387,26 +424,9 @@ function ExerciseCard(props: { block: Block; disabled: boolean; commands: boolea
         </form>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <code dir="ltr" className="grow text-start">$ {d.run}</code>
-        {open && <HintButton data={d} disabled={props.disabled} onAct={props.onAct} />}
-        {props.commands && !kept && <RunButton running={running} onRun={run} />}
-        {open && (
-          <CheckButton
-            disabled={props.disabled}
-            onCheck={async () => {
-              setError('')
-              if (!(await allSaved())) return
-              props.onAct('check', { answer: answer.trim() })
-              setAnswer('')
-            }}
-          />
-        )}
-      </div>
+      <ExerciseActions data={d} open={open} commands={props.commands} kept={kept} disabled={props.disabled} running={running} onRun={run} onCheck={check} onAct={props.onAct} />
 
-      {d.last_run && <RunOutput run={d.last_run} />}
-      {error && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div>}
-      {workLocallyShown(open, kept, props.commands) && <WorkLocally blockId={blockId} />}
+      <ExerciseOutput data={d} error={error} blockId={blockId} showLocal={workLocallyShown(open, kept, props.commands)} />
 
       <Ladder data={d} blockId={blockId} onError={props.onError} />
       {open && <LockedRow data={d} disabled={props.disabled} onAct={props.onAct} />}
@@ -516,18 +536,10 @@ const PRESSED = 'aria-pressed:border-primary aria-pressed:bg-accent'
 const LEGENDS = { starter: LEGEND, solution: SOLUTION_LEGEND }
 type Base = keyof typeof LEGENDS
 
-function ExerciseFileView(props: {
-  blockId: number
-  file: ExerciseFile
-  editable: boolean
-  data: ExerciseData
-  onSaving: () => void
-  register: (flush: () => Promise<boolean>) => () => void
-}) {
+function useFileComparison(f: ExerciseFile, editable: boolean, data: ExerciseData) {
   const { t } = useTranslation()
-  const f = props.file
   // the solution's files reach a learner only once its solution is shown
-  const bases: Record<Base, string | null> = { starter: starterOf(props.data, f.path), solution: solutionOf(props.data, f.path) }
+  const bases: Record<Base, string | null> = { starter: starterOf(data, f.path), solution: solutionOf(data, f.path) }
   const [comparison, setComparison] = useState<Compared<Base>>({ base: null, summary: null })
   const { base, summary } = comparison
   const [failed, setFailed] = useState(false)
@@ -535,7 +547,7 @@ function ExerciseFileView(props: {
   const toggled = useRef(false)
   const against = base === null ? null : bases[base]
   // the view a summary is of: the editor's, or the read-only file of this text
-  const of = props.editable ? null : f.content
+  const of = editable ? null : f.content
   const legend = base !== null && summary?.of === of && summary.from === against ? t(LEGENDS[base][summary.is]) : ''
 
   function toggle(pressed: Base) {
@@ -561,6 +573,42 @@ function ExerciseFileView(props: {
     setAnnounced(t('exercise.diffFailed'))
   }
 
+  return { bases, base, against, legend, announced, failed, toggle, described, broke }
+}
+
+function CompareBar(props: { bases: Record<Base, string | null>; base: Base | null; legend: string; announced: string; onToggle: (b: Base) => void }) {
+  const { t } = useTranslation()
+  const { bases, base } = props
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-2">
+      {bases.starter !== null && (
+        <Button type="button" variant="outline" className={PRESSED} aria-pressed={base === 'starter'} onClick={() => props.onToggle('starter')}>
+          {t('exercise.changes')}
+        </Button>
+      )}
+      {bases.solution !== null && (
+        <Button type="button" variant="outline" className={PRESSED} aria-pressed={base === 'solution'} onClick={() => props.onToggle('solution')}>
+          {t('exercise.solutionChanges')}
+        </Button>
+      )}
+      <span className="text-sm text-muted-foreground" aria-hidden="true">{props.legend}</span>
+      <span className="sr-only" role="status">{props.announced}</span>
+    </div>
+  )
+}
+
+function ExerciseFileView(props: {
+  blockId: number
+  file: ExerciseFile
+  editable: boolean
+  data: ExerciseData
+  onSaving: () => void
+  register: (flush: () => Promise<boolean>) => () => void
+}) {
+  const { t } = useTranslation()
+  const f = props.file
+  const { bases, base, against, legend, announced, failed, toggle, described, broke } = useFileComparison(f, props.editable, props.data)
+
   return (
     // closed at first: a card with several files stays short, and the run button stays in reach
     <details className="group overflow-hidden rounded-md border border-border">
@@ -579,20 +627,7 @@ function ExerciseFileView(props: {
         </Button>
       </summary>
       {f.content !== null && (bases.starter !== null || bases.solution !== null) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-2">
-          {bases.starter !== null && (
-            <Button type="button" variant="outline" className={PRESSED} aria-pressed={base === 'starter'} onClick={() => toggle('starter')}>
-              {t('exercise.changes')}
-            </Button>
-          )}
-          {bases.solution !== null && (
-            <Button type="button" variant="outline" className={PRESSED} aria-pressed={base === 'solution'} onClick={() => toggle('solution')}>
-              {t('exercise.solutionChanges')}
-            </Button>
-          )}
-          <span className="text-sm text-muted-foreground" aria-hidden="true">{legend}</span>
-          <span className="sr-only" role="status">{announced}</span>
-        </div>
+        <CompareBar bases={bases} base={base} legend={legend} announced={announced} onToggle={toggle} />
       )}
       {f.content === null ? (
         <pre className="m-0 max-h-[420px] overflow-auto bg-code px-4 py-3 text-[0.93em] text-code-foreground">{t('exercise.missing')}</pre>

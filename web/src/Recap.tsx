@@ -247,12 +247,9 @@ function RecapGraph(props: {
   return <div ref={box} className="h-64 max-[60rem]:h-22 max-[60rem]:flex-[0_0_6.5rem]" role="img" aria-label={t('recap.graphAlt', { n: props.shown.size, total: claims.length })} />
 }
 
-export function Recap({ courseId, profile, preview }: { courseId: number; profile: number; preview: boolean }) {
-  const { t, i18n } = useTranslation()
+function useRecapData(courseId: number, profile: number, preview: boolean) {
   const [story, setStory] = useState<Story | null>(null)
   const [error, setError] = useState('')
-  const [picked, setPicked] = useState<number | null>(null)
-  const [weakOnly, setWeakOnly] = useState(false)
   const [next, setNext] = useState<Suggestion[]>([])
   const [contributed, setContributed] = useState(0)
   const load = () => api<Story>(`/api/courses/${courseId}/recap${preview ? '?preview=true' : ''}`).then(setStory, (e: Error) => setError(e.message))
@@ -271,15 +268,10 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
     )
   }, [courseId, preview]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // print shows every step open and the whole graph
-  useEffect(() => {
-    const open = () => document.querySelectorAll<HTMLDetailsElement>('.recap details').forEach((d) => (d.open = true))
-    addEventListener('beforeprint', open)
-    return () => removeEventListener('beforeprint', open)
-  }, [])
+  return { story, setStory, error, setError, next, contributed }
+}
 
-  const { cursor, scrolled, playing, setPlaying, timeline, end } = useStoryScroll(story)
-
+function useRecapDerived(story: Story | null, cursor: number, scrolled: boolean) {
   const derived = useMemo(() => {
     if (!story) return null
     const at = (c: Claim) => c.step ?? story.steps.findIndex((s) => s.finished >= c.created)
@@ -292,6 +284,36 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
     [story, derived, cursor],
   )
   const fresh = useMemo(() => new Set(scrolled ? story?.claims.filter((c) => derived!.claimAt.get(c.id) === cursor).map((c) => c.id) : []), [story, derived, cursor, scrolled])
+
+  return { derived, shown, fresh }
+}
+
+function Letter({ text }: { text: string }) {
+  const { t } = useTranslation()
+  return (
+    <div className="rounded-lg bg-accent p-6">
+      <h2 className={H2}>{t('recap.letterTitle')}</h2>
+      <p className={cn(LEAD, 'leading-[1.65]')} dir="auto"><InlineMarkdown>{text}</InlineMarkdown></p>
+    </div>
+  )
+}
+
+export function Recap({ courseId, profile, preview }: { courseId: number; profile: number; preview: boolean }) {
+  const { i18n } = useTranslation()
+  const { story, setStory, error, setError, next, contributed } = useRecapData(courseId, profile, preview)
+  const [picked, setPicked] = useState<number | null>(null)
+  const [weakOnly, setWeakOnly] = useState(false)
+
+  // print shows every step open and the whole graph
+  useEffect(() => {
+    const open = () => document.querySelectorAll<HTMLDetailsElement>('.recap details').forEach((d) => (d.open = true))
+    addEventListener('beforeprint', open)
+    return () => removeEventListener('beforeprint', open)
+  }, [])
+
+  const { cursor, scrolled, playing, setPlaying, timeline, end } = useStoryScroll(story)
+
+  const { derived, shown, fresh } = useRecapDerived(story, cursor, scrolled)
 
   if (error) return <main className="mx-auto flex w-full max-w-(--measure) flex-col gap-10 px-6 pt-10 pb-16"><div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{error}</div></main>
   if (!story || !derived) return <main className={PAGE} />
@@ -341,12 +363,7 @@ export function Recap({ courseId, profile, preview }: { courseId: number; profil
       <section ref={end} className="grid grid-cols-2 gap-10 border-t pt-10 max-[60rem]:grid-cols-1 [&>div]:flex [&>div]:min-w-0 [&>div]:flex-col [&>div]:gap-3">
         {sure && <SureChart answers={story.answers} {...sure} />}
         <WeakSection story={story} weak={weak} open={open} unitLink={unitLink} />
-        {story.narrative?.letter && (
-          <div className="rounded-lg bg-accent p-6">
-            <h2 className={H2}>{t('recap.letterTitle')}</h2>
-            <p className={cn(LEAD, 'leading-[1.65]')} dir="auto"><InlineMarkdown>{story.narrative.letter}</InlineMarkdown></p>
-          </div>
-        )}
+        {story.narrative?.letter && <Letter text={story.narrative.letter} />}
         <NextSection story={story} next={next} courseId={courseId} />
         <ContributeSection courseId={courseId} preview={story.preview} written={contributed} />
       </section>
