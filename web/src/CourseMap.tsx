@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { type Concept, type CourseDetail, type Lesson, practiceTitle, unitDone } from './course'
@@ -30,7 +31,7 @@ export function SideMenu(props: {
   course: CourseDetail
   running: boolean
   sources: Source[]
-  onSources: (sources: Source[]) => void
+  onSources: Dispatch<SetStateAction<Source[]>>
   onError: (message: string) => void
   onLesson: (created: Lesson) => void
   onChangeMap: () => void

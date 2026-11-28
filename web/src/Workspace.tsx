@@ -642,7 +642,7 @@ function MapNav(props: {
   course: CourseDetail
   lesson: Lesson
   sources: Source[]
-  onSources: (sources: Source[]) => void
+  onSources: Dispatch<SetStateAction<Source[]>>
   onError: (message: string) => void
   held: number | null
   unmetNeeds: (concept: Concept) => Concept[]
