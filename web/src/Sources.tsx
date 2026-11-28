@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, failure } from './api'
 import { fileSize } from './i18n'
@@ -13,19 +14,22 @@ export const SOURCE_TYPES =
 export type Source = { id: number; name: string; size: number; status: 'processing' | 'ready' | 'failed'; error: string | null; sections: number }
 
 /** The learner's own files for a course; processed in the background, the tutor reads them a section at a time. */
-export function SourcesPanel(props: { courseId: number; sources: Source[]; onChange: (s: Source[]) => void; onError: (m: string) => void }) {
+export function SourcesPanel(props: { courseId: number; sources: Source[]; onChange: Dispatch<SetStateAction<Source[]>>; onError: (m: string) => void }) {
   const { t } = useTranslation()
   const input = useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = useState(false)
 
-  async function upload(file: File) {
-    const form = new FormData()
-    form.append('file', file)
+  async function upload(files: File[]) {
     setBusy(true)
     try {
-      const res = await fetch(`/api/courses/${props.courseId}/sources`, { method: 'POST', body: form })
-      if (!res.ok) throw await failure(res)
-      props.onChange([...props.sources, (await res.json()) as Source])
+      for (const file of files) {
+        const form = new FormData()
+        form.append('file', file)
+        const res = await fetch(`/api/courses/${props.courseId}/sources`, { method: 'POST', body: form })
+        if (!res.ok) throw await failure(res)
+        const added = (await res.json()) as Source
+        props.onChange((all) => (all.some((s) => s.id === added.id) ? all : [...all, added]))
+      }
     } catch (err) {
       props.onError((err as Error).message)
     } finally {
@@ -36,7 +40,7 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
 
   function remove(source: Source) {
     api(`/api/sources/${source.id}/delete`, {}).then(
-      () => props.onChange(props.sources.filter((s) => s.id !== source.id)),
+      () => props.onChange((all) => all.filter((s) => s.id !== source.id)),
       (err: Error) => props.onError(err.message),
     )
   }
@@ -61,8 +65,9 @@ export function SourcesPanel(props: { courseId: number; sources: Source[]; onCha
         ref={input}
         type="file"
         accept={SOURCE_TYPES}
+        multiple
         hidden
-        onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+        onChange={(e) => e.target.files?.length && upload(Array.from(e.target.files))}
       />
       <Button type="button" variant="outline" className="justify-start" disabled={busy} onClick={() => input.current?.click()}>
         <Swap labels={[t('sources.add'), t('sources.uploading')]} at={busy ? 1 : 0} />
