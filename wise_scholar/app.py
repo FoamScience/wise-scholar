@@ -565,30 +565,42 @@ async def _converse(lesson: dict, line: str, token: str, quiet: bool, turn: dict
     # the lesson's record carry it over.
     resume = _resumes(lesson)
     session_id = lesson["session_id"] if resume else str(uuid.uuid4())
+    # Over the hourly budget, the turn waits its turn rather than losing what the learner just did.
+    if wait := _allowance(_turn_clock, TURNS_PER_HOUR, 3600):
+        log.warning("turn budget: lesson %s waits %.0f s", lesson_id, wait)
+        await asyncio.sleep(wait)
+    async with _turn_slots:
+        await _converse_in(lesson, line, token, quiet, turn, resume, session_id)
+        if turn["final"].get("fresh"):
+            # A reply that called a tool the backend does not have goes again, once, in a fresh session from the
+            # lesson's record, so the bad call is not in the history it would copy.
+            log.warning("lesson %s: %s; the turn goes again in a fresh session", lesson_id, turn["final"]["error"])
+            _told.pop(lesson_id, None)
+            turn["reply"] = ""
+            await _converse_in(db.lesson(lesson_id) or lesson, line, token, quiet, turn, False, str(uuid.uuid4()))
+
+
+async def _converse_in(lesson: dict, line: str, token: str, quiet: bool, turn: dict, resume: bool, session_id: str) -> None:
+    lesson_id, course_id = lesson["id"], lesson["course_id"]
     events = None
     try:
-        # Over the hourly budget, the turn waits its turn rather than losing what the learner just did.
-        if wait := _allowance(_turn_clock, TURNS_PER_HOUR, 3600):
-            log.warning("turn budget: lesson %s waits %.0f s", lesson_id, wait)
-            await asyncio.sleep(wait)
-        async with _turn_slots:
-            events = _events(backend.run_turn(
-                _turn_prompt(lesson, line, resume, session_id),
-                session_id=session_id,
-                resume=resume,
-                name=f"wise-scholar · {lesson['profile']} · {lesson['topic']} · {lesson['title']}",
-                cwd=db.workspace(lesson["slug"]),
-                phase=_phase_prompt(lesson),
-                token=token,
-            ), lesson_id, session_id, course_id)
-            async for event in events:
-                if event["type"] == "chat.delta":
-                    turn["reply"] += event["text"]
-                if event["type"] == "turn.done":
-                    turn["final"] = event
-                    break
-                if not quiet:
-                    hub.publish(course_id, {**event, "lesson_id": lesson_id})
+        events = _events(backend.run_turn(
+            _turn_prompt(lesson, line, resume, session_id),
+            session_id=session_id,
+            resume=resume,
+            name=f"wise-scholar · {lesson['profile']} · {lesson['topic']} · {lesson['title']}",
+            cwd=db.workspace(lesson["slug"]),
+            phase=_phase_prompt(lesson),
+            token=token,
+        ), lesson_id, session_id, course_id)
+        async for event in events:
+            if event["type"] == "chat.delta":
+                turn["reply"] += event["text"]
+            if event["type"] == "turn.done":
+                turn["final"] = event
+                break
+            if not quiet:
+                hub.publish(course_id, {**event, "lesson_id": lesson_id})
     finally:
         if events is not None:
             await events.aclose()
