@@ -380,6 +380,29 @@ function pageAt(p: Plan, bi: number, started: number, sweepsStarted: number): nu
   return page
 }
 
+const inBeat = (p: Plan, beat: InkBeat, k: number) => k >= 0 && k < p.starts.length && p.starts[k] >= beat.start && p.starts[k] < beat.end
+
+// The end of a stroke in the beat on the page, where the pen rests before or after it.
+function restPoint(p: Plan, beat: InkBeat, page: number, k: number, end: boolean) {
+  if (!inBeat(p, beat, k) || p.strokePage[k] !== page) return null
+  const { path } = p.doc.strokes[k]
+  return path[end ? path.length - 1 : 0]
+}
+
+// The pen between strokes: moving from the end of the one written to the start of the next, or waiting at either.
+function restingPen(p: Plan, beat: InkBeat, page: number, t: number, started: number): Pen | null {
+  const prev = started - 1
+  const next = started
+  const a = restPoint(p, beat, page, prev, true)
+  const b = restPoint(p, beat, page, next, false)
+  if (a && b) {
+    const f = p.starts[next] === p.ends[prev] ? 1 : (t - p.ends[prev]) / (p.starts[next] - p.ends[prev])
+    return { x: a[0] + (b[0] - a[0]) * f, y: a[1] + (b[1] - a[1]) * f, down: false, eraser: false }
+  }
+  const at = a ?? b
+  return at ? { x: at[0], y: at[1], down: false, eraser: false } : null
+}
+
 function penAt(p: Plan, bi: number, page: number, t: number, started: number, sweep: Sweep | undefined): Pen | null {
   if (sweep) {
     const tip = swept(sweep, t).at(-1)
@@ -387,23 +410,13 @@ function penAt(p: Plan, bi: number, page: number, t: number, started: number, sw
   }
   if (bi < 0) return null
   const beat = p.doc.beats[bi]
-  const inBeat = (k: number) => k >= 0 && k < p.starts.length && p.starts[k] >= beat.start && p.starts[k] < beat.end
-  const point = (k: number, end: boolean) => p.doc.strokes[k].path[end ? p.doc.strokes[k].path.length - 1 : 0]
   const prev = started - 1
-  const next = started
-  if (inBeat(prev) && p.ends[prev] > t) {
+  if (inBeat(p, beat, prev) && p.ends[prev] > t) {
     if (p.strokePage[prev] !== page) return null
     const tip = revealed(p.doc.strokes[prev], t).at(-1)!
     return { x: tip[0], y: tip[1], down: true, eraser: false }
   }
-  const a = inBeat(prev) && p.strokePage[prev] === page ? point(prev, true) : null
-  const b = inBeat(next) && p.strokePage[next] === page ? point(next, false) : null
-  if (a && b) {
-    const f = p.starts[next] === p.ends[prev] ? 1 : (t - p.ends[prev]) / (p.starts[next] - p.ends[prev])
-    return { x: a[0] + (b[0] - a[0]) * f, y: a[1] + (b[1] - a[1]) * f, down: false, eraser: false }
-  }
-  const at = a ?? b
-  return at ? { x: at[0], y: at[1], down: false, eraser: false } : null
+  return restingPen(p, beat, page, t, started)
 }
 
 /** Everything a renderer draws at t, found by binary search over the plan. */
