@@ -890,33 +890,48 @@ def _copy_cards(course_id: int, new_id: int, concept_map: dict[int, int]) -> dic
     return card_map
 
 
+_SKIP = object()
+
+
+def _copied_data(b: dict, concept_map: dict[int, int], card_map: dict[int, int], authored: bool):
+    """What a block's data is in the copy, _SKIP for a block the copy leaves out."""
+    from . import board  # it draws with art, which reads this module
+
+    data = _fresh(json.loads(b["data"]), authored) if b["data"] else None
+    if b["kind"] == "outline" and data:
+        if "items" in data:
+            return _SKIP  # a revisit's outline is the learner's open mistakes and shaky claims
+        b["markdown"] = ticked_as_at(b["markdown"], data)
+    if b["kind"] == "quiz" and data and not authored:
+        data = keyless(data)
+    if b["kind"] in ("figure", "board") and data:
+        data = board.without_answers(data, authored)
+    if data and data.get("card_id") is not None:
+        if data["card_id"] not in card_map:
+            return _SKIP  # a block on a card that stays behind
+        data = {**data, "card_id": card_map[data["card_id"]]}
+    if data:
+        _unlink(data, b["kind"], concept_map)
+    return data
+
+
+def _unlink(data: dict, kind: str, concept_map: dict[int, int]) -> None:
+    for field in ("variant_of", "revisit_error", "revisit_claim"):
+        data.pop(field, None)
+    if kind == "quiz" and (unit := data.pop("unit", None)) in concept_map:
+        data["unit"] = concept_map[unit]
+
+
 def _copy_blocks(old_lesson: int, lesson_id: int, concept_map: dict[int, int], card_map: dict[int, int], authored: bool) -> dict[int, int]:
     """The map of old to new block ids. A variant's original is left out: _copy_lessons sets it once every block is copied.
     So is what a revisit's check is on: the mistakes and claims stay with the learner."""
-    from . import board  # it draws with art, which reads this module
-
     block_map = {}
     for b in rows("SELECT * FROM blocks WHERE lesson_id = ? ORDER BY position, id", old_lesson):
         if b["kind"] in ("podcast", "network"):
             continue  # audio and consent belong to the original
-        data = _fresh(json.loads(b["data"]), authored) if b["data"] else None
-        if b["kind"] == "outline" and data:
-            if "items" in data:
-                continue  # a revisit's outline is the learner's open mistakes and shaky claims
-            b["markdown"] = ticked_as_at(b["markdown"], data)
-        if b["kind"] == "quiz" and data and not authored:
-            data = keyless(data)
-        if b["kind"] in ("figure", "board") and data:
-            data = board.without_answers(data, authored)
-        if data and data.get("card_id") is not None:
-            if data["card_id"] not in card_map:
-                continue  # a block on a card that stays behind
-            data = {**data, "card_id": card_map[data["card_id"]]}
-        if data:
-            for field in ("variant_of", "revisit_error", "revisit_claim"):
-                data.pop(field, None)
-            if b["kind"] == "quiz" and (unit := data.pop("unit", None)) in concept_map:
-                data["unit"] = concept_map[unit]
+        data = _copied_data(b, concept_map, card_map, authored)
+        if data is _SKIP:
+            continue
         copied = conn.execute(
             "INSERT INTO blocks (lesson_id, kind, markdown, data, created, key) VALUES (?, ?, ?, ?, ?, ?)",
             (lesson_id, b["kind"], b["markdown"], json.dumps(data) if data else None, b["created"], b["key"]),

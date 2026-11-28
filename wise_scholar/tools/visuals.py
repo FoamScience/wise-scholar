@@ -121,28 +121,12 @@ async def annotate_figure(lesson_id: int, block_id: int, svg: str, steps: list[b
     is refused. Same palette and rules as add_figure. steps: 1 to 3, each with the sentence shown while it draws; they
     draw every added part, and may erase parts the answer replaces."""
     block = db.block(block_id)
-    if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
-        return f"error: no figure with id {block_id} in this lesson"
-    if problem := pretest_blocker(db.lesson(lesson_id)):
-        return f"refused: {problem}"
-    if block["data"].get("frames"):
-        return "error: this figure is an animation; answer in chat"
-    if not 1 <= len(steps) <= board.MAX_ADDED:
-        return f"error: an answer on the board has 1 to {board.MAX_ADDED} steps"
+    if refusal := _annotate_refusal(lesson_id, block_id, block, steps):
+        return refusal
     earlier = block["data"].get("board", {}).get("steps", [])
-    try:
-        drawing, added, credits = board.merge(block["data"]["svg"], svg, f"f{block_id}-a{len(earlier)}-")
-    except ValueError as e:
-        return f"error: {e}"
-    if strays := sorted({p for s in steps for p in s.draw} - set(added)):
-        return f"error: the steps draw only the parts you add, and {', '.join(strays)} is not one of them"
-    if undrawn := [p for p in added if not any(p in s.draw for s in steps)]:
-        return f"error: every added part is drawn by a step, and {', '.join(undrawn)} is not"
-    if problem := board.steps_error(drawing, steps, earlier):
-        return f"error: {problem}"
-    before = await figcheck.problems([block["data"]["svg"]])
-    if found := [p for p in await figcheck.problems([drawing], fresh=added) if p not in before]:
-        return f"error: {figcheck.report(found)}"
+    error, drawing, credits = await _drawn_on(block, svg, steps, earlier)
+    if error:
+        return error
     data = block["data"] | {
         "svg": drawing,
         "credits": [*block["data"].get("credits", []), *(c for c in credits if c not in block["data"].get("credits", []))],
@@ -152,6 +136,36 @@ async def annotate_figure(lesson_id: int, block_id: int, svg: str, steps: list[b
     block = db.set_block_data(block_id, data)
     _show(db.lesson(lesson_id), block, "block.updated")
     return f"drawn on figure {block_id}; it plays now"
+
+
+def _annotate_refusal(lesson_id: int, block_id: int, block: dict | None, steps: list[board.BoardStep]) -> str | None:
+    if not block or block["kind"] != "figure" or block["lesson_id"] != lesson_id:
+        return f"error: no figure with id {block_id} in this lesson"
+    if problem := pretest_blocker(db.lesson(lesson_id)):
+        return f"refused: {problem}"
+    if block["data"].get("frames"):
+        return "error: this figure is an animation; answer in chat"
+    if not 1 <= len(steps) <= board.MAX_ADDED:
+        return f"error: an answer on the board has 1 to {board.MAX_ADDED} steps"
+    return None
+
+
+async def _drawn_on(block: dict, svg: str, steps: list[board.BoardStep], earlier: list) -> tuple[str | None, str, list]:
+    """The figure with the added parts merged in and its credits, or the error that refuses the answer."""
+    try:
+        drawing, added, credits = board.merge(block["data"]["svg"], svg, f"f{block['id']}-a{len(earlier)}-")
+    except ValueError as e:
+        return f"error: {e}", "", []
+    if strays := sorted({p for s in steps for p in s.draw} - set(added)):
+        return f"error: the steps draw only the parts you add, and {', '.join(strays)} is not one of them", "", []
+    if undrawn := [p for p in added if not any(p in s.draw for s in steps)]:
+        return f"error: every added part is drawn by a step, and {', '.join(undrawn)} is not", "", []
+    if problem := board.steps_error(drawing, steps, earlier):
+        return f"error: {problem}", "", []
+    before = await figcheck.problems([block["data"]["svg"]])
+    if found := [p for p in await figcheck.problems([drawing], fresh=added) if p not in before]:
+        return f"error: {figcheck.report(found)}", "", []
+    return None, drawing, credits
 
 
 def _step(step: board.BoardStep) -> dict:

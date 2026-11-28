@@ -73,6 +73,26 @@ def _load(connection: sqlite3.Connection, table: str, rows: Iterator[tuple]) -> 
     return count + len(batch)
 
 
+def _staged(folder: Path) -> Iterator[tuple]:
+    return (
+        (int(f[0]), text, fold(text)) for f in _rows(folder / "sentences.tsv.bz2")
+        if len(f) >= 3 and f[0].isdigit() and (text := unicodedata.normalize("NFC", f[2].strip()[:TEXT]))
+    )
+
+
+def _links(folder: Path) -> Iterator[tuple]:
+    return ((int(f[0]), int(f[1])) for f in _rows(folder / "links.tsv.bz2") if len(f) >= 2 and f[0].isdigit() and f[1].isdigit())
+
+
+def _translations(folder: Path) -> Iterator[tuple]:
+    return ((int(f[0]), f[2][:TEXT]) for f in _rows(folder / "translations.tsv.bz2") if len(f) >= 3 and f[0].isdigit() and f[2].strip())
+
+
+def _audio(folder: Path) -> Iterator[tuple]:
+    return ((int(f[0]), int(f[1]), f[2], f[3]) for f in _rows(folder / "audio.tsv.bz2")
+            if len(f) >= 4 and f[0].isdigit() and f[1].isdigit() and OPEN_LICENCE.fullmatch(f[3].strip()))
+
+
 def prepare(folder: Path) -> None:
     """Builds the sentence database from the downloaded exports and drops them. The exports are staged in SQLite and
     joined there, so a large language pair never sits in memory. Fails when the sentences file holds none, as an
@@ -84,19 +104,13 @@ def prepare(folder: Path) -> None:
             "PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;" + SCHEMA
             + "CREATE TEMP TABLE staged (id INTEGER PRIMARY KEY, text TEXT NOT NULL, folded TEXT NOT NULL);"
         )
-        staged = _load(connection, "staged", (
-            (int(f[0]), text, fold(text)) for f in _rows(folder / "sentences.tsv.bz2")
-            if len(f) >= 3 and f[0].isdigit() and (text := unicodedata.normalize("NFC", f[2].strip()[:TEXT]))
-        ))
+        staged = _load(connection, "staged", _staged(folder))
         if not staged:
             raise ValueError("the sentences file held no sentences")
-        _load(connection, "links", ((int(f[0]), int(f[1])) for f in _rows(folder / "links.tsv.bz2")
-                                    if len(f) >= 2 and f[0].isdigit() and f[1].isdigit()))
+        _load(connection, "links", _links(folder))
         connection.execute("CREATE INDEX temp.links_id ON links(id)")
-        _load(connection, "translations", ((int(f[0]), f[2][:TEXT]) for f in _rows(folder / "translations.tsv.bz2")
-                                           if len(f) >= 3 and f[0].isdigit() and f[2].strip()))
-        _load(connection, "audio", ((int(f[0]), int(f[1]), f[2], f[3]) for f in _rows(folder / "audio.tsv.bz2")
-                                    if len(f) >= 4 and f[0].isdigit() and f[1].isdigit() and OPEN_LICENCE.fullmatch(f[3].strip())))
+        _load(connection, "translations", _translations(folder))
+        _load(connection, "audio", _audio(folder))
         connection.execute(JOIN)
         connection.executescript(
             "CREATE VIRTUAL TABLE sentence_text USING fts5(folded, content='sentences', content_rowid='id', tokenize='trigram');"

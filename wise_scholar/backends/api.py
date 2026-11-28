@@ -176,53 +176,76 @@ def _trim(messages: list[dict]) -> bool:
     return True
 
 
+def _shown(event) -> dict | None:
+    if event.type == "message_start":
+        return {"type": "chat.break"}
+    if event.type == "content_block_start" and event.content_block.type == "tool_use":
+        return {"type": "activity", "tool": event.content_block.name.lower()}
+    if event.type == "content_block_delta" and event.delta.type == "text_delta":
+        return {"type": "chat.delta", "text": event.delta.text}
+    return None
+
+
+async def _stream(
+    model: str, phase: str, listed: list, messages: list[dict], path: Path, usage: Usage, got: list
+) -> AsyncIterator[dict]:
+    """One request, its events as they stream; the final message goes into got, nothing when the turn asks again."""
+    started = False
+    try:
+        async with _client.beta.messages.stream(**_request(model, phase, listed, messages)) as stream:
+            try:
+                async for event in stream:
+                    started = started or event.type == "message_start"
+                    if shown := _shown(event):
+                        yield shown
+            except httpx2.TransportError:
+                # What streamed before the cut is billed all the same.
+                if started:
+                    usage.add(stream.current_message_snapshot)
+                raise
+            got.append(await stream.get_final_message())
+    except anthropic.BadRequestError as e:
+        # A session grown past the model's context: its older turns go, and the turn asks again without them.
+        if not started and TOO_LONG.search(e.message) and _trim(messages):
+            _save(path, messages)
+            return
+        raise
+
+
+def _ended(message, calls: list, messages: list[dict], path: Path, usage: Usage) -> dict | None:
+    """The turn.done a reply ends the turn with, None when the tools it called are to run."""
+    if message.stop_reason == "refusal":
+        _save(path, messages)
+        return {"type": "turn.done", "ok": False, "error": "the model declined to answer", "usage": usage.report()}
+    if message.stop_reason == "max_tokens":
+        if calls:
+            # A tool call cut off mid-input never runs; the cut call stays out of the session.
+            messages.pop()
+        _save(path, messages)
+        return {"type": "turn.done", "ok": False, "error": f"the reply ran past {MAX_TOKENS} tokens", "usage": usage.report()}
+    if not calls:
+        _save(path, messages)
+        return {"type": "turn.done", "ok": True, "error": None, "usage": usage.report()}
+    return None
+
+
 async def _converse(
     model: str, phase: str, tools: Client, messages: list[dict], path: Path, usage: Usage, token: str
 ) -> AsyncIterator[dict]:
     """Ask the model, run the tools it calls, and ask again until it ends its turn."""
     listed = [_tool(t) for t in (await tools.list_tools()).tools]
     for _ in range(MAX_ROUNDS):
-        started = False
-        try:
-            async with _client.beta.messages.stream(**_request(model, phase, listed, messages)) as stream:
-                try:
-                    async for event in stream:
-                        if event.type == "message_start":
-                            started = True
-                            yield {"type": "chat.break"}
-                        elif event.type == "content_block_start" and event.content_block.type == "tool_use":
-                            yield {"type": "activity", "tool": event.content_block.name.lower()}
-                        elif event.type == "content_block_delta" and event.delta.type == "text_delta":
-                            yield {"type": "chat.delta", "text": event.delta.text}
-                except httpx2.TransportError:
-                    # What streamed before the cut is billed all the same.
-                    if started:
-                        usage.add(stream.current_message_snapshot)
-                    raise
-                message = await stream.get_final_message()
-        except anthropic.BadRequestError as e:
-            # A session grown past the model's context: its older turns go, and the turn asks again without them.
-            if not started and TOO_LONG.search(e.message) and _trim(messages):
-                _save(path, messages)
-                continue
-            raise
+        got: list = []
+        async for event in _stream(model, phase, listed, messages, path, usage, got):
+            yield event
+        if not got:
+            continue
+        message = got[0]
         usage.add(message)
         messages.append({"role": "assistant", "content": [block.to_dict() for block in message.content]})
         calls = [block for block in message.content if block.type == "tool_use"]
-        if message.stop_reason == "refusal":
-            _save(path, messages)
-            yield {"type": "turn.done", "ok": False, "error": "the model declined to answer", "usage": usage.report()}
-            return
-        if message.stop_reason == "max_tokens":
-            if calls:
-                # A tool call cut off mid-input never runs; the cut call stays out of the session.
-                messages.pop()
-            _save(path, messages)
-            yield {"type": "turn.done", "ok": False, "error": f"the reply ran past {MAX_TOKENS} tokens", "usage": usage.report()}
-            return
-        if not calls:
-            _save(path, messages)
-            yield {"type": "turn.done", "ok": True, "error": None, "usage": usage.report()}
+        if done := _ended(message, calls, messages, path, usage):
+            yield done
             return
         # One after another: the tools change the lesson, and the results go back together in one message.
         results = [await _call(tools, block) for block in calls]

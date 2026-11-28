@@ -127,6 +127,12 @@ def _plain(text: str) -> str:
     return re.sub(r"([*_\[\]()`\\])", r"\\\1", text)
 
 
+def _board_said(d: dict) -> list[dict]:
+    doc = d.get("doc")
+    elements = doc["elements"] if isinstance(doc, dict) and isinstance(doc.get("elements"), list) else []
+    return [e for e in elements if isinstance(e, dict) and isinstance(e.get("alt"), str) and e["alt"].strip()]
+
+
 def _inert(text: str) -> str:
     """Text from a board's ink that stays text: no Markdown, and no HTML where the Markdown is shown as a page."""
     return _plain(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -348,19 +354,22 @@ class Vault:
         d = block["data"]
         return self._widget_drawing(block, d) + self._widget_text(block["markdown"], d) + self._limits(d)
 
-    def _board_text(self, block: dict) -> str:
-        """A board at rest, one drawing per page; without drawings, what is written on it."""
-        d = block["data"]
-        doc = d.get("doc")
-        elements = doc["elements"] if isinstance(doc, dict) and isinstance(doc.get("elements"), list) else []
-        said = [e for e in elements if isinstance(e, dict) and isinstance(e.get("alt"), str) and e["alt"].strip()]
-        title = next((e["alt"] for e in said if e.get("kind") == "title"), "")
-        alt = _inert(_alt(title[:300]) or self.t["board"])
-        pages = self.boards.get(block["id"], [])
+    def _board_pages(self, block_id: int) -> list[str]:
+        """The board's drawings, none when inlining them would pass what the document may carry."""
+        pages = self.boards.get(block_id, [])
         if self.inline and pages:
             size = sum(len(svg) for svg in pages)
             pages = pages if size <= self.inline_left else []
             self.inline_left -= len(pages) and size
+        return pages
+
+    def _board_text(self, block: dict) -> str:
+        """A board at rest, one drawing per page; without drawings, what is written on it."""
+        d = block["data"]
+        said = _board_said(d)
+        title = next((e["alt"] for e in said if e.get("kind") == "title"), "")
+        alt = _inert(_alt(title[:300]) or self.t["board"])
+        pages = self._board_pages(block["id"])
         if not pages:
             lines = [f"- {_inert(' '.join(e['alt'].split())[:500])}" for e in said[:BOARD_LINES]]
             return f"**{alt}**\n\n" + "\n".join(lines) + "\n" + self._limits(d)
