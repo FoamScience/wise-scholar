@@ -38,18 +38,15 @@ export function TapWord(props: { word: string; sentence: string; state: WordStat
   )
 }
 
-/** The tapped word: its dictionary entries, a meaning to save it with, and the buttons that file it. */
-export function WordPanel(props: { courseId: number; lang: string; tapped: Tapped; onClose: () => void }) {
-  const { t } = useTranslation()
-  const { courseId, tapped } = props
+/** The word's dictionary entries and the meaning to save it with, fetched when it is tapped. */
+function useLookup(courseId: number, word: string) {
   const [looked, setLooked] = useState<Looked | null>(null)
   const [meaning, setMeaning] = useState('')
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     let current = true
-    api<Looked>(`/api/courses/${courseId}/words?word=${encodeURIComponent(tapped.word)}`).then(
+    api<Looked>(`/api/courses/${courseId}/words?word=${encodeURIComponent(word)}`).then(
       (found) => {
         if (!current) return
         setLooked(found)
@@ -60,7 +57,38 @@ export function WordPanel(props: { courseId: number; lang: string; tapped: Tappe
     return () => {
       current = false
     }
-  }, [courseId, tapped.word])
+  }, [courseId, word])
+
+  return { looked, setLooked, meaning, setMeaning, error, setError }
+}
+
+function Entries(props: { entries: Entry[]; lang: string }) {
+  const { t } = useTranslation()
+  return (
+    <>
+      {props.entries.length === 0 && <div className="text-sm">{t('words.noEntry')}</div>}
+      {props.entries.map((e, i) => (
+        <div key={i} className="text-sm">
+          <span lang={props.lang} dir="auto" className="font-medium">{e.head}</span> <bdi dir="ltr">{[e.pos, e.ipa].filter(Boolean).join(' · ')}</bdi>
+          {e.glosses.length > 0 && (
+            <ol lang="en" dir="ltr" className="m-0 list-decimal ps-5">
+              {e.glosses.map((g, k) => (
+                <li key={k}>{g}</li>
+              ))}
+            </ol>
+          )}
+        </div>
+      ))}
+    </>
+  )
+}
+
+/** The tapped word: its dictionary entries, a meaning to save it with, and the buttons that file it. */
+export function WordPanel(props: { courseId: number; lang: string; tapped: Tapped; onClose: () => void }) {
+  const { t } = useTranslation()
+  const { courseId, tapped } = props
+  const { looked, setLooked, meaning, setMeaning, error, setError } = useLookup(courseId, tapped.word)
+  const [busy, setBusy] = useState(false)
 
   function file(path: string, body: unknown, done: Partial<Looked>) {
     setBusy(true)
@@ -87,19 +115,7 @@ export function WordPanel(props: { courseId: number; lang: string; tapped: Tappe
           {t('words.close')}
         </Button>
       </div>
-      {looked && looked.entries.length === 0 && <div className="text-sm">{t('words.noEntry')}</div>}
-      {looked?.entries.map((e, i) => (
-        <div key={i} className="text-sm">
-          <span lang={props.lang} dir="auto" className="font-medium">{e.head}</span> <bdi dir="ltr">{[e.pos, e.ipa].filter(Boolean).join(' · ')}</bdi>
-          {e.glosses.length > 0 && (
-            <ol lang="en" dir="ltr" className="m-0 list-decimal ps-5">
-              {e.glosses.map((g, k) => (
-                <li key={k}>{g}</li>
-              ))}
-            </ol>
-          )}
-        </div>
-      ))}
+      {looked && <Entries entries={looked.entries} lang={props.lang} />}
       {looked && !looked.saved && (
         <label className="flex flex-col gap-1 text-sm">
           {t('words.meaning')}

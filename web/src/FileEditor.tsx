@@ -12,6 +12,38 @@ const SAVE_AFTER_MS = 800
 
 type Saved = { saved: true } | { saved: false; content: string }
 
+/** What an incoming disk text means for the open document: take it as the saved copy, replace the document with it, or flag a conflict. */
+function reconcile(doc: string, content: string, onDisk: string, conflicted: boolean): 'adopt' | 'replace' | 'conflict' {
+  if (sameText(doc, content)) return 'adopt'
+  return sameText(doc, onDisk) && !conflicted ? 'replace' : 'conflict'
+}
+
+function StatusLine(props: { status: '' | 'saving' | 'saved'; failed: string }) {
+  const { t } = useTranslation()
+  const { status, failed } = props
+  if (!status && !failed) return null
+  return (
+    <div className={cn('px-4 py-1 text-sm text-muted-foreground', failed && 'rounded-md bg-warm-tint')} role="status">
+      {failed || (status === 'saving' ? t('exercise.saving') : t('exercise.saved'))}
+    </div>
+  )
+}
+
+function ConflictBar(props: { onUseDisk: () => void; onKeepMine: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2" role="alert">
+      <span className="grow">{t('exercise.conflict')}</span>
+      <Button type="button" variant="outline" onClick={props.onUseDisk}>
+        {t('exercise.useDisk')}
+      </Button>
+      <Button type="button" variant="outline" onClick={props.onKeepMine}>
+        {t('exercise.keepMine')}
+      </Button>
+    </div>
+  )
+}
+
 export function FileEditor(props: {
   blockId: number
   file: ExerciseFile
@@ -22,7 +54,6 @@ export function FileEditor(props: {
   onSaving: () => void
   register: (flush: () => Promise<boolean>) => () => void
 }) {
-  const { t } = useTranslation()
   const { blockId, file, original } = props
   const path = file.path
   const content = file.content ?? ''
@@ -120,10 +151,11 @@ export function FileEditor(props: {
     }
     if (sameText(content, onDisk.current)) return
     const doc = open.text()
-    if (sameText(doc, content)) {
+    const action = reconcile(doc, content, onDisk.current, conflict.current !== null)
+    if (action === 'adopt') {
       onDisk.current = content
       showConflict(null)
-    } else if (sameText(doc, onDisk.current) && conflict.current === null) {
+    } else if (action === 'replace') {
       onDisk.current = content
       open.setText(content)
       setStatus('')
@@ -145,37 +177,20 @@ export function FileEditor(props: {
     <>
       {!loaded && <pre className="m-0 max-h-[420px] overflow-auto rounded-none">{content}</pre>}
       <div ref={host} className="code-editor" dir="ltr" />
-      {(status || failed) && (
-        <div className={cn('px-4 py-1 text-sm text-muted-foreground', failed && 'rounded-md bg-warm-tint')} role="status">
-          {failed || (status === 'saving' ? t('exercise.saving') : t('exercise.saved'))}
-        </div>
-      )}
+      <StatusLine status={status} failed={failed} />
       {disk !== null && (
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2" role="alert">
-          <span className="grow">{t('exercise.conflict')}</span>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              onDisk.current = disk
-              showConflict(null)
-              editor.current?.setText(disk)
-            }}
-          >
-            {t('exercise.useDisk')}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              onDisk.current = disk
-              showConflict(null)
-              flush()
-            }}
-          >
-            {t('exercise.keepMine')}
-          </Button>
-        </div>
+        <ConflictBar
+          onUseDisk={() => {
+            onDisk.current = disk
+            showConflict(null)
+            editor.current?.setText(disk)
+          }}
+          onKeepMine={() => {
+            onDisk.current = disk
+            showConflict(null)
+            flush()
+          }}
+        />
       )}
     </>
   )

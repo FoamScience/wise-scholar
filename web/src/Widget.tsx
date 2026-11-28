@@ -52,31 +52,24 @@ function filled(template: string, values: (number | null)[]): string {
   return template.replace(/__w(\d+)__/g, (_, i: string) => String(values[Number(i)] ?? 0))
 }
 
-/** A model the learner operates: sliders pick a setting, readouts and the plot show what the server computed for it.
- * onTry hears each setting the learner stops at. */
-export function WidgetCard(props: { id: number; title: string; data: unknown; onTry?: (at: number[]) => void }) {
-  const { t, i18n } = useTranslation()
-  const d = (props.data as WidgetData).widget
-  const starts = d.controls.map((c) => c.start)
+/** A value with its unit, in the learner's locale. */
+function withUnit(text: string, unit: string): string {
+  return unit ? `${text} ${unit}` : text
+}
+
+/** One control's setting at a slider position, as shown beside the slider and in the pin's note. */
+function settingText(c: Control, position: number, locale: string): string {
+  return withUnit(c.values[position].toLocaleString(locale, { maximumFractionDigits: 6 }), c.unit)
+}
+
+/** The sliders' positions and the move that marks the learner as having touched them; onTry hears each setting they stop at. */
+function useSetting(starts: number[], tried?: (at: number[]) => void) {
   const [at, setAt] = useState(starts)
-  const [pin, setPin] = useState<number[] | null>(null)
-  const state = d.states[stateIndex(d.controls, at)]
-  const format = (value: number, digits: number) => value.toLocaleString(i18n.language, { minimumFractionDigits: digits, maximumFractionDigits: digits })
-  const settingOf = (positions: number[]) =>
-    d.controls.map((c, i) => `${c.label} = ${c.values[positions[i]].toLocaleString(i18n.language, { maximumFractionDigits: 6 })}${c.unit ? ` ${c.unit}` : ''}`).join(', ')
-  const pinnedState = pin ? d.states[stateIndex(d.controls, pin)] : null
-  const pinnedSetting = pin ? settingOf(pin) : ''
-  const plot = useMemo(
-    () => (d.plot ? plotOf(d.plot, state, pinnedState ? { state: pinnedState, setting: pinnedSetting } : undefined) : null),
-    [d.plot, state, pinnedState, pinnedSetting],
-  )
-  const pinnedAway = pin !== null && pin.some((p, i) => p !== at[i])
-  const moved = at.some((p, i) => p !== starts[i])
   const touched = useRef(false)
   // The page hands a new callback on every render; only a new setting restarts the wait.
-  const onTry = useRef(props.onTry)
+  const onTry = useRef(tried)
   useEffect(() => {
-    onTry.current = props.onTry
+    onTry.current = tried
   })
   useEffect(() => {
     if (!touched.current) return
@@ -87,6 +80,78 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
     touched.current = true
     setAt(next)
   }
+  return { at, move }
+}
+
+/** One readout's value, and under it the pinned setting's value and the difference when the sliders have left the pin. */
+function ReadoutItem(props: { r: Readout; value: number | null; pinned?: number | null; format: (value: number, digits: number) => string }) {
+  const { t } = useTranslation()
+  const { r, value, pinned, format } = props
+  const text = (v: number | null) => (v === null ? t('block.widgetUndefined') : withUnit(format(v, r.digits), r.unit))
+  const diff = value !== null && pinned != null ? value - pinned : null
+  return (
+    <div>
+      <dt className="text-sm text-muted-foreground"><InlineMarkdown>{r.label}</InlineMarkdown></dt>
+      <dd className="m-0 text-lg font-semibold tabular-nums">
+        <output>{text(value)}</output>
+      </dd>
+      {pinned !== undefined && (
+        <dd className="m-0 text-sm text-muted-foreground tabular-nums">
+          {t('block.widgetPinnedValue', { value: text(pinned) })}
+          {diff !== null && <> · Δ {diff >= 0 ? '+' : ''}{format(diff, r.digits)}</>}
+        </dd>
+      )}
+    </div>
+  )
+}
+
+function Sliders(props: { id: number; controls: Control[]; at: number[]; onMove: (next: number[]) => void }) {
+  const { i18n } = useTranslation()
+  return (
+    <div className="flex flex-col">
+      {props.controls.map((c, i) => {
+        const shown = settingText(c, props.at[i], i18n.language)
+        return (
+          <div key={c.name} className="grid grid-cols-[1fr_auto] items-center gap-3 min-[481px]:grid-cols-[minmax(8rem,auto)_1fr_minmax(4rem,auto)]">
+            <label htmlFor={`${props.id}-${c.name}`}><InlineMarkdown>{c.label}</InlineMarkdown></label>
+            <input
+              id={`${props.id}-${c.name}`}
+              className="col-span-full row-start-2 h-11 min-w-0 accent-primary min-[481px]:col-auto min-[481px]:row-auto"
+              type="range"
+              min={0}
+              max={c.values.length - 1}
+              step={1}
+              value={props.at[i]}
+              aria-valuetext={shown}
+              onChange={(e) => props.onMove(props.at.map((p, k) => (k === i ? Number(e.target.value) : p)))}
+            />
+            <output className="tabular-nums" htmlFor={`${props.id}-${c.name}`}>{shown}</output>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** A model the learner operates: sliders pick a setting, readouts and the plot show what the server computed for it.
+ * onTry hears each setting the learner stops at. */
+export function WidgetCard(props: { id: number; title: string; data: unknown; onTry?: (at: number[]) => void }) {
+  const { t, i18n } = useTranslation()
+  const d = (props.data as WidgetData).widget
+  const starts = d.controls.map((c) => c.start)
+  const { at, move } = useSetting(starts, props.onTry)
+  const [pin, setPin] = useState<number[] | null>(null)
+  const state = d.states[stateIndex(d.controls, at)]
+  const format = (value: number, digits: number) => value.toLocaleString(i18n.language, { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  const settingOf = (positions: number[]) => d.controls.map((c, i) => `${c.label} = ${settingText(c, positions[i], i18n.language)}`).join(', ')
+  const pinnedState = pin ? d.states[stateIndex(d.controls, pin)] : null
+  const pinnedSetting = pin ? settingOf(pin) : ''
+  const plot = useMemo(
+    () => (d.plot ? plotOf(d.plot, state, pinnedState ? { state: pinnedState, setting: pinnedSetting } : undefined) : null),
+    [d.plot, state, pinnedState, pinnedSetting],
+  )
+  const pinnedAway = pin !== null && pin.some((p, i) => p !== at[i])
+  const moved = at.some((p, i) => p !== starts[i])
   return (
     <section id={`block-${props.id}`} className="block flex flex-col gap-2 border-t border-border pt-6 break-inside-avoid first:border-t-0 first:pt-0">
       <div className="text-sm leading-snug font-medium text-ink-2 break-after-avoid">{t('block.widget')}</div>
@@ -95,46 +160,10 @@ export function WidgetCard(props: { id: number; title: string; data: unknown; on
       {plot && <PlotBox spec={plot} alt={(props.data as WidgetData).alt} />}
       <dl className="m-0 flex flex-wrap gap-x-6 gap-y-2" aria-live="polite">
         {d.readouts.map((r, i) => (
-          <div key={i}>
-            <dt className="text-sm text-muted-foreground"><InlineMarkdown>{r.label}</InlineMarkdown></dt>
-            <dd className="m-0 text-lg font-semibold tabular-nums">
-              <output>{state.readouts[i] === null ? t('block.widgetUndefined') : `${format(state.readouts[i] as number, r.digits)}${r.unit ? ` ${r.unit}` : ''}`}</output>
-            </dd>
-            {pinnedState && pinnedAway && (
-              <dd className="m-0 text-sm text-muted-foreground tabular-nums">
-                {pinnedState.readouts[i] === null
-                  ? t('block.widgetPinnedValue', { value: t('block.widgetUndefined') })
-                  : t('block.widgetPinnedValue', { value: `${format(pinnedState.readouts[i] as number, r.digits)}${r.unit ? ` ${r.unit}` : ''}` })}
-                {state.readouts[i] !== null && pinnedState.readouts[i] !== null && (
-                  <> · Δ {(state.readouts[i] as number) - (pinnedState.readouts[i] as number) >= 0 ? '+' : ''}{format((state.readouts[i] as number) - (pinnedState.readouts[i] as number), r.digits)}</>
-                )}
-              </dd>
-            )}
-          </div>
+          <ReadoutItem key={i} r={r} value={state.readouts[i]} pinned={pinnedState && pinnedAway ? pinnedState.readouts[i] : undefined} format={format} />
         ))}
       </dl>
-      <div className="flex flex-col">
-        {d.controls.map((c, i) => {
-          const shown = `${c.values[at[i]].toLocaleString(i18n.language, { maximumFractionDigits: 6 })}${c.unit ? ` ${c.unit}` : ''}`
-          return (
-            <div key={c.name} className="grid grid-cols-[1fr_auto] items-center gap-3 min-[481px]:grid-cols-[minmax(8rem,auto)_1fr_minmax(4rem,auto)]">
-              <label htmlFor={`${props.id}-${c.name}`}><InlineMarkdown>{c.label}</InlineMarkdown></label>
-              <input
-                id={`${props.id}-${c.name}`}
-                className="col-span-full row-start-2 h-11 min-w-0 accent-primary min-[481px]:col-auto min-[481px]:row-auto"
-                type="range"
-                min={0}
-                max={c.values.length - 1}
-                step={1}
-                value={at[i]}
-                aria-valuetext={shown}
-                onChange={(e) => move(at.map((p, k) => (k === i ? Number(e.target.value) : p)))}
-              />
-              <output className="tabular-nums" htmlFor={`${props.id}-${c.name}`}>{shown}</output>
-            </div>
-          )
-        })}
-      </div>
+      <Sliders id={props.id} controls={d.controls} at={at} onMove={move} />
       {pin && <div className="text-sm text-muted-foreground"><InlineMarkdown>{t('block.widgetPinned', { setting: pinnedSetting })}</InlineMarkdown></div>}
       <div className="flex flex-wrap gap-2 print:hidden">
         <Button variant="outline" size="sm" onClick={() => setPin(pin ? null : at)}>

@@ -12,15 +12,12 @@ import { Button, buttonVariants } from '@/components/ui/button'
 type Version = 'student' | 'teacher'
 type Head = Pick<Lesson, 'id' | 'title' | 'phase' | 'concept_id'> & { course_id: number; topic: string }
 
-/** A unit's lesson plan as a printable page: the teacher's copy or the students' copy; the server prints it to PDF. */
-export function Handout({ lessonId, version, pdf }: { lessonId: number; version: Version; pdf: boolean }) {
-  const { t } = useTranslation()
-  const theme = useTheme()
+/** The lesson's head and the handout's markdown, fetched together; the 409 says there is no handout for the lesson. */
+function useHandout(lessonId: number, version: Version) {
   const [head, setHead] = useState<Head | null>(null)
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [unavailable, setUnavailable] = useState(false)
-  const [preparing, setPreparing] = useState(false)
 
   useEffect(() => {
     // The route carries the version: a new key remounts the page, so the old text never shows under a new title.
@@ -32,6 +29,48 @@ export function Handout({ lessonId, version, pdf }: { lessonId: number; version:
       })
       .catch((e: Error) => setError(e.message))
   }, [lessonId, version])
+
+  return { head, text, error, setError, unavailable }
+}
+
+/** Above the page: the way back, the other copy, the markdown, and the PDF or print button. */
+function HandoutBar(props: { lessonId: number; version: Version; head: Head | null; unavailable: boolean; pdf: boolean; preparing: boolean; onDownload: () => void }) {
+  const { t } = useTranslation()
+  const { lessonId, version, head } = props
+  const other: Version = version === 'student' ? 'teacher' : 'student'
+  return (
+    <>
+      <a className={buttonVariants({ variant: 'outline' })} href={head ? `#/course/${head.course_id}?concept=${head.concept_id}` : '#/'}>{t('handout.back')}</a>
+      {!props.unavailable && (
+        <>
+          <a className={buttonVariants({ variant: 'outline' })} href={`#/lesson/${lessonId}/handout/${other}`}>
+            {t(`handout.${other}`)}
+          </a>
+          <a className={buttonVariants({ variant: 'outline' })} href={`/api/lessons/${lessonId}/handout.md?version=${version}`} download>
+            {t('handout.markdown')}
+          </a>
+          <span className="grow" />
+          {props.pdf ? (
+            <Button type="button" disabled={props.preparing} onClick={props.onDownload}>
+              <Swap labels={[t('book.download'), t('book.preparing')]} at={props.preparing ? 1 : 0} />
+            </Button>
+          ) : (
+            <Button type="button" onClick={() => window.print()}>
+              {t('book.save')}
+            </Button>
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
+/** A unit's lesson plan as a printable page: the teacher's copy or the students' copy; the server prints it to PDF. */
+export function Handout({ lessonId, version, pdf }: { lessonId: number; version: Version; pdf: boolean }) {
+  const { t } = useTranslation()
+  const theme = useTheme()
+  const { head, text, error, setError, unavailable } = useHandout(lessonId, version)
+  const [preparing, setPreparing] = useState(false)
 
   async function download() {
     setPreparing(true)
@@ -53,33 +92,12 @@ export function Handout({ lessonId, version, pdf }: { lessonId: number; version:
 
   // The cover shows even when a request failed, so the printer sees the page settle and the error is printed on it.
   if (!error && !unavailable && (!head || text === null)) return <main className="mx-auto w-full max-w-[var(--measure)] px-6 pt-10 pb-16" />
-  const other: Version = version === 'student' ? 'teacher' : 'student'
 
   return (
     <main className="book mx-auto flex w-full max-w-[820px] flex-col gap-4 px-6 pt-6 pb-16 print:block print:max-w-none print:p-0 print:text-[10.5pt] print:[&>*+*]:mt-4">
       <style key={theme}>{pageStyle(head?.topic ?? '')}</style>
       <div className="flex items-center gap-4 print:hidden">
-        <a className={buttonVariants({ variant: 'outline' })} href={head ? `#/course/${head.course_id}?concept=${head.concept_id}` : '#/'}>{t('handout.back')}</a>
-        {!unavailable && (
-          <>
-            <a className={buttonVariants({ variant: 'outline' })} href={`#/lesson/${lessonId}/handout/${other}`}>
-              {t(`handout.${other}`)}
-            </a>
-            <a className={buttonVariants({ variant: 'outline' })} href={`/api/lessons/${lessonId}/handout.md?version=${version}`} download>
-              {t('handout.markdown')}
-            </a>
-            <span className="grow" />
-            {pdf ? (
-              <Button type="button" disabled={preparing} onClick={download}>
-                <Swap labels={[t('book.download'), t('book.preparing')]} at={preparing ? 1 : 0} />
-              </Button>
-            ) : (
-              <Button type="button" onClick={() => window.print()}>
-                {t('book.save')}
-              </Button>
-            )}
-          </>
-        )}
+        <HandoutBar lessonId={lessonId} version={version} head={head} unavailable={unavailable} pdf={pdf} preparing={preparing} onDownload={download} />
       </div>
       {(unavailable || error) && <div className="rounded-md bg-warm-tint px-4 py-3 text-warm-ink">{unavailable ? t('handout.unavailable') : error}</div>}
       {!unavailable && (

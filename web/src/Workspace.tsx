@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, Ref, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from './api'
 import { useArrivals } from './arrive'
@@ -235,6 +235,112 @@ function SetupCard(props: { steps: SetupStep[]; onDecide: (index: number, allow:
   )
 }
 
+/** The calls the map and the notices make on a course, each reporting its failure as the page's error. */
+function courseActions(course: CourseDetail, setCourse: Dispatch<SetStateAction<CourseDetail | null>>, setError: (message: string) => void) {
+  const fail = (e: Error) => setError(e.message)
+  return {
+    onPace: (pace: CourseDetail['pace']) =>
+      api(`/api/courses/${course.id}/pace`, { pace }).then(
+        () => setCourse((c) => c && { ...c, pace }),
+        fail,
+      ),
+    onStay: (hash: string) => api<CourseDetail>(`/api/courses/${course.id}/upgrade/skip`, { hash }).then(setCourse, fail),
+    onDecide: (i: number, allow: boolean) => api(`/api/courses/${course.id}/setup/${i}`, { allow }).catch(fail),
+    onDecideResource: (kind: Resource['kind'], allow: boolean) =>
+      api<{ resources: Resource[] }>(`/api/courses/${course.id}/resources/${kind}`, { allow }).then(
+        ({ resources }) => setCourse((c) => c && { ...c, resources }),
+        fail,
+      ),
+  }
+}
+
+/** The lesson the tutor plans the map in; any other lesson stands in until the interview exists. */
+function planningLesson(course: CourseDetail, lesson: Lesson): number {
+  return course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id
+}
+
+/** The lesson column: notices, title, intro, cards, plan and the way on, with the button that opens the chat. */
+function LessonPane(props: {
+  className: string
+  boxRef: Ref<HTMLElement>
+  bottomRef: Ref<HTMLDivElement>
+  course: CourseDetail
+  lesson: Lesson
+  error: string
+  writing: boolean
+  features: { speech: boolean; commands: boolean; sketched: boolean }
+  actions: ReturnType<typeof courseActions>
+  upgrading: boolean
+  onUpgrade: (hash: string) => void
+  setCourse: Dispatch<SetStateAction<CourseDetail | null>>
+  onError: (message: string) => void
+  post: (path: string, body: unknown) => Promise<void>
+  openLesson: (path: string) => void
+  openConcept: (concept: Concept) => void
+  given: Record<number, Given>
+  onGive: (blockId: number, given: Given) => void
+  online: boolean
+  sending: boolean
+  onSend: (ready: Block[]) => void
+  onPrepare: () => void
+  stop: boolean
+  open: boolean
+  unread: number
+  doing: string
+  onAsk: () => void
+}) {
+  const { t } = useTranslation()
+  const { course, lesson, post, actions } = props
+  const { showPlan, finished, nextUnit, cardTotal, empty, canPrepare } = lessonView(course, lesson)
+  return (
+    <main
+      ref={props.boxRef}
+      className={cn(
+        'flex min-w-0 grow flex-col gap-6 overflow-x-hidden overflow-y-auto px-6 pt-10 pb-16 max-md:p-4 min-[1101px]:pe-23',
+        '[&_li]:max-w-[75ch] [&_p:not([class])]:max-w-[75ch] [&>.block:first-child]:border-t-0 [&>.block:first-child]:pt-0',
+        props.className,
+      )}
+    >
+      <CourseNotices
+        course={course}
+        upgrading={props.upgrading}
+        onUpgrade={props.onUpgrade}
+        onStay={actions.onStay}
+        onDecide={actions.onDecide}
+        onDecideResource={actions.onDecideResource}
+      />
+      <h1 dir="auto" className="m-0 max-w-none">
+        {lessonTitle(lesson, t)}
+      </h1>
+      <LessonIntro course={course} lesson={lesson} finished={finished} setCourse={props.setCourse} post={post} onError={props.onError} />
+      <LessonCards
+        course={course}
+        lesson={lesson}
+        total={cardTotal}
+        given={props.given}
+        onGive={props.onGive}
+        features={props.features}
+        post={post}
+        onError={props.onError}
+      />
+      {showPlan && <CoursePlan course={course} lesson={lesson} post={post} onPlacement={() => props.openLesson(`/api/courses/${course.id}/placement`)} />}
+      <PlacementNote course={course} lesson={lesson} />
+      <LessonFoot
+        lesson={lesson}
+        working={empty || props.writing}
+        offline={canPrepare}
+        nextUnit={nextUnit}
+        stop={props.stop}
+        onOpenUnit={props.openConcept}
+        row={<OfflineRow lesson={lesson} given={props.given} online={props.online} sending={props.sending} onSend={props.onSend} onPrepare={props.onPrepare} />}
+      />
+      {props.error && <div className={ERROR}>{props.error}</div>}
+      <div ref={props.bottomRef} />
+      {!props.open && <AskButton unread={props.unread} working={lesson.running ? props.doing : null} onAsk={props.onAsk} />}
+    </main>
+  )
+}
+
 export function Workspace({ profile, courseId, speech, commands, sketched, concept, start, found }: { profile: number; courseId: number; speech: boolean; commands: boolean; sketched: boolean; concept: number | null; start: 'episode' | 'writing' | 'roleplay' | null; found: { lesson: number; at: string } | null }) {
   const { t } = useTranslation()
   const foundLesson = found?.lesson ?? null
@@ -264,6 +370,11 @@ export function Workspace({ profile, courseId, speech, commands, sketched, conce
   useArrivals(lessonBox, lesson?.id)
   useArrivals(messagesBox, lesson?.id)
 
+  function openChat() {
+    setAsking(true)
+    requestAnimationFrame(() => document.getElementById('chat')?.focus())
+  }
+
   function closeChat() {
     setAsking(false)
     // the sidebar hides with the focus in it: hand it back to the button that opens it
@@ -282,8 +393,8 @@ export function Workspace({ profile, courseId, speech, commands, sketched, conce
 
   if (!course || !lesson) return <main className="mx-auto flex w-full max-w-160 flex-col gap-10 px-6 pt-10 pb-16">{error && <div className={ERROR}>{error}</div>}</main>
 
-  const { showPlan, finished, nextUnit, cardTotal, empty, canPrepare } = lessonView(course, lesson)
   const doing = activity ? lookup(`activity.${activity}`, t('activity.working')) : t('activity.working')
+  const actions = courseActions(course, setCourse, setError)
 
   return (
     <div className="relative flex min-h-0 grow max-md:flex-col" data-pane={pane}>
@@ -304,80 +415,44 @@ export function Workspace({ profile, courseId, speech, commands, sketched, conce
         onLesson={opened}
         onChangeMap={() => {
           // The planning conversation lives in the interview lesson; the tutor revises the map from any lesson.
-          showLesson(course.lessons.find((l) => l.phase === 'interview')?.id ?? lesson.id)
+          showLesson(planningLesson(course, lesson))
           setAsking(true)
           setChanging(true)
           // after the click's render, once the chat is open
           requestAnimationFrame(() => document.getElementById('chat')?.focus())
         }}
-        onPace={(pace) =>
-          api(`/api/courses/${course.id}/pace`, { pace }).then(
-            () => setCourse((c) => c && { ...c, pace }),
-            (err: Error) => setError(err.message),
-          )
-        }
+        onPace={actions.onPace}
       />
 
-      <main
-        ref={lessonBox}
-        className={cn(
-          'flex min-w-0 grow flex-col gap-6 overflow-x-hidden overflow-y-auto px-6 pt-10 pb-16 max-md:p-4 min-[1101px]:pe-23',
-          '[&_li]:max-w-[75ch] [&_p:not([class])]:max-w-[75ch] [&>.block:first-child]:border-t-0 [&>.block:first-child]:pt-0',
-          PANE,
-          pane !== 'lesson' && PANE_AWAY,
-        )}
-      >
-        <CourseNotices
-          course={course}
-          upgrading={upgrading}
-          onUpgrade={upgrade}
-          onStay={(hash) => api<CourseDetail>(`/api/courses/${course.id}/upgrade/skip`, { hash }).then(setCourse, (e: Error) => setError(e.message))}
-          onDecide={(i, allow) => api(`/api/courses/${course.id}/setup/${i}`, { allow }).catch((e: Error) => setError(e.message))}
-          onDecideResource={(kind, allow) =>
-            api<{ resources: Resource[] }>(`/api/courses/${course.id}/resources/${kind}`, { allow }).then(
-              ({ resources }) => setCourse((c) => c && { ...c, resources }),
-              (e: Error) => setError(e.message),
-            )
-          }
-        />
-        <h1 dir="auto" className="m-0 max-w-none">
-          {lessonTitle(lesson, t)}
-        </h1>
-        <LessonIntro course={course} lesson={lesson} finished={finished} setCourse={setCourse} post={post} onError={setError} />
-        <LessonCards
-          course={course}
-          lesson={lesson}
-          total={cardTotal}
-          given={given}
-          onGive={give}
-          features={{ speech, commands, sketched }}
-          post={post}
-          onError={setError}
-        />
-        {showPlan && <CoursePlan course={course} lesson={lesson} post={post} onPlacement={() => openLesson(`/api/courses/${course.id}/placement`)} />}
-        <PlacementNote course={course} lesson={lesson} />
-        <LessonFoot
-          lesson={lesson}
-          working={empty || writing}
-          offline={canPrepare}
-          nextUnit={nextUnit}
-          stop={answeredToday}
-          onOpenUnit={openConcept}
-          row={<OfflineRow lesson={lesson} given={given} online={online} sending={sending} onSend={sendBatch} onPrepare={prepareOffline} />}
-        />
-        {error && <div className={ERROR}>{error}</div>}
-        <div ref={lessonBottom} />
-        {!open && (
-          <AskButton
-            unread={unread}
-            working={lesson.running ? doing : null}
-            onAsk={() => {
-              setAsking(true)
-              requestAnimationFrame(() => document.getElementById('chat')?.focus())
-            }}
-          />
-        )}
-      </main>
+      <LessonPane
+        className={cn(PANE, pane !== 'lesson' && PANE_AWAY)}
+        boxRef={lessonBox}
+        bottomRef={lessonBottom}
+        course={course}
+        lesson={lesson}
+        error={error}
+        writing={writing}
+        features={{ speech, commands, sketched }}
+        actions={actions}
+        upgrading={upgrading}
+        onUpgrade={upgrade}
+        setCourse={setCourse}
+        onError={setError}
+        post={post}
+        openLesson={openLesson}
+        openConcept={openConcept}
+        given={given}
+        onGive={give}
+        online={online}
+        sending={sending}
+        onSend={sendBatch}
+        onPrepare={prepareOffline}
+        stop={answeredToday}
+        open={open}
+        unread={unread}
+        doing={doing}
+        onAsk={openChat}
+      />
 
       <ChatPanel
         className={cn(pane === 'map' && 'max-md:hidden')}
@@ -413,8 +488,7 @@ export function Workspace({ profile, courseId, speech, commands, sketched, conce
         }}
         onChat={() => {
           setPane('lesson')
-          setAsking(true)
-          requestAnimationFrame(() => document.getElementById('chat')?.focus())
+          openChat()
         }}
       />
     </div>
